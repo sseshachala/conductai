@@ -566,6 +566,165 @@ def create_profile(
 #       can re-import cleanly
 
 
+# Keys we treat as secret-shaped anywhere in a target (top-level or
+# nested in ``provider_options`` / ``headers`` / etc.). Matched
+# case-insensitively. When we find one on import we reject the whole
+# payload — the point of round-tripping via JSON is that credentials
+# live in Vault, never in the file — so an inline secret is either
+# leaked material or an admin mistake, both worth failing loudly.
+# On export we recursively drop them from ``provider_options`` before
+# returning so the exported JSON is safe to commit to a repo.
+_SECRET_KEYS: frozenset[str] = frozenset({
+    "api_key", "apikey", "api-key",
+    "api_token", "apitoken", "api-token",
+    "secret", "secret_key", "secret-key",
+    "password", "passwd", "pwd",
+    "token", "bearer_token", "auth_token",
+    "authorization", "bearer",
+    "private_key", "priv_key", "privkey",
+})
+
+
+def _is_secret_key(key: Any) -> bool:
+    return isinstance(key, str) and key.strip().lower() in _SECRET_KEYS
+
+
+def _find_inline_secret_key(node: Any, path: str) -> tuple[str, str] | None:
+    """DFS scan for the first secret-shaped key with a truthy value.
+    Returns ``(path, offending_key)`` or ``None``.
+    """
+    if isinstance(node, dict):
+        for k, v in node.items():
+            if _is_secret_key(k) and v not in (None, "", 0, False):
+                return (f"{path}.{k}" if path else str(k), str(k))
+            child_path = f"{path}.{k}" if path else str(k)
+            hit = _find_inline_secret_key(v, child_path)
+            if hit is not None:
+                return hit
+    elif isinstance(node, list):
+        for i, v in enumerate(node):
+            hit = _find_inline_secret_key(v, f"{path}[{i}]")
+            if hit is not None:
+                return hit
+    return None
+
+
+def _sanitise_secret_keys(node: Any) -> Any:
+    """Recursively drop secret-shaped keys from ``node`` (mutates in
+    place for dicts/lists, returns the node for chaining). Used on
+    export so ``provider_options`` never leaks an inline api_key that
+    somehow snuck past the create/update Save gate.
+    """
+    if isinstance(node, dict):
+        for k in list(node.keys()):
+            if _is_secret_key(k):
+                del node[k]
+            else:
+                _sanitise_secret_keys(node[k])
+    elif isinstance(node, list):
+        for item in node:
+            _sanitise_secret_keys(item)
+    return node
+
+
+def _validate_import_shape(working_copy: Any) -> None:
+    """Reject payloads the editor can't render.
+
+    The editor assumes ``working_copy`` is a dict and, if present,
+    ``targets`` is a list of dicts. Anything else (dict, null, list of
+    scalars) either crashes the editor or silently drops data; better
+    to fail fast at the import boundary with a structured error the CLI
+    + UI both format nicely.
+    """
+    if not isinstance(working_copy, dict):
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "summary": "import payload must be an object",
+                "errors": [{
+                    "path": "$",
+                    "message": (
+                        "Top-level working_copy must be a JSON object. "
+                        "Got: " + type(working_copy).__name__
+                    ),
+                    "target_index": None,
+                    "type": "shape",
+                }],
+            },
+        )
+    targets = working_copy.get("targets")
+    if targets is None:
+        return
+    if not isinstance(targets, list):
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "summary": "targets must be a list",
+                "errors": [{
+                    "path": "targets",
+                    "message": (
+                        "``targets`` must be a JSON array. Got: "
+                        + type(targets).__name__
+                    ),
+                    "target_index": None,
+                    "type": "shape",
+                }],
+            },
+        )
+    for i, target in enumerate(targets):
+        if not isinstance(target, dict):
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "summary": "target entries must be objects",
+                    "errors": [{
+                        "path": f"targets[{i}]",
+                        "message": (
+                            "Every target must be a JSON object. Got: "
+                            + type(target).__name__
+                        ),
+                        "target_index": i,
+                        "type": "shape",
+                    }],
+                },
+            )
+
+
+def _reject_inline_secrets(working_copy: dict[str, Any]) -> None:
+    """Fail fast if the caller pasted an inline api_key / password /
+    token anywhere inside a target. Credentials belong in Vault; the
+    exported JSON already scrubs them, so an inline secret on import is
+    either leaked material or an admin mistake.
+    """
+    targets = working_copy.get("targets")
+    if not isinstance(targets, list):
+        return
+    for i, target in enumerate(targets):
+        if not isinstance(target, dict):
+            continue
+        hit = _find_inline_secret_key(target, "")
+        if hit is None:
+            continue
+        path, key = hit
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "summary": "inline credential detected",
+                "errors": [{
+                    "path": f"targets[{i}].{path}",
+                    "message": (
+                        f"Inline secret-shaped key {key!r} found at "
+                        f"targets[{i}].{path}. Credentials must live "
+                        f"in Vault — remove the inline value and set "
+                        f"``credential_ref`` after import."
+                    ),
+                    "target_index": i,
+                    "type": "inline_secret",
+                }],
+            },
+        )
+
+
 def _strip_credentials(working_copy: dict[str, Any]) -> tuple[dict[str, Any], list[ImportGap]]:
     """Return a copy of ``working_copy`` with every target's
     ``credential_ref`` set to empty, and the list of gaps the caller
@@ -575,6 +734,10 @@ def _strip_credentials(working_copy: dict[str, Any]) -> tuple[dict[str, Any], li
     editor's Save gate already blocks on (PR #2033), so the admin
     sees the exact same "pick a credential vault" banner they would
     for a duplicated profile or fresh preset.
+
+    Also scrubs any secret-shaped key nested inside ``provider_options``
+    (defensive belt-and-braces — the Save gate blocks these on write,
+    but exports go through this same helper so we can't rely on that).
     """
     stripped = json.loads(json.dumps(working_copy))  # deep copy via JSON round-trip
     gaps: list[ImportGap] = []
@@ -589,6 +752,11 @@ def _strip_credentials(working_copy: dict[str, Any]) -> tuple[dict[str, Any], li
             # editor's Save gate flags anyway).
             had_credential = bool(target.get("credential_ref"))
             target["credential_ref"] = ""
+            # R1b: recursively drop secret-shaped keys from the
+            # target (provider_options, headers, nested dicts). Export
+            # feeds this same helper, so anything sitting in a stored
+            # profile gets sanitised on the way out.
+            _sanitise_secret_keys(target)
             gaps.append(ImportGap(
                 target_index=i,
                 target_id=str(target.get("id") or f"target-{i + 1}"),
@@ -624,7 +792,17 @@ def import_profile(
 
     Shape validation is deferred to publish (same as create). This
     lets an admin import a partial JSON, edit it, then publish.
+
+    Two hard fail-fast checks run first:
+      * R3 shape gate — ``working_copy`` must be an object, and any
+        ``targets`` must be a list of objects. Prevents editor crashes
+        from ``{"targets": {}}`` / ``[null]`` type payloads.
+      * R1a inline-secret gate — any secret-shaped key inside a target
+        (api_key / token / password / etc.) is rejected. Credentials
+        belong in Vault.
     """
+    _validate_import_shape(body.working_copy)
+    _reject_inline_secrets(body.working_copy)
     stripped_wc, gaps = _strip_credentials(body.working_copy)
 
     # Name resolution: explicit override wins → JSON's own name →
