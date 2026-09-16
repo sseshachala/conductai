@@ -561,13 +561,15 @@ function ProfileDetail({
 
 function HowToUse({ profile }: { profile: GatewayProfileV2Out }) {
   const identifier = conditIdentifier(profile)
-  // Gateway URL is the client-facing endpoint that will eventually
-  // dispatch by cond_code. Until PR C ships the runtime consumer, this
-  // is what admins point their SDK's `baseURL` at — it lives on the
-  // same origin as the app itself, no host guessing.
+  // Gateway URL is the client-facing endpoint. Backend router mounts
+  // at ``/gateway/v1/<provider>/...`` (see
+  // ``apps/api/app/modules/guard/routers/gateway_proxy.py`` — the
+  // prefix is ``/gateway/v1``, provider is the next path segment).
+  // Previously this displayed ``/v1/gateway`` — following the setup
+  // instructions verbatim never reached the intended endpoint.
   const gatewayUrl = typeof window !== "undefined"
-    ? `${window.location.origin.replace(/\/$/, "")}/v1/gateway`
-    : "/v1/gateway"
+    ? `${window.location.origin.replace(/\/$/, "")}/gateway/v1`
+    : "/gateway/v1"
   return (
     <div className="card card-pad" style={{ background: "var(--surface-2)" }}>
       <div className="eyebrow" style={{ marginBottom: 8 }}>How to use this profile</div>

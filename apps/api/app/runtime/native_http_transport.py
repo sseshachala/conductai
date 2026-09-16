@@ -114,6 +114,7 @@ class NativeHTTPTransport:
         payload: dict[str, Any],
         credential_resolver,
         stream: bool = False,
+        client_headers: dict[str, str] | None = None,
     ) -> Any:
         """Forward the payload to the vendor's endpoint.
 
@@ -121,6 +122,14 @@ class NativeHTTPTransport:
         Streaming: returns a ``StreamingUpstream`` holding the live
         ``httpx.Response`` so ``_execute_v2`` can wrap ``aiter_bytes()``
         in a ``StreamingResponse``. The caller owns ``response.aclose()``.
+
+        X7 — ``client_headers`` is the allowlisted subset of the
+        original request's vendor headers (``anthropic-beta``,
+        ``openai-organization``, etc.). Merged into the outgoing
+        request headers AFTER the transport's own static + auth
+        headers, so the transport still owns content-type + the
+        auth-header shape while the client keeps feature/version
+        control.
         """
         if target.provider not in _ENDPOINTS:
             raise ValueError(
@@ -162,7 +171,16 @@ class NativeHTTPTransport:
             "content-type": "application/json",
             auth_header: f"Bearer {api_key}" if bearer_prefix else api_key,
             **extra_headers,
+            # X7 — client's vendor headers land last so a caller-set
+            # ``anthropic-version`` overrides the transport's default,
+            # matching v1 semantics. Static extra_headers above set the
+            # baseline; content-type + auth stay pinned.
+            **(client_headers or {}),
         }
+        # content-type + auth stay under transport control regardless of
+        # what the client sent.
+        headers["content-type"] = "application/json"
+        headers[auth_header] = f"Bearer {api_key}" if bearer_prefix else api_key
 
         client = await self._get_client()
         content_bytes = json.dumps(request_body).encode("utf-8")

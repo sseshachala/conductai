@@ -179,6 +179,7 @@ class AttemptCoordinator:
         credential_resolver: CredentialResolver,
         stream: bool = False,
         policy_check: Callable[[Any], "PolicyBlock | None"] | None = None,
+        client_headers: dict[str, str] | None = None,
     ) -> CoordinatorResult:
         """Walk targets in priority order, honouring max_attempts and
         timeout_seconds. Returns the first successful response.
@@ -254,6 +255,7 @@ class AttemptCoordinator:
                         payload=payload,
                         credential_resolver=credential_resolver,
                         stream=stream,
+                        client_headers=client_headers,
                     ),
                     timeout=remaining,
                 )
@@ -341,6 +343,7 @@ class AttemptCoordinator:
         payload: dict[str, Any],
         credential_resolver: CredentialResolver,
         stream: bool,
+        client_headers: dict[str, str] | None = None,
     ) -> Any:
         if isinstance(target, NativeHTTPTarget):
             return await self._native.execute(
@@ -349,8 +352,14 @@ class AttemptCoordinator:
                 payload=payload,
                 credential_resolver=credential_resolver,
                 stream=stream,
+                client_headers=client_headers,
             )
         if isinstance(target, LiteLLMSDKTarget):
+            # LiteLLM transport doesn't take client_headers yet — LiteLLM's
+            # own SDK has an ``extra_headers`` kwarg but the mapping is
+            # provider-specific and non-trivial for the ``anthropic-beta``
+            # class of headers. Left for a follow-up; native_http covers
+            # the launch path where vendor headers matter most.
             return await self._sdk.execute(
                 target=target,
                 operation=operation,
@@ -365,6 +374,7 @@ class AttemptCoordinator:
                 payload=payload,
                 credential_resolver=credential_resolver,
                 stream=stream,
+                client_headers=client_headers,
             )
         raise UnsupportedTransport(f"unknown target type: {type(target).__name__}")
 
