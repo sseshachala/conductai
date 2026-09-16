@@ -539,40 +539,13 @@ async def handle_gateway_request(
             # #2004 Phase 1 — v2 executes the coordinator + LiteLLM SDK
             # transport inside the same lifecycle as v1. Same audit row,
             # same response gate, same finalize path — only the actual
-            # upstream call differs. Non-streaming only for Phase 1;
-            # streaming raises early at plan build time.
+            # upstream call differs. Finalize is intentionally deferred
+            # to AFTER the response gate below so a blocked response
+            # doesn't land on top of a pre-gate "ok" row.
             _response = await _execute_v2(plan=_v2_plan, body=body)
             # Reflect coordinator attempt records back into routing_meta
             # so the durable audit row lands with the full attempt list.
             _routing_meta = _merge_routing_meta(_routing_meta, _v2_plan.last_meta)
-            # v2 bypasses transport.forward → no _schedule_audit fires
-            # inside a background task. Finalize the durable row here so
-            # the row moves from ``accepted`` to a terminal state before
-            # this request returns; otherwise the reconciler would sweep
-            # it later and the client-visible latency would show the
-            # audit as pending for seconds after the response was sent.
-            if _durable_row_id:
-                try:
-                    _v2_body_bytes = _response.body if hasattr(_response, "body") else None
-                except Exception:
-                    _v2_body_bytes = None
-                await _finalize_durable_row(
-                    row_id=_durable_row_id,
-                    workspace_id=workspace_id,
-                    decision=_audit_decision,
-                    provider=provider,
-                    model=model,
-                    body=body,
-                    response_bytes=_v2_body_bytes,
-                    duration_ms=int((time.monotonic() - started) * 1000),
-                    rule_id=_audit_rule_id,
-                    routing_meta=_routing_meta,
-                    execution_status="ok",
-                    result_summary=None,
-                    clerk_user_id=clerk_user_id,
-                    ai_tool=ai_tool,
-                    user_email=_user_email,
-                )
         else:
             _response = await transport.forward(
                 sender=_forward,
@@ -642,6 +615,38 @@ async def handle_gateway_request(
                 clerk_user_id=clerk_user_id, agent_identity_id=_agent_identity_id,
                 agent_risk_tier=_agent_risk_tier,
                 ai_tool=ai_tool,
+            )
+        # v2 finalize — deliberately AFTER the response gate so a
+        # gate-blocked response doesn't land on top of a pre-gate "ok"
+        # row. v1 gets its finalize inside transport.forward's
+        # _schedule_audit path (which fires after the response is sent
+        # in a BackgroundTask), so v1 isn't touched here.
+        if _v2_plan is not None and _durable_row_id:
+            _v2_status = getattr(_response, "status_code", 200)
+            _v2_blocked = _v2_status >= 400
+            try:
+                _v2_body_bytes = _response.body if hasattr(_response, "body") else None
+            except Exception:
+                _v2_body_bytes = None
+            await _finalize_durable_row(
+                row_id=_durable_row_id,
+                workspace_id=workspace_id,
+                # Reflect the post-gate outcome — if the gate flipped the
+                # response to a block, the row records "blocked", not
+                # the pre-gate audit decision.
+                decision="blocked" if _v2_blocked else _audit_decision,
+                provider=provider,
+                model=model,
+                body=body,
+                response_bytes=_v2_body_bytes,
+                duration_ms=int((time.monotonic() - started) * 1000),
+                rule_id=_audit_rule_id,
+                routing_meta=_routing_meta,
+                execution_status="blocked" if _v2_blocked else "ok",
+                result_summary=None,
+                clerk_user_id=clerk_user_id,
+                ai_tool=ai_tool,
+                user_email=_user_email,
             )
     except BaseException as _forward_exc:  # noqa: BLE001 — need CancelledError too
         # Best-effort finalize so the row lands terminated immediately
@@ -752,7 +757,7 @@ def _build_v2_plan(
     that's a config error, not a silent degrade. The caller sees a 503
     with the specific target id so ops can fix it in Vault.
     """
-    from app.modules.guard.gateway_v2_bridge import (
+    from app.runtime.gateway_v2_bridge import (
         CredentialsUnavailable,
         build_credential_resolver,
         map_operation,
@@ -760,14 +765,31 @@ def _build_v2_plan(
     from app.modules.guard.gateway_runtime import resolve_v2
     from fastapi import HTTPException as _HTTPException
 
+    # A client that sent a cond-prefixed identifier is explicitly asking
+    # for v2 routing. Any failure below must be loud — silently routing a
+    # `cond-<code>-<alias>` request through v1 with unrelated config
+    # would lie about the profile working.
+
     if body.get("stream") is True:
-        # Phase 1 non-streaming only. Silent v1 fallback is acceptable
-        # because the v2 flag stays off in prod until streaming ships.
-        return None
+        raise _HTTPException(
+            status_code=501,
+            detail=(
+                "Gateway Profile v2 does not support streaming yet. Send "
+                "with stream=false, or route this client through the v1 "
+                "gateway URL."
+            ),
+        )
 
     operation = map_operation(provider, upstream_path)
     if operation is None:
-        return None
+        raise _HTTPException(
+            status_code=501,
+            detail=(
+                f"Gateway Profile v2 does not serve {provider!r} on "
+                f"{upstream_path!r}. Publish the profile against a URL "
+                f"the v2 capability catalog certifies."
+            ),
+        )
 
     resolved = resolve_v2(
         db,
@@ -775,7 +797,14 @@ def _build_v2_plan(
         cond_code=cond_code,
     )
     if resolved is None:
-        return None
+        raise _HTTPException(
+            status_code=404,
+            detail=(
+                f"Gateway Profile with cond_code {cond_code!r} not found "
+                f"in this workspace, or the profile has no active revision "
+                f"(never published, or rolled back to none)."
+            ),
+        )
 
     if operation not in resolved.profile.accepts:
         raise _HTTPException(
@@ -806,7 +835,7 @@ def _build_v2_plan(
     return _V2Plan(resolved=resolved, operation=operation, credential_resolver=resolver)
 
 
-async def _execute_v2(*, plan: _V2Plan, body: dict, routing_meta_ref):
+async def _execute_v2(*, plan: _V2Plan, body: dict):
     """Run the coordinator + shape its result into a JSONResponse.
 
     Attempt records land on ``plan.last_meta`` so the caller can merge
