@@ -423,7 +423,9 @@ export const guard = {
     create: (f: AuthFetch, workspaceId: string, body: { name: string; working_copy?: Record<string, unknown> }) =>
       _mutateJson<GatewayProfileV2Out>(f, "POST", `${API}/workspaces/${workspaceId}/gateway-profiles-v2`, body),
     updateWorkingCopy: (f: AuthFetch, workspaceId: string, id: string, workingCopy: Record<string, unknown>) =>
-      _mutateJson<GatewayProfileV2Out>(f, "PUT", `${API}/workspaces/${workspaceId}/gateway-profiles-v2/${id}/working_copy`, { working_copy: workingCopy }),
+      // Router mounts PUT at the profile-id path itself (no `/working_copy`
+      // suffix); posting to `/working_copy` was 404-ing the Save button.
+      _mutateJson<GatewayProfileV2Out>(f, "PUT", `${API}/workspaces/${workspaceId}/gateway-profiles-v2/${id}`, { working_copy: workingCopy }),
     publish: (f: AuthFetch, workspaceId: string, id: string) =>
       _mutateJson<GatewayProfileV2Out>(f, "POST", `${API}/workspaces/${workspaceId}/gateway-profiles-v2/${id}/publish`, {}),
     rollback: (f: AuthFetch, workspaceId: string, id: string, revisionId: string) =>
