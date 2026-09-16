@@ -139,6 +139,7 @@ class HTTPPassthroughTransport:
         payload: dict[str, Any],
         credential_resolver,
         stream: bool = False,
+        client_headers: dict[str, str] | None = None,
     ) -> Any:
         """Forward the payload to the integration's endpoint.
 
@@ -147,6 +148,11 @@ class HTTPPassthroughTransport:
         passthrough integrations is a follow-up PR — the launch set is
         request/response only. Callers must publish a native_http
         target ahead of a passthrough target for streaming to work.
+
+        X7 — ``client_headers`` is the allowlisted subset of the
+        original request's vendor headers (``openai-organization``,
+        ``anthropic-beta``, etc.). Merged into the outgoing headers
+        AFTER the integration's own auth + static headers.
         """
         if stream:
             raise NotImplementedError(
@@ -192,7 +198,14 @@ class HTTPPassthroughTransport:
                 f"Bearer {api_key}" if config.bearer_prefix else api_key
             ),
             **config.extra_headers,
+            **(client_headers or {}),
         }
+        # content-type + auth stay under transport control regardless of
+        # what the client sent.
+        headers["content-type"] = "application/json"
+        headers[config.auth_header] = (
+            f"Bearer {api_key}" if config.bearer_prefix else api_key
+        )
 
         client = await self._get_client()
         try:

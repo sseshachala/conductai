@@ -605,9 +605,14 @@ async def handle_gateway_request(
                 risk_tier=_agent_risk_tier,
                 ai_tool=ai_tool,
             )
+            # X7 — vendor-specific client headers (``anthropic-beta``,
+            # ``openai-organization``, ...) reach v2 targets via a
+            # v2-side allowlist (stricter than v1's blanket forward).
+            _v2_client_headers = _v2_allowlisted_headers(extra_headers)
             _response = await _execute_v2(
                 plan=_v2_plan, body=body, stream=is_stream,
                 policy_check=_policy_check,
+                client_headers=_v2_client_headers,
             )
             # Reflect coordinator attempt records back into routing_meta
             # so the durable audit row lands with the full attempt list.
@@ -950,6 +955,47 @@ class _V2Plan:
 _COND_CODE_RE = None
 
 
+# X7 — vendor-header allowlist for v2 targets.
+#
+# v1 forwards every header the SDK sends (minus a hop-header skip set)
+# because it's a "trusted upstream" proxy. v2 is stricter: only pass
+# through headers the vendor documents as legitimate client controls.
+# Anything else is silently dropped, matching the principle that a
+# compromised client MUST NOT be able to inject arbitrary headers into
+# an upstream request via the Gateway.
+#
+# Header names are lowercased at collection time (see the caller in
+# ``handle_gateway_request``), so the allowlist keys are lowercase.
+_V2_HEADER_ALLOWLIST: frozenset[str] = frozenset({
+    # Anthropic
+    "anthropic-beta",         # feature-flag opt-ins
+    "anthropic-version",      # API version pin (transport sets default; allow client override)
+    # OpenAI
+    "openai-organization",    # org selector
+    "openai-project",         # project selector
+    "openai-beta",            # beta features (e.g. Assistants v2)
+    # OpenRouter passthrough — attribution is handled server-side but
+    # some clients pass their own; harmless to allow.
+    "openrouter-referer",
+})
+
+
+def _v2_allowlisted_headers(headers: dict[str, str] | None) -> dict[str, str]:
+    """Filter a header dict down to the v2 vendor allowlist.
+
+    Returns an empty dict if ``headers`` is None or empty. Case-
+    insensitive matching (input is expected lowercase — handler
+    lowercases at collection time).
+    """
+    if not headers:
+        return {}
+    return {
+        k: v
+        for k, v in headers.items()
+        if k.lower() in _V2_HEADER_ALLOWLIST
+    }
+
+
 def _extract_cond_code(model: object) -> str | None:
     """Parse ``cond-<8chars>-<alias>`` out of the client's ``model:``
     field. Returns None on any mismatch — caller falls through to v1.
@@ -1160,6 +1206,7 @@ async def _execute_v2(
     body: dict,
     stream: bool = False,
     policy_check=None,
+    client_headers: dict[str, str] | None = None,
 ):
     """Run the coordinator + shape its result into a JSONResponse or
     ``StreamingResponse`` depending on the request's ``stream`` flag.
@@ -1195,6 +1242,7 @@ async def _execute_v2(
             credential_resolver=plan.credential_resolver,
             stream=stream,
             policy_check=policy_check,
+            client_headers=client_headers,
         )
     except _AllAttemptsFailed as exc:
         plan.last_meta = {
