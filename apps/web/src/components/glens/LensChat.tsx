@@ -7,19 +7,35 @@
  * owns the outer container.
  *
  * Streams from `/glens/chat/stream` — same endpoint the full-page canvas uses.
- * All rendering flows through `AnswerBubble` — one bubble, one markdown parser.
+ * Text rendering flows through `AnswerBubble`. Mutating actor tools return
+ * a `confirm_required` envelope in the SSE `done` event; those render as
+ * `ActionConfirmBubble` inline so the user can Confirm/Cancel without a
+ * chat round-trip. Session id is persisted to localStorage when the host
+ * supplies a `persistKey` so subsequent mounts resume the same server-side
+ * session.
  */
 
 import { useEffect, useRef, useState } from "react"
 import { API } from "@/lib/api"
 import { useAuthFetch } from "@/hooks/useAuthFetch"
 import { AnswerBubble } from "@/components/glens/bubbles/AnswerBubble"
+import { ActionConfirmBubble } from "@/components/glens/bubbles/ActionConfirmBubble"
 
 type Message =
   | { role: "user"; text: string }
   | { role: "assistant"; kind: "streaming"; text: string }
   | { role: "assistant"; kind: "answer"; text: string; drilldown?: string; complex?: boolean; sessionId?: string }
   | { role: "assistant"; kind: "error"; text: string }
+  | {
+      role: "assistant"
+      kind: "action_confirm"
+      toolName: string
+      approvalRequestId: string
+      summary: string
+      warnings?: string[]
+      expiresAt?: string
+    }
+  | { role: "assistant"; kind: "action_done"; text: string }
 
 export function LensChat({
   pathname,
@@ -30,6 +46,7 @@ export function LensChat({
   autoFocusOnMount = true,
   placeholder = "Ask Lens…",
   emptyText = "Ask about anything on this page. Lens is Guard-enforced.",
+  persistKey,
 }: {
   pathname?: string | null
   initialQuery?: string | null
@@ -39,12 +56,24 @@ export function LensChat({
   autoFocusOnMount?: boolean
   placeholder?: string
   emptyText?: string
+  /** localStorage key namespace for session_id persistence. When set, the
+   *  session id is loaded on mount and saved on every server-issued update,
+   *  so a page reload resumes the same server-side session (no forgotten
+   *  pending_action_ids, no lost conversation). Omit to opt out. */
+  persistKey?: string
 }) {
   const { authFetch } = useAuthFetch()
   const [messages, setMessages] = useState<Message[]>([])
   const [composer, setComposer] = useState("")
   const [loading, setLoading] = useState(false)
-  const [sessionId, setSessionId] = useState<string | null>(initialSessionId ?? null)
+  const _storageKey = persistKey ? `lens.session.${persistKey}` : null
+  const [sessionId, setSessionId] = useState<string | null>(() => {
+    if (initialSessionId) return initialSessionId
+    if (_storageKey && typeof window !== "undefined") {
+      try { return window.localStorage.getItem(_storageKey) ?? null } catch { return null }
+    }
+    return null
+  })
   const abortRef = useRef<AbortController | null>(null)
   const bodyRef = useRef<HTMLDivElement>(null)
   const composerRef = useRef<HTMLTextAreaElement>(null)
@@ -119,7 +148,33 @@ export function LensChat({
               if (evt.session_id) {
                 setSessionId(evt.session_id)
                 onSessionId?.(evt.session_id)
+                if (_storageKey && typeof window !== "undefined") {
+                  try { window.localStorage.setItem(_storageKey, evt.session_id) } catch { /* quota / private mode */ }
+                }
               }
+
+              // Mutating actor tool returned a confirm envelope — render
+              // ActionConfirmBubble in-place instead of the answer bubble.
+              // (GLensChatPage does the same on the full-page canvas;
+              // LensEmbed was missing this branch, which is why the
+              // "confirm the card above" prose landed with no card.)
+              if (evt.confirm_required && evt.approval_request_id) {
+                setMessages(prev => {
+                  const copy = prev.slice()
+                  copy[copy.length - 1] = {
+                    role: "assistant",
+                    kind: "action_confirm",
+                    toolName: (evt.tool_name as string) ?? "action",
+                    approvalRequestId: evt.approval_request_id as string,
+                    summary: (evt.summary as string) ?? (evt.answer as string) ?? "Confirm this action?",
+                    warnings: (evt.warnings as string[] | undefined) ?? [],
+                    expiresAt: evt.expires_at as string | undefined,
+                  }
+                  return copy
+                })
+                return
+              }
+
               const complex = Boolean(evt.spec || evt.blocks || evt.page_kind)
               setMessages(prev => {
                 const copy = prev.slice()
@@ -163,7 +218,12 @@ export function LensChat({
         )}
 
         {messages.map((m, i) => (
-          <MsgBubble key={i} m={m} onExpand={onExpandMessage} />
+          <MsgBubble
+            key={i} m={m}
+            authFetch={authFetch}
+            onExpand={onExpandMessage}
+            onActionResolved={(text) => setMessages(prev => [...prev, { role: "assistant", kind: "action_done", text }])}
+          />
         ))}
       </div>
 
@@ -208,7 +268,14 @@ export function LensChat({
   )
 }
 
-function MsgBubble({ m, onExpand }: { m: Message; onExpand?: (sessionId?: string) => void }) {
+function MsgBubble({
+  m, authFetch, onExpand, onActionResolved,
+}: {
+  m: Message
+  authFetch: (url: string, options?: RequestInit) => Promise<Response>
+  onExpand?: (sessionId?: string) => void
+  onActionResolved: (text: string) => void
+}) {
   if (m.role === "user") {
     return (
       <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
@@ -226,6 +293,25 @@ function MsgBubble({ m, onExpand }: { m: Message; onExpand?: (sessionId?: string
 
   if (m.kind === "error") {
     return <AnswerBubble dense tone="error" text={m.text} />
+  }
+
+  if (m.kind === "action_confirm") {
+    return (
+      <ActionConfirmBubble
+        toolName={m.toolName}
+        approvalRequestId={m.approvalRequestId}
+        summary={m.summary}
+        warnings={m.warnings}
+        expiresAt={m.expiresAt}
+        authFetch={authFetch}
+        stream={null}
+        onResult={onActionResolved}
+      />
+    )
+  }
+
+  if (m.kind === "action_done") {
+    return <AnswerBubble dense text={m.text} />
   }
 
   return (
