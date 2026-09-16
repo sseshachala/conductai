@@ -357,4 +357,113 @@ TOOLS: list[ToolDef] = [
         annotations=ToolAnnotations(read_only=False, destructive=False, idempotent=True),
         tags=_ACTOR_TAGS,
     ),
+    # ── Gateway Profile v2 (#2012) ────────────────────────────────────
+    ToolDef(
+        name="gateway_v2_create_draft",
+        description=(
+            "Create a draft Gateway Profile v2 by name. Two-step: returns "
+            "a pending action for the user to confirm; the confirm click "
+            "writes the row. The working_copy is optional — pass one now, "
+            "or fill it via gateway_v2_update_working_copy afterwards. "
+            "Guard policy platform.credentials.manage still applies."
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "description": "Profile display name; must be unique in the workspace.",
+                },
+                "working_copy": {
+                    "type": "object",
+                    "description": (
+                        "Optional initial GatewayProfileV2 shape "
+                        "(name / model_alias / accepts / targets / timeout_seconds / "
+                        "max_attempts). Empty = truly empty draft."
+                    ),
+                },
+            },
+            "required": ["name"],
+        },
+        impl=_actor_impl("gateway_v2_create_draft"),
+        annotations=ToolAnnotations(read_only=False, destructive=False, idempotent=False),
+        tags=_ACTOR_TAGS,
+    ),
+    ToolDef(
+        name="gateway_v2_update_working_copy",
+        description=(
+            "Overwrite the working copy of a Gateway Profile v2 draft. "
+            "Two-step: returns a pending action for the user to confirm; "
+            "the confirm click writes the new working_copy. Whole-object "
+            "replace only — no partial patches. Fetch the current copy via "
+            "get_gateway_v2_profile, mutate, pass back."
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "profile_id": {"type": "string", "description": "Profile UUID."},
+                "working_copy": {
+                    "type": "object",
+                    "description": (
+                        "Full GatewayProfileV2 shape — name, model_alias, "
+                        "accepts, targets, timeout_seconds, max_attempts."
+                    ),
+                },
+            },
+            "required": ["profile_id", "working_copy"],
+        },
+        impl=_actor_impl("gateway_v2_update_working_copy"),
+        annotations=ToolAnnotations(read_only=False, destructive=False, idempotent=True),
+        tags=_ACTOR_TAGS,
+    ),
+    ToolDef(
+        name="gateway_v2_publish",
+        description=(
+            "Publish a Gateway Profile v2 draft as a new revision and pin "
+            "it to an environment × alias binding. Two-step: returns a "
+            "pending action for the user to confirm; the confirm click "
+            "runs the full publish lifecycle — schema validation, "
+            "capability catalog check, credential + environment ownership. "
+            "Guard policy platform.credentials.manage still applies."
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "profile_id": {"type": "string", "description": "Profile UUID."},
+                "environment_id": {
+                    "type": "string",
+                    "description": "Environment (vault) UUID to bind the new revision to.",
+                },
+            },
+            "required": ["profile_id", "environment_id"],
+        },
+        impl=_actor_impl("gateway_v2_publish"),
+        annotations=ToolAnnotations(read_only=False, destructive=False, idempotent=False),
+        tags=_ACTOR_TAGS,
+    ),
+    ToolDef(
+        name="gateway_v2_rollback",
+        description=(
+            "Repoint an environment × alias binding at a historical revision "
+            "of the Gateway Profile. Two-step: returns a pending action for "
+            "the user to confirm; the confirm click writes the new binding "
+            "and appends to the profile binding events audit log. Guard "
+            "policy platform.credentials.manage still applies."
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "profile_id": {"type": "string", "description": "Profile UUID."},
+                "environment_id": {"type": "string", "description": "Environment UUID."},
+                "revision_id": {
+                    "type": "string",
+                    "description": "Historical revision UUID to bind (must belong to this profile).",
+                },
+            },
+            "required": ["profile_id", "environment_id", "revision_id"],
+        },
+        impl=_actor_impl("gateway_v2_rollback"),
+        annotations=ToolAnnotations(read_only=False, destructive=False, idempotent=False),
+        tags=_ACTOR_TAGS,
+    ),
 ]

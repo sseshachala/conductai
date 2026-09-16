@@ -30,6 +30,7 @@ from app.tools.registrations.lens import (
     capabilities,
     dashboard_kpis,
     discovery,
+    gateway_v2,
     governance,
     guard_core,
     marketplace,
@@ -60,6 +61,7 @@ _ALL_TOOLS = [
     *report_builder.TOOLS,
     *actor.TOOLS,
     *capabilities.TOOLS,
+    *gateway_v2.TOOLS,
 ]
 
 
