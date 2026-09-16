@@ -258,9 +258,60 @@ export default function GatewayProfilesV2Page() {
         candidate = `${source.name}-copy-${n}`
         n += 1
       }
-      const sourceWc = source.working_copy ?? {}
+
+      // #2034 fix — a duplicated profile MUST carry the source
+      // profile's credential_refs so Save doesn't immediately fail on
+      // empty vault picks. Two possible sources for the seed:
+      //
+      //   1. ``source.working_copy`` — populated for drafts. May be
+      //      empty or missing targets for a profile that was
+      //      published then locked (working_copy is API-locked after
+      //      publish; some deployments null it out entirely).
+      //   2. Latest revision snapshot — the immutable snapshot from
+      //      publish. Always has full targets with credential_refs
+      //      because publish's capability check would have failed
+      //      otherwise.
+      //
+      // Prefer (1) when it has non-empty targets, else fetch (2).
+      // Keeps drafts editable-in-place while making published-profile
+      // duplicates work without a follow-up credential re-pick.
+      const wcTargets = (source.working_copy as {
+        targets?: Array<Record<string, unknown>>
+      } | null | undefined)?.targets ?? []
+      const wcHasCredentials = wcTargets.length > 0 && wcTargets.every(
+        t => typeof t?.credential_ref === "string" && (t.credential_ref as string).length > 0,
+      )
+
+      let seed: Record<string, unknown>
+      if (wcHasCredentials) {
+        seed = source.working_copy as Record<string, unknown>
+      } else if (source.revisions && source.revisions.length > 0) {
+        // Latest published revision has the full snapshot. Sorted
+        // by version descending on the server; fall back to the
+        // first entry if that order ever changes.
+        const latest = source.revisions.reduce(
+          (a, b) => (a.version >= b.version ? a : b),
+        )
+        try {
+          seed = await guard.gatewayProfilesV2.revisionSnapshot(
+            authFetch, workspaceId, source.id, latest.id,
+          )
+        } catch {
+          // Snapshot fetch failed — fall back to the (possibly empty)
+          // working_copy so the duplicate at least creates. The
+          // editor's Save gate will block until the admin fills
+          // credentials, which is the pre-fix behavior anyway.
+          seed = (source.working_copy as Record<string, unknown>) ?? {}
+        }
+      } else {
+        // Draft with no revisions and no targets. Duplicate lands
+        // an empty draft; admin fills it from scratch. Save gate
+        // still blocks a bare save.
+        seed = (source.working_copy as Record<string, unknown>) ?? {}
+      }
+
       const wc = {
-        ...(sourceWc as Record<string, unknown>),
+        ...seed,
         name: candidate,
         model_alias: candidate,
       }
