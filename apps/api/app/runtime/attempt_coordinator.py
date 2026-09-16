@@ -53,7 +53,7 @@ from __future__ import annotations
 import asyncio
 import time
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Callable
 from uuid import UUID
 
 import structlog
@@ -98,6 +98,23 @@ class AllAttemptsFailed(Exception):
             f"{a.target_id}={a.error_class}" for a in attempts
         )
         super().__init__(f"all attempts failed: {summary}")
+
+
+@dataclass(frozen=True)
+class PolicyBlock:
+    """A per-target policy re-evaluation result meaning "do not dispatch
+    this target". Coordinator treats it like a permanent per-target
+    error — records the attempt with error_class='PolicyBlock' and tries
+    the next target. If every target is blocked, the coordinator raises
+    ``AllAttemptsFailed`` and the caller renders 451.
+
+    Carries the gate's ``rule_id`` + ``message`` so the audit row (and
+    the client's 451 envelope, if that's the outcome) can identify the
+    rule that fired instead of a bare "everything blocked".
+    """
+    rule_id: str
+    message: str
+    matched_rules: list[str] | None = None
 
 
 @dataclass(frozen=True)
@@ -161,6 +178,7 @@ class AttemptCoordinator:
         payload: dict[str, Any],
         credential_resolver: CredentialResolver,
         stream: bool = False,
+        policy_check: Callable[[Any], "PolicyBlock | None"] | None = None,
     ) -> CoordinatorResult:
         """Walk targets in priority order, honouring max_attempts and
         timeout_seconds. Returns the first successful response.
@@ -168,6 +186,20 @@ class AttemptCoordinator:
         Publish-time capability catalog already verified that every
         target advertises the requested operation, so runtime failure
         modes here are transport/network/upstream — not schema.
+
+        X1 — per-target policy re-eval. ``policy_check`` is called with
+        each target right before dispatch. If it returns a
+        ``PolicyBlock``, the target is skipped (recorded as
+        ``error_class='PolicyBlock'``), the coordinator tries the next
+        target. If every target is blocked, ``AllAttemptsFailed`` fires
+        and the handler renders 451 naming the last block's rule.
+
+        Rationale: the ingress policy evaluation runs against the
+        cond-* alias, which resolves to a *set* of possible target
+        models. A rule keyed on the real target model (``gpt-4o``,
+        ``claude-sonnet``) MUST be re-evaluated once we know which
+        target we're about to hit — otherwise the alias is a
+        model-policy bypass.
         """
         profile = resolved.profile
         if operation not in profile.accepts:
@@ -186,6 +218,32 @@ class AttemptCoordinator:
             if remaining <= 0:
                 attempts.append(_deadline_record(target, time.monotonic()))
                 break
+
+            # X1 per-target policy re-eval BEFORE dispatch — no wire hit
+            # if this target is blocked by policy against its model.
+            if policy_check is not None:
+                block = policy_check(target)
+                if block is not None:
+                    attempt_start = time.monotonic()
+                    attempts.append(AttemptRecord(
+                        target_id=target.id,
+                        transport=target.transport,
+                        provider_or_integration=_name_of(target),
+                        started_at_monotonic=attempt_start,
+                        completed_at_monotonic=attempt_start,
+                        succeeded=False,
+                        error_class="PolicyBlock",
+                        error_summary=(
+                            f"rule_id={block.rule_id}: {block.message}"
+                        )[:200],
+                    ))
+                    log.info(
+                        "gateway.v2.attempt_policy_block",
+                        target_id=target.id,
+                        rule_id=block.rule_id,
+                        revision_id=str(resolved.revision_id),
+                    )
+                    continue
 
             attempt_start = time.monotonic()
             try:
@@ -432,5 +490,6 @@ __all__ = [
     "AttemptCoordinator",
     "AttemptRecord",
     "CoordinatorResult",
+    "PolicyBlock",
     "UnsupportedTransport",
 ]

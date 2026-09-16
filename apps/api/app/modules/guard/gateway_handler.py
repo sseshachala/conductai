@@ -567,8 +567,28 @@ async def handle_gateway_request(
             # PR 2.5 — streaming: pass ``stream`` down so the coordinator +
             # native_http transport can return a live StreamingResponse.
             # Non-streaming returns a JSONResponse (same shape as before).
+            #
+            # X1 — per-target policy re-eval. The ingress policy eval
+            # (line ~339) runs against the cond-* alias; the transport
+            # substitutes ``target.model`` before wire. Any rule keyed
+            # on the real target model would be bypassed by the alias
+            # otherwise. Build a closure the coordinator calls per
+            # target; block → skip target (records PolicyBlock attempt);
+            # all blocked → AllAttemptsFailed → 451 to the client.
+            _policy_check = _build_policy_check(
+                workspace_id=workspace_id,
+                clerk_user_id=clerk_user_id,
+                agent_identity_id=(
+                    str(_agent_identity_id) if _agent_identity_id else None
+                ),
+                fallback_provider=provider,
+                body=body,
+                risk_tier=_agent_risk_tier,
+                ai_tool=ai_tool,
+            )
             _response = await _execute_v2(
                 plan=_v2_plan, body=body, stream=is_stream,
+                policy_check=_policy_check,
             )
             # Reflect coordinator attempt records back into routing_meta
             # so the durable audit row lands with the full attempt list.
@@ -895,7 +915,104 @@ def _build_v2_plan(
     return _V2Plan(resolved=resolved, operation=operation, credential_resolver=resolver)
 
 
-async def _execute_v2(*, plan: _V2Plan, body: dict, stream: bool = False):
+def _build_policy_check(
+    *,
+    workspace_id: str,
+    clerk_user_id: str | None,
+    agent_identity_id: str | None,
+    fallback_provider: str,
+    body: dict,
+    risk_tier: str | None,
+    ai_tool: str | None,
+):
+    """Build the per-target policy re-eval closure (X1).
+
+    Called by the coordinator right before each attempt with the target
+    that would be dispatched. Returns ``PolicyBlock`` if a rule fires
+    against the target's real model — coordinator then skips this
+    target and tries the next one. Returns None to allow dispatch.
+
+    The closure opens a short-lived DB session per call because the
+    request-scoped ``db`` has already been closed by the time the
+    coordinator runs. Cost: one indexed query against the composed
+    policy engine per target attempt.
+    """
+    from app.modules.guard.routers.proxy import (
+        SessionLocal,
+        _estimate_input_tokens,
+        set_workspace_rls,
+    )
+    from app.runtime.attempt_coordinator import PolicyBlock
+
+    def _check(target) -> PolicyBlock | None:
+        # Passthrough targets don't carry a ``provider`` field; fall
+        # back to the request's provider surface (or the target's
+        # integration if we can read one) so the policy eval sees
+        # *some* provider context.
+        target_provider = (
+            getattr(target, "provider", None)
+            or getattr(target, "integration", None)
+            or fallback_provider
+        )
+        target_model = getattr(target, "model", "") or ""
+
+        from app.guard.policy import evaluate_composed as _eval_composed
+        from app.guard.policy_types import PolicyContext as _PolicyContext
+
+        _db = SessionLocal()
+        try:
+            set_workspace_rls(_db, workspace_id)
+            ctx = _PolicyContext(
+                workspace_id=workspace_id,
+                clerk_user_id=clerk_user_id,
+                agent_identity_id=agent_identity_id,
+                provider=target_provider,
+                model=target_model,   # <-- key: re-eval against target model
+                body=body,
+                input_tokens=_estimate_input_tokens(body),
+                db=_db,
+                gate="prompt",
+                risk_tier=risk_tier,
+                ai_tool=ai_tool or None,
+            )
+            pd = _eval_composed(ctx)
+        finally:
+            _db.close()
+
+        # Y1 — refuse dispatch on BOTH block-action AND approval-action.
+        # The ingress eval handled approval via ``render_approval`` (queues
+        # the request for a human), but that ran against the cond-alias.
+        # A rule keyed on the target model (``approval when model=gpt-4o``)
+        # would still be bypassed by the alias if we only checked
+        # ``pd.blocks`` here — approval-gated models would silently
+        # dispatch. Treat needs_approval as a refuse-and-fall-through so
+        # the coordinator skips this target and tries the next; if every
+        # target is refused, the 451 renders with the last refuse-reason
+        # in its detail.
+        if pd.blocks or pd.needs_approval:
+            reason_kind = "policy-block" if pd.blocks else "policy-approval-required"
+            return PolicyBlock(
+                rule_id=pd.rule_id or reason_kind,
+                message=pd.reason or (
+                    "target model blocked by policy"
+                    if pd.blocks
+                    else "target model requires human approval; alias "
+                         "cannot bypass approval by resolving to it"
+                ),
+                matched_rules=list(pd.matched_rules or []),
+            )
+        return None
+
+    return _check
+
+
+async def _execute_v2(
+    *,
+    plan: _V2Plan,
+    body: dict,
+    stream: bool = False,
+    policy_check=None,
+):
     """Run the coordinator + shape its result into a JSONResponse or
     ``StreamingResponse`` depending on the request's ``stream`` flag.
 
@@ -925,6 +1042,7 @@ async def _execute_v2(*, plan: _V2Plan, body: dict, stream: bool = False):
             payload=body,
             credential_resolver=plan.credential_resolver,
             stream=stream,
+            policy_check=policy_check,
         )
     except _AllAttemptsFailed as exc:
         plan.last_meta = {
@@ -941,6 +1059,22 @@ async def _execute_v2(*, plan: _V2Plan, body: dict, stream: bool = False):
                 for a in exc.attempts
             ],
         }
+        # X1 — if every attempt failed with a PolicyBlock, surface as
+        # a 451 (unavailable-for-legal-reasons) rather than 502
+        # (upstream unreachable). The two states are semantically
+        # distinct: 502 means "your model is fine, our infra failed";
+        # 451 means "your model is refused by policy" — retrying won't
+        # help. The last PolicyBlock's error_summary carries the rule
+        # id so the client sees which rule fired.
+        if exc.attempts and all(a.error_class == "PolicyBlock" for a in exc.attempts):
+            last = exc.attempts[-1]
+            raise _HTTPException(
+                status_code=451,
+                detail=(
+                    f"All Gateway v2 targets refused by policy: "
+                    f"{last.error_summary or 'no matching target permitted'}"
+                ),
+            ) from exc
         raise _HTTPException(
             status_code=502,
             detail=(
