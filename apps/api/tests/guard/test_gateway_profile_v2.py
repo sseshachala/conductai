@@ -20,6 +20,7 @@ from app.modules.guard.gateway_config import (
     GatewayProfileV2,
     HTTPPassthroughTarget,
     LiteLLMSDKTarget,
+    NativeHTTPTarget,
     parse_credential_ref,
 )
 
@@ -179,6 +180,45 @@ def test_catalog_certifies_anthropic_messages_via_litellm_sdk():
         accepts=["anthropic_messages", "anthropic_count_tokens"],
         targets=[target],
     )
+
+
+def test_catalog_certifies_anthropic_messages_via_native_http():
+    """PR 2: native_http is preferred over litellm_sdk for Anthropic +
+    OpenAI. Both are certified for the same launch operations; publish
+    accepts either."""
+    target = NativeHTTPTarget(
+        id="t", transport="native_http", provider="anthropic",
+        model="claude-sonnet-4-6", credential_ref=CRED_ANTHROPIC,
+    )
+    validate_targets_against_accepts(
+        accepts=["anthropic_messages", "anthropic_count_tokens"],
+        targets=[target],
+    )
+
+
+def test_catalog_certifies_openai_chat_via_native_http():
+    target = NativeHTTPTarget(
+        id="t", transport="native_http", provider="openai",
+        model="gpt-4o", credential_ref=CRED_OPENAI,
+    )
+    validate_targets_against_accepts(
+        accepts=["openai_chat_completions"], targets=[target],
+    )
+
+
+def test_catalog_rejects_native_http_for_uncertified_provider():
+    """Perplexity has no vendor endpoint in _ENDPOINTS and no entry
+    in _NATIVE_HTTP_CERTIFIED. Publish must reject."""
+    target = NativeHTTPTarget(
+        id="t", transport="native_http", provider="perplexity",
+        model="sonar-pro", credential_ref=CRED_ANTHROPIC,
+    )
+    with pytest.raises(CapabilityMismatch) as excinfo:
+        validate_targets_against_accepts(
+            accepts=["anthropic_messages"], targets=[target],
+        )
+    assert "native_http" in str(excinfo.value)
+    assert "perplexity" in str(excinfo.value)
 
 
 def test_catalog_rejects_uncertified_provider_operation_pair():

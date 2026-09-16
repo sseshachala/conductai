@@ -43,6 +43,14 @@ export type GatewayProfileV2Operation =
 export type GatewayProfileV2Target =
   | {
       id: string
+      transport: "native_http"
+      provider: string
+      model: string
+      credential_ref: string
+      provider_options?: Record<string, unknown>
+    }
+  | {
+      id: string
       transport: "litellm_sdk"
       provider: string
       model: string

@@ -46,10 +46,12 @@ import structlog
 from app.modules.guard.gateway_config import (
     HTTPPassthroughTarget,
     LiteLLMSDKTarget,
+    NativeHTTPTarget,
     Operation,
 )
 from app.modules.guard.gateway_runtime import ResolvedV2
 from app.runtime.litellm_transport import CredentialResolver, LiteLLMTransport
+from app.runtime.native_http_transport import NativeHTTPTransport
 
 
 log = structlog.get_logger(__name__)
@@ -128,8 +130,10 @@ class AttemptCoordinator:
         self,
         *,
         sdk_transport: LiteLLMTransport | None = None,
+        native_http_transport: NativeHTTPTransport | None = None,
     ) -> None:
         self._sdk = sdk_transport or LiteLLMTransport()
+        self._native = native_http_transport or NativeHTTPTransport()
 
     async def execute(
         self,
@@ -262,6 +266,14 @@ class AttemptCoordinator:
         credential_resolver: CredentialResolver,
         stream: bool,
     ) -> Any:
+        if isinstance(target, NativeHTTPTarget):
+            return await self._native.execute(
+                target=target,
+                operation=operation,
+                payload=payload,
+                credential_resolver=credential_resolver,
+                stream=stream,
+            )
         if isinstance(target, LiteLLMSDKTarget):
             return await self._sdk.execute(
                 target=target,

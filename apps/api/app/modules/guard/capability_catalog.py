@@ -30,9 +30,22 @@ from app.modules.guard.gateway_config import (
     HTTPPassthroughTarget,
     Integration,
     LiteLLMSDKTarget,
+    NativeHTTPTarget,
     Operation,
     Target,
 )
+
+
+# Native HTTP certified matrix — vendor's own protocol, no translation.
+# Preferred for Anthropic + OpenAI. Same set as LiteLLM's launch matrix,
+# but the transports are different: native_http proxies the request body
+# to the vendor with only the credential swapped in.
+_NATIVE_HTTP_CERTIFIED: dict[tuple[str, Operation], list[str] | None] = {
+    ("anthropic", "anthropic_messages"): None,
+    ("anthropic", "anthropic_count_tokens"): None,
+    ("openai", "openai_chat_completions"): None,
+    ("openai", "openai_responses"): None,
+}
 
 
 # LiteLLM SDK certified matrix — one entry per (provider, operation).
@@ -75,6 +88,12 @@ class CapabilityMismatch(Exception):
 
 
 def _certified_operations_for_target(target: Target) -> set[Operation]:
+    if isinstance(target, NativeHTTPTarget):
+        return {
+            op
+            for (prov, op) in _NATIVE_HTTP_CERTIFIED
+            if prov == target.provider
+        }
     if isinstance(target, LiteLLMSDKTarget):
         return {
             op
@@ -107,7 +126,9 @@ def validate_targets_against_accepts(
         certified = _certified_operations_for_target(target)
         missing = accepts_set - certified
         if missing:
-            if isinstance(target, LiteLLMSDKTarget):
+            if isinstance(target, NativeHTTPTarget):
+                where = f"transport=native_http, provider={target.provider}"
+            elif isinstance(target, LiteLLMSDKTarget):
                 where = f"transport=litellm_sdk, provider={target.provider}"
             elif isinstance(target, HTTPPassthroughTarget):
                 where = f"transport=http_passthrough, integration={target.integration}"

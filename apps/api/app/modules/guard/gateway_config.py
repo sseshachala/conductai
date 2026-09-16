@@ -234,6 +234,39 @@ class LiteLLMSDKTarget(BaseModel):
         return _validate_credential_ref(value)
 
 
+class NativeHTTPTarget(BaseModel):
+    """A target forwarded via native HTTP directly to the vendor.
+
+    The client's request is proxied to the vendor's endpoint with only the
+    credential swapped in — no SDK translation. Preserves the vendor's own
+    contract end-to-end. Preferred for Anthropic + OpenAI where the vendor's
+    protocol is authoritative and translation risks are unacceptable.
+
+    Same shape as ``LiteLLMSDKTarget`` (id / transport / provider / model /
+    credential_ref / provider_options) so the coordinator can accept either
+    without a discriminator on any field other than ``transport``.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str = Field(min_length=1, max_length=64)
+    transport: Literal["native_http"]
+    provider: str = Field(min_length=1, max_length=64)
+    model: str = Field(min_length=1, max_length=256)
+    credential_ref: str = Field(min_length=1, max_length=512)
+    provider_options: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("provider", mode="before")
+    @classmethod
+    def normalize_provider(cls, value: str) -> str:
+        return str(value).strip().lower()
+
+    @field_validator("credential_ref")
+    @classmethod
+    def validate_credential(cls, value: str) -> str:
+        return _validate_credential_ref(value)
+
+
 class HTTPPassthroughTarget(BaseModel):
     """A target forwarded verbatim to an external gateway.
 
@@ -268,7 +301,7 @@ class HTTPPassthroughTarget(BaseModel):
 
 # Discriminated union — target shape depends on ``transport``. Pydantic
 # picks the right subclass from the literal without an explicit tag field.
-Target = Union[LiteLLMSDKTarget, HTTPPassthroughTarget]
+Target = Union[NativeHTTPTarget, LiteLLMSDKTarget, HTTPPassthroughTarget]
 
 
 class GatewayProfileV2(BaseModel):

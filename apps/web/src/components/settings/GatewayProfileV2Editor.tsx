@@ -47,10 +47,11 @@ const MODELS_BY_PROVIDER: Record<string, Array<{ id: string; label: string }>> =
 function deriveAccepts(targets: DraftTarget[]): Operation[] {
   const seen = new Set<Operation>()
   for (const t of targets) {
-    if (t.transport !== "litellm_sdk") continue
+    // Both native_http and litellm_sdk are provider-based transports;
+    // http_passthrough is integration-based (empty in the launch matrix).
+    if (t.transport !== "native_http" && t.transport !== "litellm_sdk") continue
     if (t.provider === "anthropic") {
       seen.add("anthropic_messages")
-      // count_tokens is safe to always include when Anthropic is a target
       seen.add("anthropic_count_tokens")
     }
     if (t.provider === "openai") {
@@ -94,7 +95,10 @@ function nextTargetId(existing: DraftTarget[]): string {
 function emptyTarget(existing: DraftTarget[]): DraftTarget {
   return {
     id: nextTargetId(existing),
-    transport: "litellm_sdk",
+    // Default new targets to native HTTP — vendor's protocol end-to-end,
+    // no SDK translation. Admins can switch to litellm_sdk on the row
+    // when they explicitly want translation.
+    transport: "native_http",
     provider: "anthropic",
     integration: "portkey",
     model: "",
@@ -119,7 +123,7 @@ function stateFromProfile(profile: GatewayProfileV2Out): EditorState {
     const cred = parseVaultRef(t.credential_ref as string | undefined)
     return {
       id: String(t.id ?? `target-${i + 1}`),
-      transport: (t.transport as Transport) ?? "litellm_sdk",
+      transport: (t.transport as Transport) ?? "native_http",
       provider: String(t.provider ?? "anthropic"),
       integration: String(t.integration ?? "portkey"),
       model: String(t.model ?? ""),
@@ -143,6 +147,9 @@ function stateToWorkingCopy(s: EditorState): Record<string, unknown> {
     const ref = t.credential_env_id && t.credential_handle
       ? `vault://${t.credential_env_id}/${t.credential_handle}`
       : ""
+    if (t.transport === "native_http") {
+      return { id: t.id, transport: "native_http", provider: t.provider, model: t.model, credential_ref: ref }
+    }
     if (t.transport === "litellm_sdk") {
       return { id: t.id, transport: "litellm_sdk", provider: t.provider, model: t.model, credential_ref: ref }
     }
@@ -199,9 +206,15 @@ export default function GatewayProfileV2Editor({
 
   const catalogErrors = useMemo(() => validateTargetsAgainstAccepts({
     accepts: state.accepts,
-    targets: state.targets.map(t => t.transport === "litellm_sdk"
-      ? { id: t.id, transport: "litellm_sdk", provider: t.provider }
-      : { id: t.id, transport: "http_passthrough", integration: t.integration as any }),
+    targets: state.targets.map(t => {
+      if (t.transport === "native_http") {
+        return { id: t.id, transport: "native_http" as const, provider: t.provider }
+      }
+      if (t.transport === "litellm_sdk") {
+        return { id: t.id, transport: "litellm_sdk" as const, provider: t.provider }
+      }
+      return { id: t.id, transport: "http_passthrough" as const, integration: t.integration as any }
+    }),
   }), [state])
 
   async function save() {
@@ -334,7 +347,7 @@ function TargetRow({
 }) {
   const creds = target.credential_env_id ? credentialsByEnv[target.credential_env_id] ?? [] : []
   return (
-    <div className="card" style={{ padding: 12, display: "grid", gridTemplateColumns: "auto 1fr 1fr 1fr auto", gap: 10, alignItems: "end" }}>
+    <div className="card" style={{ padding: 12, display: "grid", gridTemplateColumns: "auto 1fr 1fr 1fr 1fr auto", gap: 10, alignItems: "end" }}>
       <div style={{ display: "flex", flexDirection: "column", gap: 3, alignItems: "center" }}>
         <button className="btn btn-ghost btn-sm btn-icon" onClick={onMoveUp} disabled={!isAdmin || isFirst}
           style={{ height: 24, width: 24, opacity: isFirst ? 0.35 : 1 }} title="Move up">↑</button>
@@ -349,13 +362,22 @@ function TargetRow({
           onChange={e => onChange({ id: e.target.value })} style={inputStyle} />
       </FieldLabel>
 
-      <FieldLabel label="Provider" hint="Upstream provider — routes through the LiteLLM SDK.">
+      <FieldLabel
+        label="Transport"
+        hint="native_http = vendor's protocol end-to-end (preferred for Anthropic + OpenAI). litellm_sdk = LiteLLM translates operations across providers."
+      >
+        <select value={target.transport} disabled={!isAdmin}
+          onChange={e => onChange({ transport: e.target.value as Transport })}
+          style={inputStyle}>
+          <option value="native_http">native_http (recommended)</option>
+          <option value="litellm_sdk">litellm_sdk</option>
+        </select>
+      </FieldLabel>
+
+      <FieldLabel label="Provider" hint="Upstream provider Anthropic or OpenAI in the launch matrix.">
         <select value={target.provider} disabled={!isAdmin}
           onChange={e => {
             const provider = e.target.value
-            // If the current model doesn't belong to the new provider,
-            // reset to the provider's first model — no in-between state
-            // where "openai/claude-sonnet-4-6" briefly exists.
             const models = MODELS_BY_PROVIDER[provider] ?? []
             const modelStillValid = models.some(m => m.id === target.model)
             onChange({
