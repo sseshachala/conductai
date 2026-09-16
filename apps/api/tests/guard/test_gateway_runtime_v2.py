@@ -6,11 +6,14 @@ Covers two independent invariants:
   name/env preference BEFORE checking provider compatibility, so an
   alphabetically-earlier incompatible row prevented a compatible one
   from resolving. The fix filters by provider first.
-- **v2 resolver** — reads only ``gateway_profile_bindings`` by exact
-  ``(workspace_id, environment_id, model_alias)``. No alphabetical
-  fallback, no cross-environment lookup, no closest-alias match.
-  Returns the pinned revision id so callers can lock it through every
-  attempt of the same request.
+- **v2 resolver** (v3 schema) — reads
+  ``gateway_profiles.active_revision_id`` by exact
+  ``(workspace_id, cond_code)``. No alphabetical fallback, no
+  cross-environment lookup, no closest-alias match. Returns the
+  pinned revision id so callers can lock it through every attempt of
+  the same request. (An earlier draft resolved via a
+  ``gateway_profile_bindings`` table by (workspace, environment,
+  model_alias); that table is gone in v3.)
 """
 from __future__ import annotations
 

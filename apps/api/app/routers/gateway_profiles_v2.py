@@ -9,11 +9,11 @@ Endpoint map:
 
     POST   /               create draft (working_copy only, no revision)
     GET    /               list profiles in this workspace
-    GET    /{profile_id}   read one — working_copy + revisions + bindings
+    GET    /{profile_id}   read one — working_copy + revisions + active_revision
     PUT    /{profile_id}   update working_copy (schema-validated)
-    DELETE /{profile_id}   drop draft (rejected if any binding points at it)
-    POST   /{profile_id}/publish       atomic: revision + binding
-    POST   /{profile_id}/rollback      atomic: binding → older revision
+    DELETE /{profile_id}   drop draft
+    POST   /{profile_id}/publish       atomic: revision + active_revision_id swap
+    POST   /{profile_id}/rollback      atomic: active_revision_id → older revision
     GET    /{profile_id}/revisions     list history
 
 Publish is the load-bearing operation:
@@ -24,14 +24,18 @@ Publish is the load-bearing operation:
 4. In one transaction:
    - Insert a new ``gateway_profile_revisions`` row with
      ``version = max(existing) + 1``.
-   - Upsert the ``gateway_profile_bindings`` row for
-     ``(workspace_id, environment_id, model_alias)`` to the new
-     revision.
+   - Swap ``gateway_profiles.active_revision_id`` to the new revision.
    - Cache ``profile.model_alias`` on the parent row for cheap listing.
 
 Rollback is the same atomic pointer-swap without the revision insert;
-history is intact and the previous binding is discoverable via the
-``revisions`` list.
+history is intact and the previous ``active_revision_id`` is discoverable
+via the ``revisions`` list.
+
+**v3 schema note**: bindings by ``(workspace_id, environment_id, model_alias)``
+are gone. v3 resolves by ``cond_code`` (parsed from the client's
+``model:`` field) directly against ``gateway_profiles.active_revision_id``
+— environment is carried inside each target's ``credential_ref``. Any
+reference to a "bindings" table in older comments/tests is stale.
 
 Everything Guard owns (permissions, spend, allowed destinations),
 Gateway runtime owns (retry classification), or LiteLLM owns
@@ -318,20 +322,66 @@ def _generate_unique_cond_code(db: Session, workspace_id: str) -> str:
 
 
 def _validate_working_copy(working_copy: dict[str, Any]) -> GatewayProfileV2:
-    """Parse + capability-catalog check. Raises 400 on either failure."""
+    """Parse + capability-catalog check. Raises 400 on either failure.
+
+    Errors are returned as a structured body so the UI can highlight the
+    offending field on the specific target rather than showing a bare
+    error string. Shape:
+
+    ``{"detail": "...", "errors": [{"path": "targets.2.credential_ref",
+      "message": "...", "target_index": 2}]}``
+
+    The server is authoritative — the client-side capability catalog
+    mirror at ``apps/web/src/lib/gatewayCapabilityCatalog.ts`` is a UX
+    hint, not a gate. This function's decision is what publishes stand
+    or fall on.
+    """
+    from pydantic import ValidationError
+
     try:
         parsed = GatewayProfileV2.model_validate(working_copy)
-    except Exception as exc:
+    except ValidationError as exc:
+        errors: list[dict[str, Any]] = []
+        for e in exc.errors():
+            loc = ".".join(str(p) for p in e.get("loc", ()))
+            # ``loc`` for a targets-list error looks like
+            # ("targets", 2, "credential_ref"). Extract the index so
+            # the UI can highlight the specific row.
+            target_index: int | None = None
+            loc_parts = e.get("loc", ())
+            if len(loc_parts) >= 2 and loc_parts[0] == "targets" and isinstance(loc_parts[1], int):
+                target_index = loc_parts[1]
+            errors.append({
+                "path": loc,
+                "message": e.get("msg", "invalid"),
+                "target_index": target_index,
+                "type": e.get("type", "value_error"),
+            })
         raise HTTPException(
-            status_code=400, detail=f"schema invalid: {exc}",
+            status_code=400,
+            detail={"summary": "schema invalid", "errors": errors},
         ) from exc
+
     try:
         validate_targets_against_accepts(
             accepts=parsed.accepts, targets=parsed.targets,
         )
     except CapabilityMismatch as exc:
+        # CapabilityMismatch's message already names the target id +
+        # missing operation + transport/integration. Preserve that in
+        # the same structured shape so the UI has a consistent
+        # ``detail`` object to render.
         raise HTTPException(
-            status_code=400, detail=f"capability check failed: {exc}",
+            status_code=400,
+            detail={
+                "summary": "capability check failed",
+                "errors": [{
+                    "path": "targets",
+                    "message": str(exc),
+                    "target_index": None,
+                    "type": "capability_mismatch",
+                }],
+            },
         ) from exc
     return parsed
 

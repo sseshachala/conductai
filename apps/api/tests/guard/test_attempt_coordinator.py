@@ -9,9 +9,12 @@ Locks the runtime invariants a v2 admin relies on:
 - Streaming responses are handed back unwrapped so the caller can
   enforce the "no retries after first byte" invariant at the ASGI
   layer.
-- HTTP passthrough targets dispatch to HTTPPassthroughTransport for
-  registered integrations (PR 5 ships OpenRouter). Unregistered
-  integrations fail loudly at the transport layer, not the coordinator.
+- Each target type dispatches to its own transport:
+  native_http → NativeHTTPTransport,
+  litellm_sdk → LiteLLMTransport,
+  http_passthrough → HTTPPassthroughTransport (OpenRouter registered
+  as the reference integration; unregistered integrations fail at
+  the transport layer, not the coordinator).
 - Requesting an operation the profile does not accept fails at
   entry, not partway through the loop.
 """
