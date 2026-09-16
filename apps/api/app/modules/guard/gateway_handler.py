@@ -417,54 +417,70 @@ async def handle_gateway_request(
 
         # 5. Vault lookup — for BYO gateways: upstream_key authenticates with the gateway,
         # vault_key is the real vendor key the gateway forwards to Anthropic/OpenAI.
-        upstream = _upstream_url(db, workspace_id, provider, _environment_id)
-        _upstream_key = _upstream_api_key(db, workspace_id, _environment_id)
-        _vault_key_val = _vault_key(db, workspace_id, provider, _environment_id)
-        transport = get_provider_transport_registry().for_provider(provider)
-        if canonical_profile:
-            from app.modules.guard.gateway_runtime import TransportResolver
+        #
+        # X3 — legacy credential resolution is v1-only. v2 targets
+        # carry their own ``credential_ref`` pointing at Vault; the
+        # resolver was built in step 4 (``_build_v2_plan``). Running
+        # this block for v2 traffic was dead weight AND actively
+        # broke v2-only workspaces: if a workspace never provisioned
+        # a v1 ``ANTHROPIC_API_KEY`` / ``OPENAI_API_KEY`` but did
+        # publish a v2 profile with valid Vault refs, the 503 below
+        # fired before ``_execute_v2`` ever ran. Skip the whole block
+        # when ``_v2_plan`` is in play.
+        upstream = None
+        _upstream_key = None
+        _vault_key_val = None
+        transport = None
+        real_key = None
+        if _v2_plan is None:
+            upstream = _upstream_url(db, workspace_id, provider, _environment_id)
+            _upstream_key = _upstream_api_key(db, workspace_id, _environment_id)
+            _vault_key_val = _vault_key(db, workspace_id, provider, _environment_id)
+            transport = get_provider_transport_registry().for_provider(provider)
+            if canonical_profile:
+                from app.modules.guard.gateway_runtime import TransportResolver
 
-            profile_runtime = TransportResolver().resolve(
-                db, workspace_id, provider, _environment_id,
-            )
-            if profile_runtime:
-                upstream = profile_runtime.upstream_url or upstream
-                _upstream_key = profile_runtime.api_key or _upstream_key
-                transport = profile_runtime.transport
-                if profile_runtime.profile.provider == "litellm":
-                    _vault_key_val = None
-                real_key = _upstream_key or _vault_key_val
+                profile_runtime = TransportResolver().resolve(
+                    db, workspace_id, provider, _environment_id,
+                )
+                if profile_runtime:
+                    upstream = profile_runtime.upstream_url or upstream
+                    _upstream_key = profile_runtime.api_key or _upstream_key
+                    transport = profile_runtime.transport
+                    if profile_runtime.profile.provider == "litellm":
+                        _vault_key_val = None
+                    real_key = _upstream_key or _vault_key_val
+                else:
+                    real_key = _upstream_key or _vault_key_val
             else:
                 real_key = _upstream_key or _vault_key_val
-        else:
-            real_key = _upstream_key or _vault_key_val
-        if not real_key:
-            # #1567 PR 2: trial workspaces with no BYO key fall through to a
-            # platform-funded env key, fenced by plan + provider + identity + daily cap.
-            from app.modules.guard.trial_upstream import resolve_trial_key
-            _trial_key, _trial_status = resolve_trial_key(
-                db, workspace_id, provider, str(_agent_identity_id) if _agent_identity_id else None,
-            )
-            if _trial_status == "expired":
-                _record_failure(401, "trial_expired", rule_id="trial-expired")
-                return _fail_closed(
-                    401,
-                    "trial_expired: 7-day trial ended. Add your own key in Settings → Environments.",
+            if not real_key:
+                # #1567 PR 2: trial workspaces with no BYO key fall through to a
+                # platform-funded env key, fenced by plan + provider + identity + daily cap.
+                from app.modules.guard.trial_upstream import resolve_trial_key
+                _trial_key, _trial_status = resolve_trial_key(
+                    db, workspace_id, provider, str(_agent_identity_id) if _agent_identity_id else None,
                 )
-            if _trial_status == "exceeded":
-                _record_failure(429, "trial_exceeded", rule_id="trial-quota")
+                if _trial_status == "expired":
+                    _record_failure(401, "trial_expired", rule_id="trial-expired")
+                    return _fail_closed(
+                        401,
+                        "trial_expired: 7-day trial ended. Add your own key in Settings → Environments.",
+                    )
+                if _trial_status == "exceeded":
+                    _record_failure(429, "trial_exceeded", rule_id="trial-quota")
+                    return _fail_closed(
+                        429,
+                        "trial_exceeded: daily trial quota hit. Add your own key in Settings → Environments.",
+                    )
+                real_key = _trial_key
+            if not real_key:
+                _record_failure(503, f"No {provider} API key configured", rule_id="credential-missing")
                 return _fail_closed(
-                    429,
-                    "trial_exceeded: daily trial quota hit. Add your own key in Settings → Environments.",
+                    503,
+                    f"No API key configured — add {provider.upper()}_API_KEY in Settings → Environments, "
+                    f"or set LLM_UPSTREAM_API_KEY in Settings → Proxy.",
                 )
-            real_key = _trial_key
-        if not real_key:
-            _record_failure(503, f"No {provider} API key configured", rule_id="credential-missing")
-            return _fail_closed(
-                503,
-                f"No API key configured — add {provider.upper()}_API_KEY in Settings → Environments, "
-                f"or set LLM_UPSTREAM_API_KEY in Settings → Proxy.",
-            )
     finally:
         db.close()
 
