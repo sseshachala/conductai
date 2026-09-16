@@ -12,10 +12,20 @@ provider that isn't listed here can't reach a certified state.
 
 Coordinator retries are Conduct-owned. This transport does zero retries
 on its own — same contract the LiteLLM transport follows.
+
+Streaming (PR 2.5): when ``stream=True`` the transport returns a
+``StreamingUpstream`` — a small wrapper holding the live httpx.Response
+so ``_execute_v2`` can construct a ``StreamingResponse`` around
+``aiter_bytes()``. Upstream 4xx/5xx surfaced from streaming attempts are
+raised as ``httpx.HTTPStatusError`` (with ``.response.status_code`` set)
+so the coordinator's retry classifier walks them the same way it walks
+non-streaming errors. Once we've returned a ``StreamingUpstream``, the
+coordinator commits — no retry after headers.
 """
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from typing import Any
 
 import httpx
@@ -58,6 +68,21 @@ _OPERATION_PATHS: dict[tuple[str, Operation], str] = {
 }
 
 
+@dataclass
+class StreamingUpstream:
+    """A live streaming response from the vendor.
+
+    Coordinator commits the moment this is returned — no retry after
+    headers. Caller (``_execute_v2``) must consume ``response.aiter_bytes()``
+    and call ``response.aclose()`` when done. The stream generator built
+    downstream owns both.
+    """
+    status_code: int
+    headers: dict[str, str]
+    response: httpx.Response
+    provider: str
+
+
 class NativeHTTPTransport:
     """Executes a native_http target against the vendor's API.
 
@@ -90,21 +115,13 @@ class NativeHTTPTransport:
         credential_resolver,
         stream: bool = False,
     ) -> Any:
-        """Forward the payload to the vendor's endpoint and return the
-        parsed JSON response.
+        """Forward the payload to the vendor's endpoint.
 
-        Streaming is intentionally refused here — the coordinator + gateway
-        handler wrap streaming responses in ``StreamingResponse``, not
-        ``JSONResponse``. Streaming support lands with PR 2.5.
+        Non-streaming: returns the parsed JSON body (dict).
+        Streaming: returns a ``StreamingUpstream`` holding the live
+        ``httpx.Response`` so ``_execute_v2`` can wrap ``aiter_bytes()``
+        in a ``StreamingResponse``. The caller owns ``response.aclose()``.
         """
-        if stream:
-            # Symmetric refusal with the LiteLLM transport — coordinator
-            # decides at plan build time whether streaming is possible.
-            raise NotImplementedError(
-                "NativeHTTPTransport streaming lands in PR 2.5 — the "
-                "gateway handler currently refuses stream=true for v2."
-            )
-
         if target.provider not in _ENDPOINTS:
             raise ValueError(
                 f"native_http target {target.id!r} uses provider "
@@ -135,6 +152,11 @@ class NativeHTTPTransport:
         # was the cond-... identifier or an alias, not the upstream id).
         request_body = dict(payload)
         request_body["model"] = target.model
+        if stream:
+            # Belt-and-braces: the client set ``stream: true`` in the
+            # body already, but forwarding the payload verbatim means we
+            # only trust that flag as far as ``payload`` did.
+            request_body["stream"] = True
 
         headers = {
             "content-type": "application/json",
@@ -143,11 +165,23 @@ class NativeHTTPTransport:
         }
 
         client = await self._get_client()
+        content_bytes = json.dumps(request_body).encode("utf-8")
+
+        if stream:
+            return await self._execute_stream(
+                client=client,
+                target=target,
+                operation=operation,
+                url=base_url + upstream_path,
+                headers=headers,
+                content=content_bytes,
+            )
+
         try:
             response = await client.post(
                 base_url + upstream_path,
                 headers=headers,
-                content=json.dumps(request_body).encode("utf-8"),
+                content=content_bytes,
             )
         except httpx.HTTPError as exc:
             # Let the coordinator's retry classifier decide via the
@@ -186,5 +220,65 @@ class NativeHTTPTransport:
             )
             raise
 
+    async def _execute_stream(
+        self,
+        *,
+        client: httpx.AsyncClient,
+        target: NativeHTTPTarget,
+        operation: Operation,
+        url: str,
+        headers: dict[str, str],
+        content: bytes,
+    ) -> StreamingUpstream:
+        """Send a streaming request and return the live response object.
 
-__all__ = ["NativeHTTPTransport"]
+        Peeks headers before returning. Any 4xx/5xx here is raised as
+        ``httpx.HTTPStatusError`` (with status_code populated) so the
+        coordinator's ``_is_retryable`` walks it — same semantics as
+        non-streaming. If headers are ok, we return the still-open
+        response; the caller becomes responsible for ``aclose()``.
+        """
+        request = client.build_request(
+            "POST", url, headers=headers, content=content,
+        )
+        try:
+            response = await client.send(request, stream=True)
+        except httpx.HTTPError as exc:
+            log.warning(
+                "gateway.v2.native_http.stream_transport_error",
+                target_id=target.id,
+                provider=target.provider,
+                operation=operation,
+                err_class=type(exc).__name__,
+            )
+            raise
+
+        if response.status_code >= 400:
+            # Read the error body then close, so nothing leaks and the
+            # coordinator sees a clean HTTPStatusError with status_code.
+            try:
+                await response.aread()
+            finally:
+                await response.aclose()
+            log.info(
+                "gateway.v2.native_http.stream_upstream_error",
+                target_id=target.id,
+                provider=target.provider,
+                operation=operation,
+                status_code=response.status_code,
+            )
+            raise httpx.HTTPStatusError(
+                f"upstream returned {response.status_code}",
+                request=request,
+                response=response,
+            )
+
+        return StreamingUpstream(
+            status_code=response.status_code,
+            headers=dict(response.headers),
+            response=response,
+            provider=target.provider,
+        )
+
+
+__all__ = ["NativeHTTPTransport", "StreamingUpstream"]
