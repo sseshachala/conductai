@@ -67,7 +67,9 @@ class _FakeResponse:
 @pytest.mark.anyio("asyncio")
 async def test_openrouter_chat_completions_hits_correct_url_with_bearer(monkeypatch):
     """OpenRouter is OpenAI-compatible at /api/v1/chat/completions with
-    ``Authorization: Bearer <key>``."""
+    ``Authorization: Bearer <key>``. Also carries ``HTTP-Referer`` +
+    ``X-Title`` for OpenRouter's attribution dashboards — without
+    them our traffic lands in their "unknown" analytics bucket."""
     captured: dict = {}
 
     async def _fake_post(url, headers, content):
@@ -88,6 +90,57 @@ async def test_openrouter_chat_completions_hits_correct_url_with_bearer(monkeypa
     assert result == {"id": "chatcmpl-x"}
     assert captured["url"] == "https://openrouter.ai/api/v1/chat/completions"
     assert captured["headers"]["authorization"] == "Bearer sk-or-live"
+    # Attribution headers reach the wire.
+    assert captured["headers"]["HTTP-Referer"] == "https://conductai.ai"
+    assert captured["headers"]["X-Title"] == "Conduct AI Gateway"
+
+
+@pytest.mark.anyio("asyncio")
+async def test_pinned_integration_ignores_endpoint_override_with_warning(monkeypatch):
+    """A target for a pinned integration (OpenRouter) that carries a
+    ``target.endpoint`` gets its endpoint silently ignored — the URL
+    was pinned at integration-registration time. That's the intended
+    behavior, but the transport must WARN so the admin knows their
+    endpoint value didn't take effect.
+    """
+    captured: dict = {}
+
+    async def _fake_post(url, headers, content):
+        captured.update(url=url, headers=headers, content=content)
+        return _FakeResponse(200, {"id": "x"})
+
+    transport = HTTPPassthroughTransport()
+    fake_client = MagicMock()
+    fake_client.post = _fake_post
+    monkeypatch.setattr(transport, "_get_client", AsyncMock(return_value=fake_client))
+
+    # Capture warnings from the transport's structlog logger. Structlog
+    # ends up going through stdlib logging in tests, but the event
+    # keyword is the source of truth — spy on the log method directly.
+    warnings: list[dict] = []
+    def _warning(event, **fields):
+        warnings.append({"event": event, **fields})
+    import app.runtime.http_passthrough_transport as mod
+    monkeypatch.setattr(mod.log, "warning", _warning)
+
+    await transport.execute(
+        target=_openrouter_target(endpoint="https://not-actually-used.example.com/v1"),
+        operation="openai_chat_completions",
+        payload={"messages": []},
+        credential_resolver=lambda ref: "sk-or",
+    )
+    # Request went to OpenRouter's pinned URL, NOT the target.endpoint.
+    assert captured["url"].startswith("https://openrouter.ai/")
+
+    # Exactly one endpoint-override warning fired, carrying enough
+    # detail for an admin to find the misconfigured target.
+    ignored = [
+        w for w in warnings
+        if w["event"] == "gateway.v2.http_passthrough.endpoint_override_ignored"
+    ]
+    assert len(ignored) == 1, warnings
+    assert ignored[0]["target_id"] == "openrouter-primary"
+    assert ignored[0]["ignored_endpoint"] == "https://not-actually-used.example.com/v1"
 
 
 @pytest.mark.anyio("asyncio")

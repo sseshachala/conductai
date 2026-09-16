@@ -73,9 +73,10 @@ class IntegrationConfig:
 # matching entry in ``capability_catalog._HTTP_PASSTHROUGH_CERTIFIED``.
 #
 # OpenRouter is OpenAI-compatible on ``/api/v1/chat/completions``.
-# Auth is ``Authorization: Bearer <openrouter_key>``. Their docs also
-# recommend an ``HTTP-Referer`` header for analytics — Conduct doesn't
-# forward that yet; can be added later without a schema change.
+# Auth is ``Authorization: Bearer <openrouter_key>``. ``HTTP-Referer``
+# + ``X-Title`` are OpenRouter's recommended attribution headers —
+# without them Conduct traffic lands in the "unknown" bucket in
+# OpenRouter's analytics + rate-limit dashboards.
 _INTEGRATION_ENDPOINTS: dict[Integration, IntegrationConfig] = {
     "openrouter": IntegrationConfig(
         base_url="https://openrouter.ai/api/v1",
@@ -84,7 +85,16 @@ _INTEGRATION_ENDPOINTS: dict[Integration, IntegrationConfig] = {
         operation_paths={
             "openai_chat_completions": "/chat/completions",
         },
-        extra_headers={},
+        extra_headers={
+            # Hardcoded to Conduct's marketing URL. OpenRouter treats
+            # HTTP-Referer as coarse attribution, not per-tenant
+            # routing, so a per-workspace value would be misleading.
+            # Follow-up: expose as ``target.provider_options`` (via a
+            # schema addition on HTTPPassthroughTarget) if a customer
+            # needs per-workspace attribution.
+            "HTTP-Referer": "https://conductai.ai",
+            "X-Title": "Conduct AI Gateway",
+        },
     ),
 }
 
@@ -232,9 +242,28 @@ class HTTPPassthroughTransport:
         ``integration='custom'`` (allows_endpoint_override=True) uses
         ``target.endpoint`` verbatim — it's the whole point of the
         custom integration.
+
+        Warns loudly if a pinned integration carries a non-null
+        ``target.endpoint``: silently ignoring it would leave the
+        admin thinking they'd changed the route when the request
+        actually went to the vendor-registered URL.
         """
         if config.allows_endpoint_override and target.endpoint:
             return target.endpoint.rstrip("/")
+        if target.endpoint:
+            log.warning(
+                "gateway.v2.http_passthrough.endpoint_override_ignored",
+                target_id=target.id,
+                integration=target.integration,
+                pinned_base_url=config.base_url,
+                ignored_endpoint=target.endpoint,
+                note=(
+                    "target.endpoint is only honored for "
+                    "integration='custom'. Remove endpoint from this "
+                    "target or switch to integration='custom' if the "
+                    "override was intentional."
+                ),
+            )
         return config.base_url
 
 
