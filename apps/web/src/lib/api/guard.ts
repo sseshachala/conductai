@@ -45,22 +45,19 @@ export interface GatewayProfileV2Revision {
   published_at: string
 }
 
-export interface GatewayProfileV2Binding {
-  workspace_id: string
-  environment_id: string
-  model_alias: string
-  revision_id: string
-  updated_at: string
-}
-
 export interface GatewayProfileV2Out {
   id: string
   workspace_id: string
   name: string
   model_alias: string | null
+  /** Server-generated 8-char alphanumeric. Immutable. Forms the
+   *  client-facing routing key `cond-<code>-<alias>`. */
+  cond_code: string
+  /** NULL for drafts; points at the currently-served revision when
+   *  published. Working_copy is API-locked whenever this is non-null. */
+  active_revision_id: string | null
   working_copy: Record<string, unknown> | null
   revisions: GatewayProfileV2Revision[]
-  bindings: GatewayProfileV2Binding[]
   created_at: string
   updated_at: string
 }
@@ -397,10 +394,10 @@ export const guard = {
       post(f, `${API}/workspaces/${workspaceId}/gateway-profiles-v2`, body),
     updateWorkingCopy: (f: AuthFetch, workspaceId: string, id: string, workingCopy: Record<string, unknown>) =>
       put(f, `${API}/workspaces/${workspaceId}/gateway-profiles-v2/${id}/working_copy`, { working_copy: workingCopy }),
-    publish: (f: AuthFetch, workspaceId: string, id: string, environmentId: string) =>
-      post(f, `${API}/workspaces/${workspaceId}/gateway-profiles-v2/${id}/publish`, { environment_id: environmentId }),
-    rollback: (f: AuthFetch, workspaceId: string, id: string, body: { environment_id: string; revision_id: string }) =>
-      post(f, `${API}/workspaces/${workspaceId}/gateway-profiles-v2/${id}/rollback`, body),
+    publish: (f: AuthFetch, workspaceId: string, id: string) =>
+      post(f, `${API}/workspaces/${workspaceId}/gateway-profiles-v2/${id}/publish`, {}),
+    rollback: (f: AuthFetch, workspaceId: string, id: string, revisionId: string) =>
+      post(f, `${API}/workspaces/${workspaceId}/gateway-profiles-v2/${id}/rollback`, { revision_id: revisionId }),
     revisions: (f: AuthFetch, workspaceId: string, id: string) =>
       json<GatewayProfileV2Revision[]>(f, `${API}/workspaces/${workspaceId}/gateway-profiles-v2/${id}/revisions`),
     revisionSnapshot: (f: AuthFetch, workspaceId: string, id: string, revisionId: string) =>
