@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
+import { useSearchParams } from "next/navigation"
 
 import AppShell from "@/components/AppShell"
 import GatewayProfileV2DeleteDialog from "@/components/settings/GatewayProfileV2DeleteDialog"
@@ -148,6 +149,13 @@ export default function GatewayProfilesV2Page() {
   const workspaceId = activeWorkspace?.id ?? ""
   const isAdmin = role === "admin"
 
+  // R4 fix: allow ``?select=<uuid>`` to preselect a profile on load.
+  // The import endpoint's ``next_url`` uses this so following the
+  // link opens the newly-created draft directly (no manual scroll +
+  // click through the profile list).
+  const searchParams = useSearchParams()
+  const selectParam = searchParams?.get("select") ?? null
+
   const [profiles, setProfiles] = useState<GatewayProfileV2Out[]>([])
   const [envs, setEnvs] = useState<EnvironmentRow[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -172,12 +180,20 @@ export default function GatewayProfilesV2Page() {
       ])
       setProfiles(rows)
       setEnvs(envRows)
-      setSelectedId(prev => prev ?? rows[0]?.id ?? null)
+      setSelectedId(prev => {
+        // Highest priority: caller-provided ?select=<uuid>, but only
+        // if the profile actually exists in this workspace (protects
+        // against stale bookmarks / cross-workspace links).
+        if (selectParam && rows.some(r => r.id === selectParam)) {
+          return selectParam
+        }
+        return prev ?? rows[0]?.id ?? null
+      })
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load profiles")
     } finally { setLoading(false) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authFetch, workspaceId])
+  }, [authFetch, workspaceId, selectParam])
 
   useEffect(() => { void load() }, [load])
 

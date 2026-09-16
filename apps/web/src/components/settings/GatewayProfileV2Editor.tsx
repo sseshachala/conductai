@@ -117,6 +117,14 @@ interface DraftTarget {
   credential_env_id: string
   credential_handle: string
   endpoint: string
+  /**
+   * Opaque provider-specific tuning bag (temperature caps, timeouts,
+   * region hints, etc.). The editor doesn't render fields for this —
+   * admins set it via ``conduct import --gateway-config`` or direct
+   * API PUT — but the editor MUST preserve it round-trip so the Save
+   * button doesn't silently strip it. R2 fix.
+   */
+  provider_options?: Record<string, unknown>
 }
 
 interface EditorState {
@@ -164,6 +172,13 @@ function stateFromProfile(profile: GatewayProfileV2Out): EditorState {
   } | null) ?? {}
   const targets: DraftTarget[] = (wc.targets ?? []).map((t, i) => {
     const cred = parseVaultRef(t.credential_ref as string | undefined)
+    // Preserve provider_options as-is — the editor has no UI to
+    // author it, but round-tripping strips it means importing a
+    // tuned profile silently drops the tuning. R2 fix.
+    const providerOptions =
+      t.provider_options && typeof t.provider_options === "object" && !Array.isArray(t.provider_options)
+        ? (t.provider_options as Record<string, unknown>)
+        : undefined
     return {
       id: String(t.id ?? `target-${i + 1}`),
       transport: (t.transport as Transport) ?? "native_http",
@@ -173,6 +188,7 @@ function stateFromProfile(profile: GatewayProfileV2Out): EditorState {
       credential_env_id: cred.env,
       credential_handle: cred.handle,
       endpoint: String(t.endpoint ?? ""),
+      provider_options: providerOptions,
     }
   })
   return {
@@ -190,22 +206,42 @@ function stateToWorkingCopy(s: EditorState): Record<string, unknown> {
     const ref = t.credential_env_id && t.credential_handle
       ? `vault://${t.credential_env_id}/${t.credential_handle}`
       : ""
+    // Only surface provider_options in the emitted target when the
+    // source actually had it — an empty ``{}`` isn't semantically
+    // equivalent to "absent" for the schema, so we skip when unset.
+    // R2 fix.
+    const opts = t.provider_options
+    const hasOpts = opts && typeof opts === "object" && Object.keys(opts).length > 0
+    const commonWithOpts = hasOpts ? { provider_options: opts } : {}
     if (t.transport === "native_http") {
-      return { id: t.id, transport: "native_http", provider: t.provider, model: t.model, credential_ref: ref }
+      return {
+        id: t.id, transport: "native_http", provider: t.provider,
+        model: t.model, credential_ref: ref, ...commonWithOpts,
+      }
     }
     if (t.transport === "litellm_sdk") {
-      return { id: t.id, transport: "litellm_sdk", provider: t.provider, model: t.model, credential_ref: ref }
+      return {
+        id: t.id, transport: "litellm_sdk", provider: t.provider,
+        model: t.model, credential_ref: ref, ...commonWithOpts,
+      }
     }
     return {
       id: t.id, transport: "http_passthrough", integration: t.integration,
       model: t.model, credential_ref: ref, endpoint: t.endpoint || null,
+      ...commonWithOpts,
     }
   })
-  // accepts is derived from target providers at save time — no UI to
-  // maintain. See `deriveAccepts` above.
+  // R2 fix: use ``s.accepts`` verbatim rather than re-deriving from
+  // target providers. Imported profiles with explicit accepts (e.g.
+  // ``[anthropic_messages]`` even though targets could serve
+  // ``anthropic_count_tokens`` too) must round-trip through Save
+  // without silently widening or narrowing. When the admin edits a
+  // target's transport/provider/integration, ``patchTarget`` below
+  // re-derives accepts explicitly — those are the only mutations
+  // that should invalidate imported accepts.
   return {
     name: s.name, model_alias: s.model_alias,
-    accepts: deriveAccepts(s.targets),
+    accepts: s.accepts,
     timeout_seconds: s.timeout_seconds, max_attempts: s.max_attempts, targets,
   }
 }
@@ -308,15 +344,30 @@ export default function GatewayProfileV2Editor({
 
   function patch(u: Partial<EditorState>) { setState(s => ({ ...s, ...u })); setMsg("") }
   function patchTarget(i: number, u: Partial<DraftTarget>) {
-    setState(s => ({ ...s, targets: s.targets.map((t, j) => j === i ? { ...t, ...u } : t) }))
+    setState(s => {
+      const nextTargets = s.targets.map((t, j) => j === i ? { ...t, ...u } : t)
+      // R2: only re-derive accepts when a change actually affects
+      // the certified-capabilities calculation. Editing ``model`` or
+      // ``credential_handle`` must NOT clobber imported accepts.
+      const affectsAccepts =
+        u.transport !== undefined || u.provider !== undefined || u.integration !== undefined
+      const nextAccepts = affectsAccepts ? deriveAccepts(nextTargets) : s.accepts
+      return { ...s, targets: nextTargets, accepts: nextAccepts }
+    })
     setMsg("")
   }
   function removeTarget(i: number) {
-    setState(s => ({ ...s, targets: s.targets.filter((_, j) => j !== i) }))
+    setState(s => {
+      const nextTargets = s.targets.filter((_, j) => j !== i)
+      return { ...s, targets: nextTargets, accepts: deriveAccepts(nextTargets) }
+    })
     setMsg("")
   }
   function addTarget() {
-    setState(s => ({ ...s, targets: [...s.targets, emptyTarget(s.targets)] }))
+    setState(s => {
+      const nextTargets = [...s.targets, emptyTarget(s.targets)]
+      return { ...s, targets: nextTargets, accepts: deriveAccepts(nextTargets) }
+    })
   }
   function move(i: number, dir: -1 | 1) {
     setState(s => {
