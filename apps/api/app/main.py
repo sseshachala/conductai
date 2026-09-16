@@ -258,6 +258,20 @@ def _startup() -> None:
     threading.Thread(target=_seed, daemon=True, name="skill-pack-seeder").start()
 
 
+@app.on_event("shutdown")
+async def _shutdown_gateway_transports() -> None:
+    """X5 — close the worker-lifetime httpx clients held by the
+    v2 gateway transports on graceful shutdown so the connection pool
+    releases cleanly. Idempotent: safe if the coordinator was never
+    lazily initialised (workers that only served v1 traffic)."""
+    try:
+        from app.runtime.gateway_transports import shutdown as _v2_transports_shutdown
+        await _v2_transports_shutdown()
+        log.info("gateway.v2.transports.shutdown_complete")
+    except Exception as exc:
+        log.warning("gateway.v2.transports.shutdown_failed", error=str(exc))
+
+
 @app.get("/health")
 def health():
     """Legacy alias for /live. render.yaml points healthCheckPath at /health;
