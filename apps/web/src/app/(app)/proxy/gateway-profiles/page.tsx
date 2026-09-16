@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 
 import AppShell from "@/components/AppShell"
+import GatewayProfileV2DeleteDialog from "@/components/settings/GatewayProfileV2DeleteDialog"
 import GatewayProfileV2Editor from "@/components/settings/GatewayProfileV2Editor"
 import GatewayProfileV2PublishDialog from "@/components/settings/GatewayProfileV2PublishDialog"
 import GatewayProfileV2RollbackDialog from "@/components/settings/GatewayProfileV2RollbackDialog"
@@ -155,6 +156,9 @@ export default function GatewayProfilesV2Page() {
   const [filter, setFilter] = useState<Filter>("all")
   const [showPublish, setShowPublish] = useState(false)
   const [showRollback, setShowRollback] = useState(false)
+  // Type-to-confirm delete dialog target. When non-null, renders the
+  // dialog against this profile. Cleared on confirm or cancel.
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     if (!workspaceId) return
@@ -230,21 +234,17 @@ export default function GatewayProfilesV2Page() {
     } finally { setBusy("") }
   }
 
-  async function deleteProfile(profile: GatewayProfileV2Out) {
+  function requestDelete(profile: GatewayProfileV2Out) {
+    // Kept sync — hands off to the type-to-confirm dialog. Actual
+    // deletion runs from the dialog's own callback (see the render
+    // site for GatewayProfileV2DeleteDialog below).
     if (!workspaceId || !isAdmin) return
     if (isPublished(profile) || profile.revisions.length > 0) {
       setError(`"${profile.name}" has been published — it can't be deleted. Duplicate to iterate.`)
       return
     }
-    if (!window.confirm(`Delete draft "${profile.name}"? This can't be undone.`)) return
-    setBusy(`delete:${profile.id}`); setError("")
-    try {
-      await guard.gatewayProfilesV2.remove(authFetch, workspaceId, profile.id)
-      if (selectedId === profile.id) setSelectedId(null)
-      await load()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Delete failed")
-    } finally { setBusy("") }
+    setError("")
+    setPendingDeleteId(profile.id)
   }
 
   async function duplicateProfile(source: GatewayProfileV2Out) {
@@ -358,7 +358,7 @@ export default function GatewayProfilesV2Page() {
                     active={selectedId === p.id}
                     canDelete={isAdmin}
                     onSelect={() => setSelectedId(p.id)}
-                    onDelete={() => void deleteProfile(p)} />
+                    onDelete={() => requestDelete(p)} />
                 ))}
               </div>
             )}
@@ -399,6 +399,21 @@ export default function GatewayProfilesV2Page() {
             onClose={() => setShowRollback(false)}
             onRolledBack={() => void load()} />
         )}
+        {pendingDeleteId && (() => {
+          const target = profiles.find(p => p.id === pendingDeleteId)
+          if (!target) return null
+          return (
+            <GatewayProfileV2DeleteDialog
+              workspaceId={workspaceId}
+              profile={target}
+              onClose={() => setPendingDeleteId(null)}
+              onDeleted={() => {
+                if (selectedId === target.id) setSelectedId(null)
+                void load()
+              }}
+            />
+          )
+        })()}
       </div>
     </AppShell>
   )
