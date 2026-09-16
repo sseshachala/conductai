@@ -9,8 +9,9 @@ Locks the runtime invariants a v2 admin relies on:
 - Streaming responses are handed back unwrapped so the caller can
   enforce the "no retries after first byte" invariant at the ASGI
   layer.
-- HTTP passthrough targets raise UnsupportedTransport rather than
-  silently degrading — the launch set is LiteLLM SDK only.
+- HTTP passthrough targets dispatch to HTTPPassthroughTransport for
+  registered integrations (PR 5 ships OpenRouter). Unregistered
+  integrations fail loudly at the transport layer, not the coordinator.
 - Requesting an operation the profile does not accept fails at
   entry, not partway through the loop.
 """
@@ -62,11 +63,17 @@ def _native_target(id: str, provider: str = "anthropic", model: str = "claude-so
     )
 
 
-def _profile(*, targets, timeout_seconds: int = 30, max_attempts: int = 3) -> GatewayProfileV2:
+def _profile(
+    *,
+    targets,
+    timeout_seconds: int = 30,
+    max_attempts: int = 3,
+    accepts_ops: list[str] | None = None,
+) -> GatewayProfileV2:
     return GatewayProfileV2(
         name="prod",
         model_alias="coding",
-        accepts=["anthropic_messages"],
+        accepts=accepts_ops or ["anthropic_messages"],
         timeout_seconds=timeout_seconds,
         max_attempts=max_attempts,
         targets=targets,
@@ -195,30 +202,42 @@ async def test_unsupported_operation_rejected_before_loop():
 
 
 @pytest.mark.anyio("asyncio")
-async def test_http_passthrough_target_raises_unsupported_transport():
-    """Launch set is LiteLLM SDK only. If a passthrough target is
-    published and then hit at request time, fail loudly with
-    ``UnsupportedTransport`` — not a fall-through to the legacy proxy
-    path, which would silently downgrade the guarantees the admin
-    published against."""
+async def test_http_passthrough_target_dispatches_to_passthrough_transport():
+    """PR 5 — a HTTPPassthroughTarget with a registered integration
+    (OpenRouter) dispatches to the passthrough transport, not the
+    coordinator's UnsupportedTransport error path."""
     passthrough = HTTPPassthroughTarget(
-        id="via-portkey",
+        id="via-openrouter",
         transport="http_passthrough",
-        integration="portkey",
-        model="claude-sonnet-4-6",
-        credential_ref=f"vault://{ENV}/portkey",
+        integration="openrouter",
+        model="anthropic/claude-sonnet",
+        credential_ref=f"vault://{ENV}/openrouter",
     )
-    sdk = MagicMock()
-    sdk.execute = AsyncMock()
+    sdk = MagicMock(); sdk.execute = AsyncMock()
+    native = MagicMock(); native.execute = AsyncMock()
+    passthrough_transport = MagicMock()
+    passthrough_transport.execute = AsyncMock(return_value={"id": "chatcmpl-x"})
 
-    coord = AttemptCoordinator(sdk_transport=sdk)
-    with pytest.raises(UnsupportedTransport):
-        await coord.execute(
-            resolved=_resolved(_profile(targets=[passthrough])),
-            operation="anthropic_messages",
-            payload={"messages": [{"role": "user", "content": "hi"}]},
-            credential_resolver=lambda ref: "sk-fake",
-        )
+    coord = AttemptCoordinator(
+        sdk_transport=sdk,
+        native_http_transport=native,
+        http_passthrough_transport=passthrough_transport,
+    )
+    result = await coord.execute(
+        resolved=_resolved(_profile(
+            targets=[passthrough],
+            accepts_ops=["openai_chat_completions"],
+        )),
+        operation="openai_chat_completions",
+        payload={"messages": [{"role": "user", "content": "hi"}]},
+        credential_resolver=lambda ref: "sk-openrouter",
+    )
+    assert result.winning_target_id == "via-openrouter"
+    assert result.response == {"id": "chatcmpl-x"}
+    passthrough_transport.execute.assert_awaited_once()
+    # LiteLLM + native must NOT have been touched.
+    sdk.execute.assert_not_awaited()
+    native.execute.assert_not_awaited()
 
 
 @pytest.mark.anyio("asyncio")

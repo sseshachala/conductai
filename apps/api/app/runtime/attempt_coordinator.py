@@ -36,10 +36,13 @@ Not shipped in this file:
   ``resolve_v2``, then calls into this module). That's a request-path
   change in ``gateway_handler.py`` — separate concern, worth its own
   review.
-- HTTP passthrough execution. The v2 launch supports the LiteLLM SDK
-  transport only; passthrough targets in a published profile raise
-  ``UnsupportedTransport`` here until commit N+1 of the wiring PR
-  lands the ``HTTPPassthroughExecutor``.
+
+PR 5 lands HTTP passthrough via ``HTTPPassthroughTransport`` — OpenRouter
+is the reference integration; Portkey / Helicone / Azure OpenAI / Custom
+follow in separate PRs. An unregistered ``integration`` raises
+``UnsupportedPassthroughIntegration`` from the transport rather than
+the coordinator's ``UnsupportedTransport`` (which now covers only
+truly unknown target types).
 """
 from __future__ import annotations
 
@@ -58,6 +61,7 @@ from app.modules.guard.gateway_config import (
     Operation,
 )
 from app.modules.guard.gateway_runtime import ResolvedV2
+from app.runtime.http_passthrough_transport import HTTPPassthroughTransport
 from app.runtime.litellm_transport import CredentialResolver, LiteLLMTransport
 from app.runtime.native_http_transport import NativeHTTPTransport
 
@@ -66,14 +70,10 @@ log = structlog.get_logger(__name__)
 
 
 class UnsupportedTransport(Exception):
-    """Raised when the coordinator encounters a target it can't execute.
-
-    Current launch set is ``transport=litellm_sdk`` only. HTTP passthrough
-    targets are legal in the schema (and can be published — the capability
-    catalog gates certified integrations), but the executor for them
-    lands in a follow-up. Publishing a passthrough target and then
-    letting a request find it here is a bug we surface loudly rather
-    than falling back to the legacy proxy path.
+    """Raised when the coordinator encounters a target type it can't
+    dispatch. Should be unreachable in practice — the schema union
+    covers every legal target, and PR 5 lands the passthrough executor
+    so ``UnsupportedTransport`` no longer fires for passthrough targets.
     """
 
 
@@ -139,9 +139,13 @@ class AttemptCoordinator:
         *,
         sdk_transport: LiteLLMTransport | None = None,
         native_http_transport: NativeHTTPTransport | None = None,
+        http_passthrough_transport: HTTPPassthroughTransport | None = None,
     ) -> None:
         self._sdk = sdk_transport or LiteLLMTransport()
         self._native = native_http_transport or NativeHTTPTransport()
+        self._passthrough = (
+            http_passthrough_transport or HTTPPassthroughTransport()
+        )
 
     async def execute(
         self,
@@ -291,11 +295,12 @@ class AttemptCoordinator:
                 stream=stream,
             )
         if isinstance(target, HTTPPassthroughTarget):
-            raise UnsupportedTransport(
-                f"target {target.id!r} uses transport=http_passthrough "
-                f"which the coordinator does not execute yet. Publish "
-                f"gate should have rejected this configuration; report "
-                f"the discrepancy to ops."
+            return await self._passthrough.execute(
+                target=target,
+                operation=operation,
+                payload=payload,
+                credential_resolver=credential_resolver,
+                stream=stream,
             )
         raise UnsupportedTransport(f"unknown target type: {type(target).__name__}")
 

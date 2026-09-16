@@ -126,37 +126,53 @@ def test_build_credential_resolver_raises_for_missing_credential():
     assert excinfo.value.credential_ref == f"vault://{ENV}/anthropic"
 
 
-def test_build_credential_resolver_skips_http_passthrough_targets():
-    """Passthrough targets aren't executable in the launch set. Don't
-    burn a Vault lookup on one — the coordinator will raise
-    UnsupportedTransport before it needs a key anyway."""
+def test_build_credential_resolver_pre_resolves_http_passthrough_targets():
+    """PR 5 — passthrough targets are executable now (OpenRouter is the
+    reference integration). Their credentials must be pre-resolved just
+    like native + litellm targets, so the coordinator's resolver stays a
+    pure callable and the request-scoped DB session isn't held open
+    across the network call.
+
+    The ``provider`` argument passed to the Vault lookup falls back to
+    the target's ``integration`` for passthrough targets (they don't
+    carry a ``provider`` field).
+    """
     profile = GatewayProfileV2.model_validate({
         "name": "prod",
         "model_alias": "coding",
-        "accepts": ["anthropic_messages"],
+        "accepts": ["openai_chat_completions"],
         "targets": [
             {
                 "id": "sdk-target", "transport": "litellm_sdk",
-                "provider": "anthropic", "model": "claude-sonnet-4-6",
-                "credential_ref": f"vault://{ENV}/anthropic",
+                "provider": "openai", "model": "gpt-4o",
+                "credential_ref": f"vault://{ENV}/openai",
             },
             {
                 "id": "passthrough", "transport": "http_passthrough",
-                "integration": "portkey", "model": "some-model",
-                "credential_ref": f"vault://{ENV}/portkey",
+                "integration": "openrouter",
+                "model": "anthropic/claude-sonnet",
+                "credential_ref": f"vault://{ENV}/openrouter",
             },
         ],
     })
-    calls: list[str] = []
+    calls: list[tuple[str, str]] = []
     with patch(
         "app.runtime.gateway_v2_bridge.resolve_gateway_key",
-        side_effect=lambda db, ws, ref, provider, env: (calls.append(ref) or "key"),
+        side_effect=lambda db, ws, ref, provider, env: (
+            calls.append((ref, provider)) or "key"
+        ),
     ):
         build_credential_resolver(
             db=object(), workspace_id="ws", environment_id=ENV,
-            provider="anthropic", profile=profile,
+            provider="openai", profile=profile,
         )
-    assert calls == [f"vault://{ENV}/anthropic"]
+    refs = [c[0] for c in calls]
+    assert refs == [f"vault://{ENV}/openai", f"vault://{ENV}/openrouter"]
+    # Passthrough target's provider hint falls back to its integration.
+    provider_for_passthrough = next(
+        p for ref, p in calls if ref.endswith("/openrouter")
+    )
+    assert provider_for_passthrough == "openrouter"
 
 
 # ─── coerce_response_body ─────────────────────────────────────────────

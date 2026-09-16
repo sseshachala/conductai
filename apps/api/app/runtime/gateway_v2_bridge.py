@@ -117,20 +117,28 @@ def build_credential_resolver(
     """
     resolved: dict[str, str] = {}
     for target in profile.targets:
-        if isinstance(target, HTTPPassthroughTarget):
-            # Passthrough targets aren't executable in the launch set
-            # (capability catalog rejects them at publish). If one
-            # slips through, the coordinator raises UnsupportedTransport
-            # first — don't waste a Vault lookup on it.
-            continue
-        if not isinstance(target, (NativeHTTPTarget, LiteLLMSDKTarget)):  # pragma: no cover - future safety
+        if not isinstance(
+            target,
+            (NativeHTTPTarget, LiteLLMSDKTarget, HTTPPassthroughTarget),
+        ):  # pragma: no cover - future safety
             continue
 
+        # PR 5 — passthrough targets carry their own credentials
+        # (OpenRouter key, Portkey key, Helicone key). Pre-resolve them
+        # the same way as native + LiteLLM so the coordinator's
+        # resolver stays a pure callable. The credential lookup uses
+        # ``target.integration`` as the provider hint since passthrough
+        # targets don't carry a ``provider`` field.
+        provider_hint = (
+            getattr(target, "provider", None)
+            or getattr(target, "integration", None)
+            or provider
+        )
         key = resolve_gateway_key(
             db,
             workspace_id,
             target.credential_ref,
-            target.provider or provider,
+            provider_hint,
             environment_id,
         )
         if not key:

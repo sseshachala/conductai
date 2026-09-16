@@ -261,18 +261,27 @@ def test_catalog_rejects_when_any_target_in_fallback_chain_is_incompatible():
     assert "fallback" in str(excinfo.value)
 
 
-def test_catalog_rejects_every_http_passthrough_target_until_executor_lands():
-    """Review fix: capability catalog and runtime must agree on what's
-    executable. The launch coordinator raises ``UnsupportedTransport``
-    for every ``http_passthrough`` target, so publishing one and
-    surfacing that at request time was a UX bug. Until the passthrough
-    executor lands, catalog rejects them all — Portkey, OpenRouter,
-    Helicone, Azure, Custom.
+def test_catalog_certifies_openrouter_for_openai_chat_completions():
+    """PR 5 — OpenRouter is the reference passthrough integration,
+    certified for ``openai_chat_completions``. Publishing that combo
+    succeeds now that the transport executor has landed."""
+    target = HTTPPassthroughTarget(
+        id="via-openrouter", transport="http_passthrough",
+        integration="openrouter", model="anthropic/claude-sonnet",
+        credential_ref=CRED_OPENROUTER,
+    )
+    validate_targets_against_accepts(
+        accepts=["openai_chat_completions"], targets=[target],
+    )
 
-    When the executor ships, the certified matrix will be extended and
-    this test will be replaced with per-integration certified-operation
-    tests."""
-    for integration in ("portkey", "openrouter", "helicone_anthropic",
+
+def test_catalog_still_rejects_other_passthrough_integrations():
+    """Portkey / Helicone / Azure OpenAI stay uncertified until each
+    ships its per-integration auth-header semantics (follow-up PRs).
+    Publish rejects them all — the loud rejection is what stops an
+    admin from believing a Portkey target is live before its executor
+    ships."""
+    for integration in ("portkey", "helicone_anthropic",
                         "helicone_openai", "azure_openai"):
         target = HTTPPassthroughTarget(
             id=f"t-{integration}", transport="http_passthrough",
@@ -281,8 +290,21 @@ def test_catalog_rejects_every_http_passthrough_target_until_executor_lands():
         )
         with pytest.raises(CapabilityMismatch):
             validate_targets_against_accepts(
-                accepts=["anthropic_messages"], targets=[target],
+                accepts=["openai_chat_completions"], targets=[target],
             )
+
+
+def test_catalog_still_rejects_openrouter_for_uncertified_operation():
+    """OpenRouter is certified for chat completions only. Publishing an
+    Anthropic Messages target through OpenRouter must still fail."""
+    target = HTTPPassthroughTarget(
+        id="t", transport="http_passthrough", integration="openrouter",
+        model="anthropic/claude-sonnet", credential_ref=CRED_OPENROUTER,
+    )
+    with pytest.raises(CapabilityMismatch):
+        validate_targets_against_accepts(
+            accepts=["anthropic_messages"], targets=[target],
+        )
 
 
 def test_catalog_rejects_custom_integration_without_explicit_certification():
