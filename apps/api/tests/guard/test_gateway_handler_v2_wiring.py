@@ -104,3 +104,85 @@ def test_execute_v2_signature_matches_caller():
     assert required == {"plan", "body"}, (
         f"_execute_v2 kwargs drifted from caller ({required})"
     )
+
+
+# ─── Response-gate block: preserve upstream body + use gate's rule id ─
+
+
+def test_derive_finalize_success_uses_ingress_rule_and_response_body():
+    """Ok path — no gate block. Finalize params should carry the
+    ingress decision + rule and the response body (matches the
+    upstream in the no-transformation case)."""
+    from app.modules.guard.gateway_handler import _derive_v2_finalize_args
+
+    class _Resp:
+        status_code = 200
+        body = b'{"usage":{"input_tokens":10,"output_tokens":5}}'
+
+    out = _derive_v2_finalize_args(
+        post_gate_response=_Resp(),
+        pre_gate_upstream_body=b'{"upstream":true}',
+        ingress_decision="allowed",
+        ingress_rule_id="ingress-rule",
+    )
+    assert out["decision"] == "allowed"
+    assert out["execution_status"] == "ok"
+    assert out["rule_id"] == "ingress-rule"
+    # response body used verbatim; upstream body only kicks in for blocks
+    assert out["response_bytes"] == _Resp.body
+
+
+def test_derive_finalize_block_uses_gate_rule_and_upstream_body():
+    """The critical fix: a response-gate block wrote the ingress rule
+    id + the 451 body onto the audit row. Now: the block rule id from
+    the 451 envelope AND the pre-gate upstream body are recorded so
+    token accounting is preserved even for a blocked response."""
+    from app.modules.guard.gateway_handler import _derive_v2_finalize_args
+
+    class _BlockedResp:
+        status_code = 451
+        body = (
+            b'{"error":{'
+            b'"type":"conduct_guard_response_block",'
+            b'"message":"redacted",'
+            b'"rule_id":"gate-rule-response-block",'
+            b'"gate":"response"'
+            b'}}'
+        )
+
+    pre_gate_upstream = b'{"content":"secret","usage":{"input_tokens":80,"output_tokens":40}}'
+
+    out = _derive_v2_finalize_args(
+        post_gate_response=_BlockedResp(),
+        pre_gate_upstream_body=pre_gate_upstream,
+        ingress_decision="allowed",
+        ingress_rule_id="ingress-rule",
+    )
+    assert out["decision"] == "blocked"
+    assert out["execution_status"] == "blocked"
+    # gate's rule id — NOT the ingress one
+    assert out["rule_id"] == "gate-rule-response-block"
+    # upstream body preserved so token usage stays in the row
+    assert out["response_bytes"] == pre_gate_upstream
+
+
+def test_derive_finalize_block_with_malformed_envelope_falls_back_to_ingress():
+    """If the block body isn't the expected 451-envelope shape (edge
+    case: gate handler fails, upstream returns 4xx directly, etc.),
+    finalize should still record blocked-execution with the ingress
+    rule id rather than losing all attribution."""
+    from app.modules.guard.gateway_handler import _derive_v2_finalize_args
+
+    class _Weird:
+        status_code = 500
+        body = b'not-json-at-all'
+
+    out = _derive_v2_finalize_args(
+        post_gate_response=_Weird(),
+        pre_gate_upstream_body=b'{"upstream":true}',
+        ingress_decision="allowed",
+        ingress_rule_id="ingress-rule",
+    )
+    assert out["decision"] == "blocked"
+    assert out["execution_status"] == "blocked"
+    assert out["rule_id"] == "ingress-rule"

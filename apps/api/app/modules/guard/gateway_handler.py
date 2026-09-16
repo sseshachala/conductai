@@ -216,9 +216,23 @@ async def handle_gateway_request(
         # of the client-sent ``model:`` field. Environment binding is
         # gone; the vault ref inside the target's credential_ref
         # carries the env. Format expected: ``cond-<8chars>-<alias>``.
+        # Cond-prefixed identifier detection runs REGARDLESS of the flag.
+        # A client that sent `cond-<code>-<alias>` explicitly asked for
+        # a v2 profile; silently routing them via v1 when the flag is
+        # off would misrepresent which profile served the traffic.
         _v2_plan = None
+        _cond_code = _extract_cond_code(body.get("model"))
+        if _cond_code is not None and not settings.guard_gateway_profile_v2:
+            from fastapi import HTTPException as _HTTPException
+            raise _HTTPException(
+                status_code=501,
+                detail=(
+                    f"Gateway Profile v2 (cond_code {_cond_code!r}) is not "
+                    "enabled for this workspace. Use a v1 model name or "
+                    "ask ops to enable v2."
+                ),
+            )
         if settings.guard_gateway_profile_v2:
-            _cond_code = _extract_cond_code(body.get("model"))
             if _cond_code is not None:
                 _v2_plan = _build_v2_plan(
                     db=db,
@@ -546,6 +560,17 @@ async def handle_gateway_request(
             # Reflect coordinator attempt records back into routing_meta
             # so the durable audit row lands with the full attempt list.
             _routing_meta = _merge_routing_meta(_routing_meta, _v2_plan.last_meta)
+            # Snapshot the upstream body BEFORE the response gate runs.
+            # If the gate blocks, `_response` will be replaced with a
+            # 451 error envelope carrying no token usage. Finalize needs
+            # the upstream bytes so cost + token accounting still work
+            # even for a blocked response.
+            try:
+                _v2_upstream_body_bytes: bytes | None = (
+                    _response.body if hasattr(_response, "body") else None
+                )
+            except Exception:
+                _v2_upstream_body_bytes = None
         else:
             _response = await transport.forward(
                 sender=_forward,
@@ -622,27 +647,24 @@ async def handle_gateway_request(
         # _schedule_audit path (which fires after the response is sent
         # in a BackgroundTask), so v1 isn't touched here.
         if _v2_plan is not None and _durable_row_id:
-            _v2_status = getattr(_response, "status_code", 200)
-            _v2_blocked = _v2_status >= 400
-            try:
-                _v2_body_bytes = _response.body if hasattr(_response, "body") else None
-            except Exception:
-                _v2_body_bytes = None
+            _v2_finalize = _derive_v2_finalize_args(
+                post_gate_response=_response,
+                pre_gate_upstream_body=_v2_upstream_body_bytes,
+                ingress_decision=_audit_decision,
+                ingress_rule_id=_audit_rule_id,
+            )
             await _finalize_durable_row(
                 row_id=_durable_row_id,
                 workspace_id=workspace_id,
-                # Reflect the post-gate outcome — if the gate flipped the
-                # response to a block, the row records "blocked", not
-                # the pre-gate audit decision.
-                decision="blocked" if _v2_blocked else _audit_decision,
+                decision=_v2_finalize["decision"],
                 provider=provider,
                 model=model,
                 body=body,
-                response_bytes=_v2_body_bytes,
+                response_bytes=_v2_finalize["response_bytes"],
                 duration_ms=int((time.monotonic() - started) * 1000),
-                rule_id=_audit_rule_id,
+                rule_id=_v2_finalize["rule_id"],
                 routing_meta=_routing_meta,
-                execution_status="blocked" if _v2_blocked else "ok",
+                execution_status=_v2_finalize["execution_status"],
                 result_summary=None,
                 clerk_user_id=clerk_user_id,
                 ai_tool=ai_tool,
@@ -905,3 +927,69 @@ def _merge_routing_meta(current: dict | None, updates: dict) -> dict:
     cross the request/audit boundary and could race the background
     finalize task."""
     return {**(current or {}), **updates}
+
+
+def _derive_v2_finalize_args(
+    *,
+    post_gate_response,
+    pre_gate_upstream_body,
+    ingress_decision: str,
+    ingress_rule_id: str | None,
+) -> dict:
+    """Pick the finalize params for a v2 request based on the post-gate
+    response.
+
+    Two knobs:
+
+    1. Whether the response gate flipped the outcome to a block. Read
+       from the response's ``status_code`` (>=400 = blocked).
+    2. If blocked, the gate's ``rule_id`` from the 451 envelope wins
+       over the ingress ``_audit_rule_id`` — otherwise the audit row
+       would name the ingress rule for a response-gate block.
+
+    Body bytes:
+    - Blocked → use the pre-gate upstream body. The 451 envelope has
+      no token usage; recording the block body drops cost accounting.
+    - Ok → use the post-gate body (identical to upstream when no
+      transformation ran).
+
+    Kept pure so the block-branch is unit-testable without spinning up
+    a Request / DB / gate.
+    """
+    status = getattr(post_gate_response, "status_code", 200)
+    blocked = status >= 400
+
+    if not blocked:
+        try:
+            body_bytes = (
+                post_gate_response.body
+                if hasattr(post_gate_response, "body") else None
+            )
+        except Exception:
+            body_bytes = None
+        return {
+            "decision": ingress_decision,
+            "execution_status": "ok",
+            "rule_id": ingress_rule_id,
+            "response_bytes": body_bytes,
+        }
+
+    # Blocked — extract the gate's rule_id from the 451 envelope shape
+    # (``{"error": {"rule_id": ..., ...}}``). Any parse failure falls
+    # back to the ingress rule id so the row still carries something.
+    gate_rule_id = ingress_rule_id
+    try:
+        import json as _json
+        gate_body = _json.loads(getattr(post_gate_response, "body", b"") or b"{}")
+        candidate = gate_body.get("error", {}).get("rule_id")
+        if candidate:
+            gate_rule_id = candidate
+    except Exception:
+        pass
+
+    return {
+        "decision": "blocked",
+        "execution_status": "blocked",
+        "rule_id": gate_rule_id,
+        "response_bytes": pre_gate_upstream_body,
+    }
