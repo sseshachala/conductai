@@ -783,8 +783,14 @@ async def handle_gateway_request(
         # lifecycle_state = 'accepted' in audit.finalize means this is
         # a no-op if the transport / _stream_chunks already finalized
         # (e.g. an error partway through streaming).
+        _is_cancel = isinstance(_forward_exc, _asyncio.CancelledError)
+        _exec_status = "interrupted" if _is_cancel else "error"
+        _result_summary = (
+            "Request cancelled during upstream forward"
+            if _is_cancel
+            else f"forward/gate exception: {type(_forward_exc).__name__}: {str(_forward_exc)[:400]}"
+        )
         if _durable_row_id:
-            _is_cancel = isinstance(_forward_exc, _asyncio.CancelledError)
             try:
                 await _finalize_durable_row(
                     row_id=_durable_row_id,
@@ -797,18 +803,51 @@ async def handle_gateway_request(
                     duration_ms=int((time.monotonic() - started) * 1000),
                     rule_id=None,
                     routing_meta=_routing_meta,
-                    execution_status="interrupted" if _is_cancel else "error",
-                    result_summary=(
-                        "Request cancelled during upstream forward"
-                        if _is_cancel
-                        else f"forward/gate exception: {type(_forward_exc).__name__}: {str(_forward_exc)[:400]}"
-                    ),
+                    execution_status=_exec_status,
+                    result_summary=_result_summary,
                     clerk_user_id=clerk_user_id,
                     ai_tool=ai_tool,
                     user_email=_user_email,
                 )
             except Exception:
                 log.exception("guard.gateway.error_finalize_failed", row_id=_durable_row_id)
+        elif _v2_plan is not None:
+            # Y2 — v2 executed with durable-audit OFF and the request
+            # raised before the happy-path fallback (from X2) could
+            # schedule ``_record_audit``. Without this branch,
+            # exception-path v2 requests leave zero rows: the durable
+            # finalize above skipped (no row_id), the happy-path
+            # fallback never ran, and v1's ``_record_audit`` never
+            # fires because we're on the v2 branch.
+            #
+            # Schedule ``_record_audit`` via BackgroundTasks with an
+            # 'error' decision so dashboards see the failure exactly
+            # like they do for the durable-on case.
+            try:
+                background.add_task(
+                    _record_audit,
+                    workspace_id, clerk_user_id, ai_tool, provider, model,
+                    "error",
+                    None,   # rule_id
+                    int((time.monotonic() - started) * 1000),
+                    body=body,
+                    response_bytes=None,
+                    prompt_summary=prompt_summary,
+                    user_email=_user_email,
+                    conductai_run_id=_run_id,
+                    conductai_workflow=_workflow,
+                    conductai_workflow_id=_workflow_id,
+                    hook_session_id=_hook_session_id,
+                    routing_meta=_routing_meta,
+                    execution_status=_exec_status,
+                    result_summary=_result_summary,
+                    agent_identity_id=(
+                        str(_agent_identity_id) if _agent_identity_id else None
+                    ),
+                    route=request.url.path,
+                )
+            except Exception:
+                log.exception("guard.gateway.v2.error_record_audit_failed")
         raise
     finally:
         # Cancel the whole-request renewal task owned by gateway_lifecycle.

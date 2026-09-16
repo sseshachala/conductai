@@ -160,3 +160,40 @@ def test_handler_wires_fallback_branch_when_durable_row_absent():
         "elif, v2 traffic silently skips audit."
     )
     assert "_wrap_v2_stream_record_legacy" in src
+
+
+def test_handler_records_audit_on_exception_when_durable_off():
+    """Y2 REPRODUCER — the initial X2 fix only handled happy-path
+    returns. If the coordinator raised (network error, all-attempts-
+    failed, cancellation), the exception handler only recorded when
+    a durable row existed. With durable-audit off, exception-path v2
+    requests wrote zero rows.
+
+    Source-level regression guard: the except block must also schedule
+    ``_record_audit`` in the ``elif _v2_plan is not None:`` shape.
+    """
+    from pathlib import Path
+    src = (
+        Path(__file__).resolve().parents[2]
+        / "app" / "modules" / "guard" / "gateway_handler.py"
+    ).read_text(encoding="utf-8")
+
+    # Find the exception handler section.
+    exc_start = src.index("except BaseException as _forward_exc")
+    exc_end = src.index("finally:", exc_start)
+    exc_block = src[exc_start:exc_end]
+
+    # It must contain BOTH the durable finalize AND a v2 record-audit
+    # fallback — otherwise durable-off exception paths land no row.
+    assert "if _durable_row_id:" in exc_block, (
+        "exception handler must still finalize the durable row when "
+        "one exists"
+    )
+    assert "elif _v2_plan is not None:" in exc_block, (
+        "exception handler must schedule _record_audit for v2 when "
+        "durable-audit was off — otherwise error rows are invisible"
+    )
+    # Must actually reference _record_audit + background.add_task in
+    # the exception block, not just the happy-path branch above.
+    assert "_record_audit" in exc_block
+    assert "background.add_task" in exc_block
