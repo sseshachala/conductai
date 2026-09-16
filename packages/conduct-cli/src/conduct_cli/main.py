@@ -2897,29 +2897,34 @@ def cmd_import_gateway_config(args):
     ``conduct export --gateway-config`` emits and the same shape the
     editor's Save call posts. Round-trip is safe: export → import
     produces a draft the admin can complete in one editor session.
+
+    Exit codes: 0 on success, 1 on any failure (auth, missing file,
+    invalid JSON, backend rejection). Error output goes to stderr so
+    callers can pipe stdout without noise.
     """
     server, workspace, token = _require_auth(args)
     if not token:
-        print(f"{RED}Not authenticated. Run `conduct login` first.{RESET}")
-        return
+        print(f"{RED}Not authenticated. Run `conduct login` first.{RESET}", file=sys.stderr)
+        sys.exit(1)
 
     path = Path(args.file)
     if not path.exists():
-        print(f"{RED}File not found: {path}{RESET}")
-        return
+        print(f"{RED}File not found: {path}{RESET}", file=sys.stderr)
+        sys.exit(1)
 
     try:
         working_copy = json.loads(path.read_text())
     except json.JSONDecodeError as e:
-        print(f"{RED}Invalid JSON in {path}: {e}{RESET}")
-        return
+        print(f"{RED}Invalid JSON in {path}: {e}{RESET}", file=sys.stderr)
+        sys.exit(1)
 
     if not isinstance(working_copy, dict):
         print(
             f"{RED}Expected a JSON object at the top level (the "
-            f"working_copy dict); got {type(working_copy).__name__}.{RESET}"
+            f"working_copy dict); got {type(working_copy).__name__}.{RESET}",
+            file=sys.stderr,
         )
-        return
+        sys.exit(1)
 
     body_dict = {"working_copy": working_copy}
     if getattr(args, "name", None):
@@ -2958,11 +2963,11 @@ def cmd_import_gateway_config(args):
                 detail_text = str(detail or body_text)[:600]
         except Exception:
             detail_text = body_text[:600]
-        print(f"{RED}Import failed ({e.code}):{RESET}\n{detail_text}")
-        return
+        print(f"{RED}Import failed ({e.code}):{RESET}\n{detail_text}", file=sys.stderr)
+        sys.exit(1)
     except Exception as e:
-        print(f"{RED}Request failed: {e}{RESET}")
-        return
+        print(f"{RED}Request failed: {e}{RESET}", file=sys.stderr)
+        sys.exit(1)
 
     profile = result.get("profile") or {}
     gaps = result.get("credential_gaps") or []
@@ -2993,19 +2998,29 @@ def cmd_export_gateway_config(args):
     ``credential_ref`` on export (safe to commit / share). Writes to
     stdout by default; ``--out FILE`` writes to a file instead.
 
-    ``target`` can be either the profile's UUID or its cond_code
-    (looked up via the list endpoint). The cond_code form matches
-    what admins see in the "How to use" panel, so it's usually the
-    handier of the two.
+    ``target`` is one of:
+      * a profile UUID (e.g. ``123e4567-e89b-12d3-a456-426614174000``),
+      * a bare cond_code (e.g. ``abc12345``), OR
+      * the full ``cond-<code>-<alias>`` string admins see in the
+        "How to use" panel (e.g. ``cond-abc12345-my-profile``).
+
+    Bare model aliases (e.g. ``claude-sonnet-4-6``) are NOT resolved —
+    they map to targets inside a profile, not to profiles themselves.
+
+    Exit codes: 0 on success, 1 on any failure (auth, unresolved
+    target, backend error). Errors go to stderr so ``--out`` piping
+    stays clean.
     """
     server, workspace, token = _require_auth(args)
     if not token:
-        print(f"{RED}Not authenticated. Run `conduct login` first.{RESET}")
-        return
+        print(f"{RED}Not authenticated. Run `conduct login` first.{RESET}", file=sys.stderr)
+        sys.exit(1)
 
     profile_id = _resolve_gateway_profile_id(server, workspace, token, args.target)
     if not profile_id:
-        return   # error already printed
+        # _resolve_gateway_profile_id already printed the specific
+        # error to stderr — just exit nonzero here.
+        sys.exit(1)
 
     req = urllib.request.Request(
         f"{server}/workspaces/{workspace}/gateway-profiles-v2/{profile_id}/export",
@@ -3020,17 +3035,17 @@ def cmd_export_gateway_config(args):
             snapshot = json.loads(r.read())
     except urllib.error.HTTPError as e:
         body_text = e.read().decode(errors="replace")
-        print(f"{RED}Export failed ({e.code}): {body_text[:400]}{RESET}")
-        return
+        print(f"{RED}Export failed ({e.code}): {body_text[:400]}{RESET}", file=sys.stderr)
+        sys.exit(1)
     except Exception as e:
-        print(f"{RED}Request failed: {e}{RESET}")
-        return
+        print(f"{RED}Request failed: {e}{RESET}", file=sys.stderr)
+        sys.exit(1)
 
     out_json = json.dumps(snapshot, indent=2)
     out_path = getattr(args, "out", None)
     if out_path:
         Path(out_path).write_text(out_json + "\n")
-        print(f"{GREEN}Wrote:{RESET} {out_path}")
+        print(f"{GREEN}Wrote:{RESET} {out_path}", file=sys.stderr)
     else:
         print(out_json)
 
@@ -3056,7 +3071,10 @@ def _resolve_gateway_profile_id(server: str, workspace: str, token: str, target:
         with urllib.request.urlopen(req, timeout=30) as r:
             profiles = json.loads(r.read())
     except Exception as e:
-        print(f"{RED}Could not list profiles to resolve {target!r}: {e}{RESET}")
+        print(
+            f"{RED}Could not list profiles to resolve {target!r}: {e}{RESET}",
+            file=sys.stderr,
+        )
         return None
 
     for p in profiles or []:
@@ -3070,7 +3088,8 @@ def _resolve_gateway_profile_id(server: str, workspace: str, token: str, target:
 
     print(
         f"{RED}No profile matched {target!r}. Pass a profile UUID, "
-        f"a cond_code, or the full cond-<code>-<alias> identifier.{RESET}"
+        f"a cond_code, or the full cond-<code>-<alias> identifier.{RESET}",
+        file=sys.stderr,
     )
     return None
 
@@ -3442,13 +3461,15 @@ def main():
             args.file = args.gateway_config
             cmd_import_gateway_config(args)
         else:
-            print(f"{RED}Usage: conduct import --gateway-config <file.json>{RESET}")
+            print(f"{RED}Usage: conduct import --gateway-config <file.json>{RESET}", file=sys.stderr)
+            sys.exit(1)
     elif args.command == "export":
         if getattr(args, "gateway_config", None):
             args.target = args.gateway_config
             cmd_export_gateway_config(args)
         else:
-            print(f"{RED}Usage: conduct export --gateway-config <profile-id-or-cond-code>{RESET}")
+            print(f"{RED}Usage: conduct export --gateway-config <profile-id-or-cond-code>{RESET}", file=sys.stderr)
+            sys.exit(1)
     elif args.command == "sync":
         cmd_sync(args)
     elif args.command == "verify":

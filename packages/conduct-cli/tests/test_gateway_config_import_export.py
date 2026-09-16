@@ -112,22 +112,33 @@ def test_import_missing_file_no_http(tmp_path, monkeypatch, capsys):
     )
     args = MagicMock()
     args.file = str(tmp_path / "nope.json"); args.name = None
-    cli.cmd_import_gateway_config(args)
+    # R5: missing file exits nonzero and prints the error to stderr,
+    # not stdout — scripts piping stdout must not see this noise.
+    with pytest.raises(SystemExit) as exc_info:
+        cli.cmd_import_gateway_config(args)
+    assert exc_info.value.code == 1
     assert called == []
-    assert "File not found" in capsys.readouterr().out
+    err = capsys.readouterr()
+    assert "File not found" in err.err
+    assert "File not found" not in err.out
 
 
 def test_import_invalid_json_no_http(tmp_path, monkeypatch, capsys):
-    src = tmp_path / "bad.json"; src.write_text("{ not valid")
+    bad = tmp_path / "bad.json"; bad.write_text("{ not valid")
     called = []
     monkeypatch.setattr(
         cli.urllib.request, "urlopen",
         lambda req, timeout=None: (called.append(True), _mk_response({}))[1],
     )
-    args = MagicMock(); args.file = str(src); args.name = None
-    cli.cmd_import_gateway_config(args)
+    args = MagicMock(); args.file = str(bad); args.name = None
+    # R5: invalid JSON exits nonzero and prints to stderr.
+    with pytest.raises(SystemExit) as exc_info:
+        cli.cmd_import_gateway_config(args)
+    assert exc_info.value.code == 1
     assert called == []
-    assert "Invalid JSON" in capsys.readouterr().out
+    err = capsys.readouterr()
+    assert "Invalid JSON" in err.err
+    assert "Invalid JSON" not in err.out
 
 
 def test_import_renders_structured_error_per_line(tmp_path, monkeypatch, capsys):
@@ -155,11 +166,16 @@ def test_import_renders_structured_error_per_line(tmp_path, monkeypatch, capsys)
         lambda req, timeout=None: (_ for _ in ()).throw(err),
     )
     args = MagicMock(); args.file = str(src); args.name = None
-    cli.cmd_import_gateway_config(args)
-    out = capsys.readouterr().out
-    assert "schema invalid" in out
-    assert "targets.0.credential_ref" in out
-    assert "must not be empty" in out
+    # R5: backend rejection exits nonzero and lands on stderr — but
+    # the structured per-line rendering still happens so CI logs are
+    # readable.
+    with pytest.raises(SystemExit) as exc_info:
+        cli.cmd_import_gateway_config(args)
+    assert exc_info.value.code == 1
+    stderr = capsys.readouterr().err
+    assert "schema invalid" in stderr
+    assert "targets.0.credential_ref" in stderr
+    assert "must not be empty" in stderr
 
 
 def test_import_prints_credential_gaps(tmp_path, monkeypatch, capsys):
@@ -219,8 +235,53 @@ def test_export_unknown_cond_code_no_export_call(monkeypatch, capsys):
         return _mk_response([{"id": UUID, "cond_code": "other"}])
     monkeypatch.setattr(cli.urllib.request, "urlopen", _fake)
     args = MagicMock(); args.target = "unknown"; args.out = None
-    cli.cmd_export_gateway_config(args)
-    assert "No profile matched" in capsys.readouterr().out
+    # R5: unresolved target exits nonzero, error on stderr, stdout
+    # stays clean so ``conduct export ... > file.json`` never writes
+    # an error message into the destination file.
+    with pytest.raises(SystemExit) as exc_info:
+        cli.cmd_export_gateway_config(args)
+    assert exc_info.value.code == 1
+    captured = capsys.readouterr()
+    assert "No profile matched" in captured.err
+    assert captured.out == ""
+
+
+def test_export_stdout_stays_clean_on_backend_error(tmp_path, monkeypatch, capsys):
+    """R5: an HTTPError during export must NOT contaminate stdout —
+    ``conduct export ... > profile.json`` piping into a file must
+    only see the profile JSON, never an error message."""
+    import urllib.error
+    err = urllib.error.HTTPError(
+        "http://x", 500, "Server Error", {},
+        io.BytesIO(b"boom"),
+    )
+    calls = []
+    def _fake(req, timeout=None):
+        if req.full_url.endswith("/export"):
+            raise err
+        return _mk_response([{"id": UUID, "cond_code": "abc"}])
+    monkeypatch.setattr(cli.urllib.request, "urlopen", _fake)
+    args = MagicMock(); args.target = UUID; args.out = None
+    with pytest.raises(SystemExit) as exc_info:
+        cli.cmd_export_gateway_config(args)
+    assert exc_info.value.code == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "Export failed" in captured.err
+
+
+def test_import_unauth_exits_nonzero_on_stderr(monkeypatch, capsys, tmp_path):
+    """R5: no token → exit 1, error on stderr."""
+    monkeypatch.setattr(
+        cli, "_require_auth",
+        lambda args: ("https://api.example.com", "ws-1", None),
+    )
+    src = tmp_path / "p.json"; src.write_text(json.dumps({"name": "x"}))
+    args = MagicMock(); args.file = str(src); args.name = None
+    with pytest.raises(SystemExit) as exc_info:
+        cli.cmd_import_gateway_config(args)
+    assert exc_info.value.code == 1
+    assert "Not authenticated" in capsys.readouterr().err
 
 
 def test_export_out_writes_file(tmp_path, monkeypatch):
