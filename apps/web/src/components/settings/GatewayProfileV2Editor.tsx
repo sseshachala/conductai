@@ -38,25 +38,41 @@ const MODELS_BY_PROVIDER: Record<string, Array<{ id: string; label: string }>> =
   ],
 }
 
+// Per-integration operations for http_passthrough targets. Mirrors
+// the backend's ``_INTEGRATION_ENDPOINTS`` matrix in
+// ``app/runtime/http_passthrough_transport.py`` — keep in sync (there
+// is no build-time enforcement; the server is authoritative on
+// publish, but a mismatch here silently drops accepts and produces
+// an empty operation list that fails validation server-side).
+const PASSTHROUGH_INTEGRATION_OPERATIONS: Record<string, Operation[]> = {
+  openrouter: ["openai_chat_completions"],
+  // portkey / helicone_anthropic / helicone_openai / azure_openai
+  // stay uncertified until each ships its per-integration auth
+  // shape. Absent = deriveAccepts contributes nothing for them.
+}
+
 // Auto-derive `accepts` from the target providers. Every Anthropic
 // target contributes anthropic_messages; every OpenAI target
-// contributes openai_chat_completions and openai_responses. This
-// replaces the previous checkbox UI — those labels
-// (anthropic_messages, openai_chat_completions, ...) were technical
-// noise for admins who just want to pick "route via Claude".
+// contributes openai_chat_completions and openai_responses. Each
+// http_passthrough target contributes whatever its integration
+// certifies (PR X6 fix — the previous version ignored passthrough
+// targets entirely, so an OpenRouter-only profile saved with empty
+// accepts and 400'd on publish).
 function deriveAccepts(targets: DraftTarget[]): Operation[] {
   const seen = new Set<Operation>()
   for (const t of targets) {
-    // Both native_http and litellm_sdk are provider-based transports;
-    // http_passthrough is integration-based (empty in the launch matrix).
-    if (t.transport !== "native_http" && t.transport !== "litellm_sdk") continue
-    if (t.provider === "anthropic") {
-      seen.add("anthropic_messages")
-      seen.add("anthropic_count_tokens")
-    }
-    if (t.provider === "openai") {
-      seen.add("openai_chat_completions")
-      seen.add("openai_responses")
+    if (t.transport === "native_http" || t.transport === "litellm_sdk") {
+      if (t.provider === "anthropic") {
+        seen.add("anthropic_messages")
+        seen.add("anthropic_count_tokens")
+      }
+      if (t.provider === "openai") {
+        seen.add("openai_chat_completions")
+        seen.add("openai_responses")
+      }
+    } else if (t.transport === "http_passthrough") {
+      const ops = PASSTHROUGH_INTEGRATION_OPERATIONS[t.integration] ?? []
+      for (const op of ops) seen.add(op)
     }
   }
   return [...seen]
@@ -422,38 +438,64 @@ function TargetRow({
 
       <FieldLabel
         label="Transport"
-        hint="native_http = vendor's protocol end-to-end (preferred for Anthropic + OpenAI). litellm_sdk = LiteLLM translates operations across providers."
+        hint="native_http = direct to vendor (Anthropic / OpenAI, preferred). litellm_sdk = LiteLLM translates operations across providers. http_passthrough = external gateway (OpenRouter is the reference; Portkey / Helicone / Azure / Custom ship in follow-ups)."
       >
         <select value={target.transport} disabled={!isAdmin}
           onChange={e => onChange({ transport: e.target.value as Transport })}
           style={inputStyle}>
           <option value="native_http">native_http (recommended)</option>
           <option value="litellm_sdk">litellm_sdk</option>
+          <option value="http_passthrough">http_passthrough (OpenRouter)</option>
         </select>
       </FieldLabel>
 
-      <FieldLabel label="Provider" hint="Upstream provider Anthropic or OpenAI in the launch matrix.">
-        <select value={target.provider} disabled={!isAdmin}
-          onChange={e => {
-            const provider = e.target.value
-            const models = MODELS_BY_PROVIDER[provider] ?? []
-            const modelStillValid = models.some(m => m.id === target.model)
-            onChange({
-              provider,
-              model: modelStillValid ? target.model : (models[0]?.id ?? ""),
-            })
-          }} style={inputStyle}>
-          {KNOWN_LITELLM_PROVIDERS.map(p => <option key={p} value={p}>{p}</option>)}
-        </select>
-      </FieldLabel>
+      {target.transport === "http_passthrough" ? (
+        <FieldLabel
+          label="Integration"
+          hint="External gateway routing traffic on our behalf. OpenRouter is certified for openai_chat_completions in PR 5; other integrations stay uncertified until each ships its per-integration auth shape."
+        >
+          <select value={target.integration} disabled={!isAdmin}
+            onChange={e => onChange({ integration: e.target.value })}
+            style={inputStyle}>
+            <option value="openrouter">openrouter (certified)</option>
+            <option value="portkey" disabled>portkey (not yet certified)</option>
+            <option value="helicone_anthropic" disabled>helicone_anthropic (not yet certified)</option>
+            <option value="helicone_openai" disabled>helicone_openai (not yet certified)</option>
+            <option value="azure_openai" disabled>azure_openai (not yet certified)</option>
+            <option value="custom" disabled>custom (not yet certified)</option>
+          </select>
+        </FieldLabel>
+      ) : (
+        <FieldLabel label="Provider" hint="Upstream provider Anthropic or OpenAI in the launch matrix.">
+          <select value={target.provider} disabled={!isAdmin}
+            onChange={e => {
+              const provider = e.target.value
+              const models = MODELS_BY_PROVIDER[provider] ?? []
+              const modelStillValid = models.some(m => m.id === target.model)
+              onChange({
+                provider,
+                model: modelStillValid ? target.model : (models[0]?.id ?? ""),
+              })
+            }} style={inputStyle}>
+            {KNOWN_LITELLM_PROVIDERS.map(p => <option key={p} value={p}>{p}</option>)}
+          </select>
+        </FieldLabel>
+      )}
 
-      <FieldLabel label="Model" hint="Real upstream model ID the request goes to.">
-        <select value={target.model} disabled={!isAdmin}
-          onChange={e => onChange({ model: e.target.value })} style={inputStyle}>
-          {(MODELS_BY_PROVIDER[target.provider] ?? []).map(m => (
-            <option key={m.id} value={m.id}>{m.label}</option>
-          ))}
-        </select>
+      <FieldLabel label="Model" hint={target.transport === "http_passthrough" ? "OpenRouter model id (e.g. anthropic/claude-3.5-sonnet)." : "Real upstream model ID the request goes to."}>
+        {target.transport === "http_passthrough" ? (
+          <input value={target.model} disabled={!isAdmin}
+            placeholder="anthropic/claude-3.5-sonnet"
+            onChange={e => onChange({ model: e.target.value })}
+            style={inputStyle} />
+        ) : (
+          <select value={target.model} disabled={!isAdmin}
+            onChange={e => onChange({ model: e.target.value })} style={inputStyle}>
+            {(MODELS_BY_PROVIDER[target.provider] ?? []).map(m => (
+              <option key={m.id} value={m.id}>{m.label}</option>
+            ))}
+          </select>
+        )}
       </FieldLabel>
 
       {isAdmin ? (
