@@ -4,6 +4,10 @@ entries via `app.tools.registrations.lens`).
 """
 from app.modules.glens.actor.registrations import deactivate_agent_identity  # noqa: F401
 from app.modules.glens.actor.registrations import decide_approval  # noqa: F401
+from app.modules.glens.actor.registrations import gateway_v2_create_draft  # noqa: F401
+from app.modules.glens.actor.registrations import gateway_v2_publish  # noqa: F401
+from app.modules.glens.actor.registrations import gateway_v2_rollback  # noqa: F401
+from app.modules.glens.actor.registrations import gateway_v2_update_working_copy  # noqa: F401
 from app.modules.glens.actor.registrations import install_pack  # noqa: F401
 from app.modules.glens.actor.registrations import invite_member  # noqa: F401
 from app.modules.glens.actor.registrations import propose_report  # noqa: F401
