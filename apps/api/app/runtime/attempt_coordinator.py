@@ -224,15 +224,32 @@ class AttemptCoordinator:
             # X1 per-target policy re-eval BEFORE dispatch — no wire hit
             # if this target is blocked by policy against its model.
             if policy_check is not None:
-                # Support both sync and async policy_check callbacks.
-                # Async is preferred so the callback can offload its
-                # sync DB work via run_in_threadpool without stalling
-                # the event loop under high concurrency.
+                # Support both sync and async policy_check callbacks. Async
+                # is preferred so the callback can offload its sync DB
+                # work via run_in_threadpool without stalling the event
+                # loop under high concurrency.
+                # PR review fix: bound the awaitable policy check by the
+                # coordinator's remaining budget so a slow eval cannot
+                # consume the whole deadline and then trigger a paid
+                # upstream call after expiry.
                 _pc_result = policy_check(target)
                 if inspect.isawaitable(_pc_result):
-                    block = await _pc_result
+                    try:
+                        block = await asyncio.wait_for(_pc_result, timeout=remaining)
+                    except asyncio.TimeoutError:
+                        # Policy eval blew the request budget. Record the
+                        # target as a deadline attempt and stop — no
+                        # further targets get charged an upstream call.
+                        attempts.append(_deadline_record(target, time.monotonic()))
+                        break
                 else:
                     block = _pc_result
+                # Recompute remaining after the (possibly slow) policy check;
+                # if the budget is gone, refuse dispatch on this target.
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    attempts.append(_deadline_record(target, time.monotonic()))
+                    break
                 if block is not None:
                     attempt_start = time.monotonic()
                     attempts.append(AttemptRecord(

@@ -98,12 +98,20 @@ async def _run_async(url, token, model, total, concurrency, max_tokens,
 
         async def _bounded_fire(_i: int):
             nonlocal kill, input_tokens_seen, output_tokens_seen
-            if kill:
-                return
-            if time.monotonic() - started > max_wall:
-                kill = True
+            # Pre-acquire cheap short-circuit (avoids piling up on the
+            # semaphore when we already know we're stopping). The real
+            # authoritative check happens post-acquire below.
+            if kill or time.monotonic() - started > max_wall:
                 return
             async with sem:
+                # Re-check AFTER acquiring the semaphore. Without this the
+                # kill switch is racy — tasks that queued for the semaphore
+                # before the switch fired would still dispatch. Same for
+                # the wall-clock deadline.
+                if kill or time.monotonic() - started > max_wall:
+                    if time.monotonic() - started > max_wall and not kill:
+                        kill = True
+                    return
                 status, lat, resp = await _fire_one_async(
                     session, url, headers, body_template
                 )
