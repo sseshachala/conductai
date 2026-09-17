@@ -1,0 +1,16 @@
+{
+  "name": "gpt-4o",
+  "model_alias": "gpt-4o",
+  "timeout_seconds": 60,
+  "max_attempts": 1,
+  "accepts": ["openai_chat_completions", "openai_responses"],
+  "targets": [
+    {
+      "id": "primary",
+      "transport": "native_http",
+      "provider": "openai",
+      "model": "gpt-4o",
+      "credential_ref": ""
+    }
+  ]
+}

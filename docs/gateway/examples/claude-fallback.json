@@ -1,0 +1,23 @@
+{
+  "name": "claude-fallback",
+  "model_alias": "claude",
+  "timeout_seconds": 60,
+  "max_attempts": 2,
+  "accepts": ["anthropic_messages", "anthropic_count_tokens"],
+  "targets": [
+    {
+      "id": "primary",
+      "transport": "native_http",
+      "provider": "anthropic",
+      "model": "claude-sonnet-4-6",
+      "credential_ref": ""
+    },
+    {
+      "id": "fallback",
+      "transport": "native_http",
+      "provider": "anthropic",
+      "model": "claude-haiku-4-5-20251001",
+      "credential_ref": ""
+    }
+  ]
+}
