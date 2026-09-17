@@ -113,6 +113,38 @@ async def test_publish_success_increments_counter(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_publish_timeout_returns_fast_without_raising(monkeypatch):
+    """P2 review fix — a stalled Redis must not hold up the publisher.
+    Publish is bounded by ``publish_timeout_seconds`` (default 500ms,
+    small in the test) and returns quickly on timeout with the failure
+    counter incremented."""
+    import time as _t
+    monkeypatch.setenv("INVALIDATION_BUS_ENABLED", "true")
+    _reset_bus()
+    from app.core.invalidation_bus import InvalidationBus
+
+    bus = InvalidationBus(publish_timeout_seconds=0.05)
+
+    async def _slow_publish(*_a, **_kw):
+        await asyncio.sleep(1.0)  # stalled Redis
+
+    fake_client = MagicMock()
+    fake_client.publish = _slow_publish
+    bus._client = fake_client
+
+    start = _t.monotonic()
+    await bus.publish("auth.revoked", "tok-x", 1)
+    elapsed = _t.monotonic() - start
+
+    assert elapsed < 0.5, (
+        f"publish took {elapsed*1000:.1f}ms — bounded timeout regressed"
+    )
+    stats = bus.stats()
+    assert stats["publish_failures"] == 1
+    assert stats["events_published"] == 0
+
+
+@pytest.mark.asyncio
 async def test_publish_failure_swallowed_and_counted(monkeypatch):
     """Publish failure MUST NOT raise to caller — consumers rely on
     the bounded-refresh path when the bus is unavailable."""

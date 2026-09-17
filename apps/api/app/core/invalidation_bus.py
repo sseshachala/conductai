@@ -74,11 +74,13 @@ class InvalidationBus:
         channel: str = _CHANNEL_DEFAULT,
         initial_backoff_seconds: float = 1.0,
         max_backoff_seconds: float = 30.0,
+        publish_timeout_seconds: float = 0.5,
     ) -> None:
         self._redis_url = redis_url or os.environ.get("REDIS_URL", "redis://localhost:6379")
         self._channel = channel
         self._initial_backoff = initial_backoff_seconds
         self._max_backoff = max_backoff_seconds
+        self._publish_timeout = publish_timeout_seconds
         self._client = None  # lazy — avoid connecting on import
         self._handlers: dict[str, list[EventHandler]] = {}
         self._sub_task: asyncio.Task | None = None
@@ -112,8 +114,22 @@ class InvalidationBus:
                 "ts": time.time(),
             })
             client = self._get_client()
-            await client.publish(self._channel, payload)
+            # Bounded wait: a stalled Redis must not hold up the
+            # caller. ``asyncio.wait_for`` cancels the pending publish
+            # if it doesn't complete inside the timeout.
+            await asyncio.wait_for(
+                client.publish(self._channel, payload),
+                timeout=self._publish_timeout,
+            )
             self._events_published += 1
+        except asyncio.TimeoutError:
+            self._publish_failures += 1
+            log.warning(
+                "invalidation_bus.publish_timeout",
+                kind=kind,
+                key=key,
+                timeout_seconds=self._publish_timeout,
+            )
         except Exception as e:  # noqa: BLE001
             self._publish_failures += 1
             log.warning(

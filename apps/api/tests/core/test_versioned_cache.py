@@ -78,6 +78,54 @@ async def test_min_version_rejects_older_cached_entry():
 
 
 @pytest.mark.asyncio
+async def test_fetched_value_below_min_version_raises_after_deadline():
+    """P1 review fix — a fetch that returns version < min_version must
+    NOT be returned to a caller that asked for the higher version.
+    Retry within bounded deadline; on expiry, raise VersionUnavailable.
+    """
+    from app.core.versioned_cache import VersionedCache, VersionUnavailable
+
+    async def _fetch(key: str):
+        return "old", 1  # never advances
+
+    cache = VersionedCache(
+        fetch=_fetch,
+        refresh_interval_seconds=60,
+        retry_backoff_seconds=0.01,
+    )
+    with pytest.raises(VersionUnavailable) as excinfo:
+        await cache.get("a", min_version=42, deadline_seconds=0.05)
+    assert excinfo.value.min_version == 42
+    assert excinfo.value.last_version == 1
+    assert excinfo.value.elapsed >= 0.05
+
+
+@pytest.mark.asyncio
+async def test_fetched_value_at_min_version_returns_immediately():
+    """Complement to the above — when the fetch catches up to the
+    requested min_version, the value is returned without further
+    retry."""
+    from app.core.versioned_cache import VersionedCache
+
+    call = 0
+
+    async def _fetch(key: str):
+        nonlocal call
+        call += 1
+        # First call returns version 5, next call returns version 42.
+        return "v", 5 if call == 1 else 42
+
+    cache = VersionedCache(
+        fetch=_fetch,
+        refresh_interval_seconds=60,
+        retry_backoff_seconds=0.01,
+    )
+    v = await cache.get("a", min_version=42, deadline_seconds=1.0)
+    assert v == "v"
+    assert call >= 2  # first fetch too old, second met the bar
+
+
+@pytest.mark.asyncio
 async def test_single_flight_only_one_fetch_per_key_race():
     """N concurrent callers on a cold key: only ONE fetch runs."""
     from app.core.versioned_cache import VersionedCache
@@ -167,6 +215,168 @@ async def test_missed_invalidation_eventually_recovers_via_refresh():
     await asyncio.sleep(0.1)
     v = await cache.get("a")
     assert v == "new", "bounded refresh should have caught up despite missed event"
+
+
+@pytest.mark.asyncio
+async def test_generation_fence_discards_racing_fetch():
+    """P1 review fix — an invalidate() that fires WHILE a fetch is in
+    progress must cause the fetch's result to be DISCARDED, not
+    stored + returned to subsequent readers.
+
+    Scenario: fetch starts → invalidate fires (fence bumps) → fetch
+    completes with stale value → cache must NOT store it → next get
+    triggers a fresh fetch.
+    """
+    from app.core.versioned_cache import VersionedCache
+
+    fetch_started = asyncio.Event()
+    let_fetch_finish = asyncio.Event()
+    fetch_count = 0
+    result = ("old-value", 1)
+
+    async def _fetch(key: str):
+        nonlocal fetch_count
+        fetch_count += 1
+        fetch_started.set()
+        await let_fetch_finish.wait()
+        return result
+
+    cache = VersionedCache(fetch=_fetch, refresh_interval_seconds=60)
+
+    async def _first_get():
+        return await cache.get("a")
+
+    # Kick off first get, which begins the fetch.
+    first_task = asyncio.create_task(_first_get())
+    await fetch_started.wait()
+    # Invalidate while fetch is in flight — bumps generation.
+    cache.invalidate("a")
+    # Advance the "truth" so a fresh fetch produces a different value.
+    result = ("new-value", 2)
+    # Let the racing fetch complete. It should discard.
+    let_fetch_finish.set()
+    first_result = await first_task
+    # The first caller may see the old value (they were already
+    # committed) OR the new one (if they retry); reviewer's actual
+    # requirement is that SUBSEQUENT reads don't serve the stale
+    # value.
+
+    # Reset for the second call — fresh event so we can control it.
+    fetch_started.clear()
+    let_fetch_finish.clear()
+
+    async def _second_get():
+        return await cache.get("a")
+
+    second_task = asyncio.create_task(_second_get())
+    await fetch_started.wait()  # a fresh fetch DID start (proof of discard)
+    let_fetch_finish.set()
+    second_result = await second_task
+    assert second_result == "new-value", (
+        "cache served the stale fetched value even though invalidation "
+        "fired mid-fetch — generation fence regressed"
+    )
+    assert cache.stats()["gen_fence_discards"] >= 1
+
+
+@pytest.mark.asyncio
+async def test_slow_fetch_does_not_extend_freshness_window():
+    """P1 review fix — ``fetched_at`` is measured from fetch START, not
+    completion. A 200ms fetch under a 100ms refresh interval must not
+    extend the freshness window past 100ms from START.
+    """
+    from app.core.versioned_cache import VersionedCache
+
+    async def _fetch(key: str):
+        await asyncio.sleep(0.2)  # slow fetch (200ms)
+        return "value", 1
+
+    cache = VersionedCache(fetch=_fetch, refresh_interval_seconds=0.1)
+    # First get: fetch takes 200ms; by the time it returns, the entry
+    # is already older than 100ms.
+    await cache.get("a")
+    # Immediately retrying should trigger a refetch because the
+    # freshness clock started before the first fetch completed.
+    calls_before = cache.stats()["misses"]
+    await cache.get("a")
+    calls_after = cache.stats()["misses"]
+    assert calls_after > calls_before, (
+        "freshness window was measured from fetch completion instead "
+        "of fetch start — slow fetch extended stale service"
+    )
+
+
+@pytest.mark.asyncio
+async def test_lock_table_cleaned_up_across_many_keys():
+    """P2 review fix — per-key locks must be reference-counted and
+    removed when the last holder/waiter releases. Otherwise a
+    workload with high key cardinality leaks locks.
+    """
+    from app.core.versioned_cache import VersionedCache
+
+    async def _fetch(key: str):
+        return f"v-{key}", 1
+
+    # Small cache — entry-table cap doesn't bound the lock table.
+    cache = VersionedCache(
+        fetch=_fetch,
+        refresh_interval_seconds=60,
+        max_entries=2,
+    )
+
+    for i in range(101):
+        await cache.get(f"key-{i}")
+
+    stats = cache.stats()
+    # Every completed get should have released its lock. Lock table
+    # should be empty (or 1, if a completion is still in flight).
+    assert stats["active_locks"] <= 1, (
+        f"lock table grew unboundedly — {stats['active_locks']} locks "
+        "retained after 101 sequential completed gets"
+    )
+    # Entry table is still bounded by max_entries.
+    assert stats["size"] <= stats["max"]
+
+
+@pytest.mark.asyncio
+async def test_lock_table_bounded_after_invalidations():
+    """Invalidations must not leave zombie locks behind."""
+    from app.core.versioned_cache import VersionedCache
+
+    async def _fetch(key: str):
+        return "v", 1
+
+    cache = VersionedCache(fetch=_fetch, refresh_interval_seconds=60)
+    for i in range(50):
+        await cache.get(f"key-{i}")
+        cache.invalidate(f"key-{i}")
+
+    # After each pair (get + invalidate), the lock should be gone.
+    assert cache.stats()["active_locks"] <= 1
+
+
+@pytest.mark.asyncio
+async def test_single_flight_still_works_with_lock_cleanup():
+    """Regression guard: the ref-count cleanup must not break
+    single-flight (multiple concurrent callers on cold key = 1 fetch).
+    """
+    from app.core.versioned_cache import VersionedCache
+
+    calls = 0
+    let_finish = asyncio.Event()
+
+    async def _fetch(key: str):
+        nonlocal calls
+        calls += 1
+        await let_finish.wait()
+        return "v", 1
+
+    cache = VersionedCache(fetch=_fetch, refresh_interval_seconds=60)
+    tasks = [asyncio.create_task(cache.get("a")) for _ in range(20)]
+    await asyncio.sleep(0.05)
+    assert calls == 1, "single-flight broken under refcount lock cleanup"
+    let_finish.set()
+    await asyncio.gather(*tasks)
 
 
 @pytest.mark.asyncio
