@@ -56,11 +56,11 @@ def _make_check(monkeypatch, fake_pd):
     class _FakeSession:
         def close(self): pass
     monkeypatch.setattr(
-        "app.modules.guard.routers.proxy.SessionLocal",
+        "app.core.database.SessionLocal",
         lambda: _FakeSession(),
     )
     monkeypatch.setattr(
-        "app.modules.guard.routers.proxy.set_workspace_rls",
+        "app.core.workspace_context.set_workspace_rls",
         lambda *a, **kw: None,
     )
     monkeypatch.setattr(

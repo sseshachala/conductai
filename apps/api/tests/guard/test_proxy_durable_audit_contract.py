@@ -330,34 +330,34 @@ def test_db_outage_returns_503_and_never_forwards_upstream():
             "app.modules.guard.gateway_lifecycle.insert_accepted",
             _insert_boom,
         ), patch(
-            "app.modules.guard.routers.proxy.get_provider_transport_registry",
+            "app.runtime.provider_transport.get_provider_transport_registry",
             return_value=_FakeRegistry(),
         ), patch(
-            "app.modules.guard.routers.proxy.resolve_agent_token",
+            "app.core.auth.resolve_agent_token",
             return_value=(workspace_id, "clerk_user_test"),
         ), patch(
-            "app.modules.guard.routers.proxy.set_workspace_rls",
+            "app.core.workspace_context.set_workspace_rls",
             lambda *a, **kw: None,
         ), patch(
-            "app.modules.guard.routers.proxy.SessionLocal",
+            "app.core.database.SessionLocal",
             lambda: db_mock,
         ), patch(
             "app.guard.policy.evaluate_composed",
             lambda ctx: _allow_decision,
         ), patch(
-            "app.modules.guard.routers.proxy._upstream_url",
+            "app.modules.guard.gateway_helpers._upstream_url",
             lambda db, ws, prov, env: "http://mock-upstream",
         ), patch(
-            "app.modules.guard.routers.proxy._upstream_api_key",
+            "app.modules.guard.gateway_helpers._upstream_api_key",
             lambda db, ws, env: None,
         ), patch(
-            "app.modules.guard.routers.proxy._vault_key",
+            "app.modules.guard.gateway_helpers._vault_key",
             lambda db, ws, prov, env: "sk-fake",
         ), patch(
-            "app.modules.guard.routers.proxy._flatten_prompt",
+            "app.guard.policy.flatten_prompt",
             lambda body: "hello",
         ), patch(
-            "app.modules.guard.routers.proxy._estimate_input_tokens",
+            "app.guard.audit._estimate_input_tokens",
             lambda body: 10,
         ):
             client = TestClient(app, raise_server_exceptions=False)
@@ -491,33 +491,33 @@ def test_forward_exception_stops_heartbeat_and_finalizes_error():
             "app.modules.guard.gateway_lifecycle.close_durable_row",
             _capture_close,
         ), patch(
-            "app.modules.guard.routers.proxy.get_provider_transport_registry",
+            "app.runtime.provider_transport.get_provider_transport_registry",
             return_value=_FakeRegistry(),
         ), patch(
-            "app.modules.guard.routers.proxy.resolve_agent_token",
+            "app.core.auth.resolve_agent_token",
             return_value=(workspace_id, "clerk_user_test"),
         ), patch(
-            "app.modules.guard.routers.proxy.set_workspace_rls",
+            "app.core.workspace_context.set_workspace_rls",
             lambda *a, **kw: None,
         ), patch(
-            "app.modules.guard.routers.proxy.SessionLocal",
+            "app.core.database.SessionLocal",
             lambda: db_mock,
         ), patch(
             "app.guard.policy.evaluate_composed", lambda ctx: _allow,
         ), patch(
-            "app.modules.guard.routers.proxy._upstream_url",
+            "app.modules.guard.gateway_helpers._upstream_url",
             lambda db, ws, prov, env: "http://mock-upstream",
         ), patch(
-            "app.modules.guard.routers.proxy._upstream_api_key",
+            "app.modules.guard.gateway_helpers._upstream_api_key",
             lambda db, ws, env: None,
         ), patch(
-            "app.modules.guard.routers.proxy._vault_key",
+            "app.modules.guard.gateway_helpers._vault_key",
             lambda db, ws, prov, env: "sk-fake",
         ), patch(
-            "app.modules.guard.routers.proxy._flatten_prompt",
+            "app.guard.policy.flatten_prompt",
             lambda body: "hello",
         ), patch(
-            "app.modules.guard.routers.proxy._estimate_input_tokens",
+            "app.guard.audit._estimate_input_tokens",
             lambda body: 10,
         ):
             client = TestClient(app, raise_server_exceptions=False)
