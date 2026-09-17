@@ -123,6 +123,14 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
     env:
       DATABASE_URL: postgresql://marshal:marshal@localhost:5432/marshal_test
       REDIS_URL: redis://localhost:6379
@@ -186,6 +194,9 @@ jobs:
       - name: Run Playwright
         run: npm run test:e2e
         working-directory: apps/web
+      - name: Dump API log on failure
+        if: failure()
+        run: tail -200 /tmp/api.log || true
       - name: Open failure issue
         if: failure() && github.event_name == 'schedule'
         env:
