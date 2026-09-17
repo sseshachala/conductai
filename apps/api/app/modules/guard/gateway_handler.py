@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import asyncio
 import time
+
+from starlette.concurrency import run_in_threadpool
 import uuid
 
 import structlog
@@ -96,8 +98,10 @@ async def handle_gateway_request(
     try:
         db = SessionLocal()
         try:
-            _auth_result = _resolve_gateway_auth(
-                request, db,
+            # PR 2 Commit 3 — auth runs in threadpool, owns its own db session.
+            _auth_result = await run_in_threadpool(
+                _resolve_gateway_auth,
+                request,
                 token=token,
                 internal_key=_internal_key,
                 needs_run_token_validation=_needs_run_token_validation,
@@ -110,6 +114,9 @@ async def handle_gateway_request(
             _is_internal = _auth_result.is_internal
             _agent_identity_id = _auth_result.agent_identity_id
             _agent_risk_tier = _auth_result.agent_risk_tier
+            # Auth used its own session; re-set RLS on the persistent db
+            # used by the rest of the request path.
+            set_workspace_rls(db, workspace_id)
 
             # PR 2 (#2056) admission control.
             from app.core.admission import AdmissionRefused as _AdmRefused
@@ -152,7 +159,10 @@ async def handle_gateway_request(
             # than fail-closed, so a partial rollout never surprises a
             # workspace that hasn't published a v2 profile yet.
 
-            model, _routing_meta = _apply_tier_resolution(db, workspace_id, provider, body)
+            # PR 2 Commit 3 — tier resolution touches DB via model_router; offload.
+            model, _routing_meta = await run_in_threadpool(
+                _apply_tier_resolution, db, workspace_id, provider, body,
+            )
             if operation != "inference":
                 _routing_meta = {
                     **(_routing_meta or {}),
@@ -386,9 +396,13 @@ async def handle_gateway_request(
             transport = None
             real_key = None
             if _v2_plan is None:
-                upstream = _upstream_url(db, workspace_id, provider, _environment_id)
-                _upstream_key = _upstream_api_key(db, workspace_id, _environment_id)
-                _vault_key_val = _vault_key(db, workspace_id, provider, _environment_id)
+                # PR 2 Commit 3 — three sequential DB round-trips run off the
+                # event loop in one bounded session.
+                from app.modules.guard.gateway_helpers import _resolve_upstream_credentials
+                upstream, _upstream_key, _vault_key_val = await run_in_threadpool(
+                    _resolve_upstream_credentials,
+                    workspace_id, provider, _environment_id,
+                )
                 transport = get_provider_transport_registry().for_provider(provider)
                 if canonical_profile:
                     from app.modules.guard.gateway_runtime import TransportResolver
@@ -642,11 +656,20 @@ async def handle_gateway_request(
                 and isinstance(_response, JSONResponse)
                 and _response.status_code < 400
             ):
-                _response = _apply_response_gate(
-                    _response, workspace_id=workspace_id, provider=provider, model=model,
-                    clerk_user_id=clerk_user_id, agent_identity_id=_agent_identity_id,
-                    agent_risk_tier=_agent_risk_tier,
-                    ai_tool=ai_tool,
+                # PR 2 Commit 3 — response gate policy eval hits DB; offload.
+                import functools as _ft
+                _response = await run_in_threadpool(
+                    _ft.partial(
+                        _apply_response_gate,
+                        _response,
+                        workspace_id=workspace_id,
+                        provider=provider,
+                        model=model,
+                        clerk_user_id=clerk_user_id,
+                        agent_identity_id=_agent_identity_id,
+                        agent_risk_tier=_agent_risk_tier,
+                        ai_tool=ai_tool,
+                    )
                 )
             # #1733 PR 5: response gate (streaming, buffered end-of-stream scan).
             elif (

@@ -39,6 +39,36 @@ class GatewayAuth:
 
 def _resolve_gateway_auth(
     request: Request,
+    *,
+    token: str | None,
+    internal_key: str,
+    needs_run_token_validation: bool,
+    needs_agent_validation: bool,
+) -> "GatewayAuth | JSONResponse":
+    """Resolves auth for a gateway request. Owns its own DB session — opens
+    at entry, closes in a finally regardless of exit path. Callers invoke
+    via ``run_in_threadpool`` so the event loop is not blocked during
+    the sync SQLAlchemy work.
+
+    Returns ``GatewayAuth`` on success. Returns a ``JSONResponse`` when
+    auth fails (401/400).
+    """
+    from app.core.database import SessionLocal as _SessionLocal
+    db = _SessionLocal()
+    try:
+        return _resolve_gateway_auth_inner(
+            request, db,
+            token=token,
+            internal_key=internal_key,
+            needs_run_token_validation=needs_run_token_validation,
+            needs_agent_validation=needs_agent_validation,
+        )
+    finally:
+        db.close()
+
+
+def _resolve_gateway_auth_inner(
+    request: Request,
     db: Session,
     *,
     token: str | None,
@@ -46,15 +76,9 @@ def _resolve_gateway_auth(
     needs_run_token_validation: bool,
     needs_agent_validation: bool,
 ) -> "GatewayAuth | JSONResponse":
-    """Resolves auth for a gateway request. Uses the provided db session —
-    caller owns lifecycle. Sets workspace RLS on success.
-
-    Returns ``GatewayAuth`` on success. Returns a ``JSONResponse`` when
-    auth fails (401/400) — caller should close the db and return it.
-
-    Lifted verbatim from ``handle_gateway_request`` (PR 2 of #2056).
-    Behavior parity — no logic change, just relocation.
-    """
+    """Auth resolution implementation. Uses caller-provided db. Kept as a
+    separate function so the session-owning wrapper stays a thin
+    open/close shell."""
     import hashlib as _hashlib
     import uuid as _uuid
     from datetime import datetime as _dt, timezone as _tz
@@ -508,6 +532,30 @@ def _upstream_api_key(db: Session, workspace_id: str, environment_id: str | None
     except Exception:
         pass
     return None
+
+
+def _resolve_upstream_credentials(
+    workspace_id: str,
+    provider: str,
+    environment_id: str | None,
+) -> tuple[str, str | None, str | None]:
+    """Combined upstream URL + API key + vault key resolution in one bounded
+    session. Called via ``run_in_threadpool`` from the gateway hot path so
+    three sequential DB round-trips run off the event loop.
+
+    Returns ``(upstream_url, upstream_api_key, vault_key)``.
+    """
+    from app.core.database import SessionLocal as _SessionLocal
+    from app.core.workspace_context import set_workspace_rls
+    db = _SessionLocal()
+    try:
+        set_workspace_rls(db, workspace_id)
+        upstream = _upstream_url(db, workspace_id, provider, environment_id)
+        api_key = _upstream_api_key(db, workspace_id, environment_id)
+        vault = _vault_key(db, workspace_id, provider, environment_id)
+        return upstream, api_key, vault
+    finally:
+        db.close()
 
 
 def _upstream_url(db: Session, workspace_id: str, provider: str, environment_id: str | None = None) -> str:
