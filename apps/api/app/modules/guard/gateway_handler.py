@@ -54,6 +54,7 @@ async def handle_gateway_request(
         _infer_ai_tool,
         _inject_guidance,
         _redact_body,
+        _resolve_gateway_auth,
         _upstream_api_key,
         _upstream_url,
         _vault_key,
@@ -85,91 +86,37 @@ async def handle_gateway_request(
     if not token and not _is_internal and not _needs_agent_validation and not _needs_run_token_validation:
         return _fail_closed(401, "Missing or malformed Conduct member token — run `conduct login`")
 
-    # 2. Resolve workspace + user
+    # PR 2 (#2056) admission state — kill switch: ADMISSION_ENABLED.
+    _admission_ticket = None
+    _admission_db_ok = False
+
+    # 2. Resolve workspace + user — auth logic extracted to gateway_helpers
+    # so admission (PR 2b) can wrap the whole post-auth body cleanly.
     db = SessionLocal()
     try:
-        if _needs_run_token_validation and not _is_internal:
-            import hashlib as _rt_hashlib
-            from app.modules.agent_identity.run_token_model import AgentRunToken as _AgentRunToken
-            from datetime import datetime, timezone
-            _hdr_ws = request.headers.get("x-conductai-workspace-id", "")
-            if not _hdr_ws:
-                return _fail_closed(400, "X-Conductai-Workspace-Id required for run token calls")
-            _token_hash = _rt_hashlib.sha256(_internal_key.encode()).hexdigest()
-            _now_rt = datetime.now(timezone.utc)
-            # Audit S04 — expires_at check. An abandoned or leaked run token
-            # can't authenticate past its bounded lifetime even if the run
-            # itself never got a chance to set invalidated_at.
-            _rt = db.query(_AgentRunToken).filter(
-                _AgentRunToken.token_hash == _token_hash,
-                _AgentRunToken.workspace_id == uuid.UUID(_hdr_ws),
-                _AgentRunToken.invalidated_at == None,  # noqa: E711
-                _AgentRunToken.expires_at > _now_rt,
-            ).first()
-            if not _rt:
-                return _fail_closed(401, "Run token not found, expired, or already invalidated")
-            _is_internal = True
-            if not _rt.first_used_at:
-                _rt.first_used_at = _now_rt
-                db.commit()
+        _auth_result = _resolve_gateway_auth(
+            request, db,
+            token=token,
+            internal_key=_internal_key,
+            needs_run_token_validation=_needs_run_token_validation,
+            needs_agent_validation=_needs_agent_validation,
+        )
+        if isinstance(_auth_result, JSONResponse):
+            return _auth_result
+        workspace_id = _auth_result.workspace_id
+        clerk_user_id = _auth_result.clerk_user_id
+        _is_internal = _auth_result.is_internal
+        _agent_identity_id = _auth_result.agent_identity_id
+        _agent_risk_tier = _auth_result.agent_risk_tier
 
-        if _needs_agent_validation and not _is_internal:
-            # Audit S04 — was an inline decrypt loop over every AgentIdentity
-            # in the workspace, missing the lifecycle_state and token_type
-            # checks that _resolve_agent_token already applies. Now shares
-            # one code path so deactivated / expired / external identities
-            # are rejected here just like they are at the member-token door.
-            _hdr_ws = request.headers.get("x-conductai-workspace-id", "")
-            if not _hdr_ws:
-                return _fail_closed(400, "X-Conductai-Workspace-Id required for agent identity calls")
-            from app.core.auth import _resolve_agent_token as _resolve_ai
-            from fastapi import HTTPException as _HTTPException
-            try:
-                _ai, _ = _resolve_ai(_internal_key, db)
-            except _HTTPException as _exc:
-                return _fail_closed(int(_exc.status_code), str(_exc.detail or "Agent Identity token not recognized"))
-            if str(_ai.workspace_id) != _hdr_ws:
-                return _fail_closed(401, "Agent Identity token does not belong to the requested workspace")
-            _is_internal = True
-            _agent_identity_id = _ai.id
-            _agent_risk_tier = getattr(_ai, "risk_tier", None)
-
-        if _is_internal:
-            workspace_id = request.headers.get("x-conductai-workspace-id", "")
-            if not workspace_id:
-                return _fail_closed(400, "X-Conductai-Workspace-Id required for internal proxy calls")
-            set_workspace_rls(db, workspace_id)
-            _internal_email = request.headers.get("x-conductai-user-email") or None
-            clerk_user_id = _internal_email or "system"
-            if _agent_identity_id:
-                from app.modules.agent_identity.models import AgentIdentity as _AgentIdentity
-                from datetime import datetime, timezone as _tz
-                _id_row = db.query(_AgentIdentity).filter(_AgentIdentity.id == _agent_identity_id).first()
-                if _id_row:
-                    _id_row.last_used_at = datetime.now(_tz.utc)
-                    db.commit()
-        else:
-            ident = resolve_agent_token(token, db)
-            if not ident:
-                if token_is_expired(token, db):
-                    return _fail_closed(401, "Conduct session expired — run `conduct login`")
-                return _fail_closed(401, "Conduct member token not recognized — run `conduct login`")
-            workspace_id, clerk_user_id = ident
-            set_workspace_rls(db, workspace_id)
-            # Best-effort risk_tier lookup for tier-gated policies. Legacy
-            # guard-mt-* member tokens have no identity row → None.
-            try:
-                from app.core.auth import resolve_agent_identity_row as _rair
-                _proxy_ai_row = _rair(token, db)
-                if _proxy_ai_row:
-                    _agent_risk_tier = getattr(_proxy_ai_row, "risk_tier", None)
-                    # Phase 0 of #1959 — this branch previously read risk_tier
-                    # off the identity row but never propagated the id. Every
-                    # external-token audit row therefore had agent_identity_id
-                    # NULL even though a matching identity was resolved.
-                    _agent_identity_id = getattr(_proxy_ai_row, "id", None) or _agent_identity_id
-            except Exception:
-                pass
+        # PR 2 (#2056) admission control.
+        from app.core.admission import AdmissionRefused as _AdmRefused
+        from app.core.admission import _acquire as _admission_acquire
+        try:
+            _admission_ticket = await _admission_acquire("gateway", workspace_id)
+        except _AdmRefused as _adm_e:
+            _adm_msg = f"Gateway overloaded ({_adm_e.scope} slot full) — retry after {int(_adm_e.retry_after_seconds)}s"
+            return _fail_closed(_adm_e.http_status, _adm_msg)
 
         # 3. Parse request body
         try:
@@ -475,8 +422,19 @@ async def handle_gateway_request(
                     f"No API key configured — add {provider.upper()}_API_KEY in Settings → Environments, "
                     f"or set LLM_UPSTREAM_API_KEY in Settings → Proxy.",
                 )
+        # Fall-through of the DB block — flag so finally does NOT release
+        # admission (the upstream block below still needs the slot).
+        _admission_db_ok = True
     finally:
         db.close()
+        # Early-return paths from the DB block leave _admission_db_ok False —
+        # release the slot here so it does not leak.
+        if _admission_ticket is not None and not _admission_db_ok:
+            try:
+                if not _admission_ticket.released:
+                    await _admission_ticket.release()
+            except Exception:
+                pass
 
     # 5.5 Redact secrets from body before forwarding — runs after policy eval so
     # credential-leak rules still fire first and can block.
@@ -932,6 +890,14 @@ async def handle_gateway_request(
         # before we ever wrapped), cancel here — idempotent.
         if not _v2_stream_wrapped:
             await _close_durable(_durable)
+        # PR 2 admission release. Idempotent — safe on normal and exception
+        # paths. Slot covers pre-stream work; streaming lifecycle beyond
+        # this point is a follow-up (_wrap_streaming_response.on_close).
+        if _admission_ticket is not None and not _admission_ticket.released:
+            try:
+                await _admission_ticket.release()
+            except Exception:
+                pass
 
     return _response
 
