@@ -30,6 +30,7 @@ they got from the fresh pointer read.
 """
 from __future__ import annotations
 
+import copy
 import os
 from collections import OrderedDict
 from threading import RLock
@@ -41,7 +42,9 @@ import structlog
 log = structlog.get_logger()
 
 
-def _env_int(name: str, default: int, *, minimum: int = 1) -> int:
+def _env_int(name: str, default: int, *, minimum: int = 0) -> int:
+    """Parse a pool-config env var. Defaults ``minimum=0`` so callers
+    can genuinely disable the cache with ``GATEWAY_REVISION_CACHE_MAX=0``."""
     raw = os.environ.get(name)
     if not raw:
         return default
@@ -70,16 +73,33 @@ class _RevisionLRU:
         self._evictions = 0
 
     def get(self, revision_id: UUID) -> Any | None:
+        # Zero-max = disabled; skip locking and never return anything.
+        if self._max <= 0:
+            with self._lock:
+                self._misses += 1
+            return None
         with self._lock:
             value = self._cache.get(revision_id)
             if value is not None:
                 self._cache.move_to_end(revision_id)
                 self._hits += 1
-                return value
+                # Deep-copy on retrieval so a caller mutating the returned
+                # object (e.g. ``profile.targets[0].model = ...``) does
+                # not corrupt the cached snapshot for subsequent readers.
+                # Pydantic ``extra="forbid"`` does not make fields
+                # immutable — only prohibits *new* fields.
+                return copy.deepcopy(value)
             self._misses += 1
             return None
 
     def put(self, revision_id: UUID, snapshot: Any) -> None:
+        # Zero-max = disabled; never populate.
+        if self._max <= 0:
+            return
+        # Deep-copy on insertion so a caller mutating the parsed
+        # snapshot AFTER put (before returning to the request path)
+        # does not silently corrupt what future callers see.
+        snapshot_copy = copy.deepcopy(snapshot)
         with self._lock:
             existing = self._cache.get(revision_id)
             if existing is not None:
@@ -89,7 +109,7 @@ class _RevisionLRU:
                 # instance for the same revision).
                 self._cache.move_to_end(revision_id)
                 return
-            self._cache[revision_id] = snapshot
+            self._cache[revision_id] = snapshot_copy
             while len(self._cache) > self._max:
                 # Evict LRU.
                 evicted_id, _ = self._cache.popitem(last=False)

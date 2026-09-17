@@ -145,6 +145,80 @@ def test_clear_resets_counters_and_entries():
     assert s["evictions"] == 0
 
 
+def test_cached_snapshot_is_deep_copy_on_get():
+    """P2 review fix — a caller mutating the returned object must not
+    corrupt the cached snapshot. Deep-copy on retrieval isolates each
+    caller from every other."""
+    from app.modules.guard.gateway_revision_cache import get, put
+    _reset()
+
+    class _Target:
+        def __init__(self, model): self.model = model
+
+    class _Snapshot:
+        def __init__(self):
+            self.targets = [_Target("claude-sonnet"), _Target("gpt-4o")]
+            self.provider_options = {"temperature": 0.5}
+
+    rid = uuid4()
+    put(rid, _Snapshot())
+
+    # First caller mutates.
+    first = get(rid)
+    first.targets[0].model = "MUTATED-BY-CALLER-A"
+    first.provider_options["temperature"] = 0.99
+
+    # Second caller must see the original values.
+    second = get(rid)
+    assert second.targets[0].model == "claude-sonnet", (
+        "cache leaked caller A's mutation — snapshots are being shared. "
+        "Deep-copy on retrieval regressed."
+    )
+    assert second.provider_options["temperature"] == 0.5
+
+
+def test_cached_snapshot_is_deep_copy_on_put():
+    """A caller that mutates the snapshot AFTER calling put() must
+    not corrupt what subsequent callers see."""
+    from app.modules.guard.gateway_revision_cache import get, put
+    _reset()
+
+    class _Target:
+        def __init__(self, model): self.model = model
+
+    class _Snapshot:
+        def __init__(self, m): self.targets = [_Target(m)]
+
+    rid = uuid4()
+    snap = _Snapshot("original")
+    put(rid, snap)
+    # Mutate the caller's copy AFTER put.
+    snap.targets[0].model = "post-put mutation"
+
+    retrieved = get(rid)
+    assert retrieved.targets[0].model == "original", (
+        "cache stored a reference to the caller's snapshot instead of a "
+        "deep copy — post-put mutation leaked into the cache."
+    )
+
+
+def test_zero_max_disables_cache_entirely():
+    """Operational correction — ``GATEWAY_REVISION_CACHE_MAX=0`` must
+    be a genuine bypass. ``max=1`` retains one hot revision indefinitely
+    (not a bypass); ``max=0`` must never store or return anything."""
+    from app.modules.guard.gateway_revision_cache import _CACHE, get, put, stats
+    _reset()
+    _CACHE._max = 0
+
+    rid = uuid4()
+    put(rid, {"data": "x"})
+    assert get(rid) is None, "max=0 must not store or serve entries"
+    s = stats()
+    assert s["size"] == 0
+    # Two misses (put counts none; two gets returned None).
+    assert s["hits"] == 0
+
+
 def test_env_var_controls_max_size(monkeypatch):
     """GATEWAY_REVISION_CACHE_MAX env var caps the LRU. Reload the
     module to pick up the value at construction time.
