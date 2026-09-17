@@ -20,12 +20,9 @@ subscribes to:
 """
 from __future__ import annotations
 
-import asyncio
 import hashlib
 
-import structlog
-
-log = structlog.get_logger()
+from app.core.bus_publish import fire as _fire
 
 
 def _fingerprint(token: str) -> str:
@@ -33,26 +30,6 @@ def _fingerprint(token: str) -> str:
     side computes the fingerprint from the raw token being revoked;
     consumer side compares against its stored fingerprints."""
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
-
-
-def _fire(kind: str, key: str, version: int = 0) -> None:
-    """Publish to the invalidation bus without awaiting. Safe to call
-    from sync request handlers — schedules the publish on the running
-    event loop as a fire-and-forget task.
-
-    If no loop is running (rare — background workers) this is a no-op;
-    the cache falls back to its bounded refresh."""
-    try:
-        from app.core.invalidation_bus import get_bus
-        bus = get_bus()
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            log.debug("auth_events.no_running_loop", kind=kind, key=key)
-            return
-        loop.create_task(bus.publish(kind, key, version))
-    except Exception as e:  # noqa: BLE001
-        log.warning("auth_events.publish_scheduling_failed", kind=kind, err=str(e))
 
 
 def publish_token_revoked(raw_token: str) -> None:
