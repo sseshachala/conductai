@@ -1830,7 +1830,7 @@ def test_trigger(
     try:
         import uuid as _uuid
         from app.modules.guard.policy_engine import compute_policy
-        from app.modules.guard.routers.proxy import _is_proxy_rule
+        from app.guard.policy import _is_proxy_rule
         _rules = compute_policy(db, _uuid.UUID(workspace_id), "proxy")
         _input_text = str(workflow_id)
         for _r in _rules:
