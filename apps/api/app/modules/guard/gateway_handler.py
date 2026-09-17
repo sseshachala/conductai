@@ -53,6 +53,7 @@ async def handle_gateway_request(
     from app.modules.guard.gateway_helpers import (
         _apply_response_gate,
         _apply_tier_resolution,
+        _apply_tier_resolution_owned,
         _extract_member_token,
         _infer_ai_tool,
         _inject_guidance,
@@ -96,381 +97,400 @@ async def handle_gateway_request(
     # 2. Resolve workspace + user — auth logic extracted to gateway_helpers
     # so admission (PR 2b) can wrap the whole post-auth body cleanly.
     try:
-        db = SessionLocal()
+        # PR 3 — no persistent DB session on the handler. Every helper
+        # opens+uses+closes its own session inside a threadpool worker.
+        # Auth runs first and returns plain values.
+        _auth_result = await run_in_threadpool(
+            _resolve_gateway_auth,
+            request,
+            token=token,
+            internal_key=_internal_key,
+            needs_run_token_validation=_needs_run_token_validation,
+            needs_agent_validation=_needs_agent_validation,
+        )
+        if isinstance(_auth_result, JSONResponse):
+            return _auth_result
+        workspace_id = _auth_result.workspace_id
+        clerk_user_id = _auth_result.clerk_user_id
+        _is_internal = _auth_result.is_internal
+        _agent_identity_id = _auth_result.agent_identity_id
+        _agent_risk_tier = _auth_result.agent_risk_tier
+        # Admission acquire — immediately after auth, before any further
+        # DB work. Overload rejected fast without checking out a
+        # connection.
+        from app.core.admission import AdmissionRefused as _AdmRefused
+        from app.core.admission import _acquire as _admission_acquire
         try:
-            # PR 2 Commit 3 — auth runs in threadpool, owns its own db session.
-            _auth_result = await run_in_threadpool(
-                _resolve_gateway_auth,
-                request,
-                token=token,
-                internal_key=_internal_key,
-                needs_run_token_validation=_needs_run_token_validation,
-                needs_agent_validation=_needs_agent_validation,
-            )
-            if isinstance(_auth_result, JSONResponse):
-                return _auth_result
-            workspace_id = _auth_result.workspace_id
-            clerk_user_id = _auth_result.clerk_user_id
-            _is_internal = _auth_result.is_internal
-            _agent_identity_id = _auth_result.agent_identity_id
-            _agent_risk_tier = _auth_result.agent_risk_tier
-            # PR 2 review fix — admission acquire happens IMMEDIATELY after
-            # auth so an overloaded gateway rejects the request before any
-            # further DB work touches the event loop. Previously the RLS set
-            # ran a sync SQL execute on the event loop before this check.
-            from app.core.admission import AdmissionRefused as _AdmRefused
-            from app.core.admission import _acquire as _admission_acquire
-            try:
-                _admission_ticket = await _admission_acquire("gateway", workspace_id)
-            except _AdmRefused as _adm_e:
-                return JSONResponse(
-                    status_code=_adm_e.http_status,
-                    content={
-                        "error": {
-                            "type": "conduct_gateway_admission_refused",
-                            "message": f"Gateway overloaded ({_adm_e.scope} slot full)",
-                            "scope": _adm_e.scope,
-                        }
-                    },
-                    headers={"Retry-After": str(int(_adm_e.retry_after_seconds))},
-                )
-
-            # RLS on the shared session runs off the event loop so it cannot
-            # block. The shared session itself is being retired — remaining
-            # DB ops in this block are offloaded one by one.
-            await run_in_threadpool(set_workspace_rls, db, workspace_id)
-
-            # 3. Parse request body
-            try:
-                body = await request.json()
-            except Exception:
-                return _fail_closed(400, "Body must be valid JSON")
-
-            # #2004 Phase 1 — v2 execution wire-in. We're INSIDE the request
-            # lifecycle here: Guard policy hasn't run yet, durable audit
-            # hasn't opened, response gate hasn't attached. The v2 fork
-            # deliberately does NOT short-circuit any of those; it only
-            # replaces the ``transport.forward`` step further down. Every
-            # v1 gate below (policy eval, rate limit, redaction, guidance
-            # injection, durable audit open/close, response gate) runs
-            # identically for a v2-routed request.
-            #
-            # Resolution + credential pre-fetch happen in this DB block; the
-            # coordinator call happens later, outside the DB block, using
-            # a resolver closure over the pre-fetched keys. Flag stays OFF
-            # by default; a missing binding falls through to v1 rather
-            # than fail-closed, so a partial rollout never surprises a
-            # workspace that hasn't published a v2 profile yet.
-
-            # PR 2 Commit 3 — tier resolution touches DB via model_router; offload.
-            model, _routing_meta = await run_in_threadpool(
-                _apply_tier_resolution, db, workspace_id, provider, body,
-            )
-            if operation != "inference":
-                _routing_meta = {
-                    **(_routing_meta or {}),
-                    "operation": operation,
-                    "billable": False,
-                }
-
-            # #2004 Phase 1 — v2 lookup + credential pre-fetch. Runs while
-            # the DB session is still open; if a binding matches, we hand
-            # the coordinator a pre-resolved credential map so the forward
-            # step doesn't need to reach back into the DB. A None plan means
-            # v1 handles this request as before.
-            # v3 schema (#2007 follow-up): resolve by cond_code parsed out
-            # of the client-sent ``model:`` field. Environment binding is
-            # gone; the vault ref inside the target's credential_ref
-            # carries the env. Format expected: ``cond-<8chars>-<alias>``.
-            # Cond-prefixed identifier detection runs REGARDLESS of the flag.
-            # A client that sent `cond-<code>-<alias>` explicitly asked for
-            # a v2 profile; silently routing them via v1 when the flag is
-            # off would misrepresent which profile served the traffic.
-            #
-            # PR 3 canary: the flag is now per-workspace via
-            # ``gateway_profile_v2_enabled_for(workspace_id)`` — allowlist +
-            # pct bucketing on top of the global kill switch. Deterministic
-            # bucketing means a workspace never oscillates between v1 and v2
-            # mid-session for a given rollout pct.
-            _v2_plan = None
-            _v2_enabled = settings.gateway_profile_v2_enabled_for(workspace_id)
-            _cond_code = _extract_cond_code(body.get("model"))
-            if _cond_code is not None and not _v2_enabled:
-                from fastapi import HTTPException as _HTTPException
-                raise _HTTPException(
-                    status_code=501,
-                    detail=(
-                        f"Gateway Profile v2 (cond_code {_cond_code!r}) is not "
-                        "enabled for this workspace. Use a v1 model name or "
-                        "ask ops to enable v2."
-                    ),
-                )
-            if _v2_enabled:
-                if _cond_code is not None:
-                    # P1 review fix — v2 plan build (profile + credential
-                    # resolution) offloaded to threadpool with its own session.
-                    # Was the primary latency bottleneck on the v2 path.
-                    _v2_plan = await run_in_threadpool(
-                        _build_v2_plan_owned,
-                        workspace_id=workspace_id,
-                        cond_code=_cond_code,
-                        provider=provider,
-                        upstream_path=upstream_path,
-                        body=body,
-                    )
-                    if _v2_plan is not None:
-                        _routing_meta = {
-                            **(_routing_meta or {}),
-                            "gateway_version": "v2",
-                            "cond_code": _cond_code,
-                            "revision_id": str(_v2_plan.resolved.revision_id),
-                            "v2_operation": _v2_plan.operation,
-                        }
-            if _routing_meta:
-                log.info(
-                    "proxy.tier_resolved",
-                    workspace_id=workspace_id,
-                    provider=provider,
-                    tier_form=_routing_meta.get("tier_form"),
-                    resolved_model=model,
-                    reason=_routing_meta.get("reason"),
-                )
-            ai_tool = request.headers.get("x-conduct-ai-tool") or _infer_ai_tool(request)
-
-            # 4a. Resolve user email for audit rows — offloaded to threadpool
-            # with an own-session helper (P1 review fix, replaces sync
-            # ``db.query`` on the event loop that used the shared session).
-            from app.modules.guard.gateway_helpers import _lookup_user_email as _lookup_user_email_fn
-            _user_email = await run_in_threadpool(
-                _lookup_user_email_fn, workspace_id, clerk_user_id,
+            _admission_ticket = await _admission_acquire("gateway", workspace_id)
+        except _AdmRefused as _adm_e:
+            return JSONResponse(
+                status_code=_adm_e.http_status,
+                content={
+                    "error": {
+                        "type": "conduct_gateway_admission_refused",
+                        "message": f"Gateway overloaded ({_adm_e.scope} slot full)",
+                        "scope": _adm_e.scope,
+                    }
+                },
+                headers={"Retry-After": str(int(_adm_e.retry_after_seconds))},
             )
 
-            # 4b. Run context from brain block headers (workflow runs only)
-            _run_id = request.headers.get("x-conductai-run-id") or None
-            _workflow = request.headers.get("x-conductai-workflow") or None
-            _workflow_id = request.headers.get("x-conductai-workflow-id") or None
-            _environment_id = request.headers.get("x-conductai-environment-id") or None
-            # #1959 Phase 0 note: Flight Recorder session correlation currently
-            # requires clients to send X-Conduct-Session-Id. Codex Desktop's
-            # config.toml does not populate it today. Without this header the
-            # audit row lands with hook_session_id=NULL; do NOT synthesize one
-            # from timestamps or client IP — attribution has to be honest.
-            # Follow-up: signed session claims via Agent Identity (tracked
-            # alongside #1968) will make this observable per-request.
-            _hook_session_id = request.headers.get("x-conduct-session-id") or None
+        # 3. Parse request body
+        try:
+            body = await request.json()
+        except Exception:
+            return _fail_closed(400, "Body must be valid JSON")
 
-            # #1712 Track 1 — trial-plan lookup before policy eval so a BLOCK
-            # response can carry an anonymous receipt URL. Cheap indexed read;
-            # any failure falls back to workspace-only receipt.
-            #
-            # `is_trial` is TRUE only when the workspace is on the seed trial
-            # plan AND has no owner attached — i.e. the anonymous curl-install
-            # flow. Trials with an email/owner (Option A install, existing Try
-            # page signup) get the workspace URL because the owner has a real
-            # account to view it under, and we don't want block prompts to
-            # default to a publicly-shareable link.
-            from app.modules.guard.trial_seed import TRIAL_PLAN as _TRIAL_PLAN
-            from app.modules.guard.gateway_helpers import _lookup_workspace_trial as _lookup_workspace_trial_fn
-            _is_trial = False
-            # P1 review fix — trial lookup offloaded to threadpool with an
-            # own-session helper. Was a sync db.execute on the event loop.
-            try:
-                _ws_plan, _ws_owner = await run_in_threadpool(
-                    _lookup_workspace_trial_fn, workspace_id,
-                )
-                _row = (
-                    type("_Row", (), {"plan": _ws_plan, "owner_id": _ws_owner})()
-                    if _ws_plan is not None else None
-                )
-                if _row is not None:
-                    _is_trial = (_row.plan == _TRIAL_PLAN and _row.owner_id is None)
-            except Exception:
-                pass
+        # #2004 Phase 1 — v2 execution wire-in. We're INSIDE the request
+        # lifecycle here: Guard policy hasn't run yet, durable audit
+        # hasn't opened, response gate hasn't attached. The v2 fork
+        # deliberately does NOT short-circuit any of those; it only
+        # replaces the ``transport.forward`` step further down. Every
+        # v1 gate below (policy eval, rate limit, redaction, guidance
+        # injection, durable audit open/close, response gate) runs
+        # identically for a v2-routed request.
+        #
+        # Resolution + credential pre-fetch happen in this DB block; the
+        # coordinator call happens later, outside the DB block, using
+        # a resolver closure over the pre-fetched keys. Flag stays OFF
+        # by default; a missing binding falls through to v1 rather
+        # than fail-closed, so a partial rollout never surprises a
+        # workspace that hasn't published a v2 profile yet.
 
-            # 4c. Pre-call Guard policy evaluation — composed engine (#1225 Phase 4)
-            # P1 review fix — offloaded to threadpool with an owned session
-            # (was sync DB-heavy eval on the event loop).
-            prompt_summary = _flatten_prompt(body)[:200]
-
-            def _eval_prompt_policy_owned():
-                from app.core.database import SessionLocal as _SL
-                from app.core.workspace_context import set_workspace_rls
-                from app.guard.policy import evaluate_composed as _eval_composed
-                from app.guard.policy_types import PolicyContext as _PolicyContext
-                _db_local = _SL()
-                try:
-                    set_workspace_rls(_db_local, workspace_id)
-                    _ctx = _PolicyContext(
-                        workspace_id=workspace_id,
-                        clerk_user_id=clerk_user_id,
-                        agent_identity_id=str(_agent_identity_id) if _agent_identity_id else None,
-                        provider=provider,
-                        model=model,
-                        body=body,
-                        input_tokens=_estimate_input_tokens(body),
-                        db=_db_local,
-                        gate="prompt",
-                        risk_tier=_agent_risk_tier,
-                        ai_tool=ai_tool or None,
-                    )
-                    return _eval_composed(_ctx)
-                finally:
-                    _db_local.close()
-
-            _pd = await run_in_threadpool(_eval_prompt_policy_owned)
-            decision = _pd.extras.get("raw") or {
-                "action": _pd.action.value,
-                "rule_id": _pd.rule_id,
-                "message": _pd.reason,
-                "matched_rules": _pd.matched_rules,
-                "defense_score": _pd.defense_score,
-                "inject_guidance": _pd.inject_guidance,
-                "guidance": _pd.guidance,
-                "rule": _pd.extras.get("rule"),
+        # PR 2 Commit 3 — tier resolution touches DB via model_router; offload.
+        model, _routing_meta = await run_in_threadpool(
+            _apply_tier_resolution_owned, workspace_id, provider, body,
+        )
+        if operation != "inference":
+            _routing_meta = {
+                **(_routing_meta or {}),
+                "operation": operation,
+                "billable": False,
             }
-            _action = _pd.action.value
-            _guidance_text = _pd.guidance if _pd.inject_guidance else None
 
-            if _pd.blocks:
-                from app.modules.guard.routers._proxy_helpers import render_block as _render_block
-                return _render_block(
-                    _pd, background, workspace_id, clerk_user_id, ai_tool, provider,
-                    model, body, prompt_summary, _user_email, _run_id, _workflow,
-                    _workflow_id, _hook_session_id, started, _record_audit, _fail_closed,
-                    is_trial=_is_trial,
-                )
-
-            if _pd.needs_approval:
-                from app.modules.guard.routers._proxy_helpers import render_approval as _render_approval
-                return _render_approval(
-                    _pd, background, workspace_id, clerk_user_id, ai_tool, provider,
-                    model, body, prompt_summary, _user_email, _run_id, _workflow,
-                    _workflow_id, _hook_session_id, started, _record_audit,
-                )
-
-            # Map internal action to audit decision string
-            _audit_decision = "warned" if _action == "WARN" else "allowed"
-            _audit_rule_id  = decision["rule_id"] if _action == "WARN" else None
-
-            def _record_failure(status: int, message: str, *, rule_id: str | None = None) -> None:
-                background.add_task(
-                    _record_audit,
-                    workspace_id, clerk_user_id, ai_tool, provider, model,
-                    "blocked" if status in (403, 429) else _audit_decision,
-                    rule_id or _audit_rule_id,
-                    int((time.monotonic() - started) * 1000),
-                    body=body, response_bytes=None, prompt_summary=prompt_summary,
-                    user_email=_user_email, conductai_run_id=_run_id,
-                    conductai_workflow=_workflow, conductai_workflow_id=_workflow_id,
-                    hook_session_id=_hook_session_id, routing_meta=_routing_meta,
-                    execution_status="error", result_summary=f"HTTP {status}: {message}"[:500],
-                    agent_identity_id=str(_agent_identity_id) if _agent_identity_id else None,
-                    route=request.url.path,
-                )
-
-            # 4d. Per-key RPM/TPM rate limiting (#980, #1587 E1). Fires for
-            # vault-key + trial-key + platform-key traffic — enforcement is
-            # opt-in per workspace via guard_rate_limits rows. If no row
-            # exists, check_rate_limit is a cheap no-op (early return in the
-            # module). Redis outage fails open by design.
-            from app.modules.guard.rate_limit import check_rate_limit as _check_rate_limit
-            _rate = _check_rate_limit(
-                db,
-                workspace_id=workspace_id,
-                agent_identity_id=str(_agent_identity_id) if _agent_identity_id else None,
-                input_tokens=_estimate_input_tokens(body),
-                # Production Gateway is fail-closed; local/test environments keep
-                # the historical fail-open behavior when Redis is intentionally
-                # absent.
-                fail_closed=canonical_profile and settings.environment == "production",
+        # #2004 Phase 1 — v2 lookup + credential pre-fetch. Runs while
+        # the DB session is still open; if a binding matches, we hand
+        # the coordinator a pre-resolved credential map so the forward
+        # step doesn't need to reach back into the DB. A None plan means
+        # v1 handles this request as before.
+        # v3 schema (#2007 follow-up): resolve by cond_code parsed out
+        # of the client-sent ``model:`` field. Environment binding is
+        # gone; the vault ref inside the target's credential_ref
+        # carries the env. Format expected: ``cond-<8chars>-<alias>``.
+        # Cond-prefixed identifier detection runs REGARDLESS of the flag.
+        # A client that sent `cond-<code>-<alias>` explicitly asked for
+        # a v2 profile; silently routing them via v1 when the flag is
+        # off would misrepresent which profile served the traffic.
+        #
+        # PR 3 canary: the flag is now per-workspace via
+        # ``gateway_profile_v2_enabled_for(workspace_id)`` — allowlist +
+        # pct bucketing on top of the global kill switch. Deterministic
+        # bucketing means a workspace never oscillates between v1 and v2
+        # mid-session for a given rollout pct.
+        _v2_plan = None
+        _v2_enabled = settings.gateway_profile_v2_enabled_for(workspace_id)
+        _cond_code = _extract_cond_code(body.get("model"))
+        if _cond_code is not None and not _v2_enabled:
+            from fastapi import HTTPException as _HTTPException
+            raise _HTTPException(
+                status_code=501,
+                detail=(
+                    f"Gateway Profile v2 (cond_code {_cond_code!r}) is not "
+                    "enabled for this workspace. Use a v1 model name or "
+                    "ask ops to enable v2."
+                ),
             )
-            if _rate.limited:
-                log.info(
-                    "guard.proxy.rate_limited",
+        if _v2_enabled:
+            if _cond_code is not None:
+                # P1 review fix — v2 plan build (profile + credential
+                # resolution) offloaded to threadpool with its own session.
+                # Was the primary latency bottleneck on the v2 path.
+                _v2_plan = await run_in_threadpool(
+                    _build_v2_plan_owned,
                     workspace_id=workspace_id,
-                    scope=_rate.scope,
-                    metric=_rate.metric,
-                    limit=_rate.limit,
-                    current=_rate.current,
+                    cond_code=_cond_code,
+                    provider=provider,
+                    upstream_path=upstream_path,
+                    body=body,
                 )
-                _record_failure(429, _rate.reason, rule_id="rate-limit")
-                return _fail_closed(429, _rate.reason)
+                if _v2_plan is not None:
+                    _routing_meta = {
+                        **(_routing_meta or {}),
+                        "gateway_version": "v2",
+                        "cond_code": _cond_code,
+                        "revision_id": str(_v2_plan.resolved.revision_id),
+                        "v2_operation": _v2_plan.operation,
+                    }
+        if _routing_meta:
+            log.info(
+                "proxy.tier_resolved",
+                workspace_id=workspace_id,
+                provider=provider,
+                tier_form=_routing_meta.get("tier_form"),
+                resolved_model=model,
+                reason=_routing_meta.get("reason"),
+            )
+        ai_tool = request.headers.get("x-conduct-ai-tool") or _infer_ai_tool(request)
 
-            # 5. Vault lookup — for BYO gateways: upstream_key authenticates with the gateway,
-            # vault_key is the real vendor key the gateway forwards to Anthropic/OpenAI.
-            #
-            # X3 — legacy credential resolution is v1-only. v2 targets
-            # carry their own ``credential_ref`` pointing at Vault; the
-            # resolver was built in step 4 (``_build_v2_plan``). Running
-            # this block for v2 traffic was dead weight AND actively
-            # broke v2-only workspaces: if a workspace never provisioned
-            # a v1 ``ANTHROPIC_API_KEY`` / ``OPENAI_API_KEY`` but did
-            # publish a v2 profile with valid Vault refs, the 503 below
-            # fired before ``_execute_v2`` ever ran. Skip the whole block
-            # when ``_v2_plan`` is in play.
-            upstream = None
-            _upstream_key = None
-            _vault_key_val = None
-            transport = None
-            real_key = None
-            if _v2_plan is None:
-                # PR 2 Commit 3 — three sequential DB round-trips run off the
-                # event loop in one bounded session.
-                from app.modules.guard.gateway_helpers import _resolve_upstream_credentials
-                upstream, _upstream_key, _vault_key_val = await run_in_threadpool(
-                    _resolve_upstream_credentials,
-                    workspace_id, provider, _environment_id,
+        # 4a. Resolve user email for audit rows — offloaded to threadpool
+        # with an own-session helper (P1 review fix, replaces sync
+        # ``db.query`` on the event loop that used the shared session).
+        from app.modules.guard.gateway_helpers import _lookup_user_email as _lookup_user_email_fn
+        _user_email = await run_in_threadpool(
+            _lookup_user_email_fn, workspace_id, clerk_user_id,
+        )
+
+        # 4b. Run context from brain block headers (workflow runs only)
+        _run_id = request.headers.get("x-conductai-run-id") or None
+        _workflow = request.headers.get("x-conductai-workflow") or None
+        _workflow_id = request.headers.get("x-conductai-workflow-id") or None
+        _environment_id = request.headers.get("x-conductai-environment-id") or None
+        # #1959 Phase 0 note: Flight Recorder session correlation currently
+        # requires clients to send X-Conduct-Session-Id. Codex Desktop's
+        # config.toml does not populate it today. Without this header the
+        # audit row lands with hook_session_id=NULL; do NOT synthesize one
+        # from timestamps or client IP — attribution has to be honest.
+        # Follow-up: signed session claims via Agent Identity (tracked
+        # alongside #1968) will make this observable per-request.
+        _hook_session_id = request.headers.get("x-conduct-session-id") or None
+
+        # #1712 Track 1 — trial-plan lookup before policy eval so a BLOCK
+        # response can carry an anonymous receipt URL. Cheap indexed read;
+        # any failure falls back to workspace-only receipt.
+        #
+        # `is_trial` is TRUE only when the workspace is on the seed trial
+        # plan AND has no owner attached — i.e. the anonymous curl-install
+        # flow. Trials with an email/owner (Option A install, existing Try
+        # page signup) get the workspace URL because the owner has a real
+        # account to view it under, and we don't want block prompts to
+        # default to a publicly-shareable link.
+        from app.modules.guard.trial_seed import TRIAL_PLAN as _TRIAL_PLAN
+        from app.modules.guard.gateway_helpers import _lookup_workspace_trial as _lookup_workspace_trial_fn
+        _is_trial = False
+        # P1 review fix — trial lookup offloaded to threadpool with an
+        # own-session helper. Was a sync db.execute on the event loop.
+        try:
+            _ws_plan, _ws_owner = await run_in_threadpool(
+                _lookup_workspace_trial_fn, workspace_id,
+            )
+            _row = (
+                type("_Row", (), {"plan": _ws_plan, "owner_id": _ws_owner})()
+                if _ws_plan is not None else None
+            )
+            if _row is not None:
+                _is_trial = (_row.plan == _TRIAL_PLAN and _row.owner_id is None)
+        except Exception:
+            pass
+
+        # 4c. Pre-call Guard policy evaluation — composed engine (#1225 Phase 4)
+        # P1 review fix — offloaded to threadpool with an owned session
+        # (was sync DB-heavy eval on the event loop).
+        prompt_summary = _flatten_prompt(body)[:200]
+
+        def _eval_prompt_policy_owned():
+            from app.core.database import SessionLocal as _SL
+            from app.core.workspace_context import set_workspace_rls
+            from app.guard.policy import evaluate_composed as _eval_composed
+            from app.guard.policy_types import PolicyContext as _PolicyContext
+            _db_local = _SL()
+            try:
+                set_workspace_rls(_db_local, workspace_id)
+                _ctx = _PolicyContext(
+                    workspace_id=workspace_id,
+                    clerk_user_id=clerk_user_id,
+                    agent_identity_id=str(_agent_identity_id) if _agent_identity_id else None,
+                    provider=provider,
+                    model=model,
+                    body=body,
+                    input_tokens=_estimate_input_tokens(body),
+                    db=_db_local,
+                    gate="prompt",
+                    risk_tier=_agent_risk_tier,
+                    ai_tool=ai_tool or None,
                 )
-                transport = get_provider_transport_registry().for_provider(provider)
-                if canonical_profile:
-                    from app.modules.guard.gateway_runtime import TransportResolver
+                return _eval_composed(_ctx)
+            finally:
+                _db_local.close()
 
-                    profile_runtime = TransportResolver().resolve(
-                        db, workspace_id, provider, _environment_id,
-                    )
-                    if profile_runtime:
-                        upstream = profile_runtime.upstream_url or upstream
-                        _upstream_key = profile_runtime.api_key or _upstream_key
-                        transport = profile_runtime.transport
-                        if profile_runtime.profile.provider == "litellm":
-                            _vault_key_val = None
-                        real_key = _upstream_key or _vault_key_val
-                    else:
-                        real_key = _upstream_key or _vault_key_val
+        _pd = await run_in_threadpool(_eval_prompt_policy_owned)
+        decision = _pd.extras.get("raw") or {
+            "action": _pd.action.value,
+            "rule_id": _pd.rule_id,
+            "message": _pd.reason,
+            "matched_rules": _pd.matched_rules,
+            "defense_score": _pd.defense_score,
+            "inject_guidance": _pd.inject_guidance,
+            "guidance": _pd.guidance,
+            "rule": _pd.extras.get("rule"),
+        }
+        _action = _pd.action.value
+        _guidance_text = _pd.guidance if _pd.inject_guidance else None
+
+        if _pd.blocks:
+            from app.modules.guard.routers._proxy_helpers import render_block as _render_block
+            return _render_block(
+                _pd, background, workspace_id, clerk_user_id, ai_tool, provider,
+                model, body, prompt_summary, _user_email, _run_id, _workflow,
+                _workflow_id, _hook_session_id, started, _record_audit, _fail_closed,
+                is_trial=_is_trial,
+            )
+
+        if _pd.needs_approval:
+            from app.modules.guard.routers._proxy_helpers import render_approval as _render_approval
+            return _render_approval(
+                _pd, background, workspace_id, clerk_user_id, ai_tool, provider,
+                model, body, prompt_summary, _user_email, _run_id, _workflow,
+                _workflow_id, _hook_session_id, started, _record_audit,
+            )
+
+        # Map internal action to audit decision string
+        _audit_decision = "warned" if _action == "WARN" else "allowed"
+        _audit_rule_id  = decision["rule_id"] if _action == "WARN" else None
+
+        def _record_failure(status: int, message: str, *, rule_id: str | None = None) -> None:
+            background.add_task(
+                _record_audit,
+                workspace_id, clerk_user_id, ai_tool, provider, model,
+                "blocked" if status in (403, 429) else _audit_decision,
+                rule_id or _audit_rule_id,
+                int((time.monotonic() - started) * 1000),
+                body=body, response_bytes=None, prompt_summary=prompt_summary,
+                user_email=_user_email, conductai_run_id=_run_id,
+                conductai_workflow=_workflow, conductai_workflow_id=_workflow_id,
+                hook_session_id=_hook_session_id, routing_meta=_routing_meta,
+                execution_status="error", result_summary=f"HTTP {status}: {message}"[:500],
+                agent_identity_id=str(_agent_identity_id) if _agent_identity_id else None,
+                route=request.url.path,
+            )
+
+        # 4d. Per-key RPM/TPM rate limiting (#980, #1587 E1). Fires for
+        # vault-key + trial-key + platform-key traffic — enforcement is
+        # opt-in per workspace via guard_rate_limits rows. If no row
+        # exists, check_rate_limit is a cheap no-op (early return in the
+        # module). Redis outage fails open by design.
+        # PR 3 fix — rate limit runs off the event loop with its own
+        # session. Redis-primary but the config lookup + fail-closed
+        # decision path can still hit DB and block the loop.
+        from app.modules.guard.rate_limit import check_rate_limit as _check_rate_limit
+        def _rate_check_owned():
+            from app.core.database import SessionLocal as _SL
+            from app.core.workspace_context import set_workspace_rls
+            _db_local = _SL()
+            try:
+                set_workspace_rls(_db_local, workspace_id)
+                return _check_rate_limit(
+                    _db_local,
+                    workspace_id=workspace_id,
+                    agent_identity_id=str(_agent_identity_id) if _agent_identity_id else None,
+                    input_tokens=_estimate_input_tokens(body),
+                    fail_closed=canonical_profile and settings.environment == "production",
+                )
+            finally:
+                _db_local.close()
+        _rate = await run_in_threadpool(_rate_check_owned)
+        if _rate.limited:
+            log.info(
+                "guard.proxy.rate_limited",
+                workspace_id=workspace_id,
+                scope=_rate.scope,
+                metric=_rate.metric,
+                limit=_rate.limit,
+                current=_rate.current,
+            )
+            _record_failure(429, _rate.reason, rule_id="rate-limit")
+            return _fail_closed(429, _rate.reason)
+
+        # 5. Vault lookup — for BYO gateways: upstream_key authenticates with the gateway,
+        # vault_key is the real vendor key the gateway forwards to Anthropic/OpenAI.
+        #
+        # X3 — legacy credential resolution is v1-only. v2 targets
+        # carry their own ``credential_ref`` pointing at Vault; the
+        # resolver was built in step 4 (``_build_v2_plan``). Running
+        # this block for v2 traffic was dead weight AND actively
+        # broke v2-only workspaces: if a workspace never provisioned
+        # a v1 ``ANTHROPIC_API_KEY`` / ``OPENAI_API_KEY`` but did
+        # publish a v2 profile with valid Vault refs, the 503 below
+        # fired before ``_execute_v2`` ever ran. Skip the whole block
+        # when ``_v2_plan`` is in play.
+        upstream = None
+        _upstream_key = None
+        _vault_key_val = None
+        transport = None
+        real_key = None
+        if _v2_plan is None:
+            # PR 2 Commit 3 — three sequential DB round-trips run off the
+            # event loop in one bounded session.
+            from app.modules.guard.gateway_helpers import _resolve_upstream_credentials
+            upstream, _upstream_key, _vault_key_val = await run_in_threadpool(
+                _resolve_upstream_credentials,
+                workspace_id, provider, _environment_id,
+            )
+            transport = get_provider_transport_registry().for_provider(provider)
+            if canonical_profile:
+                # PR 3 fix — canonical-profile TransportResolver runs
+                # off the event loop with its own session.
+                from app.modules.guard.gateway_runtime import TransportResolver
+                def _resolve_transport_owned():
+                    from app.core.database import SessionLocal as _SL
+                    from app.core.workspace_context import set_workspace_rls
+                    _db_local = _SL()
+                    try:
+                        set_workspace_rls(_db_local, workspace_id)
+                        return TransportResolver().resolve(
+                            _db_local, workspace_id, provider, _environment_id,
+                        )
+                    finally:
+                        _db_local.close()
+                profile_runtime = await run_in_threadpool(_resolve_transport_owned)
+                if profile_runtime:
+                    upstream = profile_runtime.upstream_url or upstream
+                    _upstream_key = profile_runtime.api_key or _upstream_key
+                    transport = profile_runtime.transport
+                    if profile_runtime.profile.provider == "litellm":
+                        _vault_key_val = None
+                    real_key = _upstream_key or _vault_key_val
                 else:
                     real_key = _upstream_key or _vault_key_val
-                if not real_key:
-                    # #1567 PR 2: trial workspaces with no BYO key fall through to a
-                    # platform-funded env key, fenced by plan + provider + identity + daily cap.
-                    from app.modules.guard.trial_upstream import resolve_trial_key
-                    _trial_key, _trial_status = resolve_trial_key(
-                        db, workspace_id, provider, str(_agent_identity_id) if _agent_identity_id else None,
-                    )
-                    if _trial_status == "expired":
-                        _record_failure(401, "trial_expired", rule_id="trial-expired")
-                        return _fail_closed(
-                            401,
-                            "trial_expired: 7-day trial ended. Add your own key in Settings → Environments.",
+            else:
+                real_key = _upstream_key or _vault_key_val
+            if not real_key:
+                # #1567 PR 2: trial workspaces with no BYO key fall through to a
+                # platform-funded env key, fenced by plan + provider + identity + daily cap.
+                # PR 3 fix — trial key resolution off event loop.
+                from app.modules.guard.trial_upstream import resolve_trial_key
+                _aid = str(_agent_identity_id) if _agent_identity_id else None
+                def _resolve_trial_key_owned():
+                    from app.core.database import SessionLocal as _SL
+                    from app.core.workspace_context import set_workspace_rls
+                    _db_local = _SL()
+                    try:
+                        set_workspace_rls(_db_local, workspace_id)
+                        return resolve_trial_key(
+                            _db_local, workspace_id, provider, _aid,
                         )
-                    if _trial_status == "exceeded":
-                        _record_failure(429, "trial_exceeded", rule_id="trial-quota")
-                        return _fail_closed(
-                            429,
-                            "trial_exceeded: daily trial quota hit. Add your own key in Settings → Environments.",
-                        )
-                    real_key = _trial_key
-                if not real_key:
-                    _record_failure(503, f"No {provider} API key configured", rule_id="credential-missing")
+                    finally:
+                        _db_local.close()
+                _trial_key, _trial_status = await run_in_threadpool(_resolve_trial_key_owned)
+                if _trial_status == "expired":
+                    _record_failure(401, "trial_expired", rule_id="trial-expired")
                     return _fail_closed(
-                        503,
-                        f"No API key configured — add {provider.upper()}_API_KEY in Settings → Environments, "
-                        f"or set LLM_UPSTREAM_API_KEY in Settings → Proxy.",
+                        401,
+                        "trial_expired: 7-day trial ended. Add your own key in Settings → Environments.",
                     )
-            # Fall-through of the DB block — flag so finally does NOT release
-            # admission (the upstream block below still needs the slot).
-        finally:
-            db.close()
-
+                if _trial_status == "exceeded":
+                    _record_failure(429, "trial_exceeded", rule_id="trial-quota")
+                    return _fail_closed(
+                        429,
+                        "trial_exceeded: daily trial quota hit. Add your own key in Settings → Environments.",
+                    )
+                real_key = _trial_key
+            if not real_key:
+                _record_failure(503, f"No {provider} API key configured", rule_id="credential-missing")
+                return _fail_closed(
+                    503,
+                    f"No API key configured — add {provider.upper()}_API_KEY in Settings → Environments, "
+                    f"or set LLM_UPSTREAM_API_KEY in Settings → Proxy.",
+                )
         # 5.5 Redact secrets from body before forwarding — runs after policy eval so
         # credential-leak rules still fire first and can block.
         if operation == "inference":
