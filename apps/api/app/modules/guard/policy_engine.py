@@ -84,7 +84,20 @@ def is_exception_active(
 # ── Public API ────────────────────────────────────────────────────────────────
 
 def compute_policy(db: Session, workspace_id: uuid.UUID, persona: str) -> list[dict]:
-    """Return active rules for workspace+persona. Served from cache when fresh."""
+    """Return active rules for workspace+persona. Served from cache when fresh.
+
+    PR 6c: front-cached in-process. On hit the three DB probes below are
+    skipped. TTL + generation fence + bus invalidation guarantee the
+    cache never returns rules older than the last
+    ``invalidate_policy_cache`` emit for the workspace.
+    """
+    from app.core.effective_policy_cache import get_effective_policy_cache
+    mem_cache = get_effective_policy_cache()
+    hit = mem_cache.get(workspace_id, persona)
+    if hit is not None:
+        return hit
+    fence = mem_cache.capture_fence(workspace_id)
+
     cached = db.get(GuardPolicyCache, (workspace_id, persona))
     if cached:
         now = datetime.now(timezone.utc)
@@ -110,12 +123,14 @@ def compute_policy(db: Session, workspace_id: uuid.UUID, persona: str) -> list[d
             .first()
         )
         if not crossed_expiry and not newer_pack:
+            mem_cache.put_if_fresh(workspace_id, persona, cached.payload, fence)
             return cached.payload
         db.delete(cached)
         db.flush()
 
     rules = _build_rules(db, workspace_id, persona)
     _write_cache(db, workspace_id, persona, rules)
+    mem_cache.put_if_fresh(workspace_id, persona, rules, fence)
     return rules
 
 
@@ -128,12 +143,26 @@ def invalidate_policy_cache(db: Session, workspace_id: uuid.UUID) -> None:
     # rediscovered from the DB on the next compute_policy() call. Without this,
     # db.get(GuardPolicyCache, ...) in the same session returns a stale row.
     db.expire_all()
-    # Push invalidation to any connected conduct-daemon instances
+    # PR 6c: drop the in-process front-cache so this thread cannot see a
+    # stale value on the very next compute_policy call.
+    try:
+        from app.core.effective_policy_cache import get_effective_policy_cache
+        get_effective_policy_cache().invalidate_workspace(workspace_id)
+    except Exception:
+        pass
+    # Push invalidation to WebSocket clients (conduct-daemon instances)
     try:
         from app.modules.guard.routers.ws import publish_policy_invalidated
         publish_policy_invalidated(workspace_id)
     except Exception:
         pass  # Redis unavailable must never block a policy write
+    # PR 6c: fan out to peer workers via the invalidation bus so their
+    # in-process caches drop the same entries within milliseconds.
+    try:
+        from app.core.policy_events import publish_policy_invalidated as _bus_publish
+        _bus_publish(str(workspace_id))
+    except Exception:
+        pass  # bus unavailable must never block a policy write
 
 
 # ── Internal ──────────────────────────────────────────────────────────────────
