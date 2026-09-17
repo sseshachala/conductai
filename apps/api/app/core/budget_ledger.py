@@ -4,33 +4,43 @@ Closes the race window in the existing spend-cap enforcement path where
 two concurrent requests each read ``monthly_cost < cap`` and both
 proceed, together spending past the cap.
 
-Model:
-- **committed** — spend already recorded as ``guard_audit_events`` rows.
-  Postgres is source of truth. Cached separately (see ``current_committed_cents``).
-- **reserved** — in-flight spend estimates. Redis atomic counter per
-  ``(workspace_id, ai_tool_or_all, period)``. Short-lived: incremented
-  at reserve, decremented at release/commit.
+State model (all state is Redis-authoritative; Postgres is the durable
+recovery log):
 
-Cap enforcement: ``committed + reserved + estimated <= cap``. The
-INCRBY + comparison + optional DECRBY runs in a single Lua script so
-concurrent reserves cannot collectively overshoot the cap.
+- **committed** — spend already recorded for the current period. Redis
+  counter ``budget:{ws}:{tool}:{period}:committed``. Seeded from
+  ``guard_audit_events`` on cold start by ``reconcile_committed``.
+  ``commit(reservation, actual)`` INCRBYs it.
+- **reserved** — aggregate in-flight reservation. Redis counter
+  ``budget:{ws}:{tool}:{period}:reserved``. Sum of all live
+  reservation amounts.
+- **reservations hash** — Redis HSET ``budget:{ws}:{tool}:{period}:res``
+  keyed by reservation_id → estimated_cents. Provides *reservation
+  identity*: release and commit can only affect a reservation that is
+  still live. A second release for the same id is a no-op, so double-
+  release cannot refund another request's slot (reviewer P1 #1).
+- **budget_reservations** table — durable acceptance log. Every
+  ``reserve`` writes a row *before* touching Redis; every ``release``
+  / ``commit`` marks it resolved. On Redis cold start
+  ``reconcile_reservations`` rebuilds the reserved counter + hash from
+  open rows so a flush cannot silently restore capacity (reviewer P1
+  #3).
 
-Kill switch: ``BUDGET_LEDGER_ENABLED=false`` (default). Every call
-returns ``ALLOW`` sentinel and takes zero Redis roundtrips.
+Cap enforcement: ``committed + reserved + estimated <= cap``. All
+three terms are read inside the same Lua script, so no caller-supplied
+snapshot can become stale between check and increment (reviewer P1 #2).
+
+Kill switch: ``BUDGET_LEDGER_ENABLED=false`` (default). No integration
+into ``SpendCapPolicySource`` in this PR — primitive only.
 
 Failure modes:
-- Redis unreachable → ``reserve`` returns ``BudgetDecision.REDIS_DOWN``.
-  Callers should fall through to the existing DB-based ``budget_check``
-  path (which is what the codebase does today). Set
-  ``BUDGET_LEDGER_FAIL_CLOSED=true`` to refuse instead.
-- Lua script rejected (older Redis) → same fallback.
-
-Reconciler: not required for correctness because ``committed`` remains
-in Postgres. A Redis flush loses in-flight reservations only — those
-resolve within the request lifetime (release on completion) or are
-naturally recovered because the audit event write is what actually
-matters. Future durable-reservation extension (Postgres row per
-reservation) is a separate PR; scoped out here.
+- Redis unreachable → ``BudgetDecision.REDIS_DOWN``. Callers should
+  fall through to the existing DB-based ``budget_check`` path.
+  ``BUDGET_LEDGER_FAIL_CLOSED=true`` overrides to strict refuse.
+- Cold worker before reconciler → ``BudgetDecision.NOT_READY``.
+  Callers should treat as fail-closed (or fall through, at ops's
+  discretion). Once ``reconcile_all`` has run, the counter matches
+  the durable log.
 """
 from __future__ import annotations
 
@@ -38,20 +48,19 @@ import os
 import time
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Optional
 
 import redis as _redis_sync
 import structlog
+from sqlalchemy import func
+from sqlalchemy.orm import Session
 
 log = structlog.get_logger()
 
 
 def enabled() -> bool:
-    """Kill switch. Callers MUST check this before using the ledger —
-    the primitive itself does not gate reads/writes so tests can drive
-    it directly without setting the env var."""
     return os.environ.get("BUDGET_LEDGER_ENABLED", "false").lower() in (
         "1", "true", "yes",
     )
@@ -64,30 +73,15 @@ def fail_closed() -> bool:
 
 
 class BudgetDecision(Enum):
-    """Outcome of a ``reserve`` call.
-
-    - ``ACCEPTED`` — capacity reserved, callers may proceed. Pair with
-      ``release`` at request end.
-    - ``EXCEEDED`` — reserving would push past the cap; the increment
-      was refunded. Refuse the request.
-    - ``REDIS_DOWN`` — the ledger could not run. Callers should fall
-      through to the DB-based enforcement path unless
-      ``BUDGET_LEDGER_FAIL_CLOSED`` is set (in which case treat like
-      ``EXCEEDED``).
-    - ``DISABLED`` — kill switch off; never gate on this. Callers
-      should not have called the ledger at all.
-    """
     ACCEPTED = "accepted"
     EXCEEDED = "exceeded"
     REDIS_DOWN = "redis_down"
+    NOT_READY = "not_ready"
     DISABLED = "disabled"
 
 
 @dataclass(frozen=True)
 class Reservation:
-    """Handle returned on a successful ``reserve``. Pass to ``release``
-    to refund unused capacity or to ``commit`` to convert reserved into
-    committed once the actual cost is known."""
     reservation_id: str
     workspace_id: str
     ai_tool: str
@@ -105,10 +99,6 @@ def _redis_url() -> str:
 
 
 def _r() -> _redis_sync.Redis:
-    """Return a sync Redis client backed by a module-scoped pool.
-
-    Matches the pattern in ``routers/ws.py`` so both surfaces share
-    connection budget under load."""
     global _pool
     if _pool is None:
         _pool = _redis_sync.ConnectionPool.from_url(
@@ -118,26 +108,23 @@ def _r() -> _redis_sync.Redis:
 
 
 def _reset_pool_for_tests() -> None:
-    """Test hook — force a new pool so a fake-redis instance can
-    replace the real one between tests."""
     global _pool
     _pool = None
 
 
 # ── Period helpers ──────────────────────────────────────────────────
 
-def _monthly_period_key(now: datetime | None = None) -> str:
-    """Period key = ``YYYY-MM`` in UTC. Matches the monthly-cap semantics
-    the existing ``budget_check`` uses (``_current_period_start`` returns
-    the first-of-month in UTC)."""
+def monthly_period_key(now: datetime | None = None) -> str:
     now = now or datetime.now(timezone.utc)
     return f"{now.year:04d}-{now.month:02d}"
 
 
+def _period_start(period_key: str) -> datetime:
+    year, month = period_key.split("-")
+    return datetime(int(year), int(month), 1, tzinfo=timezone.utc)
+
+
 def _seconds_until_next_period(now: datetime | None = None) -> int:
-    """Redis TTL for the reserved counter. Slightly longer than the
-    period so a request that crosses the boundary can still release
-    against the old key."""
     now = now or datetime.now(timezone.utc)
     if now.month == 12:
         end = datetime(now.year + 1, 1, 1, tzinfo=timezone.utc)
@@ -146,59 +133,107 @@ def _seconds_until_next_period(now: datetime | None = None) -> int:
     return int((end - now).total_seconds()) + 3600  # 1h slack
 
 
-def _reserved_key(workspace_id: str, ai_tool: str | None, period_key: str) -> str:
-    tool_seg = ai_tool if ai_tool else "_all"
-    return f"budget:{workspace_id}:{tool_seg}:{period_key}:reserved"
+def _reserved_key(ws: str, tool: str | None, period: str) -> str:
+    return f"budget:{ws}:{tool or '_all'}:{period}:reserved"
 
 
-# ── Atomic reserve (Lua) ────────────────────────────────────────────
+def _committed_key(ws: str, tool: str | None, period: str) -> str:
+    return f"budget:{ws}:{tool or '_all'}:{period}:committed"
 
-# Atomicity requirement: the check "would this INCRBY push us past the
-# cap?" and the actual increment must happen without another concurrent
-# reserve slipping between them. Lua on the Redis side gives us
-# single-threaded execution of the whole sequence.
+
+def _res_hash_key(ws: str, tool: str | None, period: str) -> str:
+    return f"budget:{ws}:{tool or '_all'}:{period}:res"
+
+
+def _ready_key(ws: str, tool: str | None, period: str) -> str:
+    """Set after reconciler completes; presence means the counters
+    reflect the durable log."""
+    return f"budget:{ws}:{tool or '_all'}:{period}:ready"
+
+
+# ── Lua scripts ──────────────────────────────────────────────────────
+#
+# Every mutating operation runs inside Lua so the check → mutation
+# sequence cannot interleave with a concurrent operation. Redis
+# scripting is single-threaded per node.
+
+# KEYS: reserved, committed, res_hash, ready
+# ARGV: reservation_id, estimated, cap, ttl
 _RESERVE_SCRIPT = """
-local key = KEYS[1]
-local estimated = tonumber(ARGV[1])
-local ceiling = tonumber(ARGV[2])
-local ttl = tonumber(ARGV[3])
-
-local current = tonumber(redis.call('GET', key) or '0')
-if current + estimated > ceiling then
-    return {0, current}
+if redis.call('EXISTS', KEYS[4]) == 0 then
+    return {-1, 0, 0}
 end
-local new = redis.call('INCRBY', key, estimated)
-redis.call('EXPIRE', key, ttl)
-return {1, new}
+local reservation_id = ARGV[1]
+local estimated = tonumber(ARGV[2])
+local cap = tonumber(ARGV[3])
+local ttl = tonumber(ARGV[4])
+
+local reserved = tonumber(redis.call('GET', KEYS[1]) or '0')
+local committed = tonumber(redis.call('GET', KEYS[2]) or '0')
+
+if reserved + committed + estimated > cap then
+    return {0, reserved, committed}
+end
+
+redis.call('HSET', KEYS[3], reservation_id, estimated)
+redis.call('EXPIRE', KEYS[3], ttl)
+local new_reserved = redis.call('INCRBY', KEYS[1], estimated)
+redis.call('EXPIRE', KEYS[1], ttl)
+redis.call('EXPIRE', KEYS[2], ttl)
+return {1, new_reserved, committed}
 """
 
 
-# Refund is a bounded DECRBY that clamps at zero. A crash between
-# reserve and release should not push the counter negative.
+# KEYS: reserved, res_hash
+# ARGV: reservation_id, ttl
 _RELEASE_SCRIPT = """
-local key = KEYS[1]
-local amount = tonumber(ARGV[1])
-local current = tonumber(redis.call('GET', key) or '0')
-if current <= 0 then
+local reservation_id = ARGV[1]
+local ttl = tonumber(ARGV[2])
+
+local amount = tonumber(redis.call('HGET', KEYS[2], reservation_id) or '0')
+if amount == 0 then
     return 0
 end
-local new_val = math.max(0, current - amount)
-if new_val == 0 then
-    redis.call('DEL', key)
+redis.call('HDEL', KEYS[2], reservation_id)
+local new_val = redis.call('DECRBY', KEYS[1], amount)
+if new_val <= 0 then
+    redis.call('DEL', KEYS[1])
 else
-    redis.call('SET', key, new_val)
+    -- Preserve the counter's TTL — a partial refund must not turn a
+    -- period-scoped counter into a leaked-forever key.
+    redis.call('EXPIRE', KEYS[1], ttl)
 end
-return new_val
+return amount
+"""
+
+
+# KEYS: reserved, committed, res_hash
+# ARGV: reservation_id, actual, ttl
+_COMMIT_SCRIPT = """
+local reservation_id = ARGV[1]
+local actual = tonumber(ARGV[2])
+local ttl = tonumber(ARGV[3])
+
+local estimated = tonumber(redis.call('HGET', KEYS[3], reservation_id) or '0')
+if estimated == 0 then
+    return 0
+end
+redis.call('HDEL', KEYS[3], reservation_id)
+local new_reserved = redis.call('DECRBY', KEYS[1], estimated)
+if new_reserved <= 0 then
+    redis.call('DEL', KEYS[1])
+else
+    redis.call('EXPIRE', KEYS[1], ttl)
+end
+redis.call('INCRBY', KEYS[2], actual)
+redis.call('EXPIRE', KEYS[2], ttl)
+return 1
 """
 
 
 class BudgetLedger:
-    """Sync-friendly reservation ledger. One instance per worker.
-
-    The caller supplies ``committed_cents`` (the already-spent amount
-    the DB knows about) and ``cap_cents`` (the workspace's monthly hard
-    cap). This class owns only the *reserved* counter and the
-    check-and-increment atomicity.
+    """Sync-friendly reservation ledger with reservation identity,
+    settlement, and cold-start recovery.
     """
 
     def __init__(self, *, redis_client: _redis_sync.Redis | None = None) -> None:
@@ -206,107 +241,268 @@ class BudgetLedger:
         self._reservations_accepted = 0
         self._reservations_exceeded = 0
         self._reservations_redis_down = 0
+        self._reservations_not_ready = 0
         self._releases = 0
+        self._commits = 0
 
     def _client(self) -> _redis_sync.Redis:
         return self._redis if self._redis is not None else _r()
 
+    # ── Reserve ─────────────────────────────────────────────────────
     def reserve(
         self,
         *,
+        db: Session,
         workspace_id: str,
         ai_tool: str | None,
         estimated_cents: int,
         cap_cents: int,
-        committed_cents: int,
     ) -> tuple[BudgetDecision, Optional[Reservation]]:
-        """Atomically reserve ``estimated_cents`` if it fits.
+        """Atomically reserve capacity.
 
-        Ceiling passed to the Lua script is ``cap_cents - committed_cents``
-        so the check compares only the reserved (in-flight) pool
-        against remaining capacity. ``committed_cents`` is what the DB
-        aggregation returns for the current period.
+        Writes a durable ``budget_reservations`` row *before* touching
+        Redis. If Redis then refuses (or is down) the row is deleted so
+        the durable log never contains phantom entries; if the worker
+        crashes between the two, the row survives with status='open'
+        and the reconciler will re-inflate Redis on next cold start.
         """
         if estimated_cents <= 0:
-            # Zero-cost reservations do not need to hit Redis.
             return BudgetDecision.ACCEPTED, Reservation(
                 reservation_id=uuid.uuid4().hex,
                 workspace_id=workspace_id,
                 ai_tool=ai_tool or "_all",
                 estimated_cents=0,
-                period_key=_monthly_period_key(),
+                period_key=monthly_period_key(),
             )
-        period_key = _monthly_period_key()
-        key = _reserved_key(workspace_id, ai_tool, period_key)
-        ceiling = max(0, cap_cents - committed_cents)
-        ttl = _seconds_until_next_period()
 
+        period = monthly_period_key()
+        rid = uuid.uuid4().hex
+
+        # 1) Durable row FIRST — this is the crash-safe log.
+        from app.modules.guard.models import BudgetReservation
+        row = BudgetReservation(
+            id=uuid.UUID(rid),
+            workspace_id=uuid.UUID(workspace_id) if _looks_like_uuid(workspace_id) else workspace_id,
+            ai_tool=ai_tool,
+            period_key=period,
+            estimated_cents=estimated_cents,
+            status="open",
+        )
         try:
-            got, current = self._client().eval(
-                _RESERVE_SCRIPT, 1, key, estimated_cents, ceiling, ttl,
-            )
+            db.add(row)
+            db.flush()
         except Exception as e:  # noqa: BLE001
-            log.warning(
-                "budget_ledger.reserve_failed",
-                workspace_id=workspace_id,
-                ai_tool=ai_tool,
-                err=str(e),
-            )
+            db.rollback()
+            log.warning("budget_ledger.reserve_db_failed", err=str(e))
             self._reservations_redis_down += 1
             return BudgetDecision.REDIS_DOWN, None
 
-        if int(got) == 0:
+        # 2) Atomic Redis reserve.
+        try:
+            ret = self._client().eval(
+                _RESERVE_SCRIPT, 4,
+                _reserved_key(workspace_id, ai_tool, period),
+                _committed_key(workspace_id, ai_tool, period),
+                _res_hash_key(workspace_id, ai_tool, period),
+                _ready_key(workspace_id, ai_tool, period),
+                rid, estimated_cents, cap_cents,
+                _seconds_until_next_period(),
+            )
+        except Exception as e:  # noqa: BLE001
+            log.warning("budget_ledger.reserve_redis_failed", err=str(e))
+            self._reservations_redis_down += 1
+            db.delete(row)
+            db.flush()
+            return BudgetDecision.REDIS_DOWN, None
+
+        status = int(ret[0])
+        if status == -1:
+            # Reconciler has not run for this (ws, tool, period). Do
+            # not accept blind — the reserved counter may be missing
+            # entries from earlier crashed workers.
+            self._reservations_not_ready += 1
+            db.delete(row)
+            db.flush()
+            return BudgetDecision.NOT_READY, None
+
+        if status == 0:
             self._reservations_exceeded += 1
+            db.delete(row)
+            db.flush()
             return BudgetDecision.EXCEEDED, None
 
         self._reservations_accepted += 1
         return BudgetDecision.ACCEPTED, Reservation(
-            reservation_id=uuid.uuid4().hex,
+            reservation_id=rid,
             workspace_id=workspace_id,
             ai_tool=ai_tool or "_all",
             estimated_cents=estimated_cents,
-            period_key=period_key,
+            period_key=period,
         )
 
-    def release(self, reservation: Reservation) -> None:
-        """Refund an in-flight reservation. Called at request end
-        regardless of outcome — the audit event write is what makes
-        the spend visible to the DB-side ``budget_check``.
-
-        Idempotent-ish: multiple releases for the same reservation
-        just DECRBY twice, clamped at zero. Callers should avoid
-        double-releasing but a stray extra call is safe."""
+    # ── Release ─────────────────────────────────────────────────────
+    def release(self, db: Session, reservation: Reservation) -> None:
+        """Refund the reservation. Idempotent by reservation_id — a
+        second call finds the hash empty and no-ops. Cannot refund
+        another reservation's capacity (reviewer P1 #1)."""
         if reservation.estimated_cents <= 0:
             return
         ai_tool = None if reservation.ai_tool == "_all" else reservation.ai_tool
-        key = _reserved_key(
-            reservation.workspace_id, ai_tool, reservation.period_key,
-        )
         try:
             self._client().eval(
-                _RELEASE_SCRIPT, 1, key, reservation.estimated_cents,
+                _RELEASE_SCRIPT, 2,
+                _reserved_key(reservation.workspace_id, ai_tool, reservation.period_key),
+                _res_hash_key(reservation.workspace_id, ai_tool, reservation.period_key),
+                reservation.reservation_id,
+                _seconds_until_next_period(),
             )
-            self._releases += 1
         except Exception as e:  # noqa: BLE001
-            log.warning(
-                "budget_ledger.release_failed",
-                workspace_id=reservation.workspace_id,
-                err=str(e),
-            )
+            log.warning("budget_ledger.release_failed", err=str(e))
+            # Fall through — DB row update still worth attempting so
+            # the reconciler doesn't re-inflate a stale reservation.
 
+        try:
+            from app.modules.guard.models import BudgetReservation
+            row = db.get(BudgetReservation, uuid.UUID(reservation.reservation_id))
+            if row is not None and row.status == "open":
+                row.status = "released"
+                row.resolved_at = datetime.now(timezone.utc)
+                db.flush()
+                self._releases += 1
+        except Exception as e:  # noqa: BLE001
+            db.rollback()
+            log.warning("budget_ledger.release_db_failed", err=str(e))
+
+    # ── Commit ──────────────────────────────────────────────────────
+    def commit(
+        self, db: Session, reservation: Reservation, actual_cents: int,
+    ) -> None:
+        """Convert reservation to committed spend. Refunds reserved
+        by the estimated amount, adds actual_cents to committed.
+
+        Idempotent by reservation_id — a second call finds the hash
+        empty and no-ops."""
+        if reservation.estimated_cents <= 0 and actual_cents <= 0:
+            return
+        ai_tool = None if reservation.ai_tool == "_all" else reservation.ai_tool
+        try:
+            self._client().eval(
+                _COMMIT_SCRIPT, 3,
+                _reserved_key(reservation.workspace_id, ai_tool, reservation.period_key),
+                _committed_key(reservation.workspace_id, ai_tool, reservation.period_key),
+                _res_hash_key(reservation.workspace_id, ai_tool, reservation.period_key),
+                reservation.reservation_id,
+                max(0, actual_cents),
+                _seconds_until_next_period(),
+            )
+        except Exception as e:  # noqa: BLE001
+            log.warning("budget_ledger.commit_failed", err=str(e))
+
+        try:
+            from app.modules.guard.models import BudgetReservation
+            row = db.get(BudgetReservation, uuid.UUID(reservation.reservation_id))
+            if row is not None and row.status == "open":
+                row.status = "committed"
+                row.actual_cents = max(0, actual_cents)
+                row.resolved_at = datetime.now(timezone.utc)
+                db.flush()
+                self._commits += 1
+        except Exception as e:  # noqa: BLE001
+            db.rollback()
+            log.warning("budget_ledger.commit_db_failed", err=str(e))
+
+    # ── Read-only ───────────────────────────────────────────────────
     def current_reserved_cents(
         self, workspace_id: str, ai_tool: str | None,
     ) -> int:
-        """Read the current in-flight reservation count. Used for
-        display / observability. Returns 0 on Redis error — matches
-        the fail-open behavior of the reserve path."""
-        period_key = _monthly_period_key()
-        key = _reserved_key(workspace_id, ai_tool, period_key)
+        period = monthly_period_key()
         try:
-            return int(self._client().get(key) or 0)
+            return int(self._client().get(_reserved_key(workspace_id, ai_tool, period)) or 0)
         except Exception as e:  # noqa: BLE001
-            log.warning("budget_ledger.read_failed", err=str(e))
+            log.warning("budget_ledger.read_reserved_failed", err=str(e))
             return 0
+
+    def current_committed_cents(
+        self, workspace_id: str, ai_tool: str | None,
+    ) -> int:
+        period = monthly_period_key()
+        try:
+            return int(self._client().get(_committed_key(workspace_id, ai_tool, period)) or 0)
+        except Exception as e:  # noqa: BLE001
+            log.warning("budget_ledger.read_committed_failed", err=str(e))
+            return 0
+
+    # ── Reconciler ──────────────────────────────────────────────────
+    def reconcile(
+        self, db: Session, workspace_id: str, ai_tool: str | None,
+    ) -> None:
+        """Rebuild the Redis state from the durable log for one
+        (workspace, tool, period) key. MUST be called before any
+        ``reserve()`` accepts requests for that key after a Redis
+        flush or cold worker start.
+
+        Order:
+        1. Read committed from ``guard_audit_events`` for the current
+           period → SET committed key
+        2. Read open ``budget_reservations`` rows → SET reserved
+           counter + populate res_hash
+        3. SET ready flag
+
+        Concurrent reconcile calls for the same key overwrite each
+        other; the last one wins but they compute the same value from
+        the same durable source, so this is safe."""
+        period = monthly_period_key()
+        period_start = _period_start(period)
+
+        # 1) Committed from audit events.
+        from app.modules.guard.models import GuardAuditEvent, BudgetReservation
+        try:
+            ws_uuid = uuid.UUID(workspace_id) if _looks_like_uuid(workspace_id) else workspace_id
+        except (ValueError, AttributeError):
+            ws_uuid = workspace_id
+
+        q = db.query(
+            func.coalesce(func.sum(GuardAuditEvent.cost_usd_after), 0.0)
+        ).filter(
+            GuardAuditEvent.workspace_id == ws_uuid,
+            GuardAuditEvent.ts >= period_start,
+        )
+        if ai_tool is not None:
+            q = q.filter(GuardAuditEvent.ai_tool == ai_tool)
+        committed_usd = float(q.scalar() or 0.0)
+        committed_cents = int(round(committed_usd * 100))
+
+        # 2) Open reservations from durable log.
+        open_rows = db.query(BudgetReservation).filter(
+            BudgetReservation.workspace_id == ws_uuid,
+            BudgetReservation.period_key == period,
+            BudgetReservation.status == "open",
+        )
+        if ai_tool is None:
+            open_rows = open_rows.filter(BudgetReservation.ai_tool.is_(None))
+        else:
+            open_rows = open_rows.filter(BudgetReservation.ai_tool == ai_tool)
+
+        reserved_total = 0
+        hash_payload: dict[str, int] = {}
+        for row in open_rows.all():
+            hash_payload[str(row.id).replace("-", "")] = row.estimated_cents
+            reserved_total += row.estimated_cents
+
+        # 3) Write to Redis atomically.
+        ttl = _seconds_until_next_period()
+        client = self._client()
+        pipe = client.pipeline()
+        pipe.set(_committed_key(workspace_id, ai_tool, period), committed_cents, ex=ttl)
+        pipe.delete(_reserved_key(workspace_id, ai_tool, period))
+        pipe.delete(_res_hash_key(workspace_id, ai_tool, period))
+        if reserved_total > 0:
+            pipe.set(_reserved_key(workspace_id, ai_tool, period), reserved_total, ex=ttl)
+        if hash_payload:
+            pipe.hset(_res_hash_key(workspace_id, ai_tool, period), mapping=hash_payload)
+            pipe.expire(_res_hash_key(workspace_id, ai_tool, period), ttl)
+        pipe.set(_ready_key(workspace_id, ai_tool, period), "1", ex=ttl)
+        pipe.execute()
 
     def stats(self) -> dict:
         return {
@@ -314,8 +510,20 @@ class BudgetLedger:
             "reservations_accepted": self._reservations_accepted,
             "reservations_exceeded": self._reservations_exceeded,
             "reservations_redis_down": self._reservations_redis_down,
+            "reservations_not_ready": self._reservations_not_ready,
             "releases": self._releases,
+            "commits": self._commits,
         }
+
+
+# ── Helpers ──────────────────────────────────────────────────────────
+
+def _looks_like_uuid(s: str) -> bool:
+    try:
+        uuid.UUID(s)
+        return True
+    except (ValueError, AttributeError, TypeError):
+        return False
 
 
 # ── Singleton API ────────────────────────────────────────────────────

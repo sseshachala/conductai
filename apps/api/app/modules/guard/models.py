@@ -360,6 +360,41 @@ class GuardSpendBudget(Base):
     )
 
 
+class BudgetReservation(Base):
+    """Durable acceptance log for the atomic reservation ledger (PR 6d).
+
+    Every accepted reserve() writes a row before the Redis counter is
+    touched. On Redis cold start the reconciler replays open rows so a
+    Redis flush cannot silently restore capacity mid-request.
+    """
+    __tablename__ = "budget_reservations"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id = Column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False)
+    ai_tool = Column(Text, nullable=True)
+    period_key = Column(Text, nullable=False)
+    estimated_cents = Column(Integer, nullable=False)
+    actual_cents = Column(Integer, nullable=True)
+    status = Column(Text, nullable=False, server_default=sa.text("'open'"), default="open")
+    created_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        server_default=sa.func.now(),
+    )
+    resolved_at = Column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        Index(
+            "ix_budget_reservations_open",
+            "workspace_id",
+            "period_key",
+            postgresql_where=sa.text("status = 'open'"),
+        ),
+        Index("ix_budget_reservations_created_at", "created_at"),
+    )
+
+
 class GuardRateLimit(Base):
     """Per-workspace / per-agent-identity RPM+TPM caps (#980).
 
