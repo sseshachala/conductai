@@ -146,9 +146,10 @@ async def test_ttl_bounded_by_token_expiry(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_already_expired_token_not_cached(monkeypatch):
-    """A token that's already expired at fetch time is returned but
-    NOT stored — no future request can use it."""
+async def test_already_expired_token_rejected_returns_none(monkeypatch):
+    """P1 review fix — a token whose token_expires_at is already in
+    the past MUST NOT be returned as valid auth. resolve() returns
+    None; caller treats as authentication failure."""
     monkeypatch.setenv("AUTH_CACHE_ENABLED", "true")
     from app.core.auth_cache import AuthCache
 
@@ -156,8 +157,14 @@ async def test_already_expired_token_not_cached(monkeypatch):
         return _make_auth(token_expires_at=time.time() - 10)  # past
 
     cache = AuthCache(fetch=_fetch, cache_ttl_seconds=60.0)
-    await cache.resolve("t-1")
+    result = await cache.resolve("t-1")
+    assert result is None, (
+        "expired token returned successful auth — a request authorized "
+        "by this call would use a token that was already expired at "
+        "lookup time"
+    )
     assert cache.stats()["size"] == 0, "expired token must not be cached"
+    assert cache.stats()["expired_returned_none"] == 1
 
 
 # ── Negative caching ─────────────────────────────────────────────────
@@ -206,6 +213,162 @@ async def test_single_flight_concurrent_resolve(monkeypatch):
     assert calls == 1, "single-flight broken — multiple fetches raced"
     let_finish.set()
     await asyncio.gather(*tasks)
+
+
+# ── Generation fence — invalidation during in-flight fetch ─────────
+
+@pytest.mark.asyncio
+async def test_invalidate_identity_during_fetch_discards_result(monkeypatch):
+    """P1 review fix — if invalidate_identity fires while a fetch is
+    in flight, the fetched auth must be discarded on completion.
+    Otherwise the fresh entry gets stored and next request serves
+    just-invalidated auth."""
+    monkeypatch.setenv("AUTH_CACHE_ENABLED", "true")
+    from app.core.auth_cache import AuthCache
+
+    fetch_started = asyncio.Event()
+    let_finish = asyncio.Event()
+
+    async def _fetch(token):
+        fetch_started.set()
+        await let_finish.wait()
+        return _make_auth(agent_identity_id="ident-target")
+
+    cache = AuthCache(fetch=_fetch)
+
+    task = asyncio.create_task(cache.resolve("t-1"))
+    await fetch_started.wait()
+    # Invalidate the identity WHILE the fetch is in progress. The
+    # entry doesn't exist in the by_identity index yet (fetch hasn't
+    # completed) — the generation fence is what saves us.
+    cache.invalidate_identity("ident-target")
+    let_finish.set()
+    result = await task
+
+    assert result is None, (
+        "in-flight fetch was invalidated but the result was returned "
+        "anyway — generation fence regressed"
+    )
+    assert cache.stats()["size"] == 0
+    assert cache.stats()["fence_discards"] == 1
+
+
+@pytest.mark.asyncio
+async def test_invalidate_workspace_during_fetch_discards_result(monkeypatch):
+    monkeypatch.setenv("AUTH_CACHE_ENABLED", "true")
+    from app.core.auth_cache import AuthCache
+
+    fetch_started = asyncio.Event()
+    let_finish = asyncio.Event()
+
+    async def _fetch(token):
+        fetch_started.set()
+        await let_finish.wait()
+        return _make_auth(workspace_id="ws-target")
+
+    cache = AuthCache(fetch=_fetch)
+
+    task = asyncio.create_task(cache.resolve("t-1"))
+    await fetch_started.wait()
+    cache.invalidate_workspace("ws-target")
+    let_finish.set()
+    result = await task
+
+    assert result is None
+    assert cache.stats()["size"] == 0
+    assert cache.stats()["fence_discards"] == 1
+
+
+@pytest.mark.asyncio
+async def test_invalidate_token_during_fetch_discards_result(monkeypatch):
+    monkeypatch.setenv("AUTH_CACHE_ENABLED", "true")
+    from app.core.auth_cache import AuthCache, _fingerprint
+
+    fetch_started = asyncio.Event()
+    let_finish = asyncio.Event()
+
+    async def _fetch(token):
+        fetch_started.set()
+        await let_finish.wait()
+        return _make_auth()
+
+    cache = AuthCache(fetch=_fetch)
+
+    task = asyncio.create_task(cache.resolve("t-1"))
+    await fetch_started.wait()
+    cache.invalidate_fingerprint(_fingerprint("t-1"))
+    let_finish.set()
+    result = await task
+
+    assert result is None
+    assert cache.stats()["fence_discards"] == 1
+
+
+@pytest.mark.asyncio
+async def test_invalidate_all_during_fetch_discards_matching_result(monkeypatch):
+    """invalidate_all bumps the global counter but doesn't touch
+    per-identity/per-workspace maps. A racing fetch whose auth points
+    at an identity that was invalidated during the same window must
+    still discard."""
+    monkeypatch.setenv("AUTH_CACHE_ENABLED", "true")
+    from app.core.auth_cache import AuthCache
+
+    fetch_started = asyncio.Event()
+    let_finish = asyncio.Event()
+
+    async def _fetch(token):
+        fetch_started.set()
+        await let_finish.wait()
+        return _make_auth(agent_identity_id="ident-A")
+
+    cache = AuthCache(fetch=_fetch)
+
+    task = asyncio.create_task(cache.resolve("t-1"))
+    await fetch_started.wait()
+    # Fire an identity invalidation for the SAME identity. This bumps
+    # both identity_gens[A] and global_gen.
+    cache.invalidate_identity("ident-A")
+    let_finish.set()
+    result = await task
+
+    assert result is None
+    assert cache.stats()["fence_discards"] == 1
+
+
+@pytest.mark.asyncio
+async def test_unrelated_invalidation_during_fetch_does_not_discard(monkeypatch):
+    """If invalidation fires for a DIFFERENT identity/workspace during
+    our fetch, our result is still valid — should be stored + returned."""
+    monkeypatch.setenv("AUTH_CACHE_ENABLED", "true")
+    from app.core.auth_cache import AuthCache
+
+    fetch_started = asyncio.Event()
+    let_finish = asyncio.Event()
+
+    async def _fetch(token):
+        fetch_started.set()
+        await let_finish.wait()
+        return _make_auth(
+            workspace_id="ws-mine",
+            agent_identity_id="ident-mine",
+        )
+
+    cache = AuthCache(fetch=_fetch)
+
+    task = asyncio.create_task(cache.resolve("t-1"))
+    await fetch_started.wait()
+    # Invalidate a DIFFERENT tenant — should NOT affect our fetch.
+    cache.invalidate_workspace("ws-different-tenant")
+    cache.invalidate_identity("ident-different-tenant")
+    let_finish.set()
+    result = await task
+
+    assert result is not None, (
+        "unrelated tenant invalidation caused our fetch to discard — "
+        "generation fence is too conservative"
+    )
+    assert cache.stats()["fence_discards"] == 0
+    assert cache.stats()["size"] == 1
 
 
 # ── Invalidation triggers ────────────────────────────────────────────
@@ -409,6 +572,7 @@ async def test_stats_reports_all_counters(monkeypatch):
         "enabled", "size", "max", "ttl_seconds", "hits", "misses",
         "negative_hits", "invalidations_token", "invalidations_identity",
         "invalidations_workspace", "evictions", "bus_events_handled",
+        "fence_discards", "expired_returned_none",
         "active_locks", "identity_index_size", "workspace_index_size",
         "hit_rate_bp",
     }

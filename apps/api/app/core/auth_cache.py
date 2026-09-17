@@ -23,18 +23,35 @@ Correctness contract every consumer must uphold:
    - ``auth.workspace.changed`` — every token for this workspace
      gone (membership + workspace config).
 
-4. **Bounded staleness = 60s (default).** If a bus message is lost
-   entirely, worst-case a revoked credential remains usable for up
-   to ``cache_ttl_seconds``. Configurable via
-   ``AUTH_CACHE_TTL_SECONDS`` env var; do NOT raise this above the
-   window explicitly approved for the deployment. 60s matches the
-   reviewer's recommended default.
+4. **Bounded staleness (default 60s — not a recommendation).** If a
+   bus message is lost entirely, worst-case a revoked credential
+   remains usable for up to ``cache_ttl_seconds``. Configurable via
+   ``AUTH_CACHE_TTL_SECONDS`` env var. Deployments MUST explicitly
+   approve their chosen revocation window — 60s is only a starting
+   value, not a security-approved default. A shorter window (e.g.
+   10s) is appropriate for higher-security surfaces; longer values
+   should be justified and documented.
 
 5. **Single-flight resolve.** N concurrent requests with the same
    fingerprint on a cold cache trigger exactly one fetch. Others
    wait; each re-checks the cache after the winner populates.
 
-6. **Kill switch.** ``AUTH_CACHE_ENABLED=false`` (default) disables
+6. **Generation fencing on in-flight lookups.** Every invalidation
+   bumps a per-dimension generation counter (fingerprint, identity,
+   workspace, global). A fetch that started before an invalidation
+   fires MUST discard its result — otherwise the returned value can
+   authorize a request against state that was just invalidated. The
+   cache captures generations at fetch start and re-checks all four
+   dimensions before storing/returning.
+
+7. **Expired tokens are rejected, not returned.** If the fetch
+   returns an auth record whose ``token_expires_at`` is already in
+   the past, ``resolve()`` returns ``None`` (authentication failure)
+   rather than the auth record — a caller must never authorize a
+   request against an expired token even if the fetch happened to
+   produce one.
+
+8. **Kill switch.** ``AUTH_CACHE_ENABLED=false`` (default) disables
    the cache entirely — every call falls through to ``fetch``.
    Deploy with the switch OFF, flip after canary validation, flip
    OFF to roll back.
@@ -143,6 +160,13 @@ class AuthCache:
         self._by_identity: dict[str, set[str]] = {}
         self._by_workspace: dict[str, set[str]] = {}
         self._locks: dict[str, _KeyLock] = {}
+        # Generation counters for in-flight fence. Bumped on every
+        # invalidation. A fetch captures the pre-fetch values at
+        # start; if any bumped by fetch end, the result is discarded.
+        self._fp_gens: dict[str, int] = {}
+        self._identity_gens: dict[str, int] = {}
+        self._workspace_gens: dict[str, int] = {}
+        self._global_gen: int = 0
         # Stats.
         self._hits = 0
         self._misses = 0
@@ -152,6 +176,8 @@ class AuthCache:
         self._invalidations_workspace = 0
         self._evictions = 0
         self._bus_events_handled = 0
+        self._fence_discards = 0
+        self._expired_returned_none = 0
 
         if invalidation_bus is not None:
             self._subscribe(invalidation_bus)
@@ -184,6 +210,15 @@ class AuthCache:
             if entry is not None and entry.expires_at > now:
                 return entry.auth
 
+            # Capture generations BEFORE the fetch. Bumped values by
+            # fetch-completion time mean an invalidation raced with
+            # us; we discard the fetched result to avoid authorizing
+            # against just-invalidated state.
+            fp_gen_start = self._fp_gens.get(fp, 0)
+            global_gen_start = self._global_gen
+            identity_gens_start = dict(self._identity_gens)
+            workspace_gens_start = dict(self._workspace_gens)
+
             auth = await self._fetch(token)
             if auth is None:
                 # Do NOT cache the negative. A token that's currently
@@ -193,16 +228,48 @@ class AuthCache:
                 self._negative_hits += 1
                 return None
 
-            # TTL bounded by both cache TTL and token expiry.
-            cache_expires_at = now + self._ttl
+            # ── Generation fence — P1 review fix ────────────────
+            # Check every dimension. If any bumped during fetch, the
+            # fetched result reflects state we've been told is stale.
+            # Discard, return None (authentication failure). Caller
+            # falls through to next request which will refetch.
+            if self._fp_gens.get(fp, 0) != fp_gen_start:
+                self._fence_discards += 1
+                return None
+            if self._global_gen != global_gen_start:
+                # A global-scope invalidation fired. Check whether the
+                # specific identity/workspace this auth points at was
+                # affected.
+                if auth.agent_identity_id and self._identity_gens.get(
+                    auth.agent_identity_id, 0
+                ) != identity_gens_start.get(auth.agent_identity_id, 0):
+                    self._fence_discards += 1
+                    return None
+                if auth.workspace_id and self._workspace_gens.get(
+                    auth.workspace_id, 0
+                ) != workspace_gens_start.get(auth.workspace_id, 0):
+                    self._fence_discards += 1
+                    return None
+                # global gen bumped but neither this identity nor
+                # workspace is affected — proceed. (e.g. invalidation
+                # of a different tenant.)
+
+            # ── Expired-token defense — P1 review fix ────────────
+            # If the fetch returned an auth record whose token is
+            # already expired, reject it. Caller must NEVER authorize
+            # a request against an expired token, even if the fetch
+            # happened to produce one.
             token_ttl_remaining = (
                 (auth.token_expires_at - time.time())
                 if auth.token_expires_at is not None
                 else None
             )
             if token_ttl_remaining is not None and token_ttl_remaining <= 0:
-                # Token already expired; do not cache.
-                return auth
+                self._expired_returned_none += 1
+                return None
+
+            # TTL bounded by both cache TTL and token expiry.
+            cache_expires_at = now + self._ttl
             if token_ttl_remaining is not None:
                 token_expires_at_monotonic = now + token_ttl_remaining
                 effective_expires_at = min(
@@ -230,20 +297,32 @@ class AuthCache:
             return auth
 
     def invalidate_token(self, token: str) -> None:
-        """Drop cache entry for one specific token. Idempotent."""
+        """Drop cache entry for one specific token. Bump per-fingerprint
+        and global generation so an in-flight fetch for the same
+        fingerprint discards its result. Idempotent."""
         fp = _fingerprint(token)
+        self._fp_gens[fp] = self._fp_gens.get(fp, 0) + 1
+        self._global_gen += 1
         if self._drop_fingerprint(fp):
             self._invalidations_token += 1
 
     def invalidate_fingerprint(self, fp: str) -> None:
         """Drop cache entry by fingerprint (bus events carry fingerprints,
-        not raw tokens)."""
+        not raw tokens). Bumps generation counters like ``invalidate_token``."""
+        self._fp_gens[fp] = self._fp_gens.get(fp, 0) + 1
+        self._global_gen += 1
         if self._drop_fingerprint(fp):
             self._invalidations_token += 1
 
     def invalidate_identity(self, agent_identity_id: str) -> None:
         """Drop every cache entry for an agent identity. Used on
-        identity disable + risk-tier change events."""
+        identity disable + risk-tier change events. Bumps identity
+        generation so in-flight fetches whose result points at this
+        identity discard themselves."""
+        self._identity_gens[agent_identity_id] = (
+            self._identity_gens.get(agent_identity_id, 0) + 1
+        )
+        self._global_gen += 1
         fps = self._by_identity.pop(agent_identity_id, set())
         for fp in list(fps):
             self._drop_fingerprint(fp, skip_identity_cleanup=True)
@@ -252,7 +331,13 @@ class AuthCache:
 
     def invalidate_workspace(self, workspace_id: str) -> None:
         """Drop every cache entry for a workspace. Used on
-        permission / membership / workspace-config change events."""
+        permission / membership / workspace-config change events.
+        Bumps workspace generation so in-flight fetches for this
+        workspace discard themselves."""
+        self._workspace_gens[workspace_id] = (
+            self._workspace_gens.get(workspace_id, 0) + 1
+        )
+        self._global_gen += 1
         fps = self._by_workspace.pop(workspace_id, set())
         for fp in list(fps):
             self._drop_fingerprint(fp, skip_workspace_cleanup=True)
@@ -260,7 +345,9 @@ class AuthCache:
             self._invalidations_workspace += 1
 
     def invalidate_all(self) -> None:
-        """Drop the whole cache. Nuclear option — use sparingly."""
+        """Drop the whole cache. Bumps the global generation so every
+        in-flight fetch discards itself. Nuclear option — use sparingly."""
+        self._global_gen += 1
         n = len(self._entries)
         self._entries.clear()
         self._by_identity.clear()
@@ -282,6 +369,8 @@ class AuthCache:
             "invalidations_workspace": self._invalidations_workspace,
             "evictions": self._evictions,
             "bus_events_handled": self._bus_events_handled,
+            "fence_discards": self._fence_discards,
+            "expired_returned_none": self._expired_returned_none,
             "active_locks": len(self._locks),
             "identity_index_size": len(self._by_identity),
             "workspace_index_size": len(self._by_workspace),
