@@ -27,6 +27,8 @@ Guardrails locked here:
 """
 from __future__ import annotations
 
+import asyncio
+
 from unittest.mock import MagicMock
 
 import pytest
@@ -97,7 +99,7 @@ def test_approval_action_returns_policy_block_not_none(monkeypatch):
 
     fake_pd = _pd("APPROVAL", rule_id="approval-gpt-4o", reason="needs approval")
     check = _make_check(monkeypatch, fake_pd)
-    result = check(_fake_target(model="gpt-4o"))
+    result = asyncio.run(check(_fake_target(model="gpt-4o")))
     assert isinstance(result, PolicyBlock), (
         "approval-action target must return PolicyBlock to refuse dispatch — "
         "returning None allows the alias-bypass this PR was meant to close"
@@ -113,7 +115,7 @@ def test_block_action_still_returns_policy_block(monkeypatch):
 
     fake_pd = _pd("BLOCK", rule_id="block-sonnet", reason="model denied")
     check = _make_check(monkeypatch, fake_pd)
-    result = check(_fake_target(model="claude-sonnet-4-6"))
+    result = asyncio.run(check(_fake_target(model="claude-sonnet-4-6")))
     assert isinstance(result, PolicyBlock)
     assert result.rule_id == "block-sonnet"
 
@@ -125,7 +127,7 @@ def test_warn_action_returns_none_and_dispatch_proceeds(monkeypatch):
     re-eval MUST let WARN through."""
     fake_pd = _pd("WARN", rule_id="warn-verbose", reason="verbose model")
     check = _make_check(monkeypatch, fake_pd)
-    assert check(_fake_target(model="gpt-4o")) is None, (
+    assert asyncio.run(check(_fake_target(model="gpt-4o"))) is None, (
         "WARN action must not refuse per-target dispatch — the "
         "ingress eval already handled the guidance path"
     )
@@ -136,7 +138,7 @@ def test_allow_action_returns_none(monkeypatch):
     coordinator dispatches."""
     fake_pd = _pd("ALLOW")
     check = _make_check(monkeypatch, fake_pd)
-    assert check(_fake_target()) is None
+    assert asyncio.run(check(_fake_target())) is None
 
 
 def test_approval_action_message_distinguishes_from_block(monkeypatch):
@@ -145,7 +147,7 @@ def test_approval_action_message_distinguishes_from_block(monkeypatch):
     message. Locks that distinction so dashboards can differentiate."""
     fake_pd = _pd("APPROVAL", rule_id="", reason="")
     check = _make_check(monkeypatch, fake_pd)
-    result = check(_fake_target(model="gpt-4o"))
+    result = asyncio.run(check(_fake_target(model="gpt-4o")))
     assert result is not None
     # rule_id or message must contain a signal that this was
     # approval-based, not a plain block.

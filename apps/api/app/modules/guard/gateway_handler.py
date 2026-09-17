@@ -1197,7 +1197,7 @@ def _build_policy_check(
     from app.guard.audit import _estimate_input_tokens
     from app.runtime.attempt_coordinator import PolicyBlock
 
-    def _check(target) -> PolicyBlock | None:
+    def _check_sync(target) -> PolicyBlock | None:
         # Passthrough targets don't carry a ``provider`` field; fall
         # back to the request's provider surface (or the target's
         # integration if we can read one) so the policy eval sees
@@ -1255,6 +1255,16 @@ def _build_policy_check(
                 matched_rules=list(pd.matched_rules or []),
             )
         return None
+
+    async def _check(target) -> PolicyBlock | None:
+        # PR 3 fix — per-target policy re-eval runs off the event loop.
+        # The sync closure ``_check_sync`` opens its own DB session,
+        # sets workspace RLS, evaluates the composed policy engine, and
+        # closes. Under high v2 concurrency this was the last remaining
+        # sync-DB-on-the-event-loop path; wrapping in run_in_threadpool
+        # keeps the loop responsive to /health and other requests.
+        from starlette.concurrency import run_in_threadpool
+        return await run_in_threadpool(_check_sync, target)
 
     return _check
 

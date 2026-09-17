@@ -51,6 +51,7 @@ Transports the coordinator dispatches to:
 from __future__ import annotations
 
 import asyncio
+import inspect
 import time
 from dataclasses import dataclass
 from typing import Any, Callable
@@ -223,7 +224,15 @@ class AttemptCoordinator:
             # X1 per-target policy re-eval BEFORE dispatch — no wire hit
             # if this target is blocked by policy against its model.
             if policy_check is not None:
-                block = policy_check(target)
+                # Support both sync and async policy_check callbacks.
+                # Async is preferred so the callback can offload its
+                # sync DB work via run_in_threadpool without stalling
+                # the event loop under high concurrency.
+                _pc_result = policy_check(target)
+                if inspect.isawaitable(_pc_result):
+                    block = await _pc_result
+                else:
+                    block = _pc_result
                 if block is not None:
                     attempt_start = time.monotonic()
                     attempts.append(AttemptRecord(
