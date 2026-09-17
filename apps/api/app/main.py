@@ -264,6 +264,14 @@ def _startup() -> None:
     except Exception as exc:
         log.warning("admission.startup_failed", error=str(exc))
 
+    # PR 6c of #2056 — effective-policy cache. Attaches to invalidation bus.
+    # No-op unless EFFECTIVE_POLICY_CACHE_ENABLED=true.
+    try:
+        from app.core.effective_policy_cache import init_effective_policy_cache
+        init_effective_policy_cache()
+    except Exception as exc:
+        log.warning("effective_policy_cache.startup_failed", error=str(exc))
+
 
 @app.on_event("shutdown")
 async def _shutdown_gateway_transports() -> None:
