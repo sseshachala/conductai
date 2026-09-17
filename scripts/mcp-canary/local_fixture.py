@@ -22,7 +22,7 @@ from app.modules.agent_identity.models import AgentIdentity
 from app.modules.guard.models import GuardMemberConfig
 
 
-def seed(count):
+def seed(count, install_guard=True):
     workspace_id = uuid.uuid4()
     owner = 'local_mcp_' + uuid.uuid4().hex
     now = datetime.now(timezone.utc)
@@ -53,7 +53,8 @@ def seed(count):
         # A provisioned workspace must have Guard installed before either MCP
         # endpoint runs; only the legacy endpoint auto-installs it on first use.
         from app.modules.guard.routers.config import _get_or_create_config
-        _get_or_create_config(db, str(workspace_id))
+        if install_guard:
+            _get_or_create_config(db, str(workspace_id))
     return {'workspace_id': str(workspace_id), 'agents': agents[:-1], 'observer': agents[-1]}
 
 
@@ -72,5 +73,5 @@ def revoke(workspace_id):
 
 if __name__ == '__main__':
     request = json.loads(sys.stdin.read())
-    result = seed(request['agents']) if request['action'] == 'seed' else revoke(request['workspace_id'])
+    result = seed(request['agents'], request.get('install_guard', True)) if request['action'] == 'seed' else revoke(request['workspace_id'])
     print(json.dumps(result))

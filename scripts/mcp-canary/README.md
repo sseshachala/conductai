@@ -51,7 +51,9 @@ does not prove RLS isolation. It uses the existing API image dependencies with
 the checked-out application source mounted read-only.
 
 The default endpoint is `/mcp`; add `--endpoint /guard/mcp` to check the legacy
-endpoint. Load is capped at two requests/sec for 15 seconds, with at most 40
+endpoint. Add `--unconfigured` to deliberately omit Guard installation and
+assert every check is blocked and recorded with the authenticated identity.
+Load is capped at two requests/sec for 15 seconds, with at most 40
 requests. Credentials remain in memory/private subprocess pipes, are revoked
 after the run, and are never written to reports. The API stops afterward;
 the database retains synthetic accounts and audit evidence. Re-running creates
@@ -137,12 +139,17 @@ them separately: they may legitimately produce additional records. Warning and
 approval scenarios need different expected cardinality and are not supported
 by this initial one-record contract.
 
-## What this will expose today
+## Regression gates
 
-The inspected MCP `_record_event` writer does not populate `agent_identity_id`.
-The canary intentionally fails identity reconciliation in that case. It does
-not relax the assertion to make a load run green. `guard_check` records decisions,
-not tool completion; no durable inference lifecycle is assumed for these rows.
+The initial local run found that MCP `_record_event` omitted `agent_identity_id`.
+The accompanying fix resolves the authenticated identity on both transports and
+passes it into the shared writer. Missing attribution remains a hard failure.
+Both endpoints now block `guard_check` / `guard_check_prompt` when GuardConfig
+is absent, instead of treating missing setup as an empty permissive ruleset.
+Onboarding remains responsible for provisioning Guard. A configured workspace
+with an intentionally empty ruleset is not equivalent to missing setup.
+`guard_check` records decisions, not tool completion; no durable inference
+lifecycle is assumed for these rows.
 
 ## Rollout and remaining work
 

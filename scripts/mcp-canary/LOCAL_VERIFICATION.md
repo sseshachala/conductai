@@ -2,6 +2,31 @@
 
 Date: 2026-09-16. Application baseline: `c3c3ae1e`.
 
+## After the fix
+
+Both defects are fixed on this PR: authenticated identity reaches the writer on
+both transports, and missing GuardConfig blocks checks without auto-installing
+configuration. Status reports `configured: false` without caching empty rules.
+
+| Local scenario | Agents | Requests | Matched records | p95 | Result |
+| --- | --- | --- | --- | --- | --- |
+| `/mcp`, configured | 2 | 30 | 22/22 | 40.20 ms | PASS |
+| `/guard/mcp`, configured | 1 | 30 | 26/26 | 24.82 ms | PASS |
+| `/mcp`, unconfigured | 2 | 30 | 22/22 | 98.97 ms | PASS |
+| `/guard/mcp`, unconfigured | 1 | 30 | 26/26 | 27.85 ms | PASS |
+
+All four runs had zero request errors and zero reconciliation failures.
+Independent PostgreSQL inspection confirmed 96/96 attributed records. The two
+unconfigured workspaces remained without GuardConfig; their 48 checks were
+stored as `blocked` with rule `guard_not_configured`. Configured checks retained
+the expected `audited` decisions. Credentials were revoked after each run.
+
+Use `--unconfigured` with `local_smoke.py` to repeat the negative-path test.
+The historical failures below are retained as before/after evidence.
+
+API regression verification after the fix: 1,824 tests passed across
+`tests/guard`, `tests/mcp`, and `tests/tools/test_guard_registrations.py`.
+
 The harness was restored from the parked local work and exercised against a
 separate Docker Compose project. No production traffic or existing Docker
 database changes were made. The new PostgreSQL database migrated from empty to
@@ -9,7 +34,7 @@ database changes were made. The new PostgreSQL database migrated from empty to
 and the checked-out API source. Fixture users are local database records, not
 externally registered Clerk accounts. Database-owner mode does not prove RLS.
 
-## Canonical endpoint
+## Before the fix: canonical endpoint
 
 Command: `local_smoke.py --agents 2 --output results/local-003`.
 
@@ -33,15 +58,17 @@ two session IDs, and no populated `agent_identity_id`. All three credentials
 
 This is an attribution defect in the application, not a throughput failure.
 `app/modules/guard/routers/mcp.py::_record_event` does not populate agent identity.
-The canary deliberately continues to fail until authenticated attribution is
-implemented. It never substitutes a client-supplied identity for the stored one.
+The canary failed until authenticated attribution was implemented. It never
+substitutes a client-supplied identity for the stored one.
 
-## Harness corrections discovered locally
+## Before the fix: legacy endpoint
 
 The final legacy run (`local_smoke.py --agents 1 --endpoint /guard/mcp`,
 `results/local-004`) used the same provisioned-Guard fixture: 30 requests,
 zero request errors, 26/26 matching records, and p95 36.15 ms. It failed only
 on missing identity attribution for all 26 rows. Credentials were revoked.
+
+## Harness corrections discovered locally
 
 - A permitted call can be recorded as `audited` by `mcp-audit-all-tool-calls`.
   Scenarios now distinguish the wire `decision` from an explicit `audit_decision`.

@@ -60,7 +60,7 @@ _ANNOTATIONS: dict[str, ToolAnnotations] = {
 
 def _build_gctx(ctx, db):
     """Construct a GuardCtx from MCPContext + a fresh session."""
-    from app.modules.guard.mcp_impls import GuardCtx
+    from app.modules.guard.mcp_impls import GuardCtx, authenticated_agent_fields
 
     try:
         ws_uuid = uuid.UUID(ctx.workspace_id)
@@ -78,6 +78,7 @@ def _build_gctx(ctx, db):
         user_email=getattr(ctx, "user_email", None),
         ai_tool=getattr(ctx, "surface", "http") or "http",
         session_id=getattr(ctx, "session_id", None) or "",
+        **authenticated_agent_fields(db, getattr(ctx, "resolved_token", "") or "", str(ws_uuid)),
     )
 
 

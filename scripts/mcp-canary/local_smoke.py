@@ -19,6 +19,7 @@ def main():
     parser.add_argument('--agents', type=int, choices=[1, 2], default=2)
     parser.add_argument('--endpoint', choices=['/guard/mcp', '/mcp'], default='/mcp')
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--unconfigured', action='store_true', help='Verify missing Guard setup blocks every check')
     args = parser.parse_args()
     if args.output.exists():
         parser.error('Output directory must not exist')
@@ -51,7 +52,7 @@ def main():
                 time.sleep(1)
         else:
             raise RuntimeError('Local API did not become ready')
-        fixture = fixture_call({'action': 'seed', 'agents': args.agents})
+        fixture = fixture_call({'action': 'seed', 'agents': args.agents, 'install_guard': not args.unconfigured})
         config = json.loads((HERE / 'example.json').read_text())
         config.update(base_url='http://127.0.0.1:3120', endpoint=args.endpoint,
                       workspace_id=fixture['workspace_id'], duration_seconds=15,
@@ -59,6 +60,8 @@ def main():
         config['agents'] = []
         # The default MCP audit-all rule permits execution but stores "audited".
         config['scenarios'][0]['audit_decision'] = 'audited'
+        if args.unconfigured:
+            config['scenarios'][0].update(name='missing_guard', decision='blocked', audit_decision='blocked')
         for i, agent in enumerate(fixture['agents']):
             key = f'CANARY_LOCAL_AGENT_{i}'
             env[key] = agent['token']

@@ -321,7 +321,9 @@ def test_mcp_dispatch_threads_ctx_tier_to_match_policy(monkeypatch):
     # Minimal DB stub — guard_check_impl reads GuardConfig (advisory flag) once.
     class _FakeQuery:
         def filter(self, *_a, **_kw): return self
-        def first(self): return None
+        def first(self):
+            from types import SimpleNamespace
+            return SimpleNamespace(advisory_mode=False, arg_anomaly_enabled=False)
     class _FakeDb:
         def query(self, *_a, **_kw): return _FakeQuery()
         def commit(self): pass

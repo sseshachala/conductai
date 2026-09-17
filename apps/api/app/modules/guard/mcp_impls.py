@@ -88,6 +88,20 @@ class GuardCtx:
     # by rules with `match_agent_risk_tier` set — null tier never matches a
     # tier-requiring rule.
     agent_risk_tier: str | None = None
+    agent_identity_id: str | None = None
+
+
+def authenticated_agent_fields(db, token: str, workspace_id: str) -> dict:
+    """Resolve attribution from the credential, never caller-supplied tool fields."""
+    if not token.startswith(("cond_agt_", "cond_api_")):
+        return {}
+    from fastapi import HTTPException
+    from app.core.auth import resolve_agent_identity_row
+
+    identity = resolve_agent_identity_row(token, db)
+    if identity is None or str(identity.workspace_id) != str(workspace_id):
+        raise HTTPException(status_code=401, detail="Agent identity unavailable for this workspace")
+    return {"agent_identity_id": str(identity.id), "agent_risk_tier": identity.risk_tier}
 
 
 def guard_status_impl(ctx: GuardCtx, **arguments) -> str:
@@ -96,7 +110,8 @@ def guard_status_impl(ctx: GuardCtx, **arguments) -> str:
     workspace_id = ctx.workspace_id
     user_email = ctx.user_email
 
-    rules = _get_rules(db, ws_uuid)
+    config = db.query(GuardConfig).filter(GuardConfig.workspace_id == ws_uuid).first()
+    rules = _get_rules(db, ws_uuid) if config is not None else []
     _ws_out = workspace_id or (str(ws_uuid) if ws_uuid else None)
 
     # Include workspace_name so LLMs surface the team name (e.g. "ConductGuard
@@ -128,6 +143,7 @@ def guard_status_impl(ctx: GuardCtx, **arguments) -> str:
         "workspace_name":     _ws_name,
         "email":              user_email,
         "rules_active":       len(rules),
+        "configured":         config is not None,
         "policy_version":     _pv,
         "policy_computed_at": _pv_at,
     }, indent=2)
@@ -155,6 +171,15 @@ def guard_check_impl(ctx: GuardCtx, **arguments) -> str:
     _persona = arguments.get("_persona", "agent")
     _gate = arguments.get("_gate", "action")
     _source = arguments.get("_source", "mcp")
+    _cfg = db.query(GuardConfig).filter(GuardConfig.workspace_id == ws_uuid).first()
+    if _cfg is None:
+        _record_event(
+            db, ws_uuid, inner_tool, inner_input, "blocked", "guard_not_configured",
+            ai_tool, user_email, session_id, source=_source,
+            conductai_run_id=_run_id, conductai_workflow=_workflow,
+            agent_identity_id=ctx.agent_identity_id,
+        )
+        return "BLOCKED - Guard is not configured for this workspace. Complete Guard setup before retrying."
     # #1753 (2026-09-10): the `pack:` argument is retired. If a legacy client
     # still passes it, we ignore it silently and evaluate against the full
     # workspace policy (which is the correct behavior anyway — pack-scoping
@@ -165,10 +190,9 @@ def guard_check_impl(ctx: GuardCtx, **arguments) -> str:
         _cfg = db.query(GuardConfig).filter(GuardConfig.workspace_id == ws_uuid).first()
         if _cfg and not _cfg.deny_on_error:
             return f"advisory: policy eval error (fail-open): {_eval_err}"
-        _record_event(db, ws_uuid, inner_tool, inner_input, "blocked", "policy_eval_error", ai_tool, user_email, session_id, conductai_run_id=_run_id, conductai_workflow=_workflow, prompt=_prompt, source=_source)
+        _record_event(db, ws_uuid, inner_tool, inner_input, "blocked", "policy_eval_error", ai_tool, user_email, session_id, conductai_run_id=_run_id, conductai_workflow=_workflow, prompt=_prompt, source=_source, agent_identity_id=ctx.agent_identity_id)
         return "BLOCKED — policy evaluation failed. Request denied by fail-closed default."
 
-    _cfg = db.query(GuardConfig).filter(GuardConfig.workspace_id == ws_uuid).first()
     _advisory = _cfg.advisory_mode if _cfg else False
 
     rule = _match_policy(inner_tool, inner_input, rules, gate=_gate, agent_risk_tier=ctx.agent_risk_tier)
@@ -195,13 +219,13 @@ def guard_check_impl(ctx: GuardCtx, **arguments) -> str:
                 thresholds=_arg_anomaly.Thresholds.from_config(_cfg),
             )
             for _finding in _anomalies:
-                _record_event(db, ws_uuid, inner_tool, inner_input, "audited", _finding["rule_id"], ai_tool, user_email, session_id, conductai_run_id=_run_id, conductai_workflow=_workflow, prompt=_prompt, rule_message=_finding["message"])
+                _record_event(db, ws_uuid, inner_tool, inner_input, "audited", _finding["rule_id"], ai_tool, user_email, session_id, conductai_run_id=_run_id, conductai_workflow=_workflow, prompt=_prompt, rule_message=_finding["message"], agent_identity_id=ctx.agent_identity_id)
         except Exception as _anomaly_err:
             db.rollback()
             _log.warning("behavior.arg_anomaly.observe_failed", err=str(_anomaly_err))
 
     if rule is None:
-        _record_event(db, ws_uuid, inner_tool, inner_input, "allowed", None, ai_tool, user_email, session_id, conductai_run_id=_run_id, conductai_workflow=_workflow, prompt=_prompt, source=_source)
+        _record_event(db, ws_uuid, inner_tool, inner_input, "allowed", None, ai_tool, user_email, session_id, conductai_run_id=_run_id, conductai_workflow=_workflow, prompt=_prompt, source=_source, agent_identity_id=ctx.agent_identity_id)
         return "ok"
 
     action = rule.get("action", "audit")
@@ -213,11 +237,11 @@ def guard_check_impl(ctx: GuardCtx, **arguments) -> str:
         _guidance_suffix = f"\n\nGUIDANCE — {_guidance_text}"
 
     if _advisory:
-        _record_event(db, ws_uuid, inner_tool, inner_input, "audited", rule_id, ai_tool, user_email, session_id, conductai_run_id=_run_id, conductai_workflow=_workflow, prompt=_prompt, source=_source)
+        _record_event(db, ws_uuid, inner_tool, inner_input, "audited", rule_id, ai_tool, user_email, session_id, conductai_run_id=_run_id, conductai_workflow=_workflow, prompt=_prompt, source=_source, agent_identity_id=ctx.agent_identity_id)
         return f"advisory: {message} [rule: {rule_id}]{_guidance_suffix}"
 
     if action == "block":
-        _record_event(db, ws_uuid, inner_tool, inner_input, "blocked", rule_id, ai_tool, user_email, session_id, conductai_run_id=_run_id, conductai_workflow=_workflow, prompt=_prompt, source=_source)
+        _record_event(db, ws_uuid, inner_tool, inner_input, "blocked", rule_id, ai_tool, user_email, session_id, conductai_run_id=_run_id, conductai_workflow=_workflow, prompt=_prompt, source=_source, agent_identity_id=ctx.agent_identity_id)
         return f"BLOCKED — {message}  [rule: {rule_id}]{_guidance_suffix}"
 
     if action == "warn":
@@ -229,7 +253,7 @@ def guard_check_impl(ctx: GuardCtx, **arguments) -> str:
         ).first()
         if already_warned:
             return "ok"
-        _record_event(db, ws_uuid, inner_tool, inner_input, "warned", rule_id, ai_tool, user_email, session_id, conductai_run_id=_run_id, conductai_workflow=_workflow, prompt=_prompt, source=_source)
+        _record_event(db, ws_uuid, inner_tool, inner_input, "warned", rule_id, ai_tool, user_email, session_id, conductai_run_id=_run_id, conductai_workflow=_workflow, prompt=_prompt, source=_source, agent_identity_id=ctx.agent_identity_id)
         return f"WARNING — {message}  [rule: {rule_id}]{_guidance_suffix}"
 
     if action == "approval":
@@ -250,10 +274,10 @@ def guard_check_impl(ctx: GuardCtx, **arguments) -> str:
 
         verdict, block_reason = _approval.resume_verdict(prior)
         if verdict == "proceed":
-            _record_event(db, ws_uuid, inner_tool, inner_input, "allowed", rule_id, ai_tool, user_email, session_id, conductai_run_id=_run_id, conductai_workflow=_workflow, prompt=_prompt, source=_source)
+            _record_event(db, ws_uuid, inner_tool, inner_input, "allowed", rule_id, ai_tool, user_email, session_id, conductai_run_id=_run_id, conductai_workflow=_workflow, prompt=_prompt, source=_source, agent_identity_id=ctx.agent_identity_id)
             return "ok"
         if verdict == "block":
-            _record_event(db, ws_uuid, inner_tool, inner_input, "blocked", rule_id, ai_tool, user_email, session_id, conductai_run_id=_run_id, conductai_workflow=_workflow, prompt=_prompt, source=_source)
+            _record_event(db, ws_uuid, inner_tool, inner_input, "blocked", rule_id, ai_tool, user_email, session_id, conductai_run_id=_run_id, conductai_workflow=_workflow, prompt=_prompt, source=_source, agent_identity_id=ctx.agent_identity_id)
             return f"BLOCKED — {block_reason}  [rule: {rule_id}]{_guidance_suffix}"
         if verdict == "wait":
             return _approval.pending_marker(prior)
@@ -273,7 +297,7 @@ def guard_check_impl(ctx: GuardCtx, **arguments) -> str:
         return _approval.pending_marker(req)
 
     # audit action fires the side-effect but returns "ok" to the agent
-    _record_event(db, ws_uuid, inner_tool, inner_input, "audited", rule_id, ai_tool, user_email, session_id, conductai_run_id=_run_id, conductai_workflow=_workflow, prompt=_prompt, source=_source)
+    _record_event(db, ws_uuid, inner_tool, inner_input, "audited", rule_id, ai_tool, user_email, session_id, conductai_run_id=_run_id, conductai_workflow=_workflow, prompt=_prompt, source=_source, agent_identity_id=ctx.agent_identity_id)
     return "ok"
 
 
@@ -394,7 +418,7 @@ def guard_enable_impl(ctx: GuardCtx, **arguments) -> str:
     session_id = ctx.session_id
 
     rules = _get_rules(db, ws_uuid)
-    _record_event(db, ws_uuid, "guard_enable", {}, "allowed", None, ai_tool, user_email, session_id)
+    _record_event(db, ws_uuid, "guard_enable", {}, "allowed", None, ai_tool, user_email, session_id, agent_identity_id=ctx.agent_identity_id)
     snippet = (
         "You have ConductGuard active. "
         "Call guard_activity ONCE at the start of a user request with a one-line summary. "
@@ -503,7 +527,7 @@ def guard_activity_impl(ctx: GuardCtx, **arguments) -> str:
     category = arguments.get("category", "other")
     _run_id = arguments.get("conduct_run_id") or None
     _workflow = arguments.get("conduct_workflow") or None
-    _record_event(db, ws_uuid, "guard_activity", {"summary": summary, "category": category}, "allowed", None, ai_tool, user_email, session_id, conductai_run_id=_run_id, conductai_workflow=_workflow)
+    _record_event(db, ws_uuid, "guard_activity", {"summary": summary, "category": category}, "allowed", None, ai_tool, user_email, session_id, conductai_run_id=_run_id, conductai_workflow=_workflow, agent_identity_id=ctx.agent_identity_id)
     return f"Activity logged — '{summary}'"
 
 

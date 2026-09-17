@@ -528,6 +528,7 @@ def _record_event(
     prompt: str | None = None,
     source: str = "mcp",
     rule_message: str | None = None,
+    agent_identity_id: str | None = None,
 ) -> None:
     ts = datetime.now(timezone.utc)
     prev_hash, entry_hash = chain_hash_for_insert(db, ws_uuid, ts, tool_name, decision)
@@ -539,6 +540,7 @@ def _record_event(
 
     event = GuardAuditEvent(
         workspace_id=ws_uuid,
+        agent_identity_id=agent_identity_id,
         clerk_user_id=user_email,
         user_email=user_email,
         ai_tool=ai_tool,
@@ -715,11 +717,8 @@ async def mcp_endpoint(
 
         user_email = get_clerk_user_email(clerk_user_id) or clerk_user_id
 
-        # ponytail: auto-provision GuardConfig on first MCP call — token already
-        # authenticated, workspace exists, missing config was a 401 loop for
-        # Claude.ai OAuth (89cc839 re-OAuth trick never converges).
-        from app.modules.guard.routers.config import _get_or_create_config
-        config = _get_or_create_config(db, str(ws_uuid))
+        # Setup belongs to onboarding, not MCP requests. The shared Guard
+        # implementation rejects checks until configuration exists.
 
         if method == "initialize":
             client_info = params.get("clientInfo") or {}
@@ -801,22 +800,15 @@ async def mcp_endpoint(
             # #1219 Phase 3b — dispatch is extracted into mcp_impls.py so the
             # /mcp adapter (Phase 3b Chunk B2) can call the same code path.
             # Byte-parity across the two endpoints is guaranteed by construction.
-            from app.modules.guard.mcp_impls import GuardCtx, dispatch_guard_tool
-            # Look up caller identity's risk_tier for tier-gated policies.
-            # Best-effort: guard-mt-* member tokens have no AgentIdentity row,
-            # legacy identities may have null tier. Matcher treats null as
-            # "no match" for any tier-requiring rule.
-            try:
-                from app.core.auth import resolve_agent_identity_row
-                _ai = resolve_agent_identity_row(resolved_token, db)
-                _agent_risk_tier = getattr(_ai, "risk_tier", None) if _ai else None
-            except Exception:
-                _agent_risk_tier = None
+            from app.modules.guard.mcp_impls import GuardCtx, authenticated_agent_fields, dispatch_guard_tool
+            # Resolve identity and risk tier together. Member tokens have no
+            # identity; agent credentials must resolve or fail closed.
+            _agent_fields = authenticated_agent_fields(db, resolved_token, str(ws_uuid))
             _gctx = GuardCtx(
                 db=db, ws_uuid=ws_uuid, workspace_id=workspace_id,
                 resolved_token=resolved_token, clerk_user_id=clerk_user_id,
                 user_email=user_email, ai_tool=ai_tool, session_id=session_id,
-                agent_risk_tier=_agent_risk_tier,
+                **_agent_fields,
             )
             return JSONResponse(_text(msg_id, dispatch_guard_tool(tool_name, arguments, _gctx)))
 

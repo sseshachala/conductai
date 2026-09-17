@@ -98,9 +98,9 @@ def test_end_to_end_block_on_credential_prompt():
     with patch("app.modules.guard.mcp_impls._get_rules", return_value=[proxy_rule]), \
          patch("app.modules.guard.mcp_impls._record_event") as rec, \
          patch("app.modules.guard.mcp_impls.GuardConfig"):
-        # Ensure the GuardConfig query returns None (no advisory mode).
+        # Installed Guard, with advisory mode disabled.
         _ctx_obj = _ctx()
-        _ctx_obj.db.query.return_value.filter.return_value.first.return_value = None
+        _ctx_obj.db.query.return_value.filter.return_value.first.return_value = MagicMock(advisory_mode=False)
 
         result = guard_check_prompt_impl(
             _ctx_obj,
@@ -126,7 +126,7 @@ def test_end_to_end_allow_when_no_rule_matches():
     with patch("app.modules.guard.mcp_impls._get_rules", return_value=[]), \
          patch("app.modules.guard.mcp_impls._record_event") as rec:
         _ctx_obj = _ctx()
-        _ctx_obj.db.query.return_value.filter.return_value.first.return_value = None
+        _ctx_obj.db.query.return_value.filter.return_value.first.return_value = MagicMock(advisory_mode=False)
         result = guard_check_prompt_impl(_ctx_obj, prompt="hello, nothing suspicious")
     assert result == "ok"
     assert rec.call_args.args[4] == "allowed"
