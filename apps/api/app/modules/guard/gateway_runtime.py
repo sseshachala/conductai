@@ -255,6 +255,18 @@ def resolve_v2(
     if profile is None or profile.active_revision_id is None:
         return None
 
+    # PR 6a — immutable revision-content cache. Pointer read above stays
+    # authoritative so publish / rollback / unpublish are immediate.
+    # Cache hit skips the second DB read; miss falls through to today's
+    # behavior + populates the cache.
+    from app.modules.guard.gateway_revision_cache import (
+        get as _rev_cache_get,
+        put as _rev_cache_put,
+    )
+    cached = _rev_cache_get(profile.active_revision_id)
+    if cached is not None:
+        return ResolvedV2(revision_id=profile.active_revision_id, profile=cached)
+
     revision = (
         db.query(GatewayProfileRevision)
         .filter(GatewayProfileRevision.id == profile.active_revision_id)
@@ -284,4 +296,6 @@ def resolve_v2(
         )
         return None
 
+    # Populate cache with the parsed immutable snapshot.
+    _rev_cache_put(revision.id, parsed)
     return ResolvedV2(revision_id=revision.id, profile=parsed)

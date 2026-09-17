@@ -67,3 +67,19 @@ def real_require_permission():
     yield
     _auth_mod.require_permission = _permissive_permission
 
+
+
+# ── PR 6a — gateway revision cache isolation (autouse) ────────────────────
+# The revision cache is a process-global singleton. Without clearing between
+# tests, a revision_id used by test A leaks into test B and short-circuits
+# the DB-mock path. Autouse fixture below clears the cache before every
+# test in the whole suite. Cheap: cache is a small dict, clear() is O(size).
+
+@pytest.fixture(autouse=True)
+def _reset_gateway_revision_cache():
+    try:
+        from app.modules.guard.gateway_revision_cache import clear as _clear
+        _clear()
+    except Exception:
+        pass
+    yield
