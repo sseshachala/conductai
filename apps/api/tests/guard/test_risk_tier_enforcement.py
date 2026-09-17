@@ -181,18 +181,18 @@ def proxy_client(monkeypatch):
 
     # Real evaluate_composed via RulePolicySource — patch just the rules loader
     # so we can inject a tier-gated rule per test.
-    monkeypatch.setattr(proxy_mod, "SessionLocal", lambda: MagicMock())
-    monkeypatch.setattr(proxy_mod, "resolve_agent_token",
+    monkeypatch.setattr("app.core.database.SessionLocal", lambda: MagicMock())
+    monkeypatch.setattr("app.core.auth.resolve_agent_token",
                         lambda token, db: ("00000000-0000-0000-0000-000000000001", "user-abc"))
-    monkeypatch.setattr(proxy_mod, "token_is_expired", lambda token, db: False)
-    monkeypatch.setattr(proxy_mod, "set_workspace_rls", lambda db, ws: None)
-    monkeypatch.setattr(proxy_mod, "_upstream_url", lambda db, ws, prov, env: "http://mock-upstream")
-    monkeypatch.setattr(proxy_mod, "_vault_key", lambda db, ws, prov, env: "sk-fake")
-    monkeypatch.setattr(proxy_mod, "_upstream_api_key", lambda db, ws, env: None)
-    monkeypatch.setattr(proxy_mod, "_forward", fake_forward)
-    monkeypatch.setattr(proxy_mod, "_infer_ai_tool", lambda req: "test-suite")
-    monkeypatch.setattr(proxy_mod, "_flatten_prompt", lambda body: "hello")
-    monkeypatch.setattr(proxy_mod, "_estimate_input_tokens", lambda body: 10)
+    monkeypatch.setattr("app.core.auth.token_is_expired", lambda token, db: False)
+    monkeypatch.setattr("app.core.workspace_context.set_workspace_rls", lambda db, ws: None)
+    monkeypatch.setattr("app.modules.guard.gateway_helpers._upstream_url", lambda db, ws, prov, env: "http://mock-upstream")
+    monkeypatch.setattr("app.modules.guard.gateway_helpers._vault_key", lambda db, ws, prov, env: "sk-fake")
+    monkeypatch.setattr("app.modules.guard.gateway_helpers._upstream_api_key", lambda db, ws, env: None)
+    monkeypatch.setattr("app.guard.router.upstream", fake_forward)
+    monkeypatch.setattr("app.modules.guard.gateway_helpers._infer_ai_tool", lambda req: "test-suite")
+    monkeypatch.setattr("app.guard.policy.flatten_prompt", lambda body: "hello")
+    monkeypatch.setattr("app.guard.audit._estimate_input_tokens", lambda body: 10)
     monkeypatch.setattr("app.runtime.model_router.resolve_for_workspace",
                         lambda **kwargs: ("anthropic", "claude-opus-4-7", "test-resolver"))
 
