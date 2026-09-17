@@ -85,6 +85,39 @@ services:
         sync: false
       - key: MODAL_TOKEN_SECRET
         sync: false
+      # ── Feature flags (declared here so delegator-gateway can inherit via
+      # ── fromService; blueprint sync refuses if any referenced key is
+      # ── missing). Defaults are safe-off so the flip is opt-in. Change in
+      # ── dashboard after the initial apply — the Blueprint won't push over
+      # ── a manually-set value on subsequent syncs. ────────────────────────
+      #
+      # Gateway v2 execution (PR #2045 cond-* profiles).
+      - key: GUARD_GATEWAY_PROFILE_V2
+        value: "false"
+      - key: GUARD_GATEWAY_PROFILE_V2_ROLLOUT_PCT
+        value: "0"
+      - key: GUARD_GATEWAY_PROFILE_V2_ALLOWLIST
+        value: ""
+      # Durable audit / Flight Recorder (#1959).
+      - key: GUARD_USE_DURABLE_AUDIT
+        value: "false"
+      - key: GUARD_DURABLE_AUDIT_ROLLOUT_PCT
+        value: "0"
+      - key: GUARD_DURABLE_AUDIT_ALLOWLIST
+        value: ""
+      - key: GUARD_DURABLE_AUDIT_FAIL_CLOSED
+        value: "false"
+      # Admission caps (PRs #2063 / #2064 of #2057). Declared so
+      # delegator-gateway inherits — delegator-api itself keeps
+      # ADMISSION_ENABLED unset, so these values are dormant on api.
+      - key: GATEWAY_ADMISSION_MAX_INFLIGHT
+        value: "40"
+      - key: GATEWAY_ADMISSION_WORKSPACE_MAX
+        value: "10"
+      - key: MCP_ADMISSION_MAX_INFLIGHT
+        value: "40"
+      - key: MCP_ADMISSION_WORKSPACE_MAX
+        value: "10"
 
   # ── Gateway (isolated web service so LLM traffic can't stall dashboard) ──
   # PR 4 of parent epic #2057. Same image + env as `delegator-api`, own
