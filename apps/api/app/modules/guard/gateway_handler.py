@@ -114,17 +114,15 @@ async def handle_gateway_request(
             _is_internal = _auth_result.is_internal
             _agent_identity_id = _auth_result.agent_identity_id
             _agent_risk_tier = _auth_result.agent_risk_tier
-            # Auth used its own session; re-set RLS on the persistent db
-            # used by the rest of the request path.
-            set_workspace_rls(db, workspace_id)
-
-            # PR 2 (#2056) admission control.
+            # PR 2 review fix — admission acquire happens IMMEDIATELY after
+            # auth so an overloaded gateway rejects the request before any
+            # further DB work touches the event loop. Previously the RLS set
+            # ran a sync SQL execute on the event loop before this check.
             from app.core.admission import AdmissionRefused as _AdmRefused
             from app.core.admission import _acquire as _admission_acquire
             try:
                 _admission_ticket = await _admission_acquire("gateway", workspace_id)
             except _AdmRefused as _adm_e:
-                # Retry-After header carries the client-side backoff hint.
                 return JSONResponse(
                     status_code=_adm_e.http_status,
                     content={
@@ -136,6 +134,11 @@ async def handle_gateway_request(
                     },
                     headers={"Retry-After": str(int(_adm_e.retry_after_seconds))},
                 )
+
+            # RLS on the shared session runs off the event loop so it cannot
+            # block. The shared session itself is being retired — remaining
+            # DB ops in this block are offloaded one by one.
+            await run_in_threadpool(set_workspace_rls, db, workspace_id)
 
             # 3. Parse request body
             try:
@@ -204,8 +207,11 @@ async def handle_gateway_request(
                 )
             if _v2_enabled:
                 if _cond_code is not None:
-                    _v2_plan = _build_v2_plan(
-                        db=db,
+                    # P1 review fix — v2 plan build (profile + credential
+                    # resolution) offloaded to threadpool with its own session.
+                    # Was the primary latency bottleneck on the v2 path.
+                    _v2_plan = await run_in_threadpool(
+                        _build_v2_plan_owned,
                         workspace_id=workspace_id,
                         cond_code=_cond_code,
                         provider=provider,
@@ -231,16 +237,13 @@ async def handle_gateway_request(
                 )
             ai_tool = request.headers.get("x-conduct-ai-tool") or _infer_ai_tool(request)
 
-            # 4a. Resolve user email for audit rows
-            _user_email: str | None = None
-            if not _user_email:
-                try:
-                    from app.models.user import User as _User
-                    _u = db.query(_User).filter(_User.clerk_id == clerk_user_id).first()
-                    if _u:
-                        _user_email = _u.email
-                except Exception:
-                    pass
+            # 4a. Resolve user email for audit rows — offloaded to threadpool
+            # with an own-session helper (P1 review fix, replaces sync
+            # ``db.query`` on the event loop that used the shared session).
+            from app.modules.guard.gateway_helpers import _lookup_user_email as _lookup_user_email_fn
+            _user_email = await run_in_threadpool(
+                _lookup_user_email_fn, workspace_id, clerk_user_id,
+            )
 
             # 4b. Run context from brain block headers (workflow runs only)
             _run_id = request.headers.get("x-conductai-run-id") or None
@@ -267,39 +270,54 @@ async def handle_gateway_request(
             # account to view it under, and we don't want block prompts to
             # default to a publicly-shareable link.
             from app.modules.guard.trial_seed import TRIAL_PLAN as _TRIAL_PLAN
+            from app.modules.guard.gateway_helpers import _lookup_workspace_trial as _lookup_workspace_trial_fn
             _is_trial = False
+            # P1 review fix — trial lookup offloaded to threadpool with an
+            # own-session helper. Was a sync db.execute on the event loop.
             try:
-                _row = db.execute(
-                    text("SELECT plan, owner_id FROM workspaces WHERE id = :ws"),
-                    {"ws": workspace_id},
-                ).fetchone()
+                _ws_plan, _ws_owner = await run_in_threadpool(
+                    _lookup_workspace_trial_fn, workspace_id,
+                )
+                _row = (
+                    type("_Row", (), {"plan": _ws_plan, "owner_id": _ws_owner})()
+                    if _ws_plan is not None else None
+                )
                 if _row is not None:
                     _is_trial = (_row.plan == _TRIAL_PLAN and _row.owner_id is None)
             except Exception:
                 pass
 
             # 4c. Pre-call Guard policy evaluation — composed engine (#1225 Phase 4)
+            # P1 review fix — offloaded to threadpool with an owned session
+            # (was sync DB-heavy eval on the event loop).
             prompt_summary = _flatten_prompt(body)[:200]
-            from app.guard.policy import evaluate_composed as _eval_composed
-            from app.guard.policy_types import PolicyContext as _PolicyContext
-            _ctx = _PolicyContext(
-                workspace_id=workspace_id,
-                clerk_user_id=clerk_user_id,
-                agent_identity_id=str(_agent_identity_id) if _agent_identity_id else None,
-                provider=provider,
-                model=model,
-                body=body,
-                input_tokens=_estimate_input_tokens(body),
-                db=db,
-                gate="prompt",  # #1733: outbound LLM proxy egress
-                risk_tier=_agent_risk_tier,
-                # ai_tool was resolved earlier via header or UA sniff (line 458);
-                # threading it into policy eval scopes SpendCapPolicySource
-                # lookups per-tool. "unknown" flows through and SpendCap treats
-                # it as absence (workspace + user caps still apply).
-                ai_tool=ai_tool or None,
-            )
-            _pd = _eval_composed(_ctx)
+
+            def _eval_prompt_policy_owned():
+                from app.core.database import SessionLocal as _SL
+                from app.core.workspace_context import set_workspace_rls
+                from app.guard.policy import evaluate_composed as _eval_composed
+                from app.guard.policy_types import PolicyContext as _PolicyContext
+                _db_local = _SL()
+                try:
+                    set_workspace_rls(_db_local, workspace_id)
+                    _ctx = _PolicyContext(
+                        workspace_id=workspace_id,
+                        clerk_user_id=clerk_user_id,
+                        agent_identity_id=str(_agent_identity_id) if _agent_identity_id else None,
+                        provider=provider,
+                        model=model,
+                        body=body,
+                        input_tokens=_estimate_input_tokens(body),
+                        db=_db_local,
+                        gate="prompt",
+                        risk_tier=_agent_risk_tier,
+                        ai_tool=ai_tool or None,
+                    )
+                    return _eval_composed(_ctx)
+                finally:
+                    _db_local.close()
+
+            _pd = await run_in_threadpool(_eval_prompt_policy_owned)
             decision = _pd.extras.get("raw") or {
                 "action": _pd.action.value,
                 "rule_id": _pd.rule_id,
@@ -1026,6 +1044,36 @@ def _extract_cond_code(model: object) -> str | None:
         return None
     match = _COND_CODE_RE.match(model)
     return match.group(1) if match else None
+
+
+def _build_v2_plan_owned(
+    *,
+    workspace_id: str,
+    cond_code: str,
+    provider: str,
+    upstream_path: str,
+    body: dict,
+) -> "_V2Plan | None":
+    """Session-per-thread wrapper. Opens SessionLocal(), sets RLS,
+    delegates to ``_build_v2_plan``, closes on exit regardless of path.
+    Caller invokes via ``run_in_threadpool`` so v2 profile + credential
+    resolution runs off the event loop (P1 review fix — this is the
+    v2-path latency bottleneck)."""
+    from app.core.database import SessionLocal as _SessionLocal
+    from app.core.workspace_context import set_workspace_rls
+    db = _SessionLocal()
+    try:
+        set_workspace_rls(db, workspace_id)
+        return _build_v2_plan(
+            db=db,
+            workspace_id=workspace_id,
+            cond_code=cond_code,
+            provider=provider,
+            upstream_path=upstream_path,
+            body=body,
+        )
+    finally:
+        db.close()
 
 
 def _build_v2_plan(

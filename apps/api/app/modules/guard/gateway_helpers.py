@@ -558,6 +558,47 @@ def _resolve_upstream_credentials(
         db.close()
 
 
+def _lookup_user_email(workspace_id: str, clerk_user_id: str | None) -> str | None:
+    """Session-per-thread user email lookup for audit rows. Owns its DB
+    session; caller invokes via ``run_in_threadpool``."""
+    if not clerk_user_id:
+        return None
+    from app.core.database import SessionLocal as _SessionLocal
+    from app.core.workspace_context import set_workspace_rls
+    from app.models.user import User as _User
+    db = _SessionLocal()
+    try:
+        set_workspace_rls(db, workspace_id)
+        u = db.query(_User).filter(_User.clerk_id == clerk_user_id).first()
+        return u.email if u else None
+    except Exception:
+        return None
+    finally:
+        db.close()
+
+
+def _lookup_workspace_trial(workspace_id: str) -> tuple[str | None, str | None]:
+    """Return (plan, owner_id) for the workspace or (None, None) on error.
+    Owns its DB session. Called via ``run_in_threadpool`` to keep the trial
+    lookup off the event loop."""
+    from app.core.database import SessionLocal as _SessionLocal
+    from app.core.workspace_context import set_workspace_rls
+    db = _SessionLocal()
+    try:
+        set_workspace_rls(db, workspace_id)
+        row = db.execute(
+            text("SELECT plan, owner_id FROM workspaces WHERE id = :ws"),
+            {"ws": workspace_id},
+        ).fetchone()
+        if not row:
+            return (None, None)
+        return (row.plan, str(row.owner_id) if row.owner_id else None)
+    except Exception:
+        return (None, None)
+    finally:
+        db.close()
+
+
 def _upstream_url(db: Session, workspace_id: str, provider: str, environment_id: str | None = None) -> str:
     """Return BYO upstream URL from proxy_config for the workflow's environment, else vendor default."""
     if environment_id:
