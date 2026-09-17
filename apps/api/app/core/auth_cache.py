@@ -467,3 +467,43 @@ class AuthCache:
         bus.subscribe(["auth.risk_tier.changed"], _on_risk_tier_changed)
         bus.subscribe(["auth.permission.changed"], _on_permission_changed)
         bus.subscribe(["auth.workspace.changed"], _on_workspace_changed)
+
+
+# ── Singleton wiring for the request path ─────────────────────────────
+
+_SINGLETON: AuthCache | None = None
+
+
+def init_auth_cache(
+    *,
+    fetch: FetchFn,
+    invalidation_bus: Any | None = None,
+    cache_ttl_seconds: float | None = None,
+) -> AuthCache:
+    """Initialize the process-global AuthCache. Called once from FastAPI
+    startup. Idempotent — a second call replaces the previous instance
+    and its handlers re-subscribe to the bus.
+
+    Returns the singleton so callers can hold a reference for stats
+    endpoints or manual invalidation from admin tools."""
+    global _SINGLETON
+    _SINGLETON = AuthCache(
+        fetch=fetch,
+        invalidation_bus=invalidation_bus,
+        cache_ttl_seconds=cache_ttl_seconds,
+    )
+    return _SINGLETON
+
+
+def get_auth_cache() -> "AuthCache | None":
+    """Return the singleton or None if not yet initialized. Callers on
+    the request path use this and fall back to their direct fetch when
+    None — safe by design because the kill switch also disables the
+    cache the same way."""
+    return _SINGLETON
+
+
+def reset_auth_cache_for_tests() -> None:
+    """Wipe the singleton so per-test wiring can rebuild it."""
+    global _SINGLETON
+    _SINGLETON = None
