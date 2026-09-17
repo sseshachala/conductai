@@ -339,6 +339,11 @@ def revoke_credential_session(
     if row.revoked_at is None:
         row.revoked_at = datetime.now(timezone.utc)
         db.commit()
+        # PR 6b canary — publish invalidation so the auth cache drops
+        # any entries backed by this session's tokens within bus
+        # latency instead of waiting for TTL expiry. Fire-and-forget.
+        from app.core.auth_events import publish_identity_disabled
+        publish_identity_disabled(str(identity.id))
     return _credential_session_out(row, identity, request, _credential_session_member_active(db, identity))
 
 
@@ -433,6 +438,20 @@ def patch_agent_identity(
     if updated:
         db.commit()
         db.refresh(row)
+        # PR 6b canary — publish invalidation for the changes.
+        from app.core.auth_events import (
+            publish_identity_disabled,
+            publish_risk_tier_changed,
+        )
+        if body.lifecycle_state is not None and body.lifecycle_state != "active":
+            publish_identity_disabled(str(row.id))
+        elif body.lifecycle_state == "active":
+            # Re-activating still bumps entries — the previous entries
+            # may have been cached during a brief pre-deactivation
+            # window; drop them for consistency.
+            publish_identity_disabled(str(row.id))
+        if body.risk_tier is not None:
+            publish_risk_tier_changed(str(row.id))
 
     return AgentIdentityOut(
         id=row.id, name=row.name, provider=row.provider, token_prefix=row.token_prefix,
