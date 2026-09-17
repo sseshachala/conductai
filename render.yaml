@@ -87,6 +87,76 @@ services:
       - key: MODAL_TOKEN_SECRET
         sync: false
 
+  # ── Gateway (isolated web service so LLM traffic can't stall dashboard) ──
+  # PR 4 of parent epic #2057. Same image + env as `delegator-api`, own
+  # worker pool + own health check. Traffic split at the DNS / reverse-
+  # proxy layer (not Render — Render doesn't do path-based routing between
+  # services). Options:
+  #   1. Point a subdomain (e.g. `gateway.conductai.ai`) at this service.
+  #   2. Put a proxy (Cloudflare Worker / Vercel Edge) in front of the main
+  #      hostname that routes `/gateway/*` and `/mcp` to this service.
+  # Either way, `delegator-api` no longer serves gateway traffic in the
+  # steady state.
+  #
+  # DB pool budget: this service shares the same Postgres instance as the
+  # other web service + worker. `POOL_SIZE` env var caps SQLAlchemy pool
+  # per worker so the sum across services stays under Postgres
+  # `max_connections`. Adjust when instance plans change.
+  - type: web
+    name: delegator-gateway
+    runtime: docker
+    region: oregon
+    plan: starter
+    dockerfilePath: ./apps/api/Dockerfile
+    dockerContext: ./apps/api
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: delegator-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: delegator-redis
+          property: connectionString
+      # This service exists to protect dashboard availability during
+      # gateway overload. Keep admission enforcement ON here; the
+      # threshold is tuned via `GATEWAY_ADMISSION_*` env vars.
+      - key: ADMISSION_ENABLED
+        value: "true"
+      # Pool sizing note (see block comment above). SQLAlchemy defaults
+      # are pool_size=5 + max_overflow=10 = 15 per worker. Two workers
+      # per service = 30 per instance. Three web services on one
+      # Postgres instance (starter, `max_connections=97`) means 3 * 30
+      # = 90, headroom for migrations. Cap explicitly via env var so a
+      # future scale-up on the API service doesn't oversubscribe the DB.
+      - key: SQLALCHEMY_POOL_SIZE
+        value: "5"
+      - key: SQLALCHEMY_MAX_OVERFLOW
+        value: "10"
+      - key: API_BASE_URL
+        fromService:
+          type: web
+          name: delegator-api
+          envVarKey: RENDER_EXTERNAL_URL
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: ENCRYPTION_KEY
+        fromService:
+          type: web
+          name: delegator-api
+          envVarKey: ENCRYPTION_KEY
+      - key: CLERK_SECRET_KEY
+        sync: false
+      - key: CLERK_FRONTEND_API
+        sync: false
+      - key: MODAL_TOKEN_ID
+        sync: false
+      - key: MODAL_TOKEN_SECRET
+        sync: false
+
   # ── Worker (same image, different command) ────────────────────────────────
   - type: worker
     name: delegator-worker
