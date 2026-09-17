@@ -228,6 +228,25 @@ def _resolve_tier_form(db: Session, workspace_id: str, endpoint_provider: str, m
         return None
 
 
+def _apply_tier_resolution_owned(
+    workspace_id: str,
+    provider: str,
+    body: dict,
+) -> tuple[str, dict | None]:
+    """Owned-session wrapper. Opens SessionLocal(), sets RLS, delegates
+    to _apply_tier_resolution, closes on exit. Callers invoke via
+    ``run_in_threadpool`` so tier resolution's model_router DB lookup
+    runs off the event loop."""
+    from app.core.database import SessionLocal as _SessionLocal
+    from app.core.workspace_context import set_workspace_rls
+    db = _SessionLocal()
+    try:
+        set_workspace_rls(db, workspace_id)
+        return _apply_tier_resolution(db, workspace_id, provider, body)
+    finally:
+        db.close()
+
+
 def _apply_tier_resolution(
     db: Session,
     workspace_id: str,

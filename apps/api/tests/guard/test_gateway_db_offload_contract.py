@@ -73,7 +73,7 @@ def test_upstream_credential_resolution_runs_in_threadpool():
 def test_tier_resolution_runs_in_threadpool():
     """``_apply_tier_resolution`` touches DB via ``model_router``. Must
     run in threadpool."""
-    assert _preceded_by_run_in_threadpool(_HANDLER, "_apply_tier_resolution,"), (
+    assert _preceded_by_run_in_threadpool(_HANDLER, "_apply_tier_resolution_owned,"), (
         "``_apply_tier_resolution`` must be called via run_in_threadpool "
         "(it does a model_router DB lookup)."
     )
