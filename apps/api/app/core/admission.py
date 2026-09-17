@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import threading
 import time
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
@@ -54,7 +55,10 @@ class _SurfaceState:
     global_inflight: int = 0
     workspace_inflight: dict[str, int] = field(default_factory=dict)
     last_activity: dict[str, float] = field(default_factory=dict)
-    lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    # ``threading.Lock`` not ``asyncio.Lock`` so this state works across event
+    # loops (multi-worker FastAPI, TestClient thread pools). The critical
+    # section is a handful of dict ops — no awaits inside.
+    lock: threading.Lock = field(default_factory=threading.Lock)
     admitted_total: int = 0
     refused_workspace_total: int = 0
     refused_global_total: int = 0
@@ -83,6 +87,14 @@ def configure_defaults() -> None:
 
     Skips entirely when ``ADMISSION_ENABLED`` is not truthy — leaving
     ``_STATE`` empty so ``admit()`` becomes a no-op pass-through.
+
+    Caps are process-local. A 4-worker deployment with
+    ``workspace_max=25`` admits up to ``4 x 25 = 100`` concurrent requests
+    per workspace instance-wide (per-worker × worker count). For
+    validation, use small caps (workspace_max=2, global_max=4) so
+    overlap is provable with a handful of concurrent requests. The
+    default caps here are placeholders to tune post-canary — use the
+    stress-test at ``scripts/stress_gateway.py`` to right-size them.
     """
     if not _admission_enabled():
         return
@@ -128,7 +140,7 @@ class Ticket:
         st = _STATE.get(self._surface)
         if st is None:
             return
-        async with st.lock:
+        with st.lock:
             ws_current = st.workspace_inflight.get(self._workspace_id, 0)
             if ws_current > 0:
                 st.workspace_inflight[self._workspace_id] = ws_current - 1
@@ -142,41 +154,39 @@ async def _acquire(surface: Surface, workspace_id: str) -> Ticket:
     if st is None:
         # Admission not configured — pass through (opt-in per surface).
         return Ticket(surface, workspace_id)
-    async with st.lock:
+    with st.lock:
         ws_current = st.workspace_inflight.get(workspace_id, 0)
         if ws_current >= st.workspace_max:
             st.refused_workspace_total += 1
-            log.info(
-                "admission.refused",
-                surface=surface,
-                scope="workspace",
-                workspace_id=workspace_id,
-                current=ws_current,
-                cap=st.workspace_max,
-            )
-            raise AdmissionRefused(
+            _refused = AdmissionRefused(
                 http_status=429,
                 scope="workspace",
                 retry_after_seconds=1.0,
             )
-        if st.global_inflight >= st.global_max:
+            _cap = st.workspace_max
+        elif st.global_inflight >= st.global_max:
             st.refused_global_total += 1
-            log.info(
-                "admission.refused",
-                surface=surface,
-                scope="global",
-                current=st.global_inflight,
-                cap=st.global_max,
-            )
-            raise AdmissionRefused(
+            _refused = AdmissionRefused(
                 http_status=503,
                 scope="global",
                 retry_after_seconds=2.0,
             )
-        st.workspace_inflight[workspace_id] = ws_current + 1
-        st.global_inflight += 1
-        st.last_activity[workspace_id] = time.monotonic()
-        st.admitted_total += 1
+            _cap = st.global_max
+        else:
+            _refused = None
+            st.workspace_inflight[workspace_id] = ws_current + 1
+            st.global_inflight += 1
+            st.last_activity[workspace_id] = time.monotonic()
+            st.admitted_total += 1
+    if _refused is not None:
+        log.info(
+            "admission.refused",
+            surface=surface,
+            scope=_refused.scope,
+            workspace_id=workspace_id,
+            cap=_cap,
+        )
+        raise _refused
     return Ticket(surface, workspace_id)
 
 
@@ -209,7 +219,7 @@ async def _gc_loop(interval_seconds: float = 30.0, idle_seconds: float = 60.0) -
             await asyncio.sleep(interval_seconds)
             now = time.monotonic()
             for surface, st in list(_STATE.items()):
-                async with st.lock:
+                with st.lock:
                     to_evict = [
                         ws
                         for ws, count in st.workspace_inflight.items()
@@ -219,12 +229,12 @@ async def _gc_loop(interval_seconds: float = 30.0, idle_seconds: float = 60.0) -
                     for ws in to_evict:
                         st.workspace_inflight.pop(ws, None)
                         st.last_activity.pop(ws, None)
-                    if to_evict:
-                        log.debug(
-                            "admission.gc",
-                            surface=surface,
-                            evicted=len(to_evict),
-                        )
+                if to_evict:
+                    log.debug(
+                        "admission.gc",
+                        surface=surface,
+                        evicted=len(to_evict),
+                    )
         except asyncio.CancelledError:
             raise
         except Exception as e:
@@ -261,6 +271,27 @@ def start_background_tasks() -> None:
     _background_tasks.append(loop.create_task(_gc_loop(), name="admission.gc"))
     _background_tasks.append(
         loop.create_task(_loop_lag_sampler(), name="admission.loop_lag")
+    )
+
+
+def admission_refused_jsonrpc(msg_id, exc: AdmissionRefused):
+    """Shared JSON-RPC error envelope for MCP admission refusal.
+
+    Imported locally where needed so this module stays free of framework deps
+    for its self-check. Returns a starlette JSONResponse.
+    """
+    from fastapi.responses import JSONResponse
+    return JSONResponse(
+        status_code=exc.http_status,
+        content={
+            "jsonrpc": "2.0",
+            "id": msg_id,
+            "error": {
+                "code": -32000,
+                "message": f"MCP overloaded ({exc.scope} slot full) — retry after {int(exc.retry_after_seconds)}s",
+            },
+        },
+        headers={"Retry-After": str(int(exc.retry_after_seconds))},
     )
 
 

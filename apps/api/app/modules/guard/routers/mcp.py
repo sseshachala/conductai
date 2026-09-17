@@ -27,6 +27,9 @@ from sqlalchemy.orm import Session
 
 from sqlalchemy import text as _sql
 
+from starlette.concurrency import run_in_threadpool
+
+from app.core.admission import AdmissionRefused, admission_refused_jsonrpc, admit
 from app.core.database import SessionLocal
 from app.core.auth import get_clerk_user_email, resolve_agent_token
 from app.core.pii import redact_secrets
@@ -818,7 +821,18 @@ async def mcp_endpoint(
                 user_email=user_email, ai_tool=ai_tool, session_id=session_id,
                 agent_risk_tier=_agent_risk_tier,
             )
-            return JSONResponse(_text(msg_id, dispatch_guard_tool(tool_name, arguments, _gctx)))
+            # Admission control (PR 1 of #2058). ``dispatch_guard_tool`` is sync
+            # — offloaded to the threadpool so the event loop stays free to
+            # admission-check the next request. Kill-switched via
+            # ``ADMISSION_ENABLED`` env; when off, ``admit`` is a pass-through.
+            try:
+                async with admit("mcp", str(ws_uuid)):
+                    _tool_result = await run_in_threadpool(
+                        dispatch_guard_tool, tool_name, arguments, _gctx
+                    )
+            except AdmissionRefused as _adm_exc:
+                return admission_refused_jsonrpc(msg_id, _adm_exc)
+            return JSONResponse(_text(msg_id, _tool_result))
 
         elif method == "ping":
             return JSONResponse(_ok(msg_id, {}))
