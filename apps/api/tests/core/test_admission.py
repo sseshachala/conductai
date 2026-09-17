@@ -338,6 +338,114 @@ def test_mcp_endpoint_retry_after_header(mcp_client):
         assert header is not None, "429 must carry Retry-After"
 
 
+# ── Regression: bugs surfaced in PR 2 review ──────────────────────────
+
+@pytest.mark.asyncio
+async def test_admit_releases_slot_when_body_raises_after_acquire():
+    """P1 fix: any exception AFTER admission acquire — including during the
+    'gap' code path where durable acceptance fires — releases the slot.
+
+    Reviewer reproducer: audit-outage returned 503 but global_inflight
+    stayed at 1. This test exercises the same shape at the primitive
+    layer: exception mid-body → outer finally must release."""
+    _reset_state("gateway", global_max=2, workspace_max=1)
+
+    class _FakeAuditFailure(Exception):
+        pass
+
+    with pytest.raises(_FakeAuditFailure):
+        async with admit("gateway", "ws-audit"):
+            # Simulate durable-acceptance failure between DB block and upstream try.
+            raise _FakeAuditFailure("audit write failed")
+
+    assert _STATE["gateway"].global_inflight == 0, "slot leaked on mid-body exception"
+    assert _STATE["gateway"].workspace_inflight.get("ws-audit", 0) == 0
+
+
+@pytest.mark.asyncio
+async def test_admit_repeated_audit_failure_does_not_exhaust_admission():
+    """P1 fix: repeated failure-during-body must not exhaust the pool."""
+    _reset_state("gateway", global_max=1, workspace_max=1)
+
+    for _ in range(5):
+        try:
+            async with admit("gateway", "ws-loop"):
+                raise RuntimeError("simulated audit failure")
+        except RuntimeError:
+            pass
+
+    assert _STATE["gateway"].global_inflight == 0
+    # Fresh acquire must succeed — pool not exhausted.
+    async with admit("gateway", "ws-loop"):
+        assert _STATE["gateway"].global_inflight == 1
+    assert _STATE["gateway"].global_inflight == 0
+
+
+@pytest.mark.asyncio
+async def test_admit_deferred_release_holds_slot_until_explicit_release():
+    """P1 fix (streaming): with ticket.defer() the slot is held past
+    context exit — mirroring the pattern where release is transferred to
+    the stream lifecycle. Verifies the slot IS held throughout the
+    'stream duration' and released only when the caller triggers it."""
+    _reset_state("gateway", global_max=2, workspace_max=1)
+
+    ticket_holder: list[Ticket] = []
+    async with admit("gateway", "ws-stream") as t:
+        t.defer()
+        ticket_holder.append(t)
+        assert _STATE["gateway"].global_inflight == 1
+
+    # Context exited — but slot STILL held (deferred).
+    assert _STATE["gateway"].global_inflight == 1
+
+    # A concurrent request from the same workspace is rejected because
+    # the deferred slot is still occupied.
+    with pytest.raises(AdmissionRefused) as excinfo:
+        async with admit("gateway", "ws-stream"):
+            pass
+    assert excinfo.value.scope == "workspace"
+
+    # Simulate stream close → callback fires release.
+    await ticket_holder[0].release()
+    assert _STATE["gateway"].global_inflight == 0
+
+    # Now a fresh acquire succeeds.
+    async with admit("gateway", "ws-stream"):
+        pass
+    assert _STATE["gateway"].global_inflight == 0
+
+
+@pytest.mark.asyncio
+async def test_admit_release_is_idempotent_after_double_call():
+    """P1 fix: on_close in stream wrap + outer finally can both fire.
+    release() must be idempotent so double-fire doesn't underflow."""
+    _reset_state("gateway", global_max=2, workspace_max=2)
+
+    async with admit("gateway", "ws-idem") as t:
+        t.defer()
+        await t.release()
+        await t.release()  # idempotent — no double-decrement
+        await t.release()
+
+    assert _STATE["gateway"].global_inflight == 0
+
+
+def test_admission_refused_carries_retry_after():
+    """P2 fix: AdmissionRefused exposes retry_after_seconds so the caller
+    can set the Retry-After HTTP header. gateway_handler now builds a
+    JSONResponse with this header for 429/503 admission refusals."""
+    exc_workspace = AdmissionRefused(
+        http_status=429, scope="workspace", retry_after_seconds=1.0
+    )
+    exc_global = AdmissionRefused(
+        http_status=503, scope="global", retry_after_seconds=2.0
+    )
+    assert exc_workspace.retry_after_seconds == 1.0
+    assert exc_global.retry_after_seconds == 2.0
+    assert exc_workspace.http_status == 429
+    assert exc_global.http_status == 503
+
+
 # ── Stats snapshot ────────────────────────────────────────────────────
 
 def test_stats_returns_counters():
