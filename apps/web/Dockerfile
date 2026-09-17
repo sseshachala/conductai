@@ -9,11 +9,15 @@ RUN npm install
 FROM base AS dev
 COPY apps/web/ .
 COPY docs/ /docs/
+COPY config/ /config/
 CMD ["npm", "run", "dev"]
 
 FROM base AS builder
 COPY apps/web/ .
 COPY docs/ /docs/
+# apps/web/src/features/guard/spend/shared.ts imports @config/ai_tools.json
+# via tsconfig alias `../../config/*`. Copy it into the build tree.
+COPY config/ /config/
 RUN npm run build
 
 FROM node:20-alpine AS prod
