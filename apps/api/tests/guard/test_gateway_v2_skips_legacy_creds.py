@@ -63,7 +63,10 @@ def test_v1_only_vars_appear_only_inside_v2_none_gate():
     # Every helper call must be preceded by the gate — use a coarse
     # "the gate appears earlier in the file than any of these" check.
     gate_pos = _HANDLER.index("if _v2_plan is None:")
-    for helper in ("_upstream_url(", "_upstream_api_key(", "_vault_key(", "resolve_trial_key("):
+    # PR 2 Commit 3 combined _upstream_url + _upstream_api_key + _vault_key
+    # into ``_resolve_upstream_credentials(...)`` for threadpool offload —
+    # gate check now targets that helper (v1 primitives are called inside it).
+    for helper in ("_resolve_upstream_credentials", "resolve_trial_key("):
         first_call = _HANDLER.find(helper)
         assert first_call > gate_pos, (
             f"{helper} appears before the ``if _v2_plan is None:`` "
