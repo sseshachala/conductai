@@ -37,33 +37,27 @@ async def handle_gateway_request(
     operation: str = "inference",
 ) -> StreamingResponse | JSONResponse:
     """One implementation, three providers — only the URL + auth header shape differs."""
-    # Lazy import: routers.proxy still owns the helpers (redaction, tier
-    # resolution, upstream/vault lookup, response gate) plus the re-exports
-    # for auth/session/audit. Function-body import breaks the circular dep
-    # with routers/proxy.py, and lets test patches on ``routers.proxy.X``
-    # intercept each call (the module attribute is re-read on every entry
-    # because the ``from ... import`` compiles to a runtime lookup).
-    from app.modules.guard.routers.proxy import (
-        _apply_tier_resolution,
-        _flatten_prompt,
-        _estimate_input_tokens,
-        _infer_ai_tool,
-        _upstream_url,
-        _upstream_api_key,
-        _vault_key,
-        _redact_body,
-        _inject_guidance,
+    # Helpers live in gateway_helpers.py (extracted 2026-09-17). Re-exports
+    # come from their real home modules. routers/proxy.py is legacy and this
+    # handler no longer depends on it.
+    from app.core.auth import resolve_agent_token, token_is_expired
+    from app.core.database import SessionLocal
+    from app.core.workspace_context import set_workspace_rls
+    from app.runtime.provider_transport import get_provider_transport_registry
+    from app.guard.audit import _estimate_input_tokens, record as _record_audit
+    from app.guard.policy import flatten_prompt as _flatten_prompt
+    from app.guard.router import fail_closed as _fail_closed, upstream as _forward
+    from app.modules.guard.gateway_helpers import (
         _apply_response_gate,
-        _wrap_streaming_response,
+        _apply_tier_resolution,
         _extract_member_token,
-        SessionLocal,
-        resolve_agent_token,
-        token_is_expired,
-        set_workspace_rls,
-        _record_audit,
-        _fail_closed,
-        _forward,
-        get_provider_transport_registry,
+        _infer_ai_tool,
+        _inject_guidance,
+        _redact_body,
+        _upstream_api_key,
+        _upstream_url,
+        _vault_key,
+        _wrap_streaming_response,
     )
 
     started = time.monotonic()
@@ -1144,11 +1138,9 @@ def _build_policy_check(
     coordinator runs. Cost: one indexed query against the composed
     policy engine per target attempt.
     """
-    from app.modules.guard.routers.proxy import (
-        SessionLocal,
-        _estimate_input_tokens,
-        set_workspace_rls,
-    )
+    from app.core.database import SessionLocal
+    from app.core.workspace_context import set_workspace_rls
+    from app.guard.audit import _estimate_input_tokens
     from app.runtime.attempt_coordinator import PolicyBlock
 
     def _check(target) -> PolicyBlock | None:

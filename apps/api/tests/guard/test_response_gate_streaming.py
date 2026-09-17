@@ -78,7 +78,7 @@ def test_wrap_streaming_response_passes_chunks_through_unchanged():
 
         inner = StreamingResponse(_fake_stream(), media_type="text/event-stream")
         with patch(
-            "app.modules.guard.routers.proxy._evaluate_response_body",
+            "app.modules.guard.gateway_helpers._evaluate_response_body",
             return_value=PolicyDecision(action=PolicyAction.ALLOW, source="rule"),
         ):
             wrapped = _wrap_streaming_response(
@@ -108,7 +108,7 @@ def test_wrap_streaming_response_evaluates_synthetic_response_body():
             return PolicyDecision(action=PolicyAction.ALLOW, source="rule")
 
         with patch(
-            "app.modules.guard.routers.proxy._evaluate_response_body",
+            "app.modules.guard.gateway_helpers._evaluate_response_body",
             side_effect=_spy,
         ):
             wrapped = _wrap_streaming_response(
@@ -136,10 +136,10 @@ def test_wrap_streaming_response_logs_when_block_fires_post_hoc():
             reason="SSN leaked in stream", rule_id="hipaa-no-ssn-out",
         )
         with patch(
-            "app.modules.guard.routers.proxy._evaluate_response_body",
+            "app.modules.guard.gateway_helpers._evaluate_response_body",
             return_value=block,
         ), patch(
-            "app.modules.guard.routers.proxy.log.warning",
+            "app.modules.guard.gateway_helpers.log.warning",
             side_effect=lambda event, **kw: calls.append((event, kw)),
         ):
             wrapped = _wrap_streaming_response(
@@ -164,7 +164,7 @@ def test_wrap_streaming_response_swallows_evaluator_errors():
 
         inner = StreamingResponse(_fake_stream(), media_type="text/event-stream")
         with patch(
-            "app.modules.guard.routers.proxy._evaluate_response_body",
+            "app.modules.guard.gateway_helpers._evaluate_response_body",
             side_effect=RuntimeError("engine down"),
         ):
             wrapped = _wrap_streaming_response(

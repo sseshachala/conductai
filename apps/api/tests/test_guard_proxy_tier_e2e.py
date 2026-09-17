@@ -43,18 +43,18 @@ def client_and_capture(monkeypatch):
         return "openai", "gpt-4.1", "test-resolver"
 
     # DB session — nothing actually reads through it (all queries are patched)
-    monkeypatch.setattr(proxy_mod, "SessionLocal", lambda: MagicMock())
-    monkeypatch.setattr(proxy_mod, "resolve_agent_token", lambda token, db: ("00000000-0000-0000-0000-000000000001", "user-abc"))
-    monkeypatch.setattr(proxy_mod, "token_is_expired", lambda token, db: False)
-    monkeypatch.setattr(proxy_mod, "set_workspace_rls", lambda db, ws: None)
+    monkeypatch.setattr("app.core.database.SessionLocal", lambda: MagicMock())
+    monkeypatch.setattr("app.core.auth.resolve_agent_token", lambda token, db: ("00000000-0000-0000-0000-000000000001", "user-abc"))
+    monkeypatch.setattr("app.core.auth.token_is_expired", lambda token, db: False)
+    monkeypatch.setattr("app.core.workspace_context.set_workspace_rls", lambda db, ws: None)
     monkeypatch.setattr("app.guard.policy.evaluate_composed", fake_allow)
-    monkeypatch.setattr(proxy_mod, "_upstream_url", lambda db, ws, prov, env: "http://mock-upstream")
-    monkeypatch.setattr(proxy_mod, "_vault_key", lambda db, ws, prov, env: "sk-fake-vendor-key")
-    monkeypatch.setattr(proxy_mod, "_upstream_api_key", lambda db, ws, env: None)
-    monkeypatch.setattr(proxy_mod, "_forward", fake_forward)
-    monkeypatch.setattr(proxy_mod, "_infer_ai_tool", lambda req: "test-suite")
-    monkeypatch.setattr(proxy_mod, "_flatten_prompt", lambda body: "")
-    monkeypatch.setattr(proxy_mod, "_estimate_input_tokens", lambda body: 10)
+    monkeypatch.setattr("app.modules.guard.gateway_helpers._upstream_url", lambda db, ws, prov, env: "http://mock-upstream")
+    monkeypatch.setattr("app.modules.guard.gateway_helpers._vault_key", lambda db, ws, prov, env: "sk-fake-vendor-key")
+    monkeypatch.setattr("app.modules.guard.gateway_helpers._upstream_api_key", lambda db, ws, env: None)
+    monkeypatch.setattr("app.guard.router.upstream", fake_forward)
+    monkeypatch.setattr("app.modules.guard.gateway_helpers._infer_ai_tool", lambda req: "test-suite")
+    monkeypatch.setattr("app.guard.policy.flatten_prompt", lambda body: "")
+    monkeypatch.setattr("app.guard.audit._estimate_input_tokens", lambda body: 10)
     monkeypatch.setattr("app.runtime.model_router.resolve_for_workspace", fake_resolve_openai)
     monkeypatch.setattr(
         "app.modules.guard.gateway_runtime.TransportResolver.resolve",
@@ -204,7 +204,7 @@ def test_anthropic_token_count_preserves_upstream_error(
             status_code=400,
         )
 
-    monkeypatch.setattr(proxy_mod, "_forward", rejected)
+    monkeypatch.setattr("app.guard.router.upstream", rejected)
     response = client.post(
         "/gateway/v1/anthropic/v1/messages/count_tokens",
         headers={"x-api-key": "guard-mt-fake"},
