@@ -257,6 +257,13 @@ def _startup() -> None:
     threading.Thread(target=_warm, daemon=True, name="eval-cache-warmer").start()
     threading.Thread(target=_seed, daemon=True, name="skill-pack-seeder").start()
 
+    # PR 1 of #2056/#2058 — admission control. No-op unless ADMISSION_ENABLED=true.
+    try:
+        from app.core.admission import start_background_tasks
+        start_background_tasks()
+    except Exception as exc:
+        log.warning("admission.startup_failed", error=str(exc))
+
 
 @app.on_event("shutdown")
 async def _shutdown_gateway_transports() -> None:

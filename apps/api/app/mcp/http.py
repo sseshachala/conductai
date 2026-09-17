@@ -19,6 +19,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from sqlalchemy.orm import Session
 
+from app.core.admission import AdmissionRefused, admit
 from app.core.database import get_db
 from app.mcp.server import (
     MCPContext,
@@ -157,7 +158,22 @@ async def mcp_endpoint(request: Request) -> JSONResponse:
         resolved_token=token,
     )
 
-    response = dispatch(body, ctx, default_registry)
+    try:
+        async with admit("mcp", workspace_id):
+            response = dispatch(body, ctx, default_registry)
+    except AdmissionRefused as e:
+        return JSONResponse(
+            status_code=e.http_status,
+            content={
+                "jsonrpc": "2.0",
+                "id": body.get("id"),
+                "error": {
+                    "code": -32000,
+                    "message": f"MCP overloaded ({e.scope} slot full) — retry after {int(e.retry_after_seconds)}s",
+                },
+            },
+            headers={"Retry-After": str(int(e.retry_after_seconds))},
+        )
     if response is None:
         # Notification (no id) — spec says 202/204 no body.
         # Use Response() not JSONResponse(content=None): the latter serializes
