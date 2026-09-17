@@ -1,0 +1,17 @@
+{
+  "name": "openrouter",
+  "model_alias": "openrouter",
+  "timeout_seconds": 60,
+  "max_attempts": 1,
+  "accepts": ["openai_chat_completions"],
+  "targets": [
+    {
+      "id": "primary",
+      "transport": "http_passthrough",
+      "integration": "openrouter",
+      "model": "openai/gpt-4o",
+      "credential_ref": "",
+      "endpoint": null
+    }
+  ]
+}

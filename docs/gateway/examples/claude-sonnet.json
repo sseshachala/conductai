@@ -1,0 +1,16 @@
+{
+  "name": "claude-sonnet",
+  "model_alias": "claude-sonnet",
+  "timeout_seconds": 60,
+  "max_attempts": 1,
+  "accepts": ["anthropic_messages", "anthropic_count_tokens"],
+  "targets": [
+    {
+      "id": "primary",
+      "transport": "native_http",
+      "provider": "anthropic",
+      "model": "claude-sonnet-4-6",
+      "credential_ref": ""
+    }
+  ]
+}
