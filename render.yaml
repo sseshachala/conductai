@@ -21,11 +21,10 @@
 
 databases:
   - name: delegator-db
-    # Render's Postgres plan names have churned; `free` is always valid and
-    # lets the Blueprint apply cleanly. Upgrade from the Dashboard after the
-    # initial provision (Settings -> Upgrade plan) — free PG expires after
-    # 30 days unless promoted to a paid tier.
-    plan: free
+    # Live DB is on basic_256mb; do NOT downgrade to `free` (Render
+    # refuses the plan change on blueprint sync). Upgrade further from
+    # the dashboard if the workload needs it.
+    plan: basic_256mb
     postgresMajorVersion: 16
     # ipAllowList: []        # uncomment to make it internet-public (default is private)
 
