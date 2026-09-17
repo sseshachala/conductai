@@ -1,0 +1,16 @@
+{
+  "name": "litellm-anthropic",
+  "model_alias": "claude-via-litellm",
+  "timeout_seconds": 60,
+  "max_attempts": 1,
+  "accepts": ["anthropic_messages"],
+  "targets": [
+    {
+      "id": "primary",
+      "transport": "litellm_sdk",
+      "provider": "anthropic",
+      "model": "claude-sonnet-4-6",
+      "credential_ref": ""
+    }
+  ]
+}
