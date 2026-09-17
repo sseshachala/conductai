@@ -8,6 +8,7 @@ the sole home for these helpers.
 """
 from __future__ import annotations
 
+import asyncio
 import copy
 import json
 import re
@@ -246,6 +247,7 @@ def _wrap_streaming_response(
     agent_identity_id: str | None,
     agent_risk_tier: str | None = None,
     ai_tool: str | None = None,
+    on_close=None,
 ) -> StreamingResponse:
     """#1733 PR 5 — buffered end-of-stream response gate.
 
@@ -262,39 +264,53 @@ def _wrap_streaming_response(
 
     async def _wrapped():
         collected = bytearray()
-        async for chunk in original_iterator:
-            if isinstance(chunk, str):
-                chunk_bytes = chunk.encode("utf-8")
-            else:
-                chunk_bytes = chunk
-            collected.extend(chunk_bytes)
-            yield chunk_bytes
-        # End-of-stream response-gate scan. Wrapped in a broad try/except
-        # so a downstream failure NEVER truncates the stream after yield.
         try:
-            text_str = _extract_stream_text(bytes(collected))
-            if not text_str:
-                return
-            synthetic = {"content": [{"type": "text", "text": text_str}]}
-            decision = _evaluate_response_body(
-                synthetic,
-                workspace_id=workspace_id, provider=provider, model=model,
-                clerk_user_id=clerk_user_id, agent_identity_id=agent_identity_id,
-                agent_risk_tier=agent_risk_tier,
-                ai_tool=ai_tool,
-            )
-            if decision is None:
-                return
-            from app.guard.policy_types import PolicyAction as _PA
-            if decision.action == _PA.BLOCK:
-                log.warning(
-                    "guard.proxy.response_stream_blocked_post_hoc",
+            async for chunk in original_iterator:
+                if isinstance(chunk, str):
+                    chunk_bytes = chunk.encode("utf-8")
+                else:
+                    chunk_bytes = chunk
+                collected.extend(chunk_bytes)
+                yield chunk_bytes
+            # End-of-stream response-gate scan. Wrapped in a broad try/except
+            # so a downstream failure NEVER truncates the stream after yield.
+            try:
+                text_str = _extract_stream_text(bytes(collected))
+                if not text_str:
+                    return
+                synthetic = {"content": [{"type": "text", "text": text_str}]}
+                decision = _evaluate_response_body(
+                    synthetic,
                     workspace_id=workspace_id, provider=provider, model=model,
-                    rule_id=decision.rule_id, reason=decision.reason,
-                    note="ponytail: buffered scan — client saw response; upgrade to chunk-scan",
+                    clerk_user_id=clerk_user_id, agent_identity_id=agent_identity_id,
+                    agent_risk_tier=agent_risk_tier,
+                    ai_tool=ai_tool,
                 )
-        except Exception as _e:
-            log.warning("guard.proxy.response_stream_gate_error", err=str(_e))
+                if decision is None:
+                    return
+                from app.guard.policy_types import PolicyAction as _PA
+                if decision.action == _PA.BLOCK:
+                    log.warning(
+                        "guard.proxy.response_stream_blocked_post_hoc",
+                        workspace_id=workspace_id, provider=provider, model=model,
+                        rule_id=decision.rule_id, reason=decision.reason,
+                        note="ponytail: buffered scan — client saw response; upgrade to chunk-scan",
+                    )
+            except Exception as _e:
+                log.warning("guard.proxy.response_stream_gate_error", err=str(_e))
+        finally:
+            # Idempotent lifecycle hook — fires on stream completion, client
+            # disconnect, or upstream error. Callers pass an admission-slot
+            # release (or any other cleanup) here so it always runs, not only
+            # on graceful ``StreamingResponse.background``.
+            if on_close is not None:
+                try:
+                    if asyncio.iscoroutinefunction(on_close):
+                        await on_close()
+                    else:
+                        on_close()
+                except Exception as _e:
+                    log.warning("guard.proxy.stream_on_close_failed", err=str(_e))
 
     return StreamingResponse(
         _wrapped(),

@@ -19,6 +19,9 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from sqlalchemy.orm import Session
 
+from starlette.concurrency import run_in_threadpool
+
+from app.core.admission import AdmissionRefused, admission_refused_jsonrpc, admit
 from app.core.database import get_db
 from app.mcp.server import (
     MCPContext,
@@ -157,7 +160,14 @@ async def mcp_endpoint(request: Request) -> JSONResponse:
         resolved_token=token,
     )
 
-    response = dispatch(body, ctx, default_registry)
+    try:
+        async with admit("mcp", workspace_id):
+            # ``dispatch`` is sync; ``run_in_threadpool`` offloads it so the
+            # event loop stays free to admission-check other incoming requests
+            # instead of serializing them behind this handler.
+            response = await run_in_threadpool(dispatch, body, ctx, default_registry)
+    except AdmissionRefused as e:
+        return admission_refused_jsonrpc(body.get("id"), e)
     if response is None:
         # Notification (no id) — spec says 202/204 no body.
         # Use Response() not JSONResponse(content=None): the latter serializes

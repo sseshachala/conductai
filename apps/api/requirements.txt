@@ -19,6 +19,7 @@ click>=8.5.0
 pytest==9.1.1
 pytest-xdist==3.8.0
 pytest-forked==1.7.5  # subprocess isolation for tests with sys.modules stubs (#1075)
+pytest-asyncio==1.4.0  # required for @pytest.mark.asyncio tests; pytest 9 compat
 pyyaml==6.0.3
 jsonschema~=4.23
 jinja2~=3.1
