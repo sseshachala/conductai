@@ -17,13 +17,25 @@ import pytest
 CHAOS_DB_URL = os.environ.get("CHAOS_DB_URL")
 CHAOS_REDIS_URL = os.environ.get("CHAOS_REDIS_URL")
 
-pytestmark = pytest.mark.skipif(
-    not (CHAOS_DB_URL and CHAOS_REDIS_URL),
-    reason=(
-        "chaos suite requires CHAOS_DB_URL + CHAOS_REDIS_URL. Start the "
-        "docker stack in tests/chaos/docker-compose.yml first."
-    ),
+# NB: module-level ``pytestmark`` in a conftest does NOT propagate to
+# collected test items — we skip inside each session fixture instead so
+# CI (no docker stack, no env vars) doesn't blow up trying to connect.
+_SKIP_REASON = (
+    "chaos suite requires CHAOS_DB_URL + CHAOS_REDIS_URL. Start the "
+    "docker stack in tests/chaos/docker-compose.yml first."
 )
+
+
+def pytest_collection_modifyitems(config, items):
+    """Skip every chaos-suite item when the env vars are unset. Runs at
+    collection time so nothing tries to hit a nonexistent DB in CI."""
+    if CHAOS_DB_URL and CHAOS_REDIS_URL:
+        return
+    skip_marker = pytest.mark.skip(reason=_SKIP_REASON)
+    for item in items:
+        # Only skip items collected under this conftest's directory.
+        if "tests/chaos/" in str(item.fspath).replace(os.sep, "/"):
+            item.add_marker(skip_marker)
 
 
 # ─── Postgres ────────────────────────────────────────────────────────
