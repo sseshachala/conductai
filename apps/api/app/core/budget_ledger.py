@@ -162,6 +162,23 @@ def _res_hash_key(ws, user, agent, tool, period):
     return f"budget:{ws}:{_scope_slug(user, agent, tool)}:{period}:res"
 
 
+# R11 fix (reviewer P1): known server-stamped transport identifiers. A
+# budget row keyed on one of these caps aggregate spend routed through
+# that surface regardless of client_tool. The reconciler must filter
+# audit events by ``source == transport`` (not ai_tool) so cursor +
+# claude-code + all other client tools flowing through the gateway
+# count against the gateway cap.
+#
+# Source of truth: config/transports.json. Hardcoded here to avoid an
+# import cycle on ledger init.
+_TRANSPORT_IDS = frozenset({"gateway", "mcp", "workflow", "runtime"})
+
+
+def _is_transport(ai_tool: str | None) -> bool:
+    """True when ai_tool names a server-stamped transport surface."""
+    return ai_tool in _TRANSPORT_IDS
+
+
 def _ready_key(ws, user, agent, tool, period):
     """Set after reconciler completes; presence means the counters
     reflect the durable log."""
@@ -579,7 +596,16 @@ class BudgetLedger:
             GuardAuditEvent.ts >= period_start,
         )
         if ai_tool is not None:
-            q = q.filter(GuardAuditEvent.ai_tool == ai_tool)
+            # R11 fix (reviewer P1): a transport-scoped budget
+            # (ai_tool in {'gateway','mcp',...}) must aggregate every
+            # audit event routed through that surface regardless of
+            # the caller's client_tool. Filter by ``source`` instead
+            # of ``ai_tool`` for those rows. Non-transport (client
+            # tool) budgets keep the ai_tool filter.
+            if _is_transport(ai_tool):
+                q = q.filter(GuardAuditEvent.source == ai_tool)
+            else:
+                q = q.filter(GuardAuditEvent.ai_tool == ai_tool)
         # Fix 1 (P1 #1): scope this budget's committed total by the same
         # null-or-matches predicate as per-request applicability. A
         # workspace-default budget (user=agent=tool=None) aggregates

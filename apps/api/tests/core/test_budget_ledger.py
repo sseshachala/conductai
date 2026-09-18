@@ -951,3 +951,26 @@ def test_reserve_all_partial_failure_leaves_no_orphan_durable_rows(ledger, db):
     assert open_rows == [], f"orphan open reservations after unwind: {open_rows}"
     released = [r for r in db._rows.values() if r.status == "released"]
     assert len(released) == 1, "the successfully-reserved budget must be released"
+# ── R11 (P1) — reconciler filters transport budgets by source ─────
+
+def test_is_transport_helper_recognizes_server_stamped_surfaces():
+    """The set of transport identifiers matches config/transports.json."""
+    from app.core.budget_ledger import _is_transport, _TRANSPORT_IDS
+
+    for t in ("gateway", "mcp", "workflow", "runtime"):
+        assert _is_transport(t), f"{t} must be recognized as transport"
+
+    for not_t in ("cursor", "claude-code", "codex-chat", None, "", "custom"):
+        assert not _is_transport(not_t), f"{not_t} must NOT be a transport"
+
+    # Also confirm the frozen set matches the JSON config so drift is
+    # caught in code before it reaches prod.
+    import json, pathlib
+    cfg = json.loads(
+        (pathlib.Path(__file__).resolve().parents[4] / "config" / "transports.json")
+        .read_text(encoding="utf-8")
+    )
+    assert set(cfg["transports"]) == set(_TRANSPORT_IDS), (
+        "config/transports.json and budget_ledger._TRANSPORT_IDS drift — "
+        "reconciler would misclassify traffic. See R11."
+    )
