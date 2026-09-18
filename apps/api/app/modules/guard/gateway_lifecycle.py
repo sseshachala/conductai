@@ -586,14 +586,24 @@ def estimate_budget_cents(
 ) -> int:
     """Bounded pre-flight cost estimate for the ledger reservation.
 
-    Uses (input_tokens_estimate + output_allowance) * tool_pricing.
-    Both terms are integer arithmetic; the result is int cents.
+    R10 fix (reviewer P1) — two changes vs the previous heuristic:
 
-    Estimation is deliberately conservative on the OUTPUT side (uses
-    max_tokens when set, a large default otherwise) so we do not
-    under-reserve and let a runaway completion overshoot the cap.
-    Actual settlement (``commit_all(actual_cents)``) writes the real
-    cost — the reservation just holds enough capacity.
+    1. **Real output bound.** The 4096-token silent cap is gone.
+       ``max_tokens`` is honored as-is when the caller sets it. If the
+       caller wants 100k output tokens, the reservation reflects that.
+       When ``max_tokens`` is absent we use a generous default
+       (``_DEFAULT_OUTPUT_ALLOWANCE_TOKENS``); callers who care about
+       accurate reservations should always set ``max_tokens``.
+
+    2. **Model pricing, not client-tool pricing.** ``_tool_pricing``
+       returned per-client-tool rates that had no relation to the
+       actual (provider, model) forwarded on wire. R10: use the same
+       ``_compute_cost(provider, model, ...)`` the audit path uses so
+       estimation and settlement live in the same pricing universe.
+
+    Estimation is deliberately conservative — over-reservation is
+    always safer than under-reservation because settlement writes
+    the real cost via ``commit_all(actual_cents)``.
     """
     # Input tokens — approximate from the concatenated content of the
     # messages array. Same shape as audit._estimate_input_tokens.
@@ -610,29 +620,37 @@ def estimate_budget_cents(
                         text_len += len(part["text"])
     input_tokens = max(1, text_len // _CHARS_PER_TOKEN)
 
-    # Output allowance — max_tokens if the caller bounded it, else the
-    # default. Callers who care about accurate reservations set max_tokens.
+    # R10 fix: honor the caller's max_tokens as-is. No silent cap.
     output_tokens = _DEFAULT_OUTPUT_ALLOWANCE_TOKENS
     if isinstance(body, dict):
         mt = body.get("max_tokens")
-        if isinstance(mt, int) and 0 < mt < _DEFAULT_OUTPUT_ALLOWANCE_TOKENS:
+        if isinstance(mt, int) and mt > 0:
             output_tokens = mt
 
-    # Tool pricing — $/1M tokens. Reuse the shared table so estimates
-    # match the cost accounting the audit path already uses.
+    # R10 fix: use provider+model pricing via _compute_cost, matching
+    # the audit path. Falls back to the pre-R10 client-tool heuristic
+    # if the pricing registry lookup fails for any reason.
+    usd: float | None = None
     try:
-        from app.modules.guard.routers.events import _tool_pricing
-        tool_key = (ai_tool or "unknown").lower()
-        pricing = _tool_pricing(tool_key)
+        from app.guard.audit import _compute_cost
+        usd = _compute_cost(provider, model, input_tokens, output_tokens)
     except Exception:
-        pricing = {"input": 3.0, "output": 15.0}  # conservative default (Sonnet)
+        usd = None
+    if usd is None:
+        try:
+            from app.modules.guard.routers.events import _tool_pricing
+            tool_key = (ai_tool or "unknown").lower()
+            pricing = _tool_pricing(tool_key)
+        except Exception:
+            pricing = {"input": 3.0, "output": 15.0}
+        input_usd = (input_tokens * float(pricing.get("input", 3.0))) / 1_000_000
+        output_usd = (output_tokens * float(pricing.get("output", 15.0))) / 1_000_000
+        usd = input_usd + output_usd
 
-    input_usd = (input_tokens * float(pricing.get("input", 3.0))) / 1_000_000
-    output_usd = (output_tokens * float(pricing.get("output", 15.0))) / 1_000_000
     # Round up so a partial cent still reserves a whole cent — under-
     # reservation is worse than over-reservation for enforcement.
     import math as _math
-    return _math.ceil((input_usd + output_usd) * 100)
+    return _math.ceil(usd * 100)
 
 
 def budget_block_response(result):
