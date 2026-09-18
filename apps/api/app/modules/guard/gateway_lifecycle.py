@@ -493,6 +493,7 @@ def settle_reservations(
     *,
     dispatched: bool,
     actual_cents: int | None,
+    actual_micros: int | None = None,
 ) -> SettleResult:
     """Post-outcome settlement of reserved budgets.
 
@@ -554,7 +555,8 @@ def settle_reservations(
     ledger.commit_all(
         db=db,
         reservations=reservations,
-        actual_cents=int(actual_cents),
+        actual_cents=int(actual_cents) if actual_cents is not None else 0,
+        actual_micros=int(actual_micros) if actual_micros is not None else None,
     )
     return SettleResult(
         action=SettleAction.COMMITTED,
@@ -659,6 +661,59 @@ def estimate_budget_cents(
     # reservation is worse than over-reservation for enforcement.
     import math as _math
     return _math.ceil(usd * 100)
+
+
+def estimate_budget_micros(
+    body: dict,
+    provider: str,
+    model: str,
+    ai_tool: str | None,
+) -> int:
+    """R9 (reviewer P1) — microdollar-precision estimate.
+
+    Same heuristic as ``estimate_budget_cents``, returning micros
+    (10 000 per cent). Callers should prefer this over the cents
+    version so sub-cent requests do not round to zero at reservation
+    time.
+    """
+    text_len = 0
+    if isinstance(body, dict):
+        messages = body.get("messages") or []
+        for m in messages:
+            content = (m or {}).get("content")
+            if isinstance(content, str):
+                text_len += len(content)
+            elif isinstance(content, list):
+                for part in content:
+                    if isinstance(part, dict) and isinstance(part.get("text"), str):
+                        text_len += len(part["text"])
+    input_tokens = max(1, text_len // _CHARS_PER_TOKEN)
+
+    output_tokens = _DEFAULT_OUTPUT_ALLOWANCE_TOKENS
+    if isinstance(body, dict):
+        mt = body.get("max_tokens")
+        if isinstance(mt, int) and mt > 0:
+            output_tokens = mt
+
+    usd = None
+    try:
+        from app.guard.audit import _compute_cost
+        usd = _compute_cost(provider, model, input_tokens, output_tokens)
+    except Exception:
+        usd = None
+    if usd is None:
+        try:
+            from app.modules.guard.routers.events import _tool_pricing
+            tool_key = (ai_tool or "unknown").lower()
+            pricing = _tool_pricing(tool_key)
+        except Exception:
+            pricing = {"input": 3.0, "output": 15.0}
+        input_usd = (input_tokens * float(pricing.get("input", 3.0))) / 1_000_000
+        output_usd = (output_tokens * float(pricing.get("output", 15.0))) / 1_000_000
+        usd = input_usd + output_usd
+
+    import math as _math
+    return _math.ceil(usd * 1_000_000)
 
 
 def budget_block_response(result):

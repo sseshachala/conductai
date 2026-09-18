@@ -747,8 +747,11 @@ def test_commit_all_moves_every_reservation_to_committed(ledger, db):
     # Every budget's committed counter shows 30 cents. Reserved back to zero.
     c0 = ledger._client().get(_committed_key(ws, None, None, None, period))
     c1 = ledger._client().get(_committed_key(ws, None, None, "gateway", period))
-    assert int(c0) == 30
-    assert int(c1) == 30
+    # R9: Redis committed counter stores micros (1 cent = 10 000 micros).
+    # 30 cents committed = 300 000 micros. The current_committed_cents()
+    # helper divides back to cents for display; raw Redis reads see micros.
+    assert int(c0) == 30 * 10_000
+    assert int(c1) == 30 * 10_000
     r0 = ledger._client().get(_reserved_key(ws, None, None, None, period))
     r1 = ledger._client().get(_reserved_key(ws, None, None, "gateway", period))
     assert r0 in (b"0", "0", None), r0
@@ -1005,3 +1008,43 @@ def test_scope_keys_matches_individual_functions():
         assert keys["committed"] == _committed_key(ws, u, a, t, p)
         assert keys["res_hash"]  == _res_hash_key(ws, u, a, t, p)
         assert keys["ready"]     == _ready_key(ws, u, a, t, p)
+
+
+# ── R9 (reviewer P1) — sub-cent precision end-to-end ─────────────
+
+def test_r9_aggregate_sub_cent_requests_reach_cap(ledger, db):
+    """Reviewer R9 repro: pre-fix each $0.004 request settled as zero
+    cents, so 2500 of them against a $10 cap never advanced the
+    committed counter and traffic ran unlimited.
+
+    Post-fix: microdollar precision means 4000 micros per request
+    accumulate correctly. 2500 requests * 4000 micros = 10_000_000
+    micros = $10 = cap exactly. The 2501st request would be refused.
+    """
+    from app.core.budget_ledger import BudgetDecision, _MICROS_PER_USD
+
+    ws = str(uuid.uuid4())
+    period = _current_period()
+    _reconcile(ledger, db, ws, None, period, committed_cents=0)
+
+    per_request_micros = 4_000  # $0.004
+    cap_micros = 10 * _MICROS_PER_USD  # $10
+
+    for i in range(2_500):
+        d, res = ledger.reserve(
+            db=db, workspace_id=ws, ai_tool=None,
+            estimated_micros=per_request_micros,
+            cap_micros=cap_micros,
+        )
+        assert d == BudgetDecision.ACCEPTED, f"iteration {i}: {d}"
+        ledger.commit(db=db, reservation=res, actual_micros=per_request_micros)
+
+    assert ledger.current_committed_micros(ws, None) == cap_micros
+    assert ledger.current_committed_cents(ws, None) == 10 * 100
+
+    d, res = ledger.reserve(
+        db=db, workspace_id=ws, ai_tool=None,
+        estimated_micros=per_request_micros,
+        cap_micros=cap_micros,
+    )
+    assert d == BudgetDecision.EXCEEDED
