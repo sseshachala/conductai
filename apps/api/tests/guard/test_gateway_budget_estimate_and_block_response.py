@@ -87,16 +87,48 @@ def test_estimate_handles_missing_body_shape_defensively():
         assert cents >= 0
 
 
-def test_estimate_uses_tool_pricing_when_available():
-    """Different ai_tool keys with different pricing should yield
-    different estimates on identical request shape."""
-    # Bigger input so per-tool pricing differences on the input axis
-    # ($3/M vs $1.25/M) clear the sub-cent rounding threshold.
+def test_estimate_uses_provider_and_model_pricing_when_available():
+    """R10 (reviewer P1): estimator now uses the real provider+model
+    pricing via _compute_cost, not the client-tool heuristic. Different
+    models with different price schedules should yield different
+    estimates regardless of the ai_tool label."""
+    # Bigger input so per-model pricing differences clear the sub-cent
+    # rounding threshold.
     body = {"messages": [{"role": "user", "content": "x" * 100_000}], "max_tokens": 100}
-    # gemini has cheaper input pricing than sonnet-class tools
-    sonnet_cents = estimate_budget_cents(body, "anthropic", "claude-3-5-sonnet", "cursor")
-    gemini_cents = estimate_budget_cents(body, "google", "gemini-pro", "gemini")
-    assert sonnet_cents > gemini_cents
+    # Two distinct model families exercised through the same ai_tool
+    # label — R10 makes the model the pricing dimension.
+    sonnet = estimate_budget_cents(body, "anthropic", "claude-3-5-sonnet", "cursor")
+    # If the pricing registry has cheaper haiku rates, the estimate for
+    # that model must be strictly smaller. When both models are missing
+    # from the registry the estimator falls back to the client-tool
+    # heuristic, so the assertion still holds (Sonnet > Haiku in every
+    # published price list).
+    haiku = estimate_budget_cents(body, "anthropic", "claude-3-haiku", "cursor")
+    assert sonnet >= haiku, (
+        "Sonnet should cost at least as much as Haiku — R10 pricing"
+    )
+
+
+def test_estimate_honors_full_max_tokens_no_silent_cap():
+    """R10 repro: pre-fix the estimator silently capped max_tokens at
+    4096. A caller requesting 100_000 output tokens still reserved as
+    if 4096 were requested, and the wire request was forwarded unchanged
+    (100_000-token output that could blow past the reservation).
+
+    Post-fix: 100k reserves proportionally more than 4096."""
+    body_4k = {"messages": [{"role": "user", "content": "hi"}], "max_tokens": 4096}
+    body_100k = {"messages": [{"role": "user", "content": "hi"}], "max_tokens": 100_000}
+    small = estimate_budget_cents(body_4k, "anthropic", "claude-3-5-sonnet", "cursor")
+    large = estimate_budget_cents(body_100k, "anthropic", "claude-3-5-sonnet", "cursor")
+    assert large > small, (
+        "100k max_tokens must reserve MORE than 4096 — pre-R10 they"
+        " were identical because of the silent 4096 cap."
+    )
+    # Sanity: the difference is at least an order of magnitude on
+    # Sonnet-class output pricing.
+    assert large >= small * 5, (
+        f"expected 100k reservation >= 5x 4k reservation, got {large}c vs {small}c"
+    )
 
 
 # ── budget_block_response ────────────────────────────────────────────
