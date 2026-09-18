@@ -273,6 +273,20 @@ def _startup() -> None:
         log.warning("effective_policy_cache.startup_failed", error=str(exc))
 
 
+@app.on_event("startup")
+async def _startup_async() -> None:
+    # PR 6e of #2056 — invalidation bus. bus.start() spawns the Redis
+    # pub/sub subscriber loop; without it, subscribers registered by
+    # AuthCache / EffectivePolicyCache never fire and cross-worker
+    # invalidations never arrive (caches only recover on TTL).
+    # No-op unless INVALIDATION_BUS_ENABLED=true.
+    try:
+        from app.core.invalidation_bus import get_bus
+        await get_bus().start()
+    except Exception as exc:
+        log.warning("invalidation_bus.startup_failed", error=str(exc))
+
+
 @app.on_event("shutdown")
 async def _shutdown_gateway_transports() -> None:
     """X5 — close the worker-lifetime httpx clients held by the
