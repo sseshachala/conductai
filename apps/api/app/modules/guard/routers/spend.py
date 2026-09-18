@@ -775,6 +775,7 @@ def budget_check(
     workspace_id: str = Query(...),
     clerk_user_id: str | None = Query(default=None),
     ai_tool: str | None = Query(default=None),
+    transport: str | None = Query(default=None),
     db: Session = Depends(get_db),
 ):
     """Hard-cap check called by the guard hook before each tool use.
@@ -786,6 +787,13 @@ def budget_check(
     When ai_tool is provided AND a per-tool row exists for that tool, that
     row's caps are checked with cost sums scoped to the same tool — so a
     Codex Desktop overspend can't block a Claude Code caller.
+
+    Fix 4 (P1 #4): transport is a separate cap dimension. Admins can set
+    ``ai_tool='gateway'`` or ``'mcp'`` to cap the aggregate transport
+    pool regardless of which client tool called it. When a request comes
+    through the gateway, the caller passes ``transport='gateway'`` and
+    this check aggregates events with ``source='gateway'`` against the
+    matching budget row's cap.
     """
     try:
         ws_uuid = uuid.UUID(workspace_id)
@@ -816,7 +824,12 @@ def budget_check(
 
     period_start = _current_period_start()
 
-    def _sum_cost(*, scoped_clerk: str | None = None, scoped_tool: str | None = None) -> float:
+    def _sum_cost(
+        *,
+        scoped_clerk: str | None = None,
+        scoped_tool: str | None = None,
+        scoped_source: str | None = None,
+    ) -> float:
         q = db.query(func.coalesce(func.sum(GuardAuditEvent.cost_usd_after), 0.0)).filter(
             GuardAuditEvent.workspace_id == ws_uuid,
             GuardAuditEvent.ts >= period_start,
@@ -825,6 +838,8 @@ def budget_check(
             q = q.filter(GuardAuditEvent.clerk_user_id == scoped_clerk)
         if scoped_tool is not None:
             q = q.filter(GuardAuditEvent.ai_tool == scoped_tool)
+        if scoped_source is not None:
+            q = q.filter(GuardAuditEvent.source == scoped_source)
         return float(q.scalar() or 0.0)
 
     tool_budget = None
@@ -852,6 +867,37 @@ def budget_check(
                 monthly_cost_usd=tool_cost,
                 hard_limit_usd=tool_budget.hard_limit_usd,
             )
+
+    # 1a-bis. Fix 4 (P1 #4): transport-scoped cap (workspace pool per
+    # surface). An admin who sets ai_tool='gateway' expects every gateway
+    # request to consume the same pool regardless of client tool label.
+    # This check fires when the caller passes transport='gateway' (or
+    # 'mcp'), matches a budget row keyed on that transport value, and
+    # aggregates events with the matching source column.
+    if transport:
+        transport_budget = (
+            db.query(GuardSpendBudget)
+            .filter(
+                GuardSpendBudget.workspace_id == ws_uuid,
+                GuardSpendBudget.clerk_user_id.is_(None),
+                GuardSpendBudget.agent_identity_id.is_(None),
+                GuardSpendBudget.ai_tool == transport,
+            )
+            .first()
+        )
+        if transport_budget and transport_budget.hard_limit_usd is not None:
+            transport_cost = _sum_cost(scoped_source=transport)
+            if transport_cost >= transport_budget.hard_limit_usd:
+                return BudgetCheckOut(
+                    hard_blocked=True,
+                    reason=(
+                        f"Your team's monthly {transport} pool budget of "
+                        f"${transport_budget.hard_limit_usd:.2f} has been reached. "
+                        f"New {transport} traffic is paused. Contact your security team."
+                    ),
+                    monthly_cost_usd=transport_cost,
+                    hard_limit_usd=transport_budget.hard_limit_usd,
+                )
 
     # 1b. Team-scoped across-all-tools cap (unchanged behavior).
     workspace_cost = _sum_cost()

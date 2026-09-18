@@ -76,11 +76,18 @@ class SpendCapPolicySource:
         # workspace-wide + per-user enforcement by passing None instead.
         _tool = ctx.ai_tool if ctx.ai_tool and ctx.ai_tool != "unknown" else None
 
+        # Fix 4 (P1 #4): infer transport from the gate. LLM proxy gates
+        # ('prompt'/'response') are gateway traffic; 'action' is the MCP
+        # tool gate. A transport-scoped budget row (ai_tool='gateway' or
+        # 'mcp') caps the aggregate pool regardless of client tool.
+        _transport = "gateway" if ctx.gate in ("prompt", "response") else "mcp"
+
         try:
             result = checker(
                 workspace_id=ctx.workspace_id,
                 clerk_user_id=ctx.clerk_user_id,
                 ai_tool=_tool,
+                transport=_transport,
                 db=ctx.db,
             )
         except Exception as e:
