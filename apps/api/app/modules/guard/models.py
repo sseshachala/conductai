@@ -388,6 +388,10 @@ class BudgetReservation(Base):
     workspace_id = Column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False)
     ai_tool = Column(Text, nullable=True)
     period_key = Column(Text, nullable=False)
+    # Added by revision 0142 (R1 fix) — clerk_user_id was already part of
+    # the Redis key scope (Fix 1 P1 #1) but the durable column was
+    # missing. Nullable so pre-0142 rows stay valid; NULL = workspace-wide.
+    clerk_user_id = Column(Text, nullable=True)
     # Added by revision 0140 — multi-scope columns for the all-permit
     # reservation contract. All nullable so pre-0140 single-scope callers keep
     # working; the ledger-wiring PR starts populating them from request context.
@@ -425,6 +429,12 @@ class BudgetReservation(Base):
             "period_key",
         ),
         Index("ix_budget_reservations_request_id", "request_id"),
+        Index(
+            "ix_budget_reservations_scope_user",
+            "workspace_id",
+            "clerk_user_id",
+            "period_key",
+        ),
     )
 
 
