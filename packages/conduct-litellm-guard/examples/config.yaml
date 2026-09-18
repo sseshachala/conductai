@@ -23,7 +23,7 @@ guardrails:
       guardrail: conduct_litellm_guard.ConductGuard
       mode: pre_call
       # Where Guard lives. Override for self-hosted deployments.
-      api_url: https://api.conductai.ai
+      api_url: https://gateway.conductai.ai
       # Mint an agent token in the Conduct console and set the env var.
       agent_token: os.environ/CONDUCT_AGENT_TOKEN
       # Optional — pins checks to a specific workspace when the token is

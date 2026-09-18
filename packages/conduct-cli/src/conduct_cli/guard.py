@@ -1677,7 +1677,7 @@ def cmd_guard_sync(args):
     # Print remote MCP URL for any MCP-compatible client
     agent_token = cfg.get("agent_token", "")
     if workspace_id and agent_token:
-        mcp_url = "https://api.conductai.ai/mcp"
+        mcp_url = "https://gateway.conductai.ai/mcp"
         masked = agent_token[:13] + "•" * 20
         print(f"\n{BOLD}MCP server{RESET} (Claude.ai, Copilot, Cursor, Windsurf, any MCP client):")
         print(f"  URL:    {CYAN}{mcp_url}{RESET}")
@@ -1687,7 +1687,7 @@ def cmd_guard_sync(args):
 CONDUCT_DIR        = Path.home() / ".conduct"
 PROXY_ENV_FILE     = CONDUCT_DIR / "env"
 PROXY_OVERRIDE     = CONDUCT_DIR / "env-override"
-DEFAULT_PROXY_URL  = "https://api.conductai.ai/gateway/v1"
+DEFAULT_PROXY_URL  = "https://gateway.conductai.ai/gateway/v1"
 SHELL_RC_MARKER    = "# Conduct Guard Proxy — managed by `conduct guard sync`"
 SHELL_SOURCE_LINE  = "[ -f ~/.conduct/env ] && . ~/.conduct/env"
 
@@ -2481,7 +2481,7 @@ def register_guard_parser(sub):
     sync_p.add_argument("--reset-instructions", action="store_true", dest="reset_instructions",
                         help="Remove ConductGuard blocks from all instruction files")
     sync_p.add_argument("--proxy-url", default=None,
-                        help="Override the Guard gateway URL (default: https://api.conductai.ai/gateway/v1)")
+                        help="Override the Guard gateway URL (default: https://gateway.conductai.ai/gateway/v1)")
     sync_p.add_argument("--no-codex-proxy", action="store_true",
                         help="Leave Codex model traffic on its current provider")
     sync_p.add_argument("--no-local-audit", action="store_true",

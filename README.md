@@ -102,7 +102,7 @@ Discovery mode is read-only visibility into every AI action your team takes for 
 ## Router — one endpoint for any SDK
 
 ```bash
-curl https://api.conductai.ai/gateway/v1/anthropic/v1/messages \
+curl https://gateway.conductai.ai/gateway/v1/anthropic/v1/messages \
   -H "Authorization: Bearer cond_agt_..." \
   -H "Content-Type: application/json" \
   -d '{"model":"claude-sonnet-4-6","max_tokens":1024,"messages":[{"role":"user","content":"Hello"}]}'

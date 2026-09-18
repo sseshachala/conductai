@@ -12,4 +12,4 @@ services:
       dockerfile: litellm/Dockerfile.with-conduct
     environment:
       CONDUCT_AGENT_TOKEN: ${CONDUCT_AGENT_TOKEN:-}
-      CONDUCT_API_URL: ${CONDUCT_API_URL:-https://api.conductai.ai}
+      CONDUCT_API_URL: ${CONDUCT_API_URL:-https://gateway.conductai.ai}
