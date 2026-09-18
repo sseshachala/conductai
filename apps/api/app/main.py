@@ -341,6 +341,50 @@ def _startup() -> None:
     except Exception as exc:
         log.warning("effective_policy_cache.startup_failed", error=str(exc))
 
+    # R2 (reviewer P1) — budget-ledger reconciler on startup. No-op
+    # unless BUDGET_LEDGER_ENABLED=true. Thread-run so it does not
+    # delay the readiness signal; a slow DB does not block traffic.
+    def _reconcile_budget() -> None:
+        try:
+            from app.core.budget_reconciler import run_startup_reconciliation
+            result = run_startup_reconciliation()
+            log.info(
+                "guard.budget.reconcile_startup_result",
+                scopes_reconciled=result.get("scopes_reconciled", 0),
+                errors=result.get("errors", 0),
+                skipped=result.get("skipped", False),
+            )
+        except Exception as exc:
+            log.warning("guard.budget.reconcile_startup_failed", error=str(exc))
+
+    threading.Thread(target=_reconcile_budget, daemon=True, name="budget-reconciler-startup").start()
+
+    def _budget_recovery_loop() -> None:
+        import time
+        import os
+        interval = int(os.environ.get("BUDGET_LEDGER_RECOVERY_INTERVAL_SEC", "300"))
+        while True:
+            try:
+                from app.core.budget_reconciler import run_recovery_sweep
+                r = run_recovery_sweep()
+                if not r.get("skipped"):
+                    log.info(
+                        "guard.budget.recovery_sweep_tick",
+                        committed=r.get("committed", 0),
+                        released=r.get("released", 0),
+                        left_open=r.get("left_open", 0),
+                        errors=r.get("errors", 0),
+                    )
+            except Exception as exc:
+                log.warning("guard.budget.recovery_sweep_failed", error=str(exc))
+            time.sleep(max(60, interval))
+
+    threading.Thread(
+        target=_budget_recovery_loop,
+        daemon=True,
+        name="budget-recovery-worker",
+    ).start()
+
 
 @app.on_event("startup")
 async def _startup_async() -> None:
