@@ -171,6 +171,55 @@ def _resolve_gateway_auth_inner(
         token=token or "",
     )
 
+# ── Auth cache fetch (PR 6b wiring) ──────────────────────────────────────────
+#
+# Async fetch function passed to ``init_auth_cache`` in main.py startup. Only
+# covers the member-token branch (Clerk session tokens) — run tokens and
+# agent identity tokens are one-shot verifications with per-request headers
+# and are not cache-friendly.
+#
+# Runs the sync SQLAlchemy work in a threadpool so the event loop stays free.
+async def auth_cache_fetch_member(token: str):
+    """Resolve a member (Clerk) token to CachedAuth. Returns None if
+    the token is unknown/invalid — AuthCache treats None as no-op."""
+    from app.core.auth_cache import CachedAuth
+    from app.core.database import SessionLocal as _SessionLocal
+    from app.core.auth import resolve_agent_token, resolve_agent_identity_row
+    from starlette.concurrency import run_in_threadpool
+
+    def _fetch_sync():
+        db = _SessionLocal()
+        try:
+            ident = resolve_agent_token(token, db)
+            if not ident:
+                return None
+            workspace_id, clerk_user_id = ident
+            agent_identity_id = None
+            agent_risk_tier = None
+            try:
+                ai = resolve_agent_identity_row(token, db)
+                if ai is not None:
+                    _ai_id = getattr(ai, "id", None)
+                    agent_identity_id = str(_ai_id) if _ai_id is not None else None
+                    agent_risk_tier = getattr(ai, "risk_tier", None)
+            except Exception:
+                # Best-effort — a downstream lookup failure must not
+                # invalidate an otherwise-valid session.
+                pass
+            return CachedAuth(
+                workspace_id=str(workspace_id),
+                clerk_user_id=clerk_user_id,
+                agent_identity_id=agent_identity_id,
+                agent_risk_tier=agent_risk_tier,
+                is_internal=False,
+                token_expires_at=None,
+            )
+        finally:
+            db.close()
+
+    return await run_in_threadpool(_fetch_sync)
+
+
 log = structlog.get_logger()
 
 # ── Constants ────────────────────────────────────────────────────────────────

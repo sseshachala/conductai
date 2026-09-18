@@ -286,6 +286,22 @@ async def _startup_async() -> None:
     except Exception as exc:
         log.warning("invalidation_bus.startup_failed", error=str(exc))
 
+    # PR 6b of #2056 — auth cache singleton. Attaches to invalidation
+    # bus (subscribes to auth.* kinds) via the AuthCache constructor.
+    # No-op behavior unless AUTH_CACHE_ENABLED=true; the singleton is
+    # still created so bus subscribers are always ready to receive
+    # invalidations (harmless when the read path bypasses the cache).
+    try:
+        from app.core.auth_cache import init_auth_cache
+        from app.core.invalidation_bus import get_bus
+        from app.modules.guard.gateway_helpers import auth_cache_fetch_member
+        init_auth_cache(
+            fetch=auth_cache_fetch_member,
+            invalidation_bus=get_bus(),
+        )
+    except Exception as exc:
+        log.warning("auth_cache.startup_failed", error=str(exc))
+
 
 @app.on_event("shutdown")
 async def _shutdown_gateway_transports() -> None:

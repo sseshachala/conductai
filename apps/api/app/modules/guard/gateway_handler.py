@@ -97,24 +97,43 @@ async def handle_gateway_request(
     # 2. Resolve workspace + user — auth logic extracted to gateway_helpers
     # so admission (PR 2b) can wrap the whole post-auth body cleanly.
     try:
-        # PR 3 — no persistent DB session on the handler. Every helper
-        # opens+uses+closes its own session inside a threadpool worker.
-        # Auth runs first and returns plain values.
-        _auth_result = await run_in_threadpool(
-            _resolve_gateway_auth,
-            request,
-            token=token,
-            internal_key=_internal_key,
-            needs_run_token_validation=_needs_run_token_validation,
-            needs_agent_validation=_needs_agent_validation,
-        )
-        if isinstance(_auth_result, JSONResponse):
-            return _auth_result
-        workspace_id = _auth_result.workspace_id
-        clerk_user_id = _auth_result.clerk_user_id
-        _is_internal = _auth_result.is_internal
-        _agent_identity_id = _auth_result.agent_identity_id
-        _agent_risk_tier = _auth_result.agent_risk_tier
+        # PR 6b — auth cache check before hitting the DB. Member-token
+        # (Clerk) path only — run tokens and agent tokens have
+        # per-request side effects (headers, first_used_at) that make
+        # them cache-unfriendly. On cache hit we skip the threadpool
+        # + DB roundtrip entirely.
+        _cached_auth = None
+        if token and not _needs_run_token_validation and not _needs_agent_validation:
+            from app.core.auth_cache import get_auth_cache as _get_auth_cache
+            _ac = _get_auth_cache()
+            if _ac is not None:
+                _cached_auth = await _ac.resolve(token)
+
+        if _cached_auth is not None:
+            workspace_id = _cached_auth.workspace_id
+            clerk_user_id = _cached_auth.clerk_user_id or "system"
+            _is_internal = _cached_auth.is_internal
+            _agent_identity_id = _cached_auth.agent_identity_id
+            _agent_risk_tier = _cached_auth.agent_risk_tier
+        else:
+            # PR 3 — no persistent DB session on the handler. Every helper
+            # opens+uses+closes its own session inside a threadpool worker.
+            # Auth runs first and returns plain values.
+            _auth_result = await run_in_threadpool(
+                _resolve_gateway_auth,
+                request,
+                token=token,
+                internal_key=_internal_key,
+                needs_run_token_validation=_needs_run_token_validation,
+                needs_agent_validation=_needs_agent_validation,
+            )
+            if isinstance(_auth_result, JSONResponse):
+                return _auth_result
+            workspace_id = _auth_result.workspace_id
+            clerk_user_id = _auth_result.clerk_user_id
+            _is_internal = _auth_result.is_internal
+            _agent_identity_id = _auth_result.agent_identity_id
+            _agent_risk_tier = _auth_result.agent_risk_tier
         # Admission acquire — immediately after auth, before any further
         # DB work. Overload rejected fast without checking out a
         # connection.
