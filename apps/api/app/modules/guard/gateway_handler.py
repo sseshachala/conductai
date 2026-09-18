@@ -607,21 +607,31 @@ async def handle_gateway_request(
         _reservations: list = []
         _dispatched = False  # flipped to True right before any upstream call
         _actual_cents: int | None = None
-        _budget_wire_db = None
+        # R3 fix (reviewer P1): reserve owns its own session lifecycle
+        # inside a threadpool call. No shared session held across the
+        # upstream await, no sync SQL/Redis on the event loop.
+        def _reserve_sync_owned():
+            _db = SessionLocal()
+            try:
+                return _reserve_budgets_for_request(
+                    db=_db,
+                    workspace_id=workspace_id,
+                    agent_identity_id=(
+                        str(_agent_identity_id) if _agent_identity_id else None
+                    ),
+                    transport="gateway",
+                    client_tool=(ai_tool if ai_tool and ai_tool != "gateway" else None),
+                    clerk_user_id=clerk_user_id,
+                    estimated_cents=_estimate_budget_cents(body, provider, model, ai_tool),
+                    request_id=_audit_request_id,
+                )
+            finally:
+                try:
+                    _db.close()
+                except Exception:
+                    pass
         try:
-            _budget_wire_db = SessionLocal()
-            _reserve_result = _reserve_budgets_for_request(
-                db=_budget_wire_db,
-                workspace_id=workspace_id,
-                agent_identity_id=(
-                    str(_agent_identity_id) if _agent_identity_id else None
-                ),
-                transport="gateway",
-                client_tool=(ai_tool if ai_tool and ai_tool != "gateway" else None),
-                clerk_user_id=clerk_user_id,
-                estimated_cents=_estimate_budget_cents(body, provider, model, ai_tool),
-                request_id=_audit_request_id,
-            )
+            _reserve_result = await run_in_threadpool(_reserve_sync_owned)
         except Exception as _reserve_exc:  # noqa: BLE001
             log.warning("guard.gateway.reserve_wire_raised", err=str(_reserve_exc))
             # R7 fix (reviewer P1): the exception path used to leave
@@ -688,8 +698,6 @@ async def handle_gateway_request(
                         outcome=_reserve_result.outcome.value,
                     )
             await _close_durable(_durable)
-            if _budget_wire_db is not None:
-                _budget_wire_db.close()
             return _budget_block_response(_reserve_result)
         if _reserve_result is not None:
             _reservations = _reserve_result.reservations or []
@@ -1125,30 +1133,38 @@ async def handle_gateway_request(
                                 _actual_cents = int(round(float(_cost_usd) * 100))
                         except Exception:
                             _actual_cents = None
-                    _settle_db = _budget_wire_db or SessionLocal()
-                    _settle_reservations(
-                        db=_settle_db,
-                        reservations=_reservations,
-                        dispatched=_dispatched,
-                        actual_cents=_actual_cents,
-                    )
-                    try:
-                        _settle_db.commit()
-                    except Exception:
-                        pass
-                    if _settle_db is not _budget_wire_db:
-                        _settle_db.close()
+                    # R3 fix (reviewer P1): settle owns its own session
+                    # inside a threadpool call. No shared session held
+                    # across the upstream lifetime.
+                    _reservations_snapshot = list(_reservations)
+                    _dispatched_snapshot = _dispatched
+                    _actual_cents_snapshot = _actual_cents
+
+                    def _settle_sync_owned():
+                        _db = SessionLocal()
+                        try:
+                            _settle_reservations(
+                                db=_db,
+                                reservations=_reservations_snapshot,
+                                dispatched=_dispatched_snapshot,
+                                actual_cents=_actual_cents_snapshot,
+                            )
+                            try:
+                                _db.commit()
+                            except Exception:
+                                pass
+                        finally:
+                            try:
+                                _db.close()
+                            except Exception:
+                                pass
+                    await run_in_threadpool(_settle_sync_owned)
                 except Exception:
                     log.exception(
                         "guard.gateway.settle_wire_failed",
                         reservation_count=len(_reservations),
                         dispatched=_dispatched,
                     )
-            if _budget_wire_db is not None:
-                try:
-                    _budget_wire_db.close()
-                except Exception:
-                    pass
 
         # Streaming lifecycle: transfer admission ticket ownership so the
         # outer finally does not release before ASGI drains the response.

@@ -56,8 +56,9 @@ def test_handler_uses_request_id_not_row_id_for_reservation():
         "from _durable.request_id."
     )
     # The reserve call must consume _audit_request_id, not _durable_row_id.
-    # Multi-line kwargs: look at the ~700-char window starting at the call.
-    reserve_call_start = src.index("_reserve_result = _reserve_budgets_for_request(")
+    # Post-R3: reserve runs inside a threadpool helper (_reserve_sync_owned).
+    # Locate that helper and scan its body.
+    reserve_call_start = src.index("return _reserve_budgets_for_request(")
     reserve_block = src[reserve_call_start : reserve_call_start + 700]
     assert "request_id=_audit_request_id" in reserve_block, (
         "reserve call must pass request_id=_audit_request_id (post R5). "
