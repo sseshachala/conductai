@@ -187,10 +187,17 @@ def _mirror(db, shim):
 # The real reconciler queries ``BudgetReservation`` and ``GuardAuditEvent``
 # via SQLAlchemy. Under the stub session, we bypass and call directly.
 
-def _reconcile(ledger, db, workspace_id, ai_tool, period_key, *, committed_cents=0):
-    """Simulate the reconciler for a specific (ws, tool, period) with
-    an explicit committed_cents value the DB "would report", plus the
-    open rows the stub already holds."""
+def _reconcile(
+    ledger, db, workspace_id, ai_tool, period_key, *,
+    committed_cents=0, clerk_user_id=None, agent_identity_id=None,
+):
+    """Simulate the reconciler for a specific scope tuple.
+
+    Fix 1 (P1 #1): keys are now scoped by (ws, user, agent, tool) so
+    the helper accepts optional user/agent kwargs. Existing test cases
+    pass only ai_tool -> (None, None, tool) which matches the pre-fix
+    workspace-wide key shape.
+    """
     from app.core.budget_ledger import (
         _reserved_key, _committed_key, _res_hash_key, _ready_key,
         _seconds_until_next_period,
@@ -202,15 +209,19 @@ def _reconcile(ledger, db, workspace_id, ai_tool, period_key, *, committed_cents
     ttl = _seconds_until_next_period()
     client = ledger._client()
     pipe = client.pipeline()
-    pipe.set(_committed_key(workspace_id, ai_tool, period_key), committed_cents, ex=ttl)
-    pipe.delete(_reserved_key(workspace_id, ai_tool, period_key))
-    pipe.delete(_res_hash_key(workspace_id, ai_tool, period_key))
+    _rk = _reserved_key(workspace_id, clerk_user_id, agent_identity_id, ai_tool, period_key)
+    _ck = _committed_key(workspace_id, clerk_user_id, agent_identity_id, ai_tool, period_key)
+    _hk = _res_hash_key(workspace_id, clerk_user_id, agent_identity_id, ai_tool, period_key)
+    _rd = _ready_key(workspace_id, clerk_user_id, agent_identity_id, ai_tool, period_key)
+    pipe.set(_ck, committed_cents, ex=ttl)
+    pipe.delete(_rk)
+    pipe.delete(_hk)
     if reserved_total > 0:
-        pipe.set(_reserved_key(workspace_id, ai_tool, period_key), reserved_total, ex=ttl)
+        pipe.set(_rk, reserved_total, ex=ttl)
     if hash_payload:
-        pipe.hset(_res_hash_key(workspace_id, ai_tool, period_key), mapping=hash_payload)
-        pipe.expire(_res_hash_key(workspace_id, ai_tool, period_key), ttl)
-    pipe.set(_ready_key(workspace_id, ai_tool, period_key), "1", ex=ttl)
+        pipe.hset(_hk, mapping=hash_payload)
+        pipe.expire(_hk, ttl)
+    pipe.set(_rd, "1", ex=ttl)
     pipe.execute()
 
 
@@ -423,7 +434,7 @@ def test_partial_release_preserves_ttl(ledger, db, redis_client):
     _, rb = ledger.reserve(db=db, workspace_id=ws, ai_tool=None,
                            estimated_cents=100, cap_cents=1000)
 
-    key = _reserved_key(ws, None, monthly_period_key())
+    key = _reserved_key(ws, None, None, None, monthly_period_key())
     ttl_before = redis_client.ttl(key)
     assert ttl_before > 0
 
@@ -600,8 +611,8 @@ def test_reserve_all_unwinds_when_any_budget_refuses(ledger, db):
 
     # The first two budgets' reserved counters must be back at zero —
     # the unwind step released them.
-    r0 = ledger._client().get(_reserved_key(ws, None, period))
-    r1 = ledger._client().get(_reserved_key(ws, "gateway", period))
+    r0 = ledger._client().get(_reserved_key(ws, None, None, None, period))
+    r1 = ledger._client().get(_reserved_key(ws, None, None, "gateway", period))
     # Redis GET returns bytes/str "0" or None depending on decode_responses;
     # accept either as "back to zero".
     assert r0 in (b"0", "0", None), r0
@@ -680,8 +691,8 @@ def test_release_all_is_idempotent_across_the_list(ledger, db):
     ledger.release_all(db=db, reservations=accepted)  # second call is a no-op
 
     # Both counters at zero. No double-refund.
-    r0 = ledger._client().get(_reserved_key(ws, None, period))
-    r1 = ledger._client().get(_reserved_key(ws, "gateway", period))
+    r0 = ledger._client().get(_reserved_key(ws, None, None, None, period))
+    r1 = ledger._client().get(_reserved_key(ws, None, None, "gateway", period))
     assert r0 in (b"0", "0", None), r0
     assert r1 in (b"0", "0", None), r1
 
@@ -709,12 +720,12 @@ def test_commit_all_moves_every_reservation_to_committed(ledger, db):
     ledger.commit_all(db=db, reservations=accepted, actual_cents=30)
 
     # Every budget's committed counter shows 30 cents. Reserved back to zero.
-    c0 = ledger._client().get(_committed_key(ws, None, period))
-    c1 = ledger._client().get(_committed_key(ws, "gateway", period))
+    c0 = ledger._client().get(_committed_key(ws, None, None, None, period))
+    c1 = ledger._client().get(_committed_key(ws, None, None, "gateway", period))
     assert int(c0) == 30
     assert int(c1) == 30
-    r0 = ledger._client().get(_reserved_key(ws, None, period))
-    r1 = ledger._client().get(_reserved_key(ws, "gateway", period))
+    r0 = ledger._client().get(_reserved_key(ws, None, None, None, period))
+    r1 = ledger._client().get(_reserved_key(ws, None, None, "gateway", period))
     assert r0 in (b"0", "0", None), r0
     assert r1 in (b"0", "0", None), r1
 
@@ -727,7 +738,13 @@ def test_reservation_row_carries_new_scope_columns(ledger, db):
 
     ws = str(uuid.uuid4())
     period = _current_period()
-    _reconcile(ledger, db, ws, None, period, committed_cents=0)
+    # Fix 1 (P1 #1): under scope-aware keying, the reserve() below is
+    # scoped to agent 'agent-abc' — its Redis counter needs its own
+    # reconcile before the first reserve() accepts.
+    _reconcile(
+        ledger, db, ws, None, period, committed_cents=0,
+        agent_identity_id="agent-abc",
+    )
 
     req_id = str(uuid.uuid4())
     decision, res = ledger.reserve(
@@ -754,3 +771,68 @@ def test_reservation_row_carries_new_scope_columns(ledger, db):
     # only mirrors legacy fields, we instead verify the ORM object
     # accepts the kwargs without error (compile-time proof).
     # (A live-DB test verifies the actual column values are stored.)
+
+
+# ── Fix 1 (P1 #1) — scope-aware Redis keying repro tests ─────────
+
+def test_workspace_and_agent_budgets_have_independent_counters(ledger, db):
+    """Reviewer P1 #1 repro. Pre-fix: reserving 100c against a workspace-
+    default budget then 100c against an agent-scoped budget (both with
+    ai_tool=None) touched the same Redis counter -> 100c request produced
+    200c committed. Post-fix: each budget owns its own counter."""
+    from app.core.budget_ledger import BudgetDecision
+
+    ws = str(uuid.uuid4())
+    agent_a = "agent-aaaa-1111"
+    period = _current_period()
+    _reconcile(ledger, db, ws, None, period,
+               committed_cents=0, clerk_user_id=None, agent_identity_id=None)
+    _reconcile(ledger, db, ws, None, period,
+               committed_cents=0, clerk_user_id=None, agent_identity_id=agent_a)
+
+    d1, r1 = ledger.reserve(
+        db=db, workspace_id=ws, ai_tool=None,
+        estimated_cents=100, cap_cents=1000,
+        clerk_user_id=None, agent_identity_id=None,
+    )
+    d2, r2 = ledger.reserve(
+        db=db, workspace_id=ws, ai_tool=None,
+        estimated_cents=100, cap_cents=1000,
+        clerk_user_id=None, agent_identity_id=agent_a,
+    )
+    assert d1 == BudgetDecision.ACCEPTED
+    assert d2 == BudgetDecision.ACCEPTED
+
+    # Each scope's reserved counter is exactly 100 — no leak.
+    assert ledger.current_reserved_cents(
+        ws, None, clerk_user_id=None, agent_identity_id=None,
+    ) == 100
+    assert ledger.current_reserved_cents(
+        ws, None, clerk_user_id=None, agent_identity_id=agent_a,
+    ) == 100
+
+    ledger.commit(db=db, reservation=r1, actual_cents=100)
+    ledger.commit(db=db, reservation=r2, actual_cents=100)
+    assert ledger.current_committed_cents(
+        ws, None, clerk_user_id=None, agent_identity_id=None,
+    ) == 100
+    assert ledger.current_committed_cents(
+        ws, None, clerk_user_id=None, agent_identity_id=agent_a,
+    ) == 100
+
+
+def test_scope_slug_distinguishes_null_configurations(ledger, db):
+    """Directly proves the Redis key differs across scope tuples."""
+    from app.core.budget_ledger import _reserved_key, _scope_slug, monthly_period_key
+    ws = str(uuid.uuid4())
+    p = monthly_period_key()
+    keys = {
+        _reserved_key(ws, None, None, None, p),
+        _reserved_key(ws, "user-1", None, None, p),
+        _reserved_key(ws, None, "agent-1", None, p),
+        _reserved_key(ws, None, None, "cursor", p),
+        _reserved_key(ws, "user-1", "agent-1", "cursor", p),
+    }
+    assert len(keys) == 5
+    assert _scope_slug(None, None, None) != _scope_slug(None, "agent-1", None)
+    assert _scope_slug(None, "agent-1", None) != _scope_slug("user-1", None, None)
