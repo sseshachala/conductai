@@ -675,9 +675,13 @@ function HowToUse({ profile }: { profile: GatewayProfileV2Out }) {
   // passthrough) users go through ``/gateway/v1/openai``. When a
   // profile fronts multiple providers (mixed fallback), we list all
   // of them so the admin picks the one matching their SDK.
-  const origin = typeof window !== "undefined"
-    ? window.location.origin.replace(/\/$/, "")
-    : ""
+  // Gateway lives on a different hostname from the dashboard
+  // (delegator-gateway service, per #2056/#2066). Do not derive the
+  // URL from window.location.origin — the user is browsing on the
+  // dashboard host and would get https://app.conductai.ai/gateway/*
+  // which 404s. Read from env with a prod default so local dev can
+  // point at http://localhost:8000 via NEXT_PUBLIC_GATEWAY_URL.
+  const origin = (process.env.NEXT_PUBLIC_GATEWAY_URL || "https://gateway.conductai.ai").replace(/\/$/, "")
   const wc = (profile.working_copy as {
     targets?: Array<{ transport?: string; provider?: string; integration?: string }>
   } | null | undefined) ?? {}
