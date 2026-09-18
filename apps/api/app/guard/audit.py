@@ -182,6 +182,21 @@ def record(
     `share_token_hash` (sha256 of a raw short-lived token) is populated
     only for trial calls, so the anonymous public receipt endpoint can
     authorize a stranger reading their own block."""
+    if agent_identity_id is None:
+        # PR-0.5b invariant — record() only writes source='gateway' rows,
+        # and /gateway/v1/* auth is mandatory. A None here is a leaky
+        # caller path that the counter surfaces so we can chase it.
+        log.warning(
+            "guard.audit.missing_agent_identity_id",
+            writer="record",
+            workspace_id=workspace_id,
+            ai_tool=ai_tool,
+        )
+        try:
+            from app.modules.guard.observability.metrics import GUARD_AUDIT_MISSING_AGENT_ID
+            GUARD_AUDIT_MISSING_AGENT_ID.labels(writer="record").inc()
+        except Exception:  # noqa: BLE001 — never let the counter break audit
+            pass
     db = SessionLocal()
     try:
         set_workspace_rls(db, workspace_id)
@@ -355,6 +370,22 @@ def insert_accepted(
     now = datetime.now(timezone.utc)
     row_id = receipt_id or str(_uuid.uuid4())
     input_tokens = _estimate_input_tokens(body) if body else None
+
+    if agent_identity_id is None:
+        # PR-0.5b invariant — same as record(): source='gateway' hardcoded,
+        # auth mandatory upstream, so None is a writer path bug.
+        log.warning(
+            "guard.audit.missing_agent_identity_id",
+            writer="insert_accepted",
+            workspace_id=workspace_id,
+            ai_tool=ai_tool,
+            request_id=request_id,
+        )
+        try:
+            from app.modules.guard.observability.metrics import GUARD_AUDIT_MISSING_AGENT_ID
+            GUARD_AUDIT_MISSING_AGENT_ID.labels(writer="insert_accepted").inc()
+        except Exception:  # noqa: BLE001
+            pass
 
     db = SessionLocal()
     try:
