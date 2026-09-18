@@ -61,9 +61,56 @@ log = structlog.get_logger()
 
 
 def enabled() -> bool:
+    """Global kill switch. False = ledger is dark everywhere."""
     return os.environ.get("BUDGET_LEDGER_ENABLED", "false").lower() in (
         "1", "true", "yes",
     )
+
+
+# Workspace-allowlist gate (canary rollout).
+#
+# Semantics:
+#   BUDGET_LEDGER_ENABLED=false                              -> nothing enforces
+#   BUDGET_LEDGER_ENABLED=true + ALLOWLIST unset / empty     -> all workspaces enforce (backward compat)
+#   BUDGET_LEDGER_ENABLED=true + ALLOWLIST=*                 -> all workspaces enforce (explicit wildcard)
+#   BUDGET_LEDGER_ENABLED=true + ALLOWLIST=ws1,ws2           -> only ws1, ws2 enforce
+#
+# ``enabled_for(workspace_id)`` is the correct check for any code
+# path that has a workspace context. ``enabled()`` remains available
+# for callers that predate the allowlist (they get global behavior).
+_ALLOWLIST_ALL = "*"
+
+
+def _allowlisted_workspaces() -> set[str] | None:
+    """Return the parsed allowlist, or None to mean 'no restriction'.
+
+    Unset OR empty OR '*' -> None (all workspaces).
+    Comma-separated UUID list -> set of lowercase-normalized strings.
+    """
+    raw = os.environ.get("BUDGET_LEDGER_ALLOWLIST", "").strip()
+    if not raw or raw == _ALLOWLIST_ALL:
+        return None
+    return {piece.strip().lower() for piece in raw.split(",") if piece.strip()}
+
+
+def enabled_for(workspace_id: str | None) -> bool:
+    """Combined kill switch + workspace allowlist.
+
+    Any code path that has a workspace_id should call this instead of
+    ``enabled()`` so the canary allowlist actually gates enforcement.
+    """
+    if not enabled():
+        return False
+    allowlist = _allowlisted_workspaces()
+    if allowlist is None:
+        # No restriction — every workspace enforces when the global
+        # flag is on.
+        return True
+    if workspace_id is None:
+        # A code path with no workspace context cannot be gated;
+        # fail-closed to prevent accidental enforcement leakage.
+        return False
+    return str(workspace_id).lower() in allowlist
 
 
 def fail_closed() -> bool:

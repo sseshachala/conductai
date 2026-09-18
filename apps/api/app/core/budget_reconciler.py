@@ -141,6 +141,10 @@ def run_startup_reconciliation(session_factory=None) -> dict:
     if not _ledger_enabled():
         log.info("guard.budget.reconcile_startup_skipped_flag_off")
         return {"scopes_reconciled": 0, "errors": 0, "skipped": True}
+    # Workspace-allowlist gate: even with the global flag on, only
+    # reconcile scopes for workspaces that have opted in.
+    from app.core.budget_ledger import _allowlisted_workspaces
+    _allow = _allowlisted_workspaces()
 
     if session_factory is None:
         from app.core.database import SessionLocal
@@ -160,6 +164,8 @@ def run_startup_reconciliation(session_factory=None) -> dict:
             scopes.add(s)
         for s in _enumerate_committed_scopes(db):
             scopes.add(s)
+        if _allow is not None:
+            scopes = {s for s in scopes if str(s[0]).lower() in _allow}
     except Exception as exc:  # noqa: BLE001
         log.exception("guard.budget.reconcile_startup_enumerate_failed", err=str(exc))
         errors += 1
@@ -269,6 +275,10 @@ def run_recovery_sweep(session_factory=None, *, stale_seconds: int | None = None
             "errors": 0,
             "skipped": True,
         }
+    # Recovery sweep only touches allowlisted workspaces so a non-
+    # opted-in workspace never sees any ledger activity.
+    from app.core.budget_ledger import _allowlisted_workspaces
+    _allow_recovery = _allowlisted_workspaces()
 
     if session_factory is None:
         from app.core.database import SessionLocal
@@ -284,15 +294,15 @@ def run_recovery_sweep(session_factory=None, *, stale_seconds: int | None = None
 
     db = session_factory()
     try:
-        stale = (
-            db.query(BudgetReservation)
-            .filter(
-                BudgetReservation.status == "open",
-                BudgetReservation.created_at < cutoff,
-            )
-            .limit(500)  # bounded per sweep so a big backlog does not stall
-            .all()
+        _q = db.query(BudgetReservation).filter(
+            BudgetReservation.status == "open",
+            BudgetReservation.created_at < cutoff,
         )
+        if _allow_recovery is not None:
+            _q = _q.filter(
+                BudgetReservation.workspace_id.in_(_allow_recovery)
+            )
+        stale = _q.limit(500).all()
     except Exception as exc:  # noqa: BLE001
         log.exception("guard.budget.recovery_sweep_query_failed", err=str(exc))
         db.close()
