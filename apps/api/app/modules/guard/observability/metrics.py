@@ -54,3 +54,35 @@ GUARD_AUDIT_MISSING_AGENT_ID = Counter(
     "Auth is mandatory upstream so steady-state should be zero.",
     ["writer"],
 )
+
+
+# R2 (reviewer P1) — budget-reconciler wiring + recovery worker.
+#
+# Three counters observable from Prometheus so ops can watch the
+# ledger's recovery lifecycle:
+#
+# - GUARD_BUDGET_RECONCILE_RUNS: incremented on every startup reconcile.
+#   Label `outcome` in {"success","partial","error"} so drift shows up
+#   as ratio(partial+error / success).
+# - GUARD_BUDGET_RECONCILE_SCOPES: incremented per scope reconciled at
+#   startup. Cardinality-safe (no workspace/agent labels).
+# - GUARD_BUDGET_RECOVERY_ACTIONS: incremented per stale reservation
+#   the recovery worker resolves. Label `action` in
+#   {"committed","released","left_open"}.
+
+GUARD_BUDGET_RECONCILE_RUNS = Counter(
+    "guard_budget_reconcile_runs_total",
+    "Startup reconcile runs, labelled by aggregate outcome.",
+    ["outcome"],
+)
+
+GUARD_BUDGET_RECONCILE_SCOPES = Counter(
+    "guard_budget_reconcile_scopes_reconciled_total",
+    "Scope tuples reconciled at process startup.",
+)
+
+GUARD_BUDGET_RECOVERY_ACTIONS = Counter(
+    "guard_budget_recovery_sweep_actions_total",
+    "Stale reservation actions taken by the recovery worker.",
+    ["action"],
+)
