@@ -257,6 +257,13 @@ class BudgetLedger:
         ai_tool: str | None,
         estimated_cents: int,
         cap_cents: int,
+        # PR-A1: scope columns for multi-scope reservations. All nullable so
+        # existing callers keep working; new call sites populate them so the
+        # durable log carries request/agent/transport correlation.
+        agent_identity_id: str | None = None,
+        source: str | None = None,
+        client_tool: str | None = None,
+        request_id: str | None = None,
     ) -> tuple[BudgetDecision, Optional[Reservation]]:
         """Atomically reserve capacity.
 
@@ -287,6 +294,12 @@ class BudgetLedger:
             period_key=period,
             estimated_cents=estimated_cents,
             status="open",
+            # PR-A1: scope columns — nullable, populated when the caller
+            # supplies them. Correlate reservations to the audit chain.
+            agent_identity_id=agent_identity_id,
+            source=source,
+            client_tool=client_tool,
+            request_id=uuid.UUID(request_id) if request_id and _looks_like_uuid(request_id) else None,
         )
         try:
             db.add(row)
@@ -514,6 +527,114 @@ class BudgetLedger:
             "releases": self._releases,
             "commits": self._commits,
         }
+
+    # ── Multi-scope helpers (PR-A1) ─────────────────────────────────
+    #
+    # The all-permit contract (per #2093 design review): each request may
+    # apply to multiple budget rows (workspace + agent + transport +
+    # client_tool). The gateway lifecycle wiring calls reserve_all() with
+    # every applicable row from ``lookup_applicable_budgets()``; if ANY
+    # underlying reserve() refuses, every previously accepted reservation
+    # is released atomically and the caller sees a single decision.
+
+    def reserve_all(
+        self,
+        *,
+        db: Session,
+        workspace_id: str,
+        applicable_budgets: list,
+        estimated_cents: int,
+        agent_identity_id: str | None = None,
+        source: str | None = None,
+        client_tool: str | None = None,
+        request_id: str | None = None,
+    ) -> tuple[BudgetDecision, Optional[list[Reservation]], Optional[object]]:
+        """All-or-nothing multi-scope reservation.
+
+        For each budget row in ``applicable_budgets`` with
+        ``hard_cap_enabled=True`` and a ``hard_limit_usd`` set, call
+        ``reserve()`` with ``cap_cents = int(round(hard_limit_usd * 100))``.
+        Budgets without hard enforcement are alerting-only — skipped.
+
+        On any refusal, previously-accepted reservations are released via
+        best-effort ``release()`` (idempotent). Returns
+        ``(decision, accepted_or_None, refusing_budget_or_None)``:
+
+        - ACCEPTED  -> ``(ACCEPTED, [Reservation, ...], None)``
+        - refusal   -> ``(first_bad_decision, None, refusing_row)``
+        - no budgets to reserve against -> ``(ACCEPTED, [], None)``
+
+        The empty-list ACCEPTED case is important: it means "no hard cap
+        applies here, dispatch is unconditionally allowed."
+        """
+        accepted: list[Reservation] = []
+        for budget in applicable_budgets:
+            if not getattr(budget, "hard_cap_enabled", False):
+                continue
+            hard_limit = getattr(budget, "hard_limit_usd", None)
+            if hard_limit is None or hard_limit <= 0:
+                continue
+            cap_cents = int(round(float(hard_limit) * 100))
+
+            decision, res = self.reserve(
+                db=db,
+                workspace_id=workspace_id,
+                ai_tool=budget.ai_tool,
+                estimated_cents=estimated_cents,
+                cap_cents=cap_cents,
+                agent_identity_id=agent_identity_id,
+                source=source,
+                client_tool=client_tool,
+                request_id=request_id,
+            )
+            if decision != BudgetDecision.ACCEPTED:
+                for r in accepted:
+                    try:
+                        self.release(db=db, reservation=r)
+                    except Exception as e:  # noqa: BLE001
+                        log.warning(
+                            "budget_ledger.reserve_all_unwind_failed",
+                            reservation_id=r.reservation_id,
+                            err=str(e),
+                        )
+                return decision, None, budget
+            accepted.append(res)
+        return BudgetDecision.ACCEPTED, accepted, None
+
+    def release_all(self, db: Session, reservations: list[Reservation]) -> None:
+        """Release every reservation in the list. Idempotent + best-effort."""
+        for r in reservations:
+            try:
+                self.release(db=db, reservation=r)
+            except Exception as e:  # noqa: BLE001
+                log.warning(
+                    "budget_ledger.release_all_failed",
+                    reservation_id=r.reservation_id,
+                    err=str(e),
+                )
+
+    def commit_all(
+        self,
+        db: Session,
+        reservations: list[Reservation],
+        actual_cents: int,
+    ) -> None:
+        """Commit every reservation with the SAME actual_cents.
+
+        Each budget charged against the request receives the full
+        ``actual_cents`` on its committed counter — not a proportional
+        split. Individual failures are logged but do not stop iteration;
+        the reconciler catches any orphaned open reservations later.
+        """
+        for r in reservations:
+            try:
+                self.commit(db=db, reservation=r, actual_cents=actual_cents)
+            except Exception as e:  # noqa: BLE001
+                log.warning(
+                    "budget_ledger.commit_all_failed",
+                    reservation_id=r.reservation_id,
+                    err=str(e),
+                )
 
 
 # ── Helpers ──────────────────────────────────────────────────────────
