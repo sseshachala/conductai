@@ -410,6 +410,11 @@ class BudgetReservation(Base):
     request_id = Column(UUID(as_uuid=True), nullable=True)  # correlates to GuardAuditEvent.request_id
     estimated_cents = Column(Integer, nullable=False)
     actual_cents = Column(Integer, nullable=True)
+    # R9 (reviewer P1): microdollar precision. 1 cent = 10 000 micros.
+    # Nullable so cents-mode callers continue to work; new writers
+    # populate both for a clean deprecation of the cents columns.
+    estimated_micros = Column(sa.BigInteger, nullable=True)
+    actual_micros = Column(sa.BigInteger, nullable=True)
     status = Column(Text, nullable=False, server_default=sa.text("'open'"), default="open")
     created_at = Column(
         DateTime(timezone=True),

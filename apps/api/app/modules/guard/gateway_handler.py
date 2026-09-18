@@ -604,9 +604,16 @@ async def handle_gateway_request(
             ReserveOutcome as _ReserveOutcome,
             settle_reservations as _settle_reservations,
         )
+        try:
+            from app.modules.guard.gateway_lifecycle import (
+                estimate_budget_micros as _estimate_budget_micros,
+            )
+        except ImportError:  # backward compat if module hasn't been redeployed
+            _estimate_budget_micros = None
         _reservations: list = []
         _dispatched = False  # flipped to True right before any upstream call
         _actual_cents: int | None = None
+        _actual_micros: int | None = None  # R9 (reviewer P1)
         # R3 fix (reviewer P1): reserve owns its own session lifecycle
         # inside a threadpool call. No shared session held across the
         # upstream await, no sync SQL/Redis on the event loop.
@@ -623,6 +630,14 @@ async def handle_gateway_request(
                     client_tool=(ai_tool if ai_tool and ai_tool != "gateway" else None),
                     clerk_user_id=clerk_user_id,
                     estimated_cents=_estimate_budget_cents(body, provider, model, ai_tool),
+                    # R9 (reviewer P1): microdollar precision so the ledger's
+                    # Redis counter accumulates sub-cent requests correctly
+                    # instead of rounding to zero.
+                    estimated_micros=(
+                        _estimate_budget_micros(body, provider, model, ai_tool)
+                        if _estimate_budget_micros is not None
+                        else None
+                    ),
                     request_id=_audit_request_id,
                 )
             finally:
@@ -1153,6 +1168,7 @@ async def handle_gateway_request(
                             )
                             if _cost_usd:
                                 _actual_cents = int(round(float(_cost_usd) * 100))
+                                _actual_micros = int(round(float(_cost_usd) * 1_000_000))
                         except Exception:
                             _actual_cents = None
                     # R3 fix (reviewer P1): settle owns its own session
@@ -1161,6 +1177,7 @@ async def handle_gateway_request(
                     _reservations_snapshot = list(_reservations)
                     _dispatched_snapshot = _dispatched
                     _actual_cents_snapshot = _actual_cents
+                    _actual_micros_snapshot = _actual_micros  # R9
 
                     def _settle_sync_owned():
                         _db = SessionLocal()
@@ -1170,6 +1187,7 @@ async def handle_gateway_request(
                                 reservations=_reservations_snapshot,
                                 dispatched=_dispatched_snapshot,
                                 actual_cents=_actual_cents_snapshot,
+                                actual_micros=_actual_micros_snapshot,  # R9
                             )
                             try:
                                 _db.commit()

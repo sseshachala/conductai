@@ -80,6 +80,12 @@ class BudgetDecision(Enum):
     DISABLED = "disabled"
 
 
+# R9 (reviewer P1): microdollar unit constants. Exposed for tests that
+# want to construct Reservation objects directly.
+_MICROS_PER_CENT = 10_000
+_MICROS_PER_USD = 1_000_000
+
+
 @dataclass(frozen=True)
 class Reservation:
     reservation_id: str
@@ -88,11 +94,13 @@ class Reservation:
     estimated_cents: int
     period_key: str
     # Fix 1 (P1 #1): scope fields so release/commit can reconstruct the
-    # exact Redis key reserve() wrote against. Without these two, two
-    # budgets differing only by clerk_user_id or agent_identity_id
-    # shared one counter and produced 100c-request/200c-committed.
+    # exact Redis key reserve() wrote against.
     clerk_user_id: str | None = None
     agent_identity_id: str | None = None
+    # R9 (reviewer P1): microdollar precision for the durable log.
+    # None = legacy cents-mode reservation. Non-None = precise value
+    # scaled by _MICROS_PER_CENT.
+    estimated_micros: int | None = None
 
 
 # ── Redis client (sync, shared pool) ────────────────────────────────
@@ -329,11 +337,15 @@ class BudgetLedger:
         db: Session,
         workspace_id: str,
         ai_tool: str | None,
-        estimated_cents: int,
-        cap_cents: int,
-        # PR-A1 scope columns + Fix 1 (P1 #1) clerk_user_id. Every scope
-        # field is nullable; None resolves to the workspace-wide key
-        # shape so legacy callers see zero behavior change.
+        estimated_cents: int | None = None,
+        cap_cents: int | None = None,
+        # R9 (reviewer P1): microdollar-precision alternatives. When
+        # both a _cents and _micros kwarg are provided the micros value
+        # wins — cents-mode callers stay backward-compatible until they
+        # migrate.
+        estimated_micros: int | None = None,
+        cap_micros: int | None = None,
+        # PR-A1 scope columns + Fix 1 (P1 #1) clerk_user_id.
         clerk_user_id: str | None = None,
         agent_identity_id: str | None = None,
         source: str | None = None,
@@ -347,13 +359,24 @@ class BudgetLedger:
         the durable log never contains phantom entries; if the worker
         crashes between the two, the row survives with status='open'
         and the reconciler will re-inflate Redis on next cold start.
+
+        R9 unit contract: internally everything is micros. Cents-mode
+        callers get scaled up by 10 000 at the boundary; the Redis
+        counters and durable log speak micros.
         """
-        if estimated_cents <= 0:
+        if estimated_micros is None:
+            estimated_micros = int(estimated_cents or 0) * _MICROS_PER_CENT
+        if cap_micros is None:
+            cap_micros = int(cap_cents or 0) * _MICROS_PER_CENT
+        estimated_cents = max(1, estimated_micros // _MICROS_PER_CENT) if estimated_micros > 0 else 0
+        cap_cents = cap_micros // _MICROS_PER_CENT
+        if estimated_micros <= 0:
             return BudgetDecision.ACCEPTED, Reservation(
                 reservation_id=uuid.uuid4().hex,
                 workspace_id=workspace_id,
                 ai_tool=ai_tool or "_all",
                 estimated_cents=0,
+                estimated_micros=0,
                 period_key=monthly_period_key(),
                 clerk_user_id=clerk_user_id,
                 agent_identity_id=agent_identity_id,
@@ -370,6 +393,8 @@ class BudgetLedger:
             ai_tool=ai_tool,
             period_key=period,
             estimated_cents=estimated_cents,
+            # R9 (reviewer P1): microdollar precision on the durable log.
+            estimated_micros=estimated_micros,
             status="open",
             # R1 fix (reviewer P1) — persist clerk_user_id so reconcile
             # and the drawer can filter by the same scope tuple reserve
@@ -402,7 +427,7 @@ class BudgetLedger:
             ret = self._client().eval(
                 _RESERVE_SCRIPT, 4,
                 _sk["reserved"], _sk["committed"], _sk["res_hash"], _sk["ready"],
-                rid, estimated_cents, cap_cents,
+                rid, estimated_micros, cap_micros,
                 _seconds_until_next_period(),
             )
         except Exception as e:  # noqa: BLE001
@@ -439,6 +464,7 @@ class BudgetLedger:
             workspace_id=workspace_id,
             ai_tool=ai_tool or "_all",
             estimated_cents=estimated_cents,
+            estimated_micros=estimated_micros,
             period_key=period,
             clerk_user_id=clerk_user_id,
             agent_identity_id=agent_identity_id,
@@ -487,14 +513,29 @@ class BudgetLedger:
 
     # ── Commit ──────────────────────────────────────────────────────
     def commit(
-        self, db: Session, reservation: Reservation, actual_cents: int,
+        self,
+        db: Session,
+        reservation: Reservation,
+        actual_cents: int | None = None,
+        *,
+        actual_micros: int | None = None,
     ) -> None:
         """Convert reservation to committed spend. Refunds reserved
-        by the estimated amount, adds actual_cents to committed.
+        by the estimated amount, adds actual_cents (or actual_micros)
+        to committed.
+
+        R9 (reviewer P1): actual_micros takes precedence when both are
+        given. Callers that still pass actual_cents are supported via
+        internal scaling — the Redis counter always sees micros.
 
         Idempotent by reservation_id — a second call finds the hash
         empty and no-ops."""
-        if reservation.estimated_cents <= 0 and actual_cents <= 0:
+        # R9: normalize to micros internally.
+        if actual_micros is None:
+            actual_micros = int(actual_cents or 0) * _MICROS_PER_CENT
+        # Backward-compat cent value for the DB row.
+        actual_cents = actual_micros // _MICROS_PER_CENT if actual_micros > 0 else 0
+        if reservation.estimated_cents <= 0 and actual_micros <= 0:
             return
         ai_tool = None if reservation.ai_tool == "_all" else reservation.ai_tool
         _sk = _scope_keys(
@@ -509,7 +550,7 @@ class BudgetLedger:
                 _COMMIT_SCRIPT, 3,
                 _sk["reserved"], _sk["committed"], _sk["res_hash"],
                 reservation.reservation_id,
-                max(0, actual_cents),
+                max(0, actual_micros),
                 _seconds_until_next_period(),
             )
         except Exception as e:  # noqa: BLE001
@@ -521,6 +562,7 @@ class BudgetLedger:
             if row is not None and row.status == "open":
                 row.status = "committed"
                 row.actual_cents = max(0, actual_cents)
+                row.actual_micros = max(0, actual_micros)
                 row.resolved_at = datetime.now(timezone.utc)
                 # Fix 9 (P2 #9): commit the status flip so the
                 # reconciler never re-inflates a committed reservation.
@@ -539,6 +581,20 @@ class BudgetLedger:
         clerk_user_id: str | None = None,
         agent_identity_id: str | None = None,
     ) -> int:
+        return self.current_reserved_micros(
+            workspace_id, ai_tool,
+            clerk_user_id=clerk_user_id, agent_identity_id=agent_identity_id,
+        ) // _MICROS_PER_CENT
+
+    def current_reserved_micros(
+        self,
+        workspace_id: str,
+        ai_tool: str | None,
+        *,
+        clerk_user_id: str | None = None,
+        agent_identity_id: str | None = None,
+    ) -> int:
+        """R9: raw micros from the Redis reserved counter."""
         period = monthly_period_key()
         try:
             return int(
@@ -559,6 +615,20 @@ class BudgetLedger:
         clerk_user_id: str | None = None,
         agent_identity_id: str | None = None,
     ) -> int:
+        return self.current_committed_micros(
+            workspace_id, ai_tool,
+            clerk_user_id=clerk_user_id, agent_identity_id=agent_identity_id,
+        ) // _MICROS_PER_CENT
+
+    def current_committed_micros(
+        self,
+        workspace_id: str,
+        ai_tool: str | None,
+        *,
+        clerk_user_id: str | None = None,
+        agent_identity_id: str | None = None,
+    ) -> int:
+        """R9: raw micros from the Redis committed counter."""
         period = monthly_period_key()
         try:
             return int(
@@ -633,7 +703,10 @@ class BudgetLedger:
         if agent_identity_id is not None:
             q = q.filter(GuardAuditEvent.agent_identity_id == agent_identity_id)
         committed_usd = float(q.scalar() or 0.0)
-        committed_cents = int(round(committed_usd * 100))
+        # R9: reconciler writes Redis in micros so cents-mode and
+        # micros-mode traffic converge on the same counter.
+        committed_micros = int(round(committed_usd * 1_000_000))
+        committed_cents = committed_micros // 10_000  # for legacy log lines
 
         # 2) Open reservations from durable log.
         open_rows = db.query(BudgetReservation).filter(
@@ -660,15 +733,21 @@ class BudgetLedger:
         reserved_total = 0
         hash_payload: dict[str, int] = {}
         for row in open_rows.all():
-            hash_payload[str(row.id).replace("-", "")] = row.estimated_cents
-            reserved_total += row.estimated_cents
+            # R9: prefer estimated_micros so partial cents are preserved.
+            _row_micros = (
+                row.estimated_micros
+                if row.estimated_micros is not None
+                else int(row.estimated_cents) * _MICROS_PER_CENT
+            )
+            hash_payload[str(row.id).replace("-", "")] = _row_micros
+            reserved_total += _row_micros
 
         # 3) Write to Redis atomically.
         ttl = _seconds_until_next_period()
         client = self._client()
         pipe = client.pipeline()
         _sk = _scope_keys(workspace_id, clerk_user_id, agent_identity_id, ai_tool, period)
-        pipe.set(_sk["committed"], committed_cents, ex=ttl)
+        pipe.set(_sk["committed"], committed_micros, ex=ttl)
         pipe.delete(_sk["reserved"])
         pipe.delete(_sk["res_hash"])
         if reserved_total > 0:
@@ -705,7 +784,8 @@ class BudgetLedger:
         db: Session,
         workspace_id: str,
         applicable_budgets: list,
-        estimated_cents: int,
+        estimated_cents: int | None = None,
+        estimated_micros: int | None = None,
         agent_identity_id: str | None = None,
         source: str | None = None,
         client_tool: str | None = None,
@@ -736,20 +816,22 @@ class BudgetLedger:
             hard_limit = getattr(budget, "hard_limit_usd", None)
             if hard_limit is None or hard_limit <= 0:
                 continue
-            cap_cents = int(round(float(hard_limit) * 100))
+            # R9: microdollar precision for cap comparison.
+            cap_micros = int(round(float(hard_limit) * 1_000_000))
+            cap_cents_scaled = cap_micros // 10_000
 
             decision, res = self.reserve(
                 db=db,
                 workspace_id=workspace_id,
                 # Fix 1 (P1 #1): key the Redis counter by the BUDGET row's
-                # own scope tuple, not the request scope. Each budget row
-                # owns its own counter under scope-aware keying.
+                # own scope tuple, not the request scope.
                 ai_tool=budget.ai_tool,
                 clerk_user_id=getattr(budget, "clerk_user_id", None),
                 agent_identity_id=getattr(budget, "agent_identity_id", None),
                 estimated_cents=estimated_cents,
-                cap_cents=cap_cents,
-                # Request-scope metadata for the durable audit correlation.
+                estimated_micros=estimated_micros,
+                cap_cents=cap_cents_scaled,
+                cap_micros=cap_micros,
                 source=source,
                 client_tool=client_tool,
                 request_id=request_id,
@@ -784,9 +866,11 @@ class BudgetLedger:
         self,
         db: Session,
         reservations: list[Reservation],
-        actual_cents: int,
+        actual_cents: int | None = None,
+        *,
+        actual_micros: int | None = None,
     ) -> None:
-        """Commit every reservation with the SAME actual_cents.
+        """Commit every reservation with the SAME actual_cents (or actual_micros).
 
         Each budget charged against the request receives the full
         ``actual_cents`` on its committed counter — not a proportional
@@ -795,7 +879,12 @@ class BudgetLedger:
         """
         for r in reservations:
             try:
-                self.commit(db=db, reservation=r, actual_cents=actual_cents)
+                self.commit(
+                    db=db,
+                    reservation=r,
+                    actual_cents=actual_cents,
+                    actual_micros=actual_micros,
+                )
             except Exception as e:  # noqa: BLE001
                 log.warning(
                     "budget_ledger.commit_all_failed",

@@ -71,7 +71,7 @@ def test_reserve_sync_helper_owns_session_lifecycle():
 
     src = inspect.getsource(gh)
     idx = src.index("def _reserve_sync_owned")
-    body = src[idx : idx + 1000]
+    body = src[idx : idx + 1800]
     assert "_db = SessionLocal()" in body, "reserve helper must open its own session"
     assert "_db.close()" in body, "reserve helper must close its own session (finally)"
     assert "finally:" in body, "reserve helper must guarantee close via finally"
@@ -82,7 +82,7 @@ def test_settle_sync_helper_owns_session_lifecycle():
 
     src = inspect.getsource(gh)
     idx = src.index("def _settle_sync_owned")
-    body = src[idx : idx + 1200]
+    body = src[idx : idx + 2000]
     assert "_db = SessionLocal()" in body, "settle helper must open its own session"
     assert "_db.commit()" in body, "settle helper must commit its own session"
     assert "_db.close()" in body, "settle helper must close its own session"
