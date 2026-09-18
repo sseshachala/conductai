@@ -624,7 +624,9 @@ def upsert_budget(
 
     _audit_budget_change(db, ws_uuid, clerk_user_id, audit_action, audit_summary)
 
-    current_cost = _current_month_cost(db, ws_uuid, clerk_user_id)
+    current_cost = _current_month_cost(
+        db, ws_uuid, clerk_user_id, ai_tool, agent_identity_id=agent_identity_id,
+    )
     return _budget_out(budget, current_cost)
 
 
@@ -692,7 +694,10 @@ def list_budgets(
     return [
         _budget_out(
             b,
-            _current_month_cost(db, ws_uuid, b.clerk_user_id, b.ai_tool),
+            _current_month_cost(
+                db, ws_uuid, b.clerk_user_id, b.ai_tool,
+                agent_identity_id=b.agent_identity_id,
+            ),
             uid_email.get(b.clerk_user_id) if b.clerk_user_id else None,
         )
         for b in budgets
@@ -725,12 +730,23 @@ def delete_budget(
     )
     if not budget:
         raise HTTPException(status_code=404, detail="Budget not found")
-    if budget.clerk_user_id is None and budget.ai_tool is None:
+    # Fix 6c (P2): agent-scoped rows are NOT the workspace default even
+    # when clerk_user_id and ai_tool are both NULL. Only the true default
+    # row (all three scope keys NULL) carries the master enforcement flag.
+    if (
+        budget.clerk_user_id is None
+        and budget.ai_tool is None
+        and budget.agent_identity_id is None
+    ):
         raise HTTPException(
             status_code=400,
             detail="Workspace-default budget cannot be deleted — edit its values instead.",
         )
-    label = budget.ai_tool or budget.clerk_user_id or "workspace"
+    label = (
+        budget.ai_tool
+        or budget.clerk_user_id
+        or (f"agent:{budget.agent_identity_id}" if budget.agent_identity_id else "workspace")
+    )
     db.delete(budget)
     db.commit()
     _audit_budget_change(db, ws_uuid, budget.clerk_user_id, "budget_deleted", f"deleted {label}")
@@ -744,9 +760,16 @@ def _current_month_cost(
     ws_uuid: uuid.UUID,
     clerk_user_id: str | None,
     ai_tool: str | None = None,
+    agent_identity_id: str | None = None,
 ) -> float:
     """Sum cost_usd_after for the current calendar month, scoped to workspace
-    (and optionally to a specific clerk_user_id and/or ai_tool)."""
+    (and optionally to a specific clerk_user_id, agent_identity_id, and/or
+    ai_tool).
+
+    Fix 6a (P2): agent_identity_id was previously ignored so a per-agent
+    budget's 'current cost' row in the list endpoint returned the workspace
+    total instead of the agent's share.
+    """
     period_start = _current_period_start()
     q = db.query(
         func.coalesce(func.sum(GuardAuditEvent.cost_usd_after), 0.0)
@@ -758,6 +781,8 @@ def _current_month_cost(
         q = q.filter(GuardAuditEvent.clerk_user_id == clerk_user_id)
     if ai_tool is not None:
         q = q.filter(GuardAuditEvent.ai_tool == ai_tool)
+    if agent_identity_id is not None:
+        q = q.filter(GuardAuditEvent.agent_identity_id == agent_identity_id)
     return float(q.scalar() or 0.0)
 
 
