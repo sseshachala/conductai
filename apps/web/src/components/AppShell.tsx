@@ -1063,7 +1063,7 @@ function AppShellInnerContent({
               collapsed={collapsed}
             />
             <SideNavItem
-              href="/proxy"
+              href="/proxy/gateway-profiles"
               label="Gateways"
               icon={<Icons.Plug />}
               active={pathname.startsWith("/proxy")}
