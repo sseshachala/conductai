@@ -974,3 +974,34 @@ def test_is_transport_helper_recognizes_server_stamped_surfaces():
         "config/transports.json and budget_ledger._TRANSPORT_IDS drift — "
         "reconciler would misclassify traffic. See R11."
     )
+
+
+# ── _scope_keys helper — equivalence with the four sibling functions ─
+
+def test_scope_keys_matches_individual_functions():
+    """_scope_keys returns byte-identical strings to the four
+    individual functions for every scope combination. Proves the
+    refactor did not accidentally change any Redis key layout."""
+    from app.core.budget_ledger import (
+        _committed_key, _ready_key, _reserved_key, _res_hash_key,
+        _scope_keys,
+    )
+
+    combos = [
+        # workspace default
+        ("ws-1", None, None, None, "2026-09"),
+        # per-agent workspace-wide
+        ("ws-1", None, "agent-a", None, "2026-09"),
+        # per-user workspace-wide
+        ("ws-1", "user-a", None, None, "2026-09"),
+        # per-tool workspace-wide
+        ("ws-1", None, None, "cursor", "2026-09"),
+        # fully qualified
+        ("ws-1", "user-a", "agent-a", "cursor", "2026-09"),
+    ]
+    for ws, u, a, t, p in combos:
+        keys = _scope_keys(ws, u, a, t, p)
+        assert keys["reserved"]  == _reserved_key(ws, u, a, t, p)
+        assert keys["committed"] == _committed_key(ws, u, a, t, p)
+        assert keys["res_hash"]  == _res_hash_key(ws, u, a, t, p)
+        assert keys["ready"]     == _ready_key(ws, u, a, t, p)
