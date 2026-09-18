@@ -123,6 +123,75 @@ async def metrics(request: Request):
             return JSONResponse(status_code=401, content={"detail": "metrics_token_required"})
     return _Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
+
+@app.get("/admin/cache-stats", include_in_schema=False)
+async def cache_stats(request: Request):
+    """Dump the in-process cache/bus/admission counters as JSON.
+
+    Same auth model as ``/metrics``: gated by ``X-Metrics-Token`` in
+    production (fail-closed when ``METRICS_TOKEN`` env is empty),
+    open in local/development. Not intended for scraping — a lower-
+    frequency ``curl`` for eyeballing warmup + hit rate. Prometheus
+    wiring is a separate PR if we want dashboards.
+
+    Response shape:
+        {
+          "auth_cache":              {...} | null,
+          "effective_policy_cache":  {...} | null,
+          "invalidation_bus":        {...} | null,
+          "budget_ledger":           {...} | null,
+          "admission": {
+              "gateway": {...},
+              "mcp":     {...},
+          }
+        }
+
+    A ``null`` value means the singleton has not been initialised in
+    this worker (usually: the kill switch is off, or the init call
+    was skipped on startup for this surface).
+    """
+    _tok = (settings.metrics_token or "").strip()
+    _hdr = (request.headers.get("x-metrics-token") or "").strip()
+    if settings.environment not in ("local", "development"):
+        if not _tok or _hdr != _tok:
+            return JSONResponse(status_code=401, content={"detail": "metrics_token_required"})
+
+    def _safe(fn):
+        try:
+            return fn()
+        except Exception as _e:  # noqa: BLE001
+            return {"error": str(_e)}
+
+    def _auth_stats():
+        from app.core.auth_cache import get_auth_cache
+        c = get_auth_cache()
+        return c.stats() if c is not None else None
+
+    def _policy_stats():
+        from app.core.effective_policy_cache import get_effective_policy_cache
+        c = get_effective_policy_cache()
+        return c.stats() if c is not None else None
+
+    def _bus_stats():
+        from app.core.invalidation_bus import get_bus
+        return get_bus().stats()
+
+    def _ledger_stats():
+        from app.core.budget_ledger import get_budget_ledger
+        return get_budget_ledger().stats()
+
+    def _admission_stats():
+        from app.core.admission import stats as _s
+        return {"gateway": _s("gateway"), "mcp": _s("mcp")}
+
+    return {
+        "auth_cache":             _safe(_auth_stats),
+        "effective_policy_cache": _safe(_policy_stats),
+        "invalidation_bus":       _safe(_bus_stats),
+        "budget_ledger":          _safe(_ledger_stats),
+        "admission":              _safe(_admission_stats),
+    }
+
 _origins = [o.strip() for o in settings.allowed_origins.split(",") if o.strip()]
 if not _origins:
     log.warning("cors.no_origins_configured", msg="ALLOWED_ORIGINS is empty — all cross-origin requests blocked. Set ALLOWED_ORIGINS in .env to enable CORS.")
