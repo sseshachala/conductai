@@ -13,7 +13,7 @@ Basic usage in a LiteLLM ``config.yaml``::
         litellm_params:
           guardrail: conduct_litellm_guard.ConductGuard
           mode: pre_call
-          api_url: https://api.conductai.ai
+          api_url: https://gateway.conductai.ai
           agent_token: os.environ/CONDUCT_AGENT_TOKEN
           unreachable_fallback: fail_closed
 """

@@ -30,7 +30,7 @@ pip install conduct-litellm-guard
        litellm_params:
          guardrail: conduct_litellm_guard.ConductGuard
          mode: pre_call
-         api_url: https://api.conductai.ai
+         api_url: https://gateway.conductai.ai
          agent_token: os.environ/CONDUCT_AGENT_TOKEN
          unreachable_fallback: fail_closed
    ```
@@ -79,7 +79,7 @@ Guard returns one of five verdicts:
 
 | Field         | Required | Default                    | Notes                                                     |
 |---------------|----------|----------------------------|-----------------------------------------------------------|
-| `api_url`     | no       | `https://api.conductai.ai` | Point at a self-hosted Conduct API when needed.           |
+| `api_url`     | no       | `https://gateway.conductai.ai` | Point at a self-hosted Conduct API when needed.           |
 | `agent_token` | yes      | `CONDUCT_AGENT_TOKEN` env  | `cond_agt_*` token minted in the Conduct console.         |
 | `workspace_id`| no       | resolved from the token    | Usually unnecessary — the token owns its workspace.       |
 | `unreachable_fallback`   | no       | `fail_closed`              | `fail_closed` blocks when Guard is unreachable, `fail_open` allows. Renamed from `fail_mode` in v0.2.5 — the old name still works with a DeprecationWarning and is removed in v0.3.0. |

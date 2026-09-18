@@ -219,7 +219,7 @@ class ConductGuard(CustomGuardrail):
         # Resolve from env if the config leaves them out — matches
         # LiteLLM's os.environ/VAR pattern (they resolve before us in
         # newer versions but this covers older).
-        self._api_url = api_url or os.environ.get("CONDUCT_API_URL", "https://api.conductai.ai")
+        self._api_url = api_url or os.environ.get("CONDUCT_API_URL", "https://gateway.conductai.ai")
         token = agent_token or os.environ.get("CONDUCT_AGENT_TOKEN")
         if not token:
             raise ValueError(
