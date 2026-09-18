@@ -5,6 +5,7 @@ import { timeAgo } from "@/lib/runUtils"
 import { DecisionBadge } from "./DecisionBadge"
 import { LifecyclePill } from "./LifecyclePill"
 import { ALL_COLUMNS, type ColumnKey } from "./common/GuardToolbar"
+import { formatTokensUsed } from "./common/formatTokens"
 
 // Per-column grid weights — kept in one place so ActivityHeader and
 // ActivityRow can't drift. Mirrors the historical 8-column template.
@@ -19,6 +20,7 @@ const COL_WEIGHTS: Record<ColumnKey, string> = {
   rule: "0.8fr",
   blast: "0.9fr",
   lifecycle: "0.9fr",
+  tokens: "1fr",
 }
 
 function buildGridTemplate(visible: readonly ColumnKey[]): string {
@@ -101,6 +103,10 @@ export interface AuditEvent {
   finalized_at?: string | null
   lease_expires_at?: string | null
   request_id?: string | null
+  // Server names them tokens_before / tokens_after (input / output).
+  // See _event_to_dict in apps/api/app/modules/guard/routers/events.py.
+  tokens_before?: number | null
+  tokens_after?: number | null
 }
 
 const TOOL_COLORS: Record<string, string> = {
@@ -558,6 +564,13 @@ export function ActivityRow({ ev, compact = false, isLast = false, visibleColumn
           <LifecyclePill state={ev.lifecycle_state} leaseExpiresAt={ev.lease_expires_at} nowOffsetMs={nowOffsetMs} />
         </div>
       )}
+      {showCol.has("tokens") && (
+        <div style={{ textAlign: "right", fontSize: 12, color: "var(--text-2)" }}>
+          {formatTokensUsed(ev.tokens_before, ev.tokens_after) ?? (
+            <span style={{ color: "var(--text-muted)" }}>—</span>
+          )}
+        </div>
+      )}
     </div>
     {open && (
       <div style={{
@@ -665,6 +678,7 @@ export function ActivityHeader({ compact = false, visibleColumns }: {
       {showCol.has("decision") && <div>Decision</div>}
       {showCol.has("blast") && <div>Blast</div>}
       {showCol.has("lifecycle") && <div>Lifecycle</div>}
+      {showCol.has("tokens") && <div style={{ textAlign: "right" }}>Tokens</div>}
     </div>
   )
 }
