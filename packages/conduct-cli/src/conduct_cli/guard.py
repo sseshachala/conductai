@@ -1855,6 +1855,50 @@ def _write_proxy_env_windows(agent_token: str, proxy_url: str) -> tuple[Path, bo
     return rc, True
 
 
+# ── Env-file auto-heal (0.14.9 → gateway.conductai.ai) ──────────────────────
+#
+# The 0.14.9 default flipped api.conductai.ai/gateway/v1 → gateway.conductai.ai
+# but existing ~/.conduct/env files were written by an older version and
+# still hold the old URL. Called from ``main()`` on every invocation so the
+# migration happens transparently the next time the user runs any conduct
+# command. Only rewrites URLs that match the exact old default — custom
+# proxy URLs (self-hosted, staging, etc.) are left alone.
+
+_OLD_GATEWAY_HOST = "api.conductai.ai/gateway/v1"
+_NEW_GATEWAY_HOST = "gateway.conductai.ai/gateway/v1"
+
+
+def _migrate_proxy_env_if_stale() -> bool:
+    """Rewrite ~/.conduct/env (and env.ps1 on Windows) in place if it
+    contains the old default gateway host. Returns True if a rewrite
+    happened. No-op when the file is absent, already migrated, or
+    contains a non-default (user-customised) URL."""
+    targets = []
+    if PROXY_ENV_FILE.exists():
+        targets.append(PROXY_ENV_FILE)
+    ps1 = CONDUCT_DIR / "env.ps1"
+    if ps1.exists():
+        targets.append(ps1)
+    changed = False
+    for path in targets:
+        try:
+            old_text = path.read_text()
+        except Exception:
+            continue
+        if _OLD_GATEWAY_HOST not in old_text:
+            continue
+        new_text = old_text.replace(_OLD_GATEWAY_HOST, _NEW_GATEWAY_HOST)
+        if new_text == old_text:
+            continue
+        try:
+            path.write_text(new_text)
+            changed = True
+        except Exception:
+            # Best-effort — never block the CLI on a write failure.
+            pass
+    return changed
+
+
 def _write_proxy_env(agent_token: str, proxy_url: str) -> tuple[Path, bool]:
     """Write ~/.conduct/env with the 3 provider env-var pairs and ensure the
     user's shell rc sources it.

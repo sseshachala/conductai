@@ -3166,6 +3166,15 @@ def cmd_skill(args):
 def main():
     _auto_update()
 
+    # Auto-heal ~/.conduct/env for the 0.14.9 gateway URL migration. Silent
+    # when already migrated or user has a custom URL — never blocks the CLI.
+    try:
+        from conduct_cli.guard import _migrate_proxy_env_if_stale
+        if _migrate_proxy_env_if_stale():
+            print("conduct: migrated ~/.conduct/env to gateway.conductai.ai (0.14.9). Re-source your shell or open a new terminal.")
+    except Exception:
+        pass
+
     parser = argparse.ArgumentParser(
         prog="conduct",
         description="Conduct AI — agent CLI",

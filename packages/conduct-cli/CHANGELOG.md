@@ -8,6 +8,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
 
+## [0.14.10] - 2026-09-17
+
+### Fixed
+- Auto-heal `~/.conduct/env` (and `env.ps1` on Windows) for the
+  0.14.9 gateway URL migration. Existing installs from before 0.14.9
+  still had `api.conductai.ai/gateway/v1/*` written into their env
+  file; the constant flip alone did not rewrite the file. `main()`
+  now runs a conservative in-place migration on every invocation —
+  URLs matching the exact old default are replaced with
+  `gateway.conductai.ai/gateway/v1/*`; custom/self-hosted URLs are
+  left untouched. One-time announce line prints on the first run
+  that migrates the file.
+
 ## [0.14.9] - 2026-09-17
 
 ### Changed
