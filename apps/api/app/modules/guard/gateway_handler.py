@@ -586,6 +586,54 @@ async def handle_gateway_request(
             return _durable.fail_response
         _durable_row_id = _durable.row_id
 
+        # ── PR-A2b: pre-flight budget reservation ─────────────────────
+        # Reserve applicable hard-cap budgets before dispatch. The helper
+        # itself checks ``BUDGET_LEDGER_ENABLED`` and returns DISABLED
+        # when off, so zero behavior change until ops flips the flag on.
+        # Fail-CLOSED: any non-ACCEPTED outcome closes the audit row and
+        # returns a budget-block response (402/503, see helper).
+        from app.modules.guard.gateway_lifecycle import (
+            budget_block_response as _budget_block_response,
+            estimate_budget_cents as _estimate_budget_cents,
+            reserve_budgets_for_request as _reserve_budgets_for_request,
+            ReserveOutcome as _ReserveOutcome,
+            settle_reservations as _settle_reservations,
+        )
+        _reservations: list = []
+        _dispatched = False  # flipped to True right before any upstream call
+        _actual_cents: int | None = None
+        _budget_wire_db = None
+        try:
+            _budget_wire_db = SessionLocal()
+            _reserve_result = _reserve_budgets_for_request(
+                db=_budget_wire_db,
+                workspace_id=workspace_id,
+                agent_identity_id=(
+                    str(_agent_identity_id) if _agent_identity_id else None
+                ),
+                transport="gateway",
+                client_tool=(ai_tool if ai_tool and ai_tool != "gateway" else None),
+                clerk_user_id=clerk_user_id,
+                estimated_cents=_estimate_budget_cents(body, provider, model, ai_tool),
+                request_id=_durable_row_id,
+            )
+        except Exception as _reserve_exc:  # noqa: BLE001
+            log.warning("guard.gateway.reserve_wire_raised", err=str(_reserve_exc))
+            _reserve_result = None
+        # Reserve failed = fail-closed reject (any non-ACCEPTED outcome).
+        if _reserve_result is not None and _reserve_result.outcome in (
+            _ReserveOutcome.EXCEEDED,
+            _ReserveOutcome.NOT_READY,
+            _ReserveOutcome.REDIS_DOWN,
+            _ReserveOutcome.DB_ERROR,
+        ):
+            await _close_durable(_durable)
+            if _budget_wire_db is not None:
+                _budget_wire_db.close()
+            return _budget_block_response(_reserve_result)
+        if _reserve_result is not None:
+            _reservations = _reserve_result.reservations or []
+
         # P1: forward + response-gate must run under an exception-safe
         # lifecycle. Prior structure had close_durable_row *after* the
         # gate block, so any exception (or cancellation) between here and
@@ -635,6 +683,14 @@ async def handle_gateway_request(
                 # ``openai-organization``, ...) reach v2 targets via a
                 # v2-side allowlist (stricter than v1's blanket forward).
                 _v2_client_headers = _v2_allowlisted_headers(extra_headers)
+                # ── PR-A2b: dispatch boundary ──
+                # Flip BEFORE bytes fly. Any exception past this point
+                # is treated as "may have dispatched" -> settle marks
+                # PENDING_RECONCILER (never releases, reconciler owns
+                # cleanup). This is intentionally over-conservative for
+                # correctness: releasing after real spend would silently
+                # drop billed cost.
+                _dispatched = True
                 _response = await _execute_v2(
                     plan=_v2_plan, body=body, stream=is_stream,
                     policy_check=_policy_check,
@@ -663,6 +719,8 @@ async def handle_gateway_request(
                     except Exception:
                         _v2_upstream_body_bytes = None
             else:
+                # ── PR-A2b: dispatch boundary (legacy path) ──
+                _dispatched = True
                 _response = await transport.forward(
                     sender=_forward,
                     upstream=upstream,
@@ -976,6 +1034,61 @@ async def handle_gateway_request(
             # before we ever wrapped), cancel here — idempotent.
             if not _v2_stream_wrapped:
                 await _close_durable(_durable)
+
+            # ── PR-A2b: settle reservations ────────────────────────
+            # Idempotent + best-effort. Empty list is a NOOP (matches
+            # ACCEPTED_NO_HARD_CAP / DISABLED). See helper docstring for
+            # the dispatched x actual_cents truth table.
+            if _reservations:
+                try:
+                    # Try to derive actual cents from the upstream body
+                    # so a successful dispatch commits promptly. On
+                    # failure, actual_cents stays None -> settle marks
+                    # PENDING_RECONCILER (safe: reconciler handles).
+                    if _dispatched and _actual_cents is None and _response is not None:
+                        try:
+                            from app.guard.audit import (
+                                _compute_audit_cost as _mk_cost,
+                                _extract_token_counts as _mk_tokens,
+                            )
+                            _resp_bytes = None
+                            if hasattr(_response, "body"):
+                                try:
+                                    _resp_bytes = _response.body
+                                except Exception:
+                                    _resp_bytes = None
+                            _in_tok, _out_tok = _mk_tokens(body, _resp_bytes)
+                            _cost_usd = _mk_cost(
+                                provider, model, _in_tok, _out_tok, _routing_meta
+                            )
+                            if _cost_usd:
+                                _actual_cents = int(round(float(_cost_usd) * 100))
+                        except Exception:
+                            _actual_cents = None
+                    _settle_db = _budget_wire_db or SessionLocal()
+                    _settle_reservations(
+                        db=_settle_db,
+                        reservations=_reservations,
+                        dispatched=_dispatched,
+                        actual_cents=_actual_cents,
+                    )
+                    try:
+                        _settle_db.commit()
+                    except Exception:
+                        pass
+                    if _settle_db is not _budget_wire_db:
+                        _settle_db.close()
+                except Exception:
+                    log.exception(
+                        "guard.gateway.settle_wire_failed",
+                        reservation_count=len(_reservations),
+                        dispatched=_dispatched,
+                    )
+            if _budget_wire_db is not None:
+                try:
+                    _budget_wire_db.close()
+                except Exception:
+                    pass
 
         # Streaming lifecycle: transfer admission ticket ownership so the
         # outer finally does not release before ASGI drains the response.

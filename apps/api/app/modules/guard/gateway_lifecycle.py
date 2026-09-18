@@ -552,3 +552,121 @@ def settle_reservations(
         action=SettleAction.COMMITTED,
         reservations_processed=len(reservations),
     )
+# ─── PR-A2b: request-cost estimation + block response ──────────────
+#
+# Two small helpers the gateway wire-in needs. Kept alongside the
+# reserve/settle helpers so the whole budget-reservation surface reads
+# in one file.
+#
+# ``estimate_budget_cents()`` is a bounded heuristic — input tokens
+# (approximate from prompt length) plus a bounded output allowance
+# (max_tokens from the request, else a safe default). Multiplied by the
+# tool's known per-1M-token pricing. Integer cents; sub-cent rounding is
+# a follow-up if it matters.
+#
+# ``budget_block_response()`` maps a fail-closed reserve outcome to an
+# HTTP response that carries the block reason for the drawer + block
+# chip UI in the follow-up.
+
+# Prompt-length -> token heuristic. Same 4-chars-per-token approximation
+# used elsewhere in the codebase (``_estimate_input_tokens`` in audit.py).
+_CHARS_PER_TOKEN = 4
+
+# Default output allowance if the caller did not set max_tokens. Bounded
+# so a runaway completion cannot silently consume the entire budget on
+# reservation-time overestimation.
+_DEFAULT_OUTPUT_ALLOWANCE_TOKENS = 4096
+
+
+def estimate_budget_cents(
+    body: dict,
+    provider: str,
+    model: str,
+    ai_tool: str | None,
+) -> int:
+    """Bounded pre-flight cost estimate for the ledger reservation.
+
+    Uses (input_tokens_estimate + output_allowance) * tool_pricing.
+    Both terms are integer arithmetic; the result is int cents.
+
+    Estimation is deliberately conservative on the OUTPUT side (uses
+    max_tokens when set, a large default otherwise) so we do not
+    under-reserve and let a runaway completion overshoot the cap.
+    Actual settlement (``commit_all(actual_cents)``) writes the real
+    cost — the reservation just holds enough capacity.
+    """
+    # Input tokens — approximate from the concatenated content of the
+    # messages array. Same shape as audit._estimate_input_tokens.
+    text_len = 0
+    if isinstance(body, dict):
+        messages = body.get("messages") or []
+        for m in messages:
+            content = (m or {}).get("content")
+            if isinstance(content, str):
+                text_len += len(content)
+            elif isinstance(content, list):
+                for part in content:
+                    if isinstance(part, dict) and isinstance(part.get("text"), str):
+                        text_len += len(part["text"])
+    input_tokens = max(1, text_len // _CHARS_PER_TOKEN)
+
+    # Output allowance — max_tokens if the caller bounded it, else the
+    # default. Callers who care about accurate reservations set max_tokens.
+    output_tokens = _DEFAULT_OUTPUT_ALLOWANCE_TOKENS
+    if isinstance(body, dict):
+        mt = body.get("max_tokens")
+        if isinstance(mt, int) and 0 < mt < _DEFAULT_OUTPUT_ALLOWANCE_TOKENS:
+            output_tokens = mt
+
+    # Tool pricing — $/1M tokens. Reuse the shared table so estimates
+    # match the cost accounting the audit path already uses.
+    try:
+        from app.modules.guard.routers.events import _tool_pricing
+        tool_key = (ai_tool or "unknown").lower()
+        pricing = _tool_pricing(tool_key)
+    except Exception:
+        pricing = {"input": 3.0, "output": 15.0}  # conservative default (Sonnet)
+
+    input_usd = (input_tokens * float(pricing.get("input", 3.0))) / 1_000_000
+    output_usd = (output_tokens * float(pricing.get("output", 15.0))) / 1_000_000
+    # Round up so a partial cent still reserves a whole cent — under-
+    # reservation is worse than over-reservation for enforcement.
+    import math as _math
+    return _math.ceil((input_usd + output_usd) * 100)
+
+
+def budget_block_response(result):
+    """Build a fail-closed HTTP response for a rejected reservation.
+
+    Maps every non-ACCEPTED outcome to an appropriate status + reason:
+
+      EXCEEDED    -> 402 (payment required), refusing budget in body
+      NOT_READY   -> 503 (service unavailable, ledger cold-start)
+      REDIS_DOWN  -> 503 (ledger unavailable)
+      DB_ERROR    -> 503 (generic ledger error)
+
+    Response body carries a ``reason`` chip the drawer UI (PR-B) can
+    render. Cardinality-safe — never includes workspace_id or agent_id
+    in the reason text.
+    """
+    from fastapi.responses import JSONResponse
+    outcome_str = getattr(result.outcome, "value", str(result.outcome))
+    if outcome_str == ReserveOutcome.EXCEEDED.value:
+        status = 402
+    else:
+        status = 503
+    refusing = None
+    if result.refusing_budget is not None:
+        refusing = {
+            "ai_tool": getattr(result.refusing_budget, "ai_tool", None),
+            "hard_limit_usd": getattr(result.refusing_budget, "hard_limit_usd", None),
+        }
+    return JSONResponse(
+        status_code=status,
+        content={
+            "type": "budget_reservation_refused",
+            "outcome": outcome_str,
+            "reason": result.error or "budget reservation refused",
+            "refusing_budget": refusing,
+        },
+    )
