@@ -111,11 +111,16 @@ export function useSpendState(): UseSpendState {
       setData(spendJson)
 
       if (Array.isArray(budgetList)) {
-        // Workspace-default row: clerk_user_id null AND ai_tool null (or absent
-        // on servers pre-#F3). Per-tool rows also carry clerk_user_id=null but
-        // have ai_tool set — those are handled by the PerToolCaps panel.
+        // Workspace-default row: clerk_user_id null AND ai_tool null AND
+        // agent_identity_id null. Per-tool rows carry ai_tool; per-agent
+        // rows carry agent_identity_id — both were previously misclassified
+        // as the workspace default when they set clerk_user_id + ai_tool to
+        // null.
         const teamBudget = budgetList.find(
-          (b: any) => b.clerk_user_id === null && (b.ai_tool == null),
+          (b: any) =>
+            b.clerk_user_id === null &&
+            b.ai_tool == null &&
+            (b.agent_identity_id ?? null) === null,
         )
         if (teamBudget) {
           setTeamSettings({
@@ -138,10 +143,17 @@ export function useSpendState(): UseSpendState {
         }
         setBudgets(map)
         setHardLimits(hardMap)
-        // Workspace-wide per-tool rows (clerk_user_id null AND ai_tool set).
+        // Workspace-wide per-tool rows: clerk_user_id null AND ai_tool set,
+        // agent_identity_id null. Agent-scoped rows carrying an ai_tool are
+        // handled by a separate (future) per-agent panel, not the per-tool
+        // caps panel.
         setToolCaps(
           (budgetList as any[])
-            .filter(b => b.clerk_user_id === null && !!b.ai_tool)
+            .filter(b =>
+              b.clerk_user_id === null &&
+              !!b.ai_tool &&
+              (b.agent_identity_id ?? null) === null,
+            )
             .map(b => ({
               id: String(b.id),
               ai_tool: String(b.ai_tool),
