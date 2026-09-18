@@ -81,7 +81,11 @@ async def _run_async(url, token, model, total, concurrency, max_tokens,
     statuses: Counter = Counter()
     input_tokens_seen = 0
     output_tokens_seen = 0
-    kill = False
+    # Fix 8 (P1 #8): track the actual stop reason instead of reconstructing
+    # from final statuses. 99 successes + 1 failure with wall-time stop
+    # used to print "non-2xx rate exceeded 5%" because _report only saw
+    # the boolean. Now the run records exactly why it stopped.
+    stop_reason: str | None = None  # 'error_rate' | 'wall_clock' | None (completed)
     started = time.monotonic()
 
     body_template = {
@@ -97,20 +101,15 @@ async def _run_async(url, token, model, total, concurrency, max_tokens,
     async with aiohttp.ClientSession(timeout=timeout) as session:
 
         async def _bounded_fire(_i: int):
-            nonlocal kill, input_tokens_seen, output_tokens_seen
-            # Pre-acquire cheap short-circuit (avoids piling up on the
-            # semaphore when we already know we're stopping). The real
-            # authoritative check happens post-acquire below.
-            if kill or time.monotonic() - started > max_wall:
+            nonlocal stop_reason, input_tokens_seen, output_tokens_seen
+            if stop_reason is not None or time.monotonic() - started > max_wall:
+                if stop_reason is None and time.monotonic() - started > max_wall:
+                    stop_reason = "wall_clock"
                 return
             async with sem:
-                # Re-check AFTER acquiring the semaphore. Without this the
-                # kill switch is racy — tasks that queued for the semaphore
-                # before the switch fired would still dispatch. Same for
-                # the wall-clock deadline.
-                if kill or time.monotonic() - started > max_wall:
-                    if time.monotonic() - started > max_wall and not kill:
-                        kill = True
+                if stop_reason is not None or time.monotonic() - started > max_wall:
+                    if stop_reason is None and time.monotonic() - started > max_wall:
+                        stop_reason = "wall_clock"
                     return
                 status, lat, resp = await _fire_one_async(
                     session, url, headers, body_template
@@ -128,19 +127,20 @@ async def _run_async(url, token, model, total, concurrency, max_tokens,
             fired = sum(statuses.values())
             if fired >= 20:
                 bad = sum(v for k, v in statuses.items() if not (200 <= k < 300))
-                if bad / fired > 0.05:
-                    if not kill:
-                        print(f"\n  kill-switch: non-2xx rate {bad/fired:.1%} at {fired} requests",
-                              file=sys.stderr)
-                    kill = True
+                if bad / fired > 0.05 and stop_reason is None:
+                    print(
+                        f"\n  kill-switch: non-2xx rate {bad/fired:.1%} at {fired} requests",
+                        file=sys.stderr,
+                    )
+                    stop_reason = "error_rate"
 
         tasks = [_bounded_fire(i) for i in range(total)]
         await asyncio.gather(*tasks)
 
-    return latencies, statuses, input_tokens_seen, output_tokens_seen, kill
+    return latencies, statuses, input_tokens_seen, output_tokens_seen, stop_reason
 
 
-def _report(latencies, statuses, input_tok, output_tok, killed, wall):
+def _report(latencies, statuses, input_tok, output_tok, stop_reason, wall):
     fired = sum(statuses.values())
     print()
     print(f"=== Stress report — {fired} requests in {wall:.1f}s ===")
@@ -171,13 +171,12 @@ def _report(latencies, statuses, input_tok, output_tok, killed, wall):
         print(f"  est cost        ${cost:.4f} (Sonnet pricing)")
     else:
         print("  tokens          not tracked (streaming or blocked)")
-    if killed:
+    if stop_reason == "error_rate":
         print()
-        bad = sum(v for k, v in statuses.items() if not (200 <= k < 300))
-        if bad:
-            print("  kill-switch fired mid-run — non-2xx rate exceeded 5%")
-        else:
-            print("  wall-clock limit reached — all fired requests succeeded")
+        print("  kill-switch fired mid-run — non-2xx rate exceeded 5%")
+    elif stop_reason == "wall_clock":
+        print()
+        print("  wall-clock limit reached — remaining requests skipped")
 
 
 def main() -> int:
