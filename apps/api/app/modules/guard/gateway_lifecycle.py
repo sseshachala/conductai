@@ -290,3 +290,265 @@ async def _renewal_loop(
             )
         except Exception:
             log.warning("guard.gateway.whole_request_renewal_swallowed")
+
+
+# ─── PR-A2a: budget reservation helpers (dark, unwired) ─────────────
+#
+# Two helpers that own the reserve/settle contract from the corrected
+# design review:
+#
+#   choose -> policy -> RESERVE -> execute one attempt -> outcome -> SETTLE
+#
+# They are called from the gateway request path in PR-A2b, gated behind a
+# feature flag. This PR ships the helpers dark so their semantics can be
+# reviewed and tested in isolation before any behavior change ships.
+#
+# Correctness rules baked in per the design review:
+#
+#   1. Fail-CLOSED on any ambiguity for HARD caps. NOT_READY, REDIS_DOWN,
+#      DB failure -> reject the request. Fail-open is never valid for hard
+#      budget enforcement. Soft budgets alert only; they are excluded from
+#      reserve_all() and cannot block dispatch.
+#   2. Release only when dispatch DEFINITELY did not happen. After bytes
+#      leave the socket, the provider may charge us even if we disconnect;
+#      release then would refund a real spend. Post-dispatch failures are
+#      marked settle-pending; the reconciler catches them via lease expiry.
+#   3. Estimated cents = input + bounded output allowance + fallback headroom.
+#      The gateway handler computes that number and passes it in; this helper
+#      does not estimate. Integer cents; sub-cent (millicents) is a later
+#      schema change if needed.
+#
+# The helpers stay pure: no upstream IO, no policy eval, no audit writes.
+
+
+from enum import Enum as _EnumRS
+
+
+class ReserveOutcome(_EnumRS):
+    """What happened when we tried to reserve budgets for a request."""
+    ACCEPTED_NO_HARD_CAP = "accepted_no_hard_cap"
+    ACCEPTED_WITH_RESERVATIONS = "accepted_with_reservations"
+    EXCEEDED = "exceeded"
+    NOT_READY = "not_ready"
+    REDIS_DOWN = "redis_down"
+    DB_ERROR = "db_error"
+    DISABLED = "disabled"
+
+
+@dataclass
+class ReserveBudgetsResult:
+    """Structured return so the caller can branch on outcome without
+    inspecting the ledger's internal decision enum."""
+    outcome: ReserveOutcome
+    reservations: list = None  # list[Reservation] when ACCEPTED_*, else None
+    refusing_budget: object = None  # the GuardSpendBudget that refused
+    error: str = None  # human-readable for the block reason chip
+
+
+def reserve_budgets_for_request(
+    db: Any,
+    *,
+    workspace_id: str,
+    agent_identity_id: str | None,
+    transport: str | None,
+    client_tool: str | None,
+    clerk_user_id: str | None,
+    estimated_cents: int,
+    request_id: str,
+) -> ReserveBudgetsResult:
+    """Reserve all applicable hard-cap budgets for a request.
+
+    Flow:
+      1. lookup_applicable_budgets(scope) -> list of budget rows.
+      2. reserve_all(rows, estimated_cents) -> (decision, reservations, refusing).
+      3. Translate ledger decision to a ReserveOutcome the gateway handler
+         can pattern-match on.
+
+    Fail-CLOSED contract: NOT_READY / REDIS_DOWN / DB error on a request
+    that HAS hard-capped budgets -> the caller MUST reject the request.
+    Never allow paid dispatch when the enforcement layer cannot confirm
+    capacity. (For soft-only budgets the outcome is ACCEPTED_NO_HARD_CAP
+    because reserve_all() short-circuits to an empty list.)
+
+    The ledger's own kill switch (BUDGET_LEDGER_ENABLED) is respected —
+    when off, this helper returns DISABLED and the caller should behave
+    as it did pre-PR-A (post-hoc spend tracking, no pre-flight blocking).
+    """
+    from app.core.budget_ledger import (
+        BudgetDecision,
+        enabled as _ledger_enabled,
+        get_budget_ledger,
+    )
+    from app.modules.guard.spend_lookup import lookup_applicable_budgets
+
+    if not _ledger_enabled():
+        return ReserveBudgetsResult(outcome=ReserveOutcome.DISABLED)
+
+    import uuid as _uuid
+    try:
+        ws_uuid = _uuid.UUID(workspace_id)
+    except (ValueError, TypeError):
+        # Malformed workspace id — reject, do not fail-open.
+        return ReserveBudgetsResult(
+            outcome=ReserveOutcome.DB_ERROR,
+            error="invalid workspace_id",
+        )
+
+    try:
+        applicable = lookup_applicable_budgets(
+            db,
+            ws_uuid,
+            agent_identity_id=agent_identity_id,
+            transport=transport,
+            client_tool=client_tool,
+            clerk_user_id=clerk_user_id,
+        )
+    except Exception as e:  # noqa: BLE001
+        log.warning("guard.gateway.applicable_budgets_lookup_failed", err=str(e))
+        return ReserveBudgetsResult(
+            outcome=ReserveOutcome.DB_ERROR,
+            error="budget lookup failed",
+        )
+
+    ledger = get_budget_ledger()
+
+    try:
+        decision, reservations, refusing = ledger.reserve_all(
+            db=db,
+            workspace_id=workspace_id,
+            applicable_budgets=applicable,
+            estimated_cents=estimated_cents,
+            agent_identity_id=agent_identity_id,
+            source=transport,
+            client_tool=client_tool,
+            request_id=request_id,
+        )
+    except Exception as e:  # noqa: BLE001
+        log.warning("guard.gateway.reserve_all_raised", err=str(e))
+        return ReserveBudgetsResult(
+            outcome=ReserveOutcome.DB_ERROR,
+            error="reserve_all raised",
+        )
+
+    if decision == BudgetDecision.ACCEPTED:
+        if not reservations:
+            return ReserveBudgetsResult(
+                outcome=ReserveOutcome.ACCEPTED_NO_HARD_CAP,
+                reservations=[],
+            )
+        return ReserveBudgetsResult(
+            outcome=ReserveOutcome.ACCEPTED_WITH_RESERVATIONS,
+            reservations=reservations,
+        )
+    if decision == BudgetDecision.EXCEEDED:
+        return ReserveBudgetsResult(
+            outcome=ReserveOutcome.EXCEEDED,
+            refusing_budget=refusing,
+            error="budget cap exceeded",
+        )
+    if decision == BudgetDecision.NOT_READY:
+        return ReserveBudgetsResult(
+            outcome=ReserveOutcome.NOT_READY,
+            error="budget ledger not ready (reconciler cold start)",
+        )
+    if decision == BudgetDecision.REDIS_DOWN:
+        return ReserveBudgetsResult(
+            outcome=ReserveOutcome.REDIS_DOWN,
+            error="budget ledger unavailable",
+        )
+    # DISABLED (shouldn't reach here — filtered above) and any unknown
+    # decision -> conservative: DB_ERROR so the caller rejects.
+    return ReserveBudgetsResult(
+        outcome=ReserveOutcome.DB_ERROR,
+        error=f"unexpected ledger decision: {decision!r}",
+    )
+
+
+class SettleAction(_EnumRS):
+    """What settlement did with the reservations."""
+    COMMITTED = "committed"           # success path: actual_cents committed to every budget
+    RELEASED = "released"             # pre-dispatch error: reservations refunded
+    PENDING_RECONCILER = "pending"    # post-dispatch failure: reconciler owns cleanup
+    NOOP = "noop"                     # empty reservation list: nothing to do
+    DISABLED = "disabled"             # ledger flag off; caller passed no reservations
+
+
+@dataclass
+class SettleResult:
+    action: SettleAction
+    reservations_processed: int = 0
+
+
+def settle_reservations(
+    db: Any,
+    reservations: list,
+    *,
+    dispatched: bool,
+    actual_cents: int | None,
+) -> SettleResult:
+    """Post-outcome settlement of reserved budgets.
+
+    Truth table:
+
+    +------------+---------------+----------------+---------------------+
+    | dispatched | actual_cents  | Action         | Why                 |
+    +============+===============+================+=====================+
+    | True       | int           | commit_all(N)  | Success — charge    |
+    +------------+---------------+----------------+---------------------+
+    | True       | None          | leave open     | Bytes flew, outcome |
+    |            |               | (pending)      | unknown, reconciler |
+    |            |               |                | catches via lease   |
+    |            |               |                | expiry.             |
+    +------------+---------------+----------------+---------------------+
+    | False      | any           | release_all    | No wire bytes, safe |
+    |            |               |                | to refund.          |
+    +------------+---------------+----------------+---------------------+
+
+    The dispatched-True + actual_cents-None case is the load-bearing
+    correctness rule: NEVER release after dispatch, because the provider
+    may have processed the request and will bill us — refunding then
+    silently drops real spend.
+
+    Empty reservations list is a no-op (ACCEPTED_NO_HARD_CAP path from
+    reserve_budgets_for_request).
+    """
+    if not reservations:
+        return SettleResult(action=SettleAction.NOOP, reservations_processed=0)
+
+    from app.core.budget_ledger import get_budget_ledger
+    ledger = get_budget_ledger()
+
+    if not dispatched:
+        # Definitely no wire bytes — safe to refund every reservation.
+        ledger.release_all(db=db, reservations=reservations)
+        return SettleResult(
+            action=SettleAction.RELEASED,
+            reservations_processed=len(reservations),
+        )
+
+    if actual_cents is None:
+        # Bytes flew but we don't have a confirmed outcome. DO NOT release —
+        # the provider may have processed the request. Leave the reservations
+        # open; the reconciler catches them via lease expiry and finalizes
+        # via the durable audit row's outcome (finalized / orphaned / expired).
+        log.warning(
+            "guard.gateway.settle_pending_reconciler",
+            reservation_ids=[r.reservation_id for r in reservations],
+        )
+        return SettleResult(
+            action=SettleAction.PENDING_RECONCILER,
+            reservations_processed=len(reservations),
+        )
+
+    # Success path — commit the actual cost to every budget the request
+    # drew from. Each budget receives the FULL actual_cents (see docstring
+    # on ledger.commit_all).
+    ledger.commit_all(
+        db=db,
+        reservations=reservations,
+        actual_cents=int(actual_cents),
+    )
+    return SettleResult(
+        action=SettleAction.COMMITTED,
+        reservations_processed=len(reservations),
+    )
