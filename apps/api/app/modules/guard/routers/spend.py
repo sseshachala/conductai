@@ -826,11 +826,16 @@ def budget_check(
     if not db.query(GuardConfig).filter(GuardConfig.workspace_id == ws_uuid).first():
         return BudgetCheckOut(hard_blocked=False, monthly_cost_usd=0.0, hard_limit_usd=None)
 
+    # Fix 3 (P1 #3): filter agent_identity_id IS NULL so an agent-scoped
+    # row (added by migration 0140) does NOT masquerade as the workspace
+    # default. Legacy budget_check() only handles workspace + per-user
+    # scope; agent scope is handled by lookup_applicable_budgets().
     workspace_budget = (
         db.query(GuardSpendBudget)
         .filter(
             GuardSpendBudget.workspace_id == ws_uuid,
             GuardSpendBudget.clerk_user_id.is_(None),
+            GuardSpendBudget.agent_identity_id.is_(None),
             GuardSpendBudget.ai_tool.is_(None),
         )
         .first()
@@ -864,6 +869,7 @@ def budget_check(
             .filter(
                 GuardSpendBudget.workspace_id == ws_uuid,
                 GuardSpendBudget.clerk_user_id.is_(None),
+                GuardSpendBudget.agent_identity_id.is_(None),  # Fix 3 (P1 #3)
                 GuardSpendBudget.ai_tool == ai_tool,
             )
             .first()
@@ -906,6 +912,7 @@ def budget_check(
                 .filter(
                     GuardSpendBudget.workspace_id == ws_uuid,
                     GuardSpendBudget.clerk_user_id == clerk_user_id,
+                    GuardSpendBudget.agent_identity_id.is_(None),  # Fix 3 (P1 #3)
                     GuardSpendBudget.ai_tool == ai_tool,
                 )
                 .first()
@@ -915,6 +922,7 @@ def budget_check(
             .filter(
                 GuardSpendBudget.workspace_id == ws_uuid,
                 GuardSpendBudget.clerk_user_id == clerk_user_id,
+                GuardSpendBudget.agent_identity_id.is_(None),  # Fix 3 (P1 #3)
                 GuardSpendBudget.ai_tool.is_(None),
             )
             .first()
