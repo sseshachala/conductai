@@ -59,7 +59,7 @@ def test_forwards_proxy_persona_prompt_gate_and_proxy_source():
     kw = captured["kwargs"]
     assert kw["_persona"] == "proxy"
     assert kw["_gate"] == "prompt"
-    assert kw["_source"] == "proxy"
+    assert kw["_source"] == "gateway"
     # The wrapper packs prompt/model/provider into tool_input so downstream
     # regex matchers see them; also passes prompt at the top level so the
     # audit trail has the raw text (redacted at record time).
@@ -111,14 +111,14 @@ def test_end_to_end_block_on_credential_prompt():
 
     assert result.startswith("BLOCKED"), result
     assert "test-no-fake-key" in result
-    # Audit row landed with source="proxy" (not "mcp") so Guard Activity
+    # Audit row landed with source="gateway" (not "mcp") so Guard Activity
     # attributes to the correct surface. _record_event positional layout:
     # (db, ws_uuid, tool_name, tool_input, decision, rule_id, ai_tool, ...)
     assert rec.called
     args = rec.call_args.args
     assert args[4] == "blocked"
     assert args[5] == "test-no-fake-key"
-    assert rec.call_args.kwargs.get("source") == "proxy"
+    assert rec.call_args.kwargs.get("source") == "gateway"
 
 
 def test_end_to_end_allow_when_no_rule_matches():
@@ -131,7 +131,7 @@ def test_end_to_end_allow_when_no_rule_matches():
     assert result == "ok"
     assert rec.call_args.args[4] == "allowed"
     assert rec.call_args.args[5] is None
-    assert rec.call_args.kwargs.get("source") == "proxy"
+    assert rec.call_args.kwargs.get("source") == "gateway"
 
 
 def test_get_rules_pulls_proxy_persona():

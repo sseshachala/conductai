@@ -180,7 +180,7 @@ class GuardAuditEvent(Base):
     user_email = Column(String(255), nullable=True)
     ai_tool = Column(String(50), nullable=False)
     tool_call = Column(String(255), nullable=True)  # nullable: proxy rows have no tool name
-    source = Column(String(20), nullable=False, default="hook")   # 'hook' | 'proxy' | 'mcp'
+    source = Column(String(20), nullable=False, default="hook")   # 'hook' | 'gateway' | 'mcp' | 'workflow'  ('proxy' = legacy, still present on rows pre-migration 0139)
     provider = Column(String(30), nullable=True)    # 'anthropic' | 'openai' | 'perplexity' (proxy only)
     model = Column(String(100), nullable=True)      # vendor model id (proxy only)
     input_summary = Column(Text, nullable=True)

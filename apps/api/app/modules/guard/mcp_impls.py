@@ -313,7 +313,7 @@ def guard_check_prompt_impl(ctx: GuardCtx, **arguments) -> str:
         conduct_workflow=arguments.get("conduct_workflow"),
         _persona="proxy",
         _gate="prompt",
-        _source="proxy",
+        _source="gateway",
     )
 
 
@@ -443,7 +443,7 @@ def guard_spend_impl(ctx: GuardCtx, **arguments) -> str:
                    SUM(tokens_after)   AS out_tokens,
                    SUM(cost_usd_after) AS usd
             FROM guard_audit_events
-            WHERE workspace_id = :ws AND source = 'proxy'
+            WHERE workspace_id = :ws AND source = 'gateway'
               AND ts > now() - (:days || ' days')::interval
             GROUP BY provider, model
             ORDER BY usd DESC NULLS LAST
