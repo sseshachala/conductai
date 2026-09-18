@@ -93,9 +93,9 @@ services:
       #
       # Gateway v2 execution (PR #2045 cond-* profiles).
       - key: GUARD_GATEWAY_PROFILE_V2
-        value: "false"
+        value: "true"
       - key: GUARD_GATEWAY_PROFILE_V2_ROLLOUT_PCT
-        value: "0"
+        value: "100"
       - key: GUARD_GATEWAY_PROFILE_V2_ALLOWLIST
         value: ""
       # Durable audit / Flight Recorder (#1959).
@@ -181,9 +181,9 @@ services:
       # "environment variable used but not defined". Hardcoded values
       # eliminate the dependency and sync succeeds.
       - key: GUARD_GATEWAY_PROFILE_V2
-        value: "false"
+        value: "true"
       - key: GUARD_GATEWAY_PROFILE_V2_ROLLOUT_PCT
-        value: "0"
+        value: "100"
       - key: GUARD_GATEWAY_PROFILE_V2_ALLOWLIST
         value: ""
       - key: GUARD_USE_DURABLE_AUDIT
