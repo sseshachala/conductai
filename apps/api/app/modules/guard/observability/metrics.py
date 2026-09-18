@@ -86,3 +86,17 @@ GUARD_BUDGET_RECOVERY_ACTIONS = Counter(
     "Stale reservation actions taken by the recovery worker.",
     ["action"],
 )
+
+
+# Workspace-allowlist observability. Incremented every time a reserve
+# call clears the allowlist gate. Ops watches this to confirm which
+# workspaces are actually running through the ledger during canary.
+#
+# Cardinality caveat: workspace_id is a UUID label. Fine during
+# canary (2-3 workspaces) but review before widening to hundreds —
+# a follow-up aggregation counter without the label may be needed.
+GUARD_BUDGET_ENFORCEMENT_ACTIVE = Counter(
+    "guard_budget_enforcement_active_total",
+    "Reserve calls admitted by the ledger for an enforcing workspace.",
+    ["workspace_id"],
+)

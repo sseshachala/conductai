@@ -384,13 +384,22 @@ def reserve_budgets_for_request(
     """
     from app.core.budget_ledger import (
         BudgetDecision,
-        enabled as _ledger_enabled,
+        enabled_for as _ledger_enabled_for,
         get_budget_ledger,
     )
     from app.modules.guard.spend_lookup import lookup_applicable_budgets
 
-    if not _ledger_enabled():
+    if not _ledger_enabled_for(workspace_id):
         return ReserveBudgetsResult(outcome=ReserveOutcome.DISABLED)
+    # Emit the enforcement-active metric so ops can see who is on the
+    # ledger during the canary. Cardinality is bounded by the allowlist.
+    try:
+        from app.modules.guard.observability.metrics import (
+            GUARD_BUDGET_ENFORCEMENT_ACTIVE,
+        )
+        GUARD_BUDGET_ENFORCEMENT_ACTIVE.labels(workspace_id=str(workspace_id)).inc()
+    except Exception:  # noqa: BLE001 — never let observability break enforcement
+        pass
 
     import uuid as _uuid
     try:
