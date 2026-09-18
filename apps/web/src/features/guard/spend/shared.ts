@@ -124,6 +124,13 @@ export interface TeamBudgetSettings {
 import aiToolsConfig from "@config/ai_tools.json"
 export const AI_TOOL_OPTIONS: readonly string[] = aiToolsConfig.tools
 
+// Transports are server-stamped surface identifiers ('gateway', 'mcp', ...).
+// A budget scoped to a transport caps aggregate spend that arrived via that
+// surface regardless of which client tool called it. Source of truth lives
+// in config/transports.json.
+import transportsConfig from "@config/transports.json"
+export const TRANSPORT_OPTIONS: readonly string[] = transportsConfig.transports
+
 export interface ToolCap {
   id: string
   ai_tool: string

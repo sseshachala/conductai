@@ -9,6 +9,7 @@
 import { useEffect, useMemo, useState } from "react"
 import {
   AI_TOOL_OPTIONS,
+  TRANSPORT_OPTIONS,
   CURRENCY_SYMBOLS,
   MONTHS,
   fromUsd,
@@ -263,6 +264,13 @@ export function PerToolCapsPanel({
     () => AI_TOOL_OPTIONS.filter(t => !takenTools.has(t)),
     [takenTools],
   )
+  // Transports first — they cap the aggregate transport pool regardless of
+  // client tool. Client tools cap a specific declared caller. Both write to
+  // the same ai_tool column; the optgroup labels are for the admin's benefit.
+  const availableTransports = useMemo(
+    () => TRANSPORT_OPTIONS.filter(t => !takenTools.has(t)),
+    [takenTools],
+  )
 
   const parseAmt = (v: string): number => Math.max(0, Math.round(toUsd(parseFloat(v) || 0, currency) * 100) / 100)
   const displayAmt = (usd: number): string => (Math.round(fromUsd(usd, currency) * 100) / 100).toString()
@@ -300,7 +308,7 @@ export function PerToolCapsPanel({
         </div>
       </div>
 
-      {!readOnly && availableTools.length > 0 && (
+      {!readOnly && (availableTools.length > 0 || availableTransports.length > 0) && (
         <div
           style={{
             display: "grid",
@@ -319,9 +327,20 @@ export function PerToolCapsPanel({
             style={{ padding: "6px 10px", borderRadius: 7, border: "1px solid var(--border-2)", fontSize: 13 }}
           >
             <option value="">Select a tool…</option>
-            {availableTools.map(t => (
-              <option key={t} value={t}>{t}</option>
-            ))}
+            {availableTransports.length > 0 && (
+              <optgroup label="Transports">
+                {availableTransports.map(t => (
+                  <option key={`transport-${t}`} value={t}>{t}</option>
+                ))}
+              </optgroup>
+            )}
+            {availableTools.length > 0 && (
+              <optgroup label="Client tools">
+                {availableTools.map(t => (
+                  <option key={`tool-${t}`} value={t}>{t}</option>
+                ))}
+              </optgroup>
+            )}
           </select>
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <span style={{ fontSize: 13, color: "var(--text-muted)" }}>{sym}</span>

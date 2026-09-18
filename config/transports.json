@@ -1,0 +1,9 @@
+{
+  "$comment": "Server-stamped transport identifiers. A budget row scoped to one of these caps aggregate spend that arrived via that surface, regardless of which client tool called it. Transport is authoritative (set by the server at the entry point, not by the client), so a caller cannot escape a transport cap by mislabelling client_tool. Client tool names live in ai_tools.json.",
+  "transports": [
+    "gateway",
+    "mcp",
+    "workflow",
+    "runtime"
+  ]
+}
