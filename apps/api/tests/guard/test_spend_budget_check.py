@@ -174,11 +174,15 @@ def test_flag_on_workspace_hard_limit_under_does_not_block():
 # ── F3 — per-tool bleed prevention ──────────────────────────────────────────
 
 def test_per_tool_cap_blocks_only_when_that_tool_is_over():
-    """Codex Desktop over its own cap → codex-desktop is blocked."""
+    """Codex Desktop over its own cap → codex-desktop is blocked.
+
+    R12 (reviewer P1): per-row hard_cap_enabled is now authoritative.
+    The per-tool row must set the flag; pre-R12 it was ignored.
+    """
     ws_default = _budget(hard_cap_enabled=True, hard_limit_usd=None)
     codex_row = _budget(
         clerk_user_id=None, ai_tool="codex-desktop",
-        hard_limit_usd=30.0, hard_cap_enabled=False,  # per-tool row flag not read
+        hard_limit_usd=30.0, hard_cap_enabled=True,  # R12: per-row flag decides
     )
     result = _run(
         ai_tool="codex-desktop",
@@ -202,4 +206,71 @@ def test_per_tool_cap_does_not_bleed_to_other_tool():
         costs=[9999.0],  # this cost is for the unscoped workspace sum
     )
     # Since ws_default has no hard_limit_usd set, workspace sum is not enforced.
+    assert result.hard_blocked is False
+
+
+# ── R12 (reviewer P1) — per-row hard_cap_enabled semantics ───────
+
+def test_r12_workspace_on_scoped_off_only_workspace_fires():
+    """R12: workspace-default hard_cap_enabled=True, per-tool
+    hard_cap_enabled=False. Pre-R12 both fired because master gate was
+    on. Post-R12 only the workspace cap fires; per-tool cap is off.
+    """
+    ws_default = _budget(hard_cap_enabled=True, hard_limit_usd=100.0)
+    codex_row = _budget(
+        ai_tool="codex-desktop",
+        hard_limit_usd=30.0,
+        hard_cap_enabled=False,  # scoped OFF
+    )
+    # Cost query order: workspace-default lookup, tool lookup,
+    # tool_cost (skipped because per-tool row is off), workspace_cost.
+    result = _run(
+        ai_tool="codex-desktop",
+        rows=[ws_default, codex_row],
+        # First _sum_cost call is scoped=None (workspace). 150 > 100 = block.
+        costs=[150.0],
+    )
+    assert result.hard_blocked is True
+    assert result.hard_limit_usd == 100.0  # workspace's cap, not tool's
+
+
+def test_r12_workspace_off_scoped_on_scoped_fires():
+    """R12: workspace hard_cap_enabled=False, per-tool
+    hard_cap_enabled=True. Pre-R12 nothing fired because master gate was
+    off. Post-R12 per-tool cap fires independently.
+    """
+    ws_default = _budget(
+        hard_cap_enabled=False,  # workspace OFF (was pre-R12 kill switch)
+        hard_limit_usd=None,
+    )
+    codex_row = _budget(
+        ai_tool="codex-desktop",
+        hard_limit_usd=30.0,
+        hard_cap_enabled=True,  # scoped ON
+    )
+    result = _run(
+        ai_tool="codex-desktop",
+        rows=[ws_default, codex_row],
+        # First _sum_cost is tool-scoped for codex-desktop. 50 > 30 = block.
+        costs=[50.0],
+    )
+    assert result.hard_blocked is True
+    assert result.hard_limit_usd == 30.0
+    assert "codex-desktop" in (result.reason or "")
+
+
+def test_r12_workspace_off_scoped_off_no_enforcement():
+    """R12: both flags off. Nothing enforces. Matches pre-R12 behavior
+    for this specific combination."""
+    ws_default = _budget(hard_cap_enabled=False, hard_limit_usd=None)
+    codex_row = _budget(
+        ai_tool="codex-desktop",
+        hard_limit_usd=30.0,
+        hard_cap_enabled=False,
+    )
+    result = _run(
+        ai_tool="codex-desktop",
+        rows=[ws_default, codex_row],
+        costs=[999.0],
+    )
     assert result.hard_blocked is False

@@ -849,12 +849,22 @@ def budget_check(
         .first()
     )
 
-    # F2 gate — no workspace-default row, or its flag is off → no enforcement.
-    if not workspace_budget or not workspace_budget.hard_cap_enabled:
+    # R12 fix (reviewer P1): per-budget hard_cap_enabled semantics.
+    # Pre-fix, this was a workspace-wide kill switch: if the workspace-
+    # default row's flag was off, NO cap fired even for scoped rows
+    # with their own enforcement on. That contradicted reserve_all
+    # (post Fix 2 #2102), which respects each row's own flag.
+    #
+    # New rule (consistent with reserve_all): each budget row's own
+    # hard_cap_enabled is authoritative for THAT row's cap. Admins
+    # who want a kill switch flip every row (or file a follow-up for
+    # a workspace-level enforcement flag distinct from the workspace-
+    # default budget row).
+    if workspace_budget is None:
         return BudgetCheckOut(
             hard_blocked=False,
             monthly_cost_usd=0.0,
-            hard_limit_usd=workspace_budget.hard_limit_usd if workspace_budget else None,
+            hard_limit_usd=None,
         )
 
     period_start = _current_period_start()
@@ -891,7 +901,12 @@ def budget_check(
         )
 
     # 1a. Team-scoped per-tool cap (F3 — cross-tool bleed fix).
-    if tool_budget and tool_budget.hard_limit_usd is not None:
+    # R12: gate on this row's own hard_cap_enabled.
+    if (
+        tool_budget
+        and tool_budget.hard_limit_usd is not None
+        and tool_budget.hard_cap_enabled
+    ):
         tool_cost = _sum_cost(scoped_tool=ai_tool)
         if tool_cost >= tool_budget.hard_limit_usd:
             return BudgetCheckOut(
@@ -921,7 +936,11 @@ def budget_check(
             )
             .first()
         )
-        if transport_budget and transport_budget.hard_limit_usd is not None:
+        if (
+            transport_budget
+            and transport_budget.hard_limit_usd is not None
+            and transport_budget.hard_cap_enabled  # R12
+        ):
             transport_cost = _sum_cost(scoped_source=transport)
             if transport_cost >= transport_budget.hard_limit_usd:
                 return BudgetCheckOut(
@@ -936,8 +955,12 @@ def budget_check(
                 )
 
     # 1b. Team-scoped across-all-tools cap (unchanged behavior).
+    # R12: gate on the workspace-default row's own hard_cap_enabled.
     workspace_cost = _sum_cost()
-    if workspace_budget.hard_limit_usd is not None:
+    if (
+        workspace_budget.hard_limit_usd is not None
+        and workspace_budget.hard_cap_enabled
+    ):
         if workspace_cost >= workspace_budget.hard_limit_usd:
             return BudgetCheckOut(
                 hard_blocked=True,
@@ -963,6 +986,7 @@ def budget_check(
                 )
                 .first()
             )
+            # R12 fix: the enforcement lines below check user_tool_budget.hard_cap_enabled.
         user_budget = (
             db.query(GuardSpendBudget)
             .filter(
