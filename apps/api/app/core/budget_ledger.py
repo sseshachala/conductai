@@ -87,6 +87,12 @@ class Reservation:
     ai_tool: str
     estimated_cents: int
     period_key: str
+    # Fix 1 (P1 #1): scope fields so release/commit can reconstruct the
+    # exact Redis key reserve() wrote against. Without these two, two
+    # budgets differing only by clerk_user_id or agent_identity_id
+    # shared one counter and produced 100c-request/200c-committed.
+    clerk_user_id: str | None = None
+    agent_identity_id: str | None = None
 
 
 # ── Redis client (sync, shared pool) ────────────────────────────────
@@ -133,22 +139,33 @@ def _seconds_until_next_period(now: datetime | None = None) -> int:
     return int((end - now).total_seconds()) + 3600  # 1h slack
 
 
-def _reserved_key(ws: str, tool: str | None, period: str) -> str:
-    return f"budget:{ws}:{tool or '_all'}:{period}:reserved"
+def _scope_slug(user: str | None, agent: str | None, tool: str | None) -> str:
+    """Canonical Redis key segment for a budget scope tuple.
+
+    Fix 1 (P1 #1): keys must distinguish
+    (user=None, agent=None, tool=None) from (user=None, agent=X, tool=None)
+    from (user=Y, agent=None, tool=None). Uses '_' as the None sigil so
+    distinct scope tuples never collide on the same Redis counter.
+    """
+    return f"{user or '_'}:{agent or '_'}:{tool or '_all'}"
 
 
-def _committed_key(ws: str, tool: str | None, period: str) -> str:
-    return f"budget:{ws}:{tool or '_all'}:{period}:committed"
+def _reserved_key(ws, user, agent, tool, period):
+    return f"budget:{ws}:{_scope_slug(user, agent, tool)}:{period}:reserved"
 
 
-def _res_hash_key(ws: str, tool: str | None, period: str) -> str:
-    return f"budget:{ws}:{tool or '_all'}:{period}:res"
+def _committed_key(ws, user, agent, tool, period):
+    return f"budget:{ws}:{_scope_slug(user, agent, tool)}:{period}:committed"
 
 
-def _ready_key(ws: str, tool: str | None, period: str) -> str:
+def _res_hash_key(ws, user, agent, tool, period):
+    return f"budget:{ws}:{_scope_slug(user, agent, tool)}:{period}:res"
+
+
+def _ready_key(ws, user, agent, tool, period):
     """Set after reconciler completes; presence means the counters
     reflect the durable log."""
-    return f"budget:{ws}:{tool or '_all'}:{period}:ready"
+    return f"budget:{ws}:{_scope_slug(user, agent, tool)}:{period}:ready"
 
 
 # ── Lua scripts ──────────────────────────────────────────────────────
@@ -257,9 +274,10 @@ class BudgetLedger:
         ai_tool: str | None,
         estimated_cents: int,
         cap_cents: int,
-        # PR-A1: scope columns for multi-scope reservations. All nullable so
-        # existing callers keep working; new call sites populate them so the
-        # durable log carries request/agent/transport correlation.
+        # PR-A1 scope columns + Fix 1 (P1 #1) clerk_user_id. Every scope
+        # field is nullable; None resolves to the workspace-wide key
+        # shape so legacy callers see zero behavior change.
+        clerk_user_id: str | None = None,
         agent_identity_id: str | None = None,
         source: str | None = None,
         client_tool: str | None = None,
@@ -280,6 +298,8 @@ class BudgetLedger:
                 ai_tool=ai_tool or "_all",
                 estimated_cents=0,
                 period_key=monthly_period_key(),
+                clerk_user_id=clerk_user_id,
+                agent_identity_id=agent_identity_id,
             )
 
         period = monthly_period_key()
@@ -311,13 +331,15 @@ class BudgetLedger:
             return BudgetDecision.REDIS_DOWN, None
 
         # 2) Atomic Redis reserve.
+        # Fix 1 (P1 #1): key by full scope so budgets differing only by
+        # clerk_user_id or agent_identity_id do NOT share one counter.
         try:
             ret = self._client().eval(
                 _RESERVE_SCRIPT, 4,
-                _reserved_key(workspace_id, ai_tool, period),
-                _committed_key(workspace_id, ai_tool, period),
-                _res_hash_key(workspace_id, ai_tool, period),
-                _ready_key(workspace_id, ai_tool, period),
+                _reserved_key(workspace_id, clerk_user_id, agent_identity_id, ai_tool, period),
+                _committed_key(workspace_id, clerk_user_id, agent_identity_id, ai_tool, period),
+                _res_hash_key(workspace_id, clerk_user_id, agent_identity_id, ai_tool, period),
+                _ready_key(workspace_id, clerk_user_id, agent_identity_id, ai_tool, period),
                 rid, estimated_cents, cap_cents,
                 _seconds_until_next_period(),
             )
@@ -351,6 +373,8 @@ class BudgetLedger:
             ai_tool=ai_tool or "_all",
             estimated_cents=estimated_cents,
             period_key=period,
+            clerk_user_id=clerk_user_id,
+            agent_identity_id=agent_identity_id,
         )
 
     # ── Release ─────────────────────────────────────────────────────
@@ -364,8 +388,20 @@ class BudgetLedger:
         try:
             self._client().eval(
                 _RELEASE_SCRIPT, 2,
-                _reserved_key(reservation.workspace_id, ai_tool, reservation.period_key),
-                _res_hash_key(reservation.workspace_id, ai_tool, reservation.period_key),
+                _reserved_key(
+                    reservation.workspace_id,
+                    reservation.clerk_user_id,
+                    reservation.agent_identity_id,
+                    ai_tool,
+                    reservation.period_key,
+                ),
+                _res_hash_key(
+                    reservation.workspace_id,
+                    reservation.clerk_user_id,
+                    reservation.agent_identity_id,
+                    ai_tool,
+                    reservation.period_key,
+                ),
                 reservation.reservation_id,
                 _seconds_until_next_period(),
             )
@@ -401,9 +437,27 @@ class BudgetLedger:
         try:
             self._client().eval(
                 _COMMIT_SCRIPT, 3,
-                _reserved_key(reservation.workspace_id, ai_tool, reservation.period_key),
-                _committed_key(reservation.workspace_id, ai_tool, reservation.period_key),
-                _res_hash_key(reservation.workspace_id, ai_tool, reservation.period_key),
+                _reserved_key(
+                    reservation.workspace_id,
+                    reservation.clerk_user_id,
+                    reservation.agent_identity_id,
+                    ai_tool,
+                    reservation.period_key,
+                ),
+                _committed_key(
+                    reservation.workspace_id,
+                    reservation.clerk_user_id,
+                    reservation.agent_identity_id,
+                    ai_tool,
+                    reservation.period_key,
+                ),
+                _res_hash_key(
+                    reservation.workspace_id,
+                    reservation.clerk_user_id,
+                    reservation.agent_identity_id,
+                    ai_tool,
+                    reservation.period_key,
+                ),
                 reservation.reservation_id,
                 max(0, actual_cents),
                 _seconds_until_next_period(),
@@ -426,28 +480,54 @@ class BudgetLedger:
 
     # ── Read-only ───────────────────────────────────────────────────
     def current_reserved_cents(
-        self, workspace_id: str, ai_tool: str | None,
+        self,
+        workspace_id: str,
+        ai_tool: str | None,
+        *,
+        clerk_user_id: str | None = None,
+        agent_identity_id: str | None = None,
     ) -> int:
         period = monthly_period_key()
         try:
-            return int(self._client().get(_reserved_key(workspace_id, ai_tool, period)) or 0)
+            return int(
+                self._client().get(
+                    _reserved_key(workspace_id, clerk_user_id, agent_identity_id, ai_tool, period)
+                )
+                or 0
+            )
         except Exception as e:  # noqa: BLE001
             log.warning("budget_ledger.read_reserved_failed", err=str(e))
             return 0
 
     def current_committed_cents(
-        self, workspace_id: str, ai_tool: str | None,
+        self,
+        workspace_id: str,
+        ai_tool: str | None,
+        *,
+        clerk_user_id: str | None = None,
+        agent_identity_id: str | None = None,
     ) -> int:
         period = monthly_period_key()
         try:
-            return int(self._client().get(_committed_key(workspace_id, ai_tool, period)) or 0)
+            return int(
+                self._client().get(
+                    _committed_key(workspace_id, clerk_user_id, agent_identity_id, ai_tool, period)
+                )
+                or 0
+            )
         except Exception as e:  # noqa: BLE001
             log.warning("budget_ledger.read_committed_failed", err=str(e))
             return 0
 
     # ── Reconciler ──────────────────────────────────────────────────
     def reconcile(
-        self, db: Session, workspace_id: str, ai_tool: str | None,
+        self,
+        db: Session,
+        workspace_id: str,
+        ai_tool: str | None,
+        *,
+        clerk_user_id: str | None = None,
+        agent_identity_id: str | None = None,
     ) -> None:
         """Rebuild the Redis state from the durable log for one
         (workspace, tool, period) key. MUST be called before any
@@ -482,6 +562,15 @@ class BudgetLedger:
         )
         if ai_tool is not None:
             q = q.filter(GuardAuditEvent.ai_tool == ai_tool)
+        # Fix 1 (P1 #1): scope this budget's committed total by the same
+        # null-or-matches predicate as per-request applicability. A
+        # workspace-default budget (user=agent=tool=None) aggregates
+        # every event; an agent-scoped budget aggregates only that
+        # agent's spend.
+        if clerk_user_id is not None:
+            q = q.filter(GuardAuditEvent.clerk_user_id == clerk_user_id)
+        if agent_identity_id is not None:
+            q = q.filter(GuardAuditEvent.agent_identity_id == agent_identity_id)
         committed_usd = float(q.scalar() or 0.0)
         committed_cents = int(round(committed_usd * 100))
 
@@ -495,6 +584,17 @@ class BudgetLedger:
             open_rows = open_rows.filter(BudgetReservation.ai_tool.is_(None))
         else:
             open_rows = open_rows.filter(BudgetReservation.ai_tool == ai_tool)
+        # Fix 1 (P1 #1): exact-scope match on reservation rows since
+        # each budget owns only its own reservations under scope-aware
+        # keying.
+        if clerk_user_id is None:
+            open_rows = open_rows.filter(BudgetReservation.clerk_user_id.is_(None))
+        else:
+            open_rows = open_rows.filter(BudgetReservation.clerk_user_id == clerk_user_id)
+        if agent_identity_id is None:
+            open_rows = open_rows.filter(BudgetReservation.agent_identity_id.is_(None))
+        else:
+            open_rows = open_rows.filter(BudgetReservation.agent_identity_id == agent_identity_id)
 
         reserved_total = 0
         hash_payload: dict[str, int] = {}
@@ -506,15 +606,19 @@ class BudgetLedger:
         ttl = _seconds_until_next_period()
         client = self._client()
         pipe = client.pipeline()
-        pipe.set(_committed_key(workspace_id, ai_tool, period), committed_cents, ex=ttl)
-        pipe.delete(_reserved_key(workspace_id, ai_tool, period))
-        pipe.delete(_res_hash_key(workspace_id, ai_tool, period))
+        _res_key = _reserved_key(workspace_id, clerk_user_id, agent_identity_id, ai_tool, period)
+        _com_key = _committed_key(workspace_id, clerk_user_id, agent_identity_id, ai_tool, period)
+        _hash_key = _res_hash_key(workspace_id, clerk_user_id, agent_identity_id, ai_tool, period)
+        _rdy = _ready_key(workspace_id, clerk_user_id, agent_identity_id, ai_tool, period)
+        pipe.set(_com_key, committed_cents, ex=ttl)
+        pipe.delete(_res_key)
+        pipe.delete(_hash_key)
         if reserved_total > 0:
-            pipe.set(_reserved_key(workspace_id, ai_tool, period), reserved_total, ex=ttl)
+            pipe.set(_res_key, reserved_total, ex=ttl)
         if hash_payload:
-            pipe.hset(_res_hash_key(workspace_id, ai_tool, period), mapping=hash_payload)
-            pipe.expire(_res_hash_key(workspace_id, ai_tool, period), ttl)
-        pipe.set(_ready_key(workspace_id, ai_tool, period), "1", ex=ttl)
+            pipe.hset(_hash_key, mapping=hash_payload)
+            pipe.expire(_hash_key, ttl)
+        pipe.set(_rdy, "1", ex=ttl)
         pipe.execute()
 
     def stats(self) -> dict:
@@ -579,10 +683,15 @@ class BudgetLedger:
             decision, res = self.reserve(
                 db=db,
                 workspace_id=workspace_id,
+                # Fix 1 (P1 #1): key the Redis counter by the BUDGET row's
+                # own scope tuple, not the request scope. Each budget row
+                # owns its own counter under scope-aware keying.
                 ai_tool=budget.ai_tool,
+                clerk_user_id=getattr(budget, "clerk_user_id", None),
+                agent_identity_id=getattr(budget, "agent_identity_id", None),
                 estimated_cents=estimated_cents,
                 cap_cents=cap_cents,
-                agent_identity_id=agent_identity_id,
+                # Request-scope metadata for the durable audit correlation.
                 source=source,
                 client_tool=client_tool,
                 request_id=request_id,
