@@ -355,10 +355,13 @@ class BudgetLedger:
         except Exception as e:  # noqa: BLE001
             log.warning("budget_ledger.reserve_redis_failed", err=str(e))
             self._reservations_redis_down += 1
-            # Fix 9 (P2 #9): commit the delete so the phantom row is
-            # gone durably.
-            db.delete(row)
-            db.commit()
+            # R8 fix (reviewer P1): DO NOT delete the durable row. A
+            # Redis exception is ambiguous — the connection may have
+            # timed out AFTER Lua executed and Redis holds the
+            # reservation. Deleting the row then would leak capacity
+            # (Redis has 100c reserved with zero durable evidence).
+            # Preserve the row as 'open'; the reconciler will either
+            # confirm-and-mirror or classify-and-release when it runs.
             return BudgetDecision.REDIS_DOWN, None
 
         status = int(ret[0])

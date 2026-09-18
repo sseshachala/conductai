@@ -516,8 +516,19 @@ def test_redis_down_returns_redis_down(db):
     )
     assert decision == BudgetDecision.REDIS_DOWN
     assert res is None
-    # Durable row must have been rolled back — no phantom.
-    assert len(db.open_rows_for(ws, None, _current_period())) == 0
+    # R8 fix (reviewer P1): a Redis exception is ambiguous. The
+    # connection may have timed out AFTER the Lua script executed
+    # and Redis holds the reservation. Preserve the durable row so
+    # the reconciler can either confirm-and-mirror or classify-and-
+    # release when it runs. Pre-R8 the row was deleted here — that
+    # leaked capacity when Redis had actually applied but lost the
+    # reply.
+    open_rows = db.open_rows_for(ws, None, _current_period())
+    assert len(open_rows) == 1, (
+        "durable row must survive Redis exception so reconciler can "
+        "resolve the ambiguous state — see R8"
+    )
+    assert open_rows[0].status == "open"
 
 
 # ── Zero-cost bypass ────────────────────────────────────────────────
