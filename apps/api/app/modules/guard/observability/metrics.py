@@ -35,3 +35,22 @@ GUARD_AUDIT_FAILED = Counter(
     "guard.audit.record swallowed them.",
     ["reason"],
 )
+
+
+# PR-0.5b — writer-side invariant observability. Both writers in
+# app/guard/audit.py (record + insert_accepted) hardcode source='gateway'
+# (post-#2092). Auth is mandatory on /gateway/v1/* and /mcp, so every
+# request reaching either writer should already carry an agent_identity_id
+# resolved from the bearer token. A non-zero rate on this counter is a
+# writer path that's still leaking null identities — good signal to catch
+# before the DB column is flipped to NOT NULL in a follow-up.
+#
+# Label: writer distinguishes the two entry points so a fix can target
+# the leaky one. Not labelled by workspace/agent to keep cardinality
+# bounded.
+GUARD_AUDIT_MISSING_AGENT_ID = Counter(
+    "guard_audit_missing_agent_id_total",
+    "Gateway audit writes that reached the writer without an agent_identity_id. "
+    "Auth is mandatory upstream so steady-state should be zero.",
+    ["writer"],
+)
