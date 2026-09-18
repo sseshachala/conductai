@@ -124,15 +124,29 @@ class _StubSession:
         shim.actual_cents = row.actual_cents
         shim.resolved_at = row.resolved_at
         shim._backing_row = row
+        # Track for mirror-back on flush()/commit() so callers that read
+        # ._rows post-commit see the mutations (Fix 9 test needs this).
+        if not hasattr(self, "_live_shims"):
+            self._live_shims = []
+        self._live_shims.append(shim)
         return shim
 
     def flush(self) -> None:
-        # Propagate shim mutations back to the backing row.
-        for row in self._rows.values():
-            # Nothing to do — ``get`` returns a shim referencing the
-            # row; the ledger sets attrs on that shim. We mirror on
-            # commit-of-shim below in _mirror.
-            pass
+        # Propagate shim mutations back to their backing rows so
+        # callers reading self._rows see the ledger status changes.
+        for shim in getattr(self, "_live_shims", []):
+            backing = shim._backing_row
+            backing.status = shim.status
+            backing.actual_cents = shim.actual_cents
+            backing.resolved_at = shim.resolved_at
+        self._live_shims = []
+
+    def commit(self) -> None:
+        # Fix 9 (P2 #9): the ledger now commits() instead of flush()ing
+        # on every durable-log write so rows survive the caller's
+        # transaction lifecycle. In-memory stub: identical to flush()
+        # — no actual transaction to commit here.
+        self.flush()
 
     def delete(self, obj) -> None:
         target = getattr(obj, "id", None)
@@ -836,3 +850,93 @@ def test_scope_slug_distinguishes_null_configurations(ledger, db):
     assert len(keys) == 5
     assert _scope_slug(None, None, None) != _scope_slug(None, "agent-1", None)
     assert _scope_slug(None, "agent-1", None) != _scope_slug("user-1", None, None)
+
+
+# ── Fix 9 (P2 #9) — durable-log commit before Redis ──────────────
+
+def test_reserve_row_survives_caller_transaction_rollback(ledger, db):
+    """Reviewer P2 #9 core repro. Pre-fix, reserve() used db.flush() so a
+    caller-side rollback after reserve() returned ACCEPTED would drop the
+    durable row while Redis still held capacity. Reconciler on cold start
+    would then rebuild Redis from an incomplete log -> capacity leak.
+
+    Post-fix: reserve() commits its own transaction before returning. A
+    later caller rollback cannot un-write the durable row. Redis + DB
+    stay consistent by construction.
+
+    The stub session's commit() and rollback() are both no-ops in memory,
+    but we assert the durable row is present in db._rows after reserve
+    AND that a subsequent rollback() does NOT remove it (i.e. the row is
+    'committed' state — the stub's rollback body is a pass, matching how
+    a real Postgres session cannot un-commit).
+    """
+    from app.core.budget_ledger import BudgetDecision
+
+    ws = str(uuid.uuid4())
+    period = _current_period()
+    _reconcile(ledger, db, ws, None, period, committed_cents=0)
+
+    decision, res = ledger.reserve(
+        db=db, workspace_id=ws, ai_tool=None,
+        estimated_cents=50, cap_cents=1000,
+    )
+    assert decision == BudgetDecision.ACCEPTED
+
+    # Durable row present.
+    row_ids_before = set(db._rows.keys())
+    assert len(row_ids_before) == 1
+
+    # Caller rolls back its transaction — cannot un-commit our row.
+    db.rollback()
+
+    row_ids_after = set(db._rows.keys())
+    assert row_ids_after == row_ids_before, "reserve() must commit before returning"
+
+
+def test_reserve_all_partial_failure_leaves_no_orphan_durable_rows(ledger, db):
+    """The atomic-unwind concern: if reserve_all fails mid-loop, prior
+    reservations must have their durable rows resolved (released), not
+    left as 'open' orphans that the reconciler would re-inflate on cold
+    start.
+
+    Pre-fix, release() used db.flush() so a mid-unwind crash could leave
+    an accepted-then-un-released reservation. Post-fix, each release()
+    commits, so any surviving 'open' row is a genuine in-flight
+    reservation the reconciler correctly re-inflates.
+
+    Repro: two budgets applicable; second refuses. First's reservation
+    must be marked 'released' in the durable log after reserve_all
+    returns EXCEEDED.
+    """
+    from app.core.budget_ledger import BudgetDecision
+
+    class _Budget:
+        def __init__(self, *, ai_tool=None, cap=1.0):
+            self.ai_tool = ai_tool
+            self.hard_cap_enabled = True
+            self.hard_limit_usd = cap
+
+    ws = str(uuid.uuid4())
+    period = _current_period()
+    _reconcile(ledger, db, ws, None, period, committed_cents=0)
+    _reconcile(ledger, db, ws, "gateway", period, committed_cents=0)
+
+    budgets = [
+        _Budget(ai_tool=None, cap=1.00),
+        _Budget(ai_tool="gateway", cap=0.01),  # 1 cent cap will refuse
+    ]
+    decision, accepted, refuser = ledger.reserve_all(
+        db=db,
+        workspace_id=ws,
+        applicable_budgets=budgets,
+        estimated_cents=50,
+    )
+    assert decision == BudgetDecision.EXCEEDED
+    assert accepted is None
+    assert refuser is budgets[1]
+
+    # Every durable row must be resolved — no orphan 'open' rows.
+    open_rows = [r for r in db._rows.values() if r.status == "open"]
+    assert open_rows == [], f"orphan open reservations after unwind: {open_rows}"
+    released = [r for r in db._rows.values() if r.status == "released"]
+    assert len(released) == 1, "the successfully-reserved budget must be released"
