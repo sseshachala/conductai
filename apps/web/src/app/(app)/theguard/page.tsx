@@ -18,6 +18,7 @@ const displayEmail = (v: string | null | undefined): string => {
   return v
 }
 import { GuardShell } from "@/components/guard/GuardShell"
+import { formatTokensUsed } from "@/components/guard/common/formatTokens"
 import { useGuardTeam } from "@/hooks/useGuardTeam"
 import { useGuardRole } from "@/hooks/useGuardRole"
 import { useGuardSavings, type GuardSavingsSummary } from "@/hooks/useGuardSavings"
@@ -281,14 +282,6 @@ function formatTotalTokensSaved(n: number): string {
   return `${n}`
 }
 
-function formatTokensUsed(input: number | null, output: number | null): string | null {
-  if (input == null && output == null) return null
-  const fmt = (n: number) => n >= 1_000 ? `${(n / 1_000).toFixed(0)}k` : `${n}`
-  const parts = []
-  if (input)  parts.push(`${fmt(input)} in`)
-  if (output) parts.push(`${fmt(output)} out`)
-  return parts.join(" / ") || null
-}
 
 // ─── Stat card ────────────────────────────────────────────────────────────────
 

@@ -36,6 +36,9 @@ export const ALL_COLUMNS = [
   // read NULL and render as em dash so the column adds no noise for
   // workspaces still on the single-phase writer.
   { key: "lifecycle", label: "Lifecycle" },
+  // Opt-in "N in / N out" per-call token usage. Non-LLM tool calls
+  // (bash, edit, read) render as em dash — matches /theguard summary.
+  { key: "tokens", label: "Tokens" },
 ] as const
 
 export type ColumnKey = (typeof ALL_COLUMNS)[number]["key"]
