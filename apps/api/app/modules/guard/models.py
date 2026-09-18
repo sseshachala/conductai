@@ -397,9 +397,14 @@ class BudgetReservation(Base):
     # working; the ledger-wiring PR starts populating them from request context.
     agent_identity_id = Column(
         String(36),
-        ForeignKey("agent_identities.id", ondelete="CASCADE", name="fk_budget_reservations_agent_identity"),
+        ForeignKey("agent_identities.id", ondelete="SET NULL", name="fk_budget_reservations_agent_identity"),
         nullable=True,
     )
+    # R13 (reviewer P2): tombstone captures the agent's original id
+    # before the FK nulls the primary column. Populated by a future
+    # BEFORE DELETE trigger or app-level cleanup — this migration
+    # only adds the schema slot.
+    deleted_agent_identity_id = Column(String(36), nullable=True)
     source = Column(Text, nullable=True)         # transport: 'gateway' | 'mcp' | 'workflow'
     client_tool = Column(Text, nullable=True)    # client-declared tool string
     request_id = Column(UUID(as_uuid=True), nullable=True)  # correlates to GuardAuditEvent.request_id
@@ -434,6 +439,12 @@ class BudgetReservation(Base):
             "workspace_id",
             "clerk_user_id",
             "period_key",
+        ),
+        # R13: historical lookup by tombstoned agent.
+        Index(
+            "ix_budget_reservations_deleted_agent",
+            "workspace_id",
+            "deleted_agent_identity_id",
         ),
     )
 
