@@ -1,0 +1,28 @@
+services:
+  chaos-postgres:
+    image: pgvector/pgvector:pg16
+    container_name: chaos-postgres
+    environment:
+      POSTGRES_USER: chaos
+      POSTGRES_PASSWORD: chaos
+      POSTGRES_DB: chaos
+    ports:
+      - "55432:5432"   # non-standard port so it never clashes with the dev DB
+    tmpfs:
+      - /var/lib/postgresql/data   # in-memory data so restarts are instant
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U chaos -d chaos"]
+      interval: 1s
+      timeout: 2s
+      retries: 30
+
+  chaos-redis:
+    image: redis:7-alpine
+    container_name: chaos-redis
+    ports:
+      - "56379:6379"   # non-standard port so it never clashes with the dev Redis
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 1s
+      timeout: 2s
+      retries: 30
