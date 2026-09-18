@@ -309,7 +309,8 @@ export default function GuardInboxPage() {
             }}
           >
             <option value="all">All sources</option>
-            <option value="proxy">Proxy</option>
+            <option value="gateway">Gateway</option>
+            <option value="proxy">Proxy (legacy)</option>
             <option value="mcp">MCP</option>
             <option value="hook">Hook</option>
             <option value="runtime">Runtime</option>
