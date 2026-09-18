@@ -325,9 +325,14 @@ class BudgetLedger:
             client_tool=client_tool,
             request_id=uuid.UUID(request_id) if request_id and _looks_like_uuid(request_id) else None,
         )
+        # Fix 9 (P2 #9): commit the durable row NOW so it survives any
+        # subsequent rollback of the caller's outer transaction. Any
+        # Redis reserved-counter increment MUST have a matching
+        # committed durable row so the reconciler's rebuild is
+        # complete.
         try:
             db.add(row)
-            db.flush()
+            db.commit()
         except Exception as e:  # noqa: BLE001
             db.rollback()
             log.warning("budget_ledger.reserve_db_failed", err=str(e))
@@ -350,8 +355,10 @@ class BudgetLedger:
         except Exception as e:  # noqa: BLE001
             log.warning("budget_ledger.reserve_redis_failed", err=str(e))
             self._reservations_redis_down += 1
+            # Fix 9 (P2 #9): commit the delete so the phantom row is
+            # gone durably.
             db.delete(row)
-            db.flush()
+            db.commit()
             return BudgetDecision.REDIS_DOWN, None
 
         status = int(ret[0])
@@ -361,13 +368,13 @@ class BudgetLedger:
             # entries from earlier crashed workers.
             self._reservations_not_ready += 1
             db.delete(row)
-            db.flush()
+            db.commit()  # Fix 9 (P2 #9): durably remove phantom row
             return BudgetDecision.NOT_READY, None
 
         if status == 0:
             self._reservations_exceeded += 1
             db.delete(row)
-            db.flush()
+            db.commit()  # Fix 9 (P2 #9)
             return BudgetDecision.EXCEEDED, None
 
         self._reservations_accepted += 1
@@ -420,7 +427,9 @@ class BudgetLedger:
             if row is not None and row.status == "open":
                 row.status = "released"
                 row.resolved_at = datetime.now(timezone.utc)
-                db.flush()
+                # Fix 9 (P2 #9): commit the status flip so the
+                # reconciler never re-inflates a released reservation.
+                db.commit()
                 self._releases += 1
         except Exception as e:  # noqa: BLE001
             db.rollback()
@@ -476,7 +485,9 @@ class BudgetLedger:
                 row.status = "committed"
                 row.actual_cents = max(0, actual_cents)
                 row.resolved_at = datetime.now(timezone.utc)
-                db.flush()
+                # Fix 9 (P2 #9): commit the status flip so the
+                # reconciler never re-inflates a committed reservation.
+                db.commit()
                 self._commits += 1
         except Exception as e:  # noqa: BLE001
             db.rollback()
