@@ -585,6 +585,11 @@ async def handle_gateway_request(
         if _durable.fail_response is not None:
             return _durable.fail_response
         _durable_row_id = _durable.row_id
+        # R5 fix (reviewer P1): the reservation row and the drawer query
+        # correlate via the audit row's request_id (not its row_id).
+        # Fall back to row_id if durable audit is off (no request_id
+        # generated) so the reservation still has a stable key.
+        _audit_request_id = _durable.request_id or _durable_row_id
 
         # ── PR-A2b: pre-flight budget reservation ─────────────────────
         # Reserve applicable hard-cap budgets before dispatch. The helper
@@ -615,7 +620,7 @@ async def handle_gateway_request(
                 client_tool=(ai_tool if ai_tool and ai_tool != "gateway" else None),
                 clerk_user_id=clerk_user_id,
                 estimated_cents=_estimate_budget_cents(body, provider, model, ai_tool),
-                request_id=_durable_row_id,
+                request_id=_audit_request_id,
             )
         except Exception as _reserve_exc:  # noqa: BLE001
             log.warning("guard.gateway.reserve_wire_raised", err=str(_reserve_exc))
@@ -645,6 +650,43 @@ async def handle_gateway_request(
             _ReserveOutcome.REDIS_DOWN,
             _ReserveOutcome.DB_ERROR,
         ):
+            # R6 fix (reviewer P1): finalize the audit row as blocked
+            # BEFORE cancelling the renewal task. Previously the row
+            # stayed in 'accepted' state until lease expiry; the
+            # reconciler then reported 'orphaned' instead of the real
+            # refusal outcome. Rule_id encodes the specific refusal
+            # so Flight Recorder + drawer can label it correctly.
+            _refusal_rule = {
+                _ReserveOutcome.EXCEEDED:   "guard.budget_cap_exceeded",
+                _ReserveOutcome.NOT_READY:  "guard.budget_ledger_not_ready",
+                _ReserveOutcome.REDIS_DOWN: "guard.budget_ledger_unavailable",
+                _ReserveOutcome.DB_ERROR:   "guard.budget_ledger_error",
+            }[_reserve_result.outcome]
+            if _durable_row_id:
+                try:
+                    await _finalize_durable_row(
+                        row_id=_durable_row_id,
+                        workspace_id=workspace_id,
+                        decision="blocked",
+                        provider=provider,
+                        model=model,
+                        body=body,
+                        response_bytes=None,
+                        duration_ms=int((time.monotonic() - started) * 1000),
+                        rule_id=_refusal_rule,
+                        routing_meta=_routing_meta,
+                        execution_status="error",
+                        result_summary=_reserve_result.error,
+                        clerk_user_id=clerk_user_id,
+                        ai_tool=ai_tool,
+                        user_email=_user_email,
+                    )
+                except Exception:
+                    log.exception(
+                        "guard.gateway.refusal_finalize_failed",
+                        row_id=_durable_row_id,
+                        outcome=_reserve_result.outcome.value,
+                    )
             await _close_durable(_durable)
             if _budget_wire_db is not None:
                 _budget_wire_db.close()

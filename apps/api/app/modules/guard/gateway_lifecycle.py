@@ -44,8 +44,16 @@ class DurableRow:
 
     Exactly one of ``row_id`` or ``fail_response`` will be set — never
     both, never neither when the caller enters the durable path.
+
+    R5 fix (reviewer P1): ``request_id`` is the server-owned correlation
+    id ``insert_accepted()`` wrote to the audit row's ``request_id``
+    column. It is distinct from ``row_id`` (the audit-event primary key).
+    Reservations must key on ``request_id`` so the drawer's
+    ``list_reservations_for_request`` query correlates with the audit
+    row the client is looking at.
     """
     row_id: str | None = None
+    request_id: str | None = None
     renewal_task: asyncio.Task | None = None
     fail_response: Any = None
 
@@ -153,7 +161,7 @@ async def open_durable_row(
             _renewal_loop(row_id, workspace_id, renew_interval, lease_seconds)
         )
 
-    return DurableRow(row_id=row_id, renewal_task=renewal_task)
+    return DurableRow(row_id=row_id, request_id=request_id, renewal_task=renewal_task)
 
 
 # ─── Close ────────────────────────────────────────────────────────────
