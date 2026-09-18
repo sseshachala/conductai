@@ -268,3 +268,47 @@ new prod service that hosts these endpoints.
 | Budget reservation table | `apps/api/alembic/versions/0138_budget_reservations.py` |
 | Cache/bus tests | `apps/api/tests/core/test_*.py` |
 | Admin endpoint test | `apps/api/tests/test_admin_cache_stats.py` |
+
+## Budget ledger — canary rollout verification
+
+Env vars set on **both** `delegator-api` and `delegator-gateway` (must match):
+
+| Var | Value | Note |
+|---|---|---|
+| `BUDGET_LEDGER_ENABLED` | `true` | kill switch — off = every workspace shadow-mode |
+| `BUDGET_LEDGER_ALLOWLIST` | `<ws-uuid>` or `*` | canary gate — one UUID for single-tenant test, `*` for fleet-wide |
+
+Timeout knobs are optional; defaults are `2.0s` socket / `1.5s` connect.
+
+**Fresh-deploy probe** (metrics token in ops secrets — do not paste here):
+
+```bash
+curl -sS -H "X-Metrics-Token: <token>" https://gateway.conductai.ai/metrics \
+  | grep -E "guard_budget_"
+```
+
+Expected on a healthy cold start (no traffic yet):
+
+- `guard_budget_reconcile_runs_total{outcome="success"} 1` — startup reconciler completed.
+- `guard_budget_reconcile_scopes_reconciled_total N` — N = # of workspace/tool tuples with historical spend or open reservations.
+- `guard_budget_recovery_sweep_actions_total` — registered, empty until stale rows appear.
+- `guard_budget_enforcement_active_total` — registered, **no samples**. First allowlisted reserve ticks this from empty → 1.
+
+**Proof of gating** (send one request from an allowlisted workspace):
+
+```bash
+curl -X POST https://gateway.conductai.ai/v1/chat/completions \
+  -H "Authorization: Bearer <allowlisted-workspace-proxy-key>" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"claude-sonnet-...","messages":[{"role":"user","content":"ping"}]}'
+```
+
+Then re-scrape `/metrics`:
+
+- `guard_budget_enforcement_active_total{...} >= 1` — allowlist hit the enforcing path.
+- `guard_budget_reserve_decisions_total{decision="accepted",...} +1` — reserve landed.
+- `guard_budget_settle_actions_total{...} +1` — settle ran on the response.
+
+If the enforcement counter stays flat, the allowlist doesn't match — either the UUID is off, the flag isn't set on the service you're hitting, or `enabled_for()` fail-closed because `workspace_id=None` (unauthenticated path).
+
+**Snapshot 2026-09-18** (just after `BUDGET_LEDGER_ENABLED=true` set on api + gateway): reconcile_runs=1 success, scopes_reconciled=19, enforcement_active_total registered with no samples → healthy idle. Waiting on first allowlisted request to prove end-to-end.
