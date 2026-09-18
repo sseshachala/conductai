@@ -150,7 +150,7 @@ class BudgetCreate(BaseModel):
     email: str | None = None            # per-developer: frontend sends email, backend resolves to clerk_user_id
     agent_identity_id: str | None = None  # null = across all agents; non-null = per-agent budget (Added 0140)
     ai_tool: str | None = None          # null = across all tools; non-null = per-tool budget
-    hard_cap_enabled: bool | None = None  # only read from the workspace-default row (clerk=null, ai_tool=null)
+    hard_cap_enabled: bool | None = None  # per-budget flag; the workspace-default row acts as a master switch, non-default rows opt-in individually
     monthly_limit_usd: float
     alert_threshold_pct: int = 80
     hard_limit_usd: float | None = None
@@ -595,8 +595,13 @@ def upsert_budget(
         existing.hard_limit_usd = body.hard_limit_usd
         if body.default_per_developer_usd is not None or is_workspace_default:
             existing.default_per_developer_usd = body.default_per_developer_usd
-        # Only the workspace-default row carries the global enforcement flag.
-        if is_workspace_default and body.hard_cap_enabled is not None:
+        # Fix 2 (P1 #2): per-budget hard_cap_enabled. The workspace-default
+        # row still functions as the master switch (checked by the ledger
+        # before enforcing any row), but non-default rows can opt into
+        # enforcement individually so per-tool and per-agent caps actually
+        # participate in reservation. Pre-fix, only the default row could
+        # be True and reserve_all silently skipped every other row.
+        if body.hard_cap_enabled is not None:
             existing.hard_cap_enabled = bool(body.hard_cap_enabled)
         existing.updated_at = now
         db.commit()
@@ -614,7 +619,7 @@ def upsert_budget(
             alert_threshold_pct=body.alert_threshold_pct,
             hard_limit_usd=body.hard_limit_usd,
             default_per_developer_usd=body.default_per_developer_usd,
-            hard_cap_enabled=bool(body.hard_cap_enabled) if (is_workspace_default and body.hard_cap_enabled is not None) else False,
+            hard_cap_enabled=bool(body.hard_cap_enabled) if body.hard_cap_enabled is not None else False,
         )
         db.add(budget)
         db.commit()
