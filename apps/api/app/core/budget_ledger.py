@@ -314,6 +314,10 @@ class BudgetLedger:
             period_key=period,
             estimated_cents=estimated_cents,
             status="open",
+            # R1 fix (reviewer P1) — persist clerk_user_id so reconcile
+            # and the drawer can filter by the same scope tuple reserve
+            # used for the Redis key. Column added by migration 0142.
+            clerk_user_id=clerk_user_id,
             # PR-A1: scope columns — nullable, populated when the caller
             # supplies them. Correlate reservations to the audit chain.
             agent_identity_id=agent_identity_id,
