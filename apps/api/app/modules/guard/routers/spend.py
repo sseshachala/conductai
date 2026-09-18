@@ -18,7 +18,7 @@ from fastapi import HTTPException
 from app.core.auth import get_workspace_id
 from app.core.database import get_db
 from app.models.workspace import Workspace
-from app.modules.guard.models import GuardAuditEvent, GuardConfig, GuardDeveloperTools, GuardSession, GuardSpendBudget
+from app.modules.guard.models import BudgetReservation, GuardAuditEvent, GuardConfig, GuardDeveloperTools, GuardSession, GuardSpendBudget
 
 router = APIRouter(prefix="/guard/spend", tags=["guard"])
 
@@ -1026,3 +1026,80 @@ def _budget_out(budget: GuardSpendBudget, current_cost: float, email: str | None
         created_at=budget.created_at.isoformat(),
         updated_at=budget.updated_at.isoformat(),
     )
+
+
+# ── GET /guard/spend/reservations ─────────────────────────────────────────────
+#
+# PR-B: per-scope reservation state for a single request. The gateway wire-in
+# (PR-A2b) writes one budget_reservations row per applicable budget scope, all
+# tagged with the audit request_id. The drawer UI calls this endpoint with a
+# blocked-request's request_id and renders one row per reservation showing
+# scope + reserved amount + status (open / released / committed).
+#
+# Cardinality-safe by design: only rows for the caller's workspace are ever
+# returned; request_id is a UUID so enumeration is impractical.
+
+
+class ReservationScopeOut(BaseModel):
+    """Per-scope reservation record for the drawer."""
+    reservation_id: str
+    workspace_id: str
+    clerk_user_id: str | None
+    agent_identity_id: str | None
+    ai_tool: str | None
+    source: str | None
+    client_tool: str | None
+    period_key: str
+    estimated_cents: int
+    actual_cents: int | None
+    status: str  # 'open' | 'released' | 'committed'
+    created_at: str
+    resolved_at: str | None
+
+
+@router.get("/reservations", response_model=list[ReservationScopeOut])
+def list_reservations_for_request(
+    request_id: str = Query(..., description="Audit event request_id (UUID)"),
+    db: Session = Depends(get_db),
+    workspace_id: str = Depends(get_workspace_id),
+):
+    """Return all reservation rows correlated to a single audit request.
+
+    A gateway request that reaches the ledger writes one BudgetReservation
+    row per applicable hard-cap budget, each tagged with the same
+    ``request_id`` as the audit event. The drawer UI calls this endpoint
+    to render per-scope reserved/settled/released rows against the block.
+    """
+    try:
+        ws_uuid = uuid.UUID(workspace_id)
+        req_uuid = uuid.UUID(request_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid workspace_id or request_id")
+
+    rows = (
+        db.query(BudgetReservation)
+        .filter(
+            BudgetReservation.workspace_id == ws_uuid,
+            BudgetReservation.request_id == req_uuid,
+        )
+        .order_by(BudgetReservation.created_at.asc())
+        .all()
+    )
+    return [
+        ReservationScopeOut(
+            reservation_id=str(r.id),
+            workspace_id=str(r.workspace_id),
+            clerk_user_id=r.clerk_user_id,
+            agent_identity_id=r.agent_identity_id,
+            ai_tool=r.ai_tool,
+            source=r.source,
+            client_tool=r.client_tool,
+            period_key=r.period_key,
+            estimated_cents=int(r.estimated_cents),
+            actual_cents=int(r.actual_cents) if r.actual_cents is not None else None,
+            status=r.status,
+            created_at=r.created_at.isoformat(),
+            resolved_at=r.resolved_at.isoformat() if r.resolved_at else None,
+        )
+        for r in rows
+    ]

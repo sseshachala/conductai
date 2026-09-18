@@ -5,6 +5,7 @@ import Link from "next/link"
 import { blocks, type BlockReceipt } from "@/lib/api/guard"
 import { useAuthFetch } from "@/hooks/useAuthFetch"
 import { DecisionBadge } from "./DecisionBadge"
+import { ReservationScopeTable } from "./ReservationScopeTable"
 
 /**
  * Receipt card for a single Guard block (#1712 Track 1 quick win 2/3).
@@ -124,6 +125,10 @@ export function BlockReceiptCard({
               ))}
             </ul>
           </details>
+        )}
+
+        {receipt.request_id && (
+          <ReservationScopeTable requestId={receipt.request_id} />
         )}
       </div>
 
