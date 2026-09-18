@@ -173,12 +173,19 @@ def _report(latencies, statuses, input_tok, output_tok, killed, wall):
         print("  tokens          not tracked (streaming or blocked)")
     if killed:
         print()
-        print("  kill-switch fired mid-run — see status codes above")
+        bad = sum(v for k, v in statuses.items() if not (200 <= k < 300))
+        if bad:
+            print("  kill-switch fired mid-run — non-2xx rate exceeded 5%")
+        else:
+            print("  wall-clock limit reached — all fired requests succeeded")
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("model", help="Full cond-<code>-<alias> string")
+    ap.add_argument("--server", default=None,
+                    help="Override server URL (e.g. https://gateway.conductai.ai). "
+                         "Defaults to server in ~/.conduct/config.json.")
     ap.add_argument("--total", type=int, default=200)
     ap.add_argument("--concurrency", type=int, default=10)
     ap.add_argument("--max-tokens", type=int, default=5)
@@ -202,6 +209,8 @@ def main() -> int:
             return 1
 
     token, server = _load_creds()
+    if args.server:
+        server = args.server.rstrip("/")
     if args.provider == "anthropic":
         url = f"{server}/gateway/v1/anthropic/v1/messages"
     else:
