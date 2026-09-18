@@ -328,7 +328,7 @@ class GuardSpendBudget(Base):
     # deletion but decay to workspace-scoped meaning.
     agent_identity_id = Column(
         String(36),
-        ForeignKey("agent_identities.id", ondelete="SET NULL", name="fk_guard_spend_budgets_agent_identity"),
+        ForeignKey("agent_identities.id", ondelete="CASCADE", name="fk_guard_spend_budgets_agent_identity"),
         nullable=True,
     )
     monthly_limit_usd = Column(Float, nullable=False)
@@ -393,7 +393,7 @@ class BudgetReservation(Base):
     # working; the ledger-wiring PR starts populating them from request context.
     agent_identity_id = Column(
         String(36),
-        ForeignKey("agent_identities.id", ondelete="SET NULL", name="fk_budget_reservations_agent_identity"),
+        ForeignKey("agent_identities.id", ondelete="CASCADE", name="fk_budget_reservations_agent_identity"),
         nullable=True,
     )
     source = Column(Text, nullable=True)         # transport: 'gateway' | 'mcp' | 'workflow'
