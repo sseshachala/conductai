@@ -66,7 +66,7 @@ export interface AuditEvent {
   input_summary: string | null
   decision: string                // "allowed" | "blocked" | "warned" | "approval" | "audited"
   rule_id: string | null
-  source?: "hook" | "proxy" | "mcp" | "local_audit" | "brain_block" | null
+  source?: "hook" | "proxy" | "gateway" | "mcp" | "local_audit" | "brain_block" | null
   provider?: string | null         // 'anthropic' | 'openai' | 'perplexity' (proxy only)
   model?: string | null            // vendor model id (proxy only)
   conductai_run_id?: string | null
@@ -136,7 +136,7 @@ export function isProxyEvent(toolCall: string | null | undefined): boolean {
 export function ProxyPill() {
   return (
     <span
-      title="Routed through Conduct Guard Proxy"
+      title="Routed through Conduct Guard Gateway"
       style={{
         fontSize: 9.5,
         fontWeight: 700,
@@ -149,7 +149,7 @@ export function ProxyPill() {
         whiteSpace: "nowrap",
       }}
     >
-      via proxy
+      via gateway
     </span>
   )
 }
@@ -462,13 +462,13 @@ export function ActivityRow({ ev, compact = false, isLast = false, visibleColumn
         <div style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
           <div className="mono" style={{ fontSize: 11.5, fontWeight: 600, display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
             <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {(ev.source === "proxy") && ev.provider
+              {((ev.source === "proxy") || (ev.source === "gateway")) && ev.provider
                 ? `${ev.provider}/${ev.model ?? "?"}`
                 : ev.source === "local_audit"
                   ? (ev.provider ? `${ev.provider} key found` : "local key found")
                   : formatToolCall(ev.tool_call)}
             </span>
-            {ev.source === "proxy" && <ProxyPill />}
+            {(ev.source === "proxy" || ev.source === "gateway") && <ProxyPill />}
             {ev.source === "brain_block" && (() => {
               const pill = (
                 <span style={{ fontSize: 8, fontWeight: 700, letterSpacing: ".06em", padding: "1px 5px", borderRadius: 3, background: "#ede9fe", color: "#6d28d9", border: "1px solid #c4b5fd" }}>
