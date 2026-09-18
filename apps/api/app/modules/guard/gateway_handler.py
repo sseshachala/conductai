@@ -898,6 +898,12 @@ async def handle_gateway_request(
                         ai_tool=ai_tool,
                         user_email=_user_email,
                         started_monotonic=started,
+                        # R4 fix (reviewer P1): transfer reservation
+                        # ownership to the stream wrapper so settle
+                        # fires after the stream drains (not when the
+                        # handler returns and bytes still queued).
+                        reservations=_reservations,
+                        _routing_meta=_routing_meta,
                         # Wall-clock deadline for the stream body. The
                         # coordinator's ``wait_for`` only guarded header
                         # arrival; the stream body has no timeout of its
@@ -1099,7 +1105,11 @@ async def handle_gateway_request(
             # Idempotent + best-effort. Empty list is a NOOP (matches
             # ACCEPTED_NO_HARD_CAP / DISABLED). See helper docstring for
             # the dispatched x actual_cents truth table.
-            if _reservations:
+            # R4 fix (reviewer P1): for streaming responses the stream
+            # wrapper (``_wrap_v2_stream_finalize``) owns settlement so
+            # actual_cents reflects the drained body. Skip inline here
+            # to avoid settling twice.
+            if _reservations and not isinstance(_response, StreamingResponse):
                 try:
                     # Try to derive actual cents from the upstream body
                     # so a successful dispatch commits promptly. On
@@ -1111,8 +1121,20 @@ async def handle_gateway_request(
                                 _compute_audit_cost as _mk_cost,
                                 _extract_token_counts as _mk_tokens,
                             )
+                            # R4 fix (reviewer P1): the response gate may
+                            # have replaced _response.body with a 4xx
+                            # error envelope. _v2_upstream_body_bytes
+                            # captures the ORIGINAL upstream bytes
+                            # BEFORE the gate ran, so token counts +
+                            # cost still reflect what the provider
+                            # billed us for. Fall back to _response.body
+                            # only when no snapshot exists (non-v2 or
+                            # legacy path).
                             _resp_bytes = None
-                            if hasattr(_response, "body"):
+                            _snapshot = locals().get("_v2_upstream_body_bytes")
+                            if isinstance(_snapshot, (bytes, bytearray)) and _snapshot:
+                                _resp_bytes = bytes(_snapshot)
+                            elif hasattr(_response, "body"):
                                 try:
                                     _resp_bytes = _response.body
                                 except Exception:
@@ -1668,6 +1690,11 @@ def _wrap_v2_stream_finalize(
     user_email: str | None,
     started_monotonic: float,
     stream_deadline_seconds: float | None = None,
+    # R4 fix (reviewer P1): reservation ownership transferred from the
+    # handler. Wrapper computes actual_cents from the drained body then
+    # calls settle_reservations on stream close / cancel / timeout.
+    reservations: list | None = None,
+    _routing_meta: dict | None = None,
 ) -> StreamingResponse:
     """Fire durable-audit finalize when the streaming response closes.
 
@@ -1808,6 +1835,59 @@ def _wrap_v2_stream_finalize(
                     "guard.gateway.v2.stream_finalize_failed",
                     row_id=row_id,
                 )
+            # R4 fix (reviewer P1): settle reservations from the
+            # drained upstream body. Runs on success, cancel, and
+            # timeout — same finally as finalize.
+            if reservations:
+                try:
+                    from app.guard.audit import (
+                        _compute_audit_cost as _mk_cost,
+                        _extract_token_counts as _mk_tokens,
+                    )
+                    from app.modules.guard.gateway_lifecycle import (
+                        settle_reservations as _settle_reservations,
+                    )
+                    from app.core.database import SessionLocal
+                    _dispatched_stream = True
+                    _actual_cents_stream: int | None = None
+                    _resp_bytes = bytes(collected) if collected else None
+                    _in_tok, _out_tok = _mk_tokens(body, _resp_bytes)
+                    _cost_usd = _mk_cost(
+                        provider, model, _in_tok, _out_tok, _routing_meta
+                    )
+                    if _cost_usd:
+                        _actual_cents_stream = int(round(float(_cost_usd) * 100))
+                    # R3 pattern: offload the sync settle to a threadpool
+                    # so the ASGI drain path stays responsive.
+                    def _settle_stream_owned():
+                        _db = SessionLocal()
+                        try:
+                            _settle_reservations(
+                                db=_db,
+                                reservations=reservations,
+                                dispatched=_dispatched_stream,
+                                actual_cents=_actual_cents_stream,
+                            )
+                            try:
+                                _db.commit()
+                            except Exception:
+                                pass
+                        finally:
+                            try:
+                                _db.close()
+                            except Exception:
+                                pass
+                    from starlette.concurrency import (
+                        run_in_threadpool as _rin_threadpool,
+                    )
+                    await _rin_threadpool(_settle_stream_owned)
+                except Exception:
+                    log.exception(
+                        "guard.gateway.v2.stream_settle_failed",
+                        row_id=row_id,
+                        reservation_count=len(reservations) if reservations else 0,
+                    )
+
             # X4 — cancel the renewal task last, AFTER finalize. If we
             # cancelled first, the row would show up as expired to the
             # reconciler in the seconds between cancellation and
