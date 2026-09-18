@@ -648,12 +648,47 @@ export interface BlockReceipt {
   defense_score: number | null
   conductai_run_id: string | null
   hook_session_id: string | null
+  // PR-B: correlation to budget_reservations rows. Present on gateway rows
+  // that reached the ledger; null on rows written before PR-A2b or when
+  // BUDGET_LEDGER_ENABLED was off.
+  request_id?: string | null
+}
+
+// PR-B: per-scope reservation record for the drawer scope table.
+export interface ReservationScope {
+  reservation_id: string
+  workspace_id: string
+  clerk_user_id: string | null
+  agent_identity_id: string | null
+  ai_tool: string | null
+  source: string | null
+  client_tool: string | null
+  period_key: string
+  estimated_cents: number
+  actual_cents: number | null
+  status: string
+  created_at: string
+  resolved_at: string | null
 }
 
 export interface ShareResult {
   receipt_id: string
   already_shared: boolean
   receipt_url: string | null
+}
+
+// PR-B: fetch the per-scope reservations tied to a single audit request_id.
+// Empty array is a valid response — feature flag off or no hard caps applied.
+async function fetchReservationsForRequest(
+  f: AuthFetch,
+  requestId: string,
+): Promise<ReservationScope[]> {
+  const url = `${base()}/spend/reservations?request_id=${encodeURIComponent(requestId)}`
+  return json<ReservationScope[]>(f, url)
+}
+
+export const reservations = {
+  forRequest: fetchReservationsForRequest,
 }
 
 export const blocks = {
