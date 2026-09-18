@@ -619,7 +619,25 @@ async def handle_gateway_request(
             )
         except Exception as _reserve_exc:  # noqa: BLE001
             log.warning("guard.gateway.reserve_wire_raised", err=str(_reserve_exc))
-            _reserve_result = None
+            # R7 fix (reviewer P1): the exception path used to leave
+            # ``_reserve_result = None`` and fall through to dispatch —
+            # a fail-OPEN branch that bypassed hard-cap enforcement
+            # whenever the helper raised (bad SessionLocal, transient
+            # DB blip, estimator error). Represent unexpected failures
+            # as a synthetic DB_ERROR so the same rejection path fires
+            # UNLESS the ledger is entirely disabled (flag off preserves
+            # pre-PR-A behavior — no enforcement, no synthetic reject).
+            from app.core.budget_ledger import enabled as _ledger_enabled
+            if _ledger_enabled():
+                from app.modules.guard.gateway_lifecycle import (
+                    ReserveBudgetsResult as _RBR,
+                )
+                _reserve_result = _RBR(
+                    outcome=_ReserveOutcome.DB_ERROR,
+                    error=f"reserve raised: {type(_reserve_exc).__name__}",
+                )
+            else:
+                _reserve_result = None
         # Reserve failed = fail-closed reject (any non-ACCEPTED outcome).
         if _reserve_result is not None and _reserve_result.outcome in (
             _ReserveOutcome.EXCEEDED,
