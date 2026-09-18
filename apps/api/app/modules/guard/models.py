@@ -323,6 +323,14 @@ class GuardSpendBudget(Base):
     workspace_id = Column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False)
     clerk_user_id = Column(Text, nullable=True)
     ai_tool = Column(Text, nullable=True)
+    # Added by revision 0140 — per-agent scope alongside per-user (clerk_user_id)
+    # and per-tool (ai_tool). ondelete=SET NULL so budget rows survive identity
+    # deletion but decay to workspace-scoped meaning.
+    agent_identity_id = Column(
+        String(36),
+        ForeignKey("agent_identities.id", ondelete="SET NULL", name="fk_guard_spend_budgets_agent_identity"),
+        nullable=True,
+    )
     monthly_limit_usd = Column(Float, nullable=False)
     alert_threshold_pct = Column(Integer, nullable=False, default=80)
     hard_limit_usd = Column(Float, nullable=True)
@@ -345,6 +353,7 @@ class GuardSpendBudget(Base):
         Index(
             "uq_guard_spend_workspace_default",
             "workspace_id",
+            sa.text("COALESCE(agent_identity_id, '')"),
             sa.text("COALESCE(ai_tool, '')"),
             unique=True,
             postgresql_where=sa.text("clerk_user_id IS NULL"),
@@ -353,9 +362,15 @@ class GuardSpendBudget(Base):
             "uq_guard_spend_workspace_member",
             "workspace_id",
             "clerk_user_id",
+            sa.text("COALESCE(agent_identity_id, '')"),
             sa.text("COALESCE(ai_tool, '')"),
             unique=True,
             postgresql_where=sa.text("clerk_user_id IS NOT NULL"),
+        ),
+        Index(
+            "ix_guard_spend_budgets_ws_agent",
+            "workspace_id",
+            "agent_identity_id",
         ),
     )
 
@@ -373,6 +388,17 @@ class BudgetReservation(Base):
     workspace_id = Column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False)
     ai_tool = Column(Text, nullable=True)
     period_key = Column(Text, nullable=False)
+    # Added by revision 0140 — multi-scope columns for the all-permit
+    # reservation contract. All nullable so pre-0140 single-scope callers keep
+    # working; the ledger-wiring PR starts populating them from request context.
+    agent_identity_id = Column(
+        String(36),
+        ForeignKey("agent_identities.id", ondelete="SET NULL", name="fk_budget_reservations_agent_identity"),
+        nullable=True,
+    )
+    source = Column(Text, nullable=True)         # transport: 'gateway' | 'mcp' | 'workflow'
+    client_tool = Column(Text, nullable=True)    # client-declared tool string
+    request_id = Column(UUID(as_uuid=True), nullable=True)  # correlates to GuardAuditEvent.request_id
     estimated_cents = Column(Integer, nullable=False)
     actual_cents = Column(Integer, nullable=True)
     status = Column(Text, nullable=False, server_default=sa.text("'open'"), default="open")
@@ -392,6 +418,13 @@ class BudgetReservation(Base):
             postgresql_where=sa.text("status = 'open'"),
         ),
         Index("ix_budget_reservations_created_at", "created_at"),
+        Index(
+            "ix_budget_reservations_scope",
+            "workspace_id",
+            "agent_identity_id",
+            "period_key",
+        ),
+        Index("ix_budget_reservations_request_id", "request_id"),
     )
 
 

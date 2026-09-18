@@ -148,6 +148,7 @@ class BudgetCreate(BaseModel):
     workspace_id: str
     clerk_user_id: str | None = None    # null = workspace-wide
     email: str | None = None            # per-developer: frontend sends email, backend resolves to clerk_user_id
+    agent_identity_id: str | None = None  # null = across all agents; non-null = per-agent budget (Added 0140)
     ai_tool: str | None = None          # null = across all tools; non-null = per-tool budget
     hard_cap_enabled: bool | None = None  # only read from the workspace-default row (clerk=null, ai_tool=null)
     monthly_limit_usd: float
@@ -161,6 +162,7 @@ class BudgetOut(BaseModel):
     workspace_id: str
     clerk_user_id: str | None
     email: str | None = None
+    agent_identity_id: str | None = None  # Added 0140
     ai_tool: str | None = None
     hard_cap_enabled: bool = False
     monthly_limit_usd: float
@@ -570,14 +572,16 @@ def upsert_budget(
             clerk_user_id = session.clerk_user_id
 
     ai_tool = body.ai_tool or None  # normalize empty string
-    is_workspace_default = clerk_user_id is None and ai_tool is None
+    agent_identity_id = body.agent_identity_id or None  # normalize empty string
+    is_workspace_default = clerk_user_id is None and ai_tool is None and agent_identity_id is None
 
-    # SQLAlchemy converts `column == None` to `IS NULL` — safe for both branches.
+    # SQLAlchemy converts `column == None` to `IS NULL` — safe for all branches.
     existing = (
         db.query(GuardSpendBudget)
         .filter(
             GuardSpendBudget.workspace_id == ws_uuid,
             GuardSpendBudget.clerk_user_id == clerk_user_id,
+            GuardSpendBudget.agent_identity_id == agent_identity_id,
             GuardSpendBudget.ai_tool == ai_tool,
         )
         .first()
@@ -604,6 +608,7 @@ def upsert_budget(
         budget = GuardSpendBudget(
             workspace_id=ws_uuid,
             clerk_user_id=clerk_user_id,
+            agent_identity_id=agent_identity_id,
             ai_tool=ai_tool,
             monthly_limit_usd=body.monthly_limit_usd,
             alert_threshold_pct=body.alert_threshold_pct,
@@ -926,6 +931,7 @@ def _budget_out(budget: GuardSpendBudget, current_cost: float, email: str | None
         workspace_id=str(budget.workspace_id),
         clerk_user_id=budget.clerk_user_id,
         email=email,
+        agent_identity_id=budget.agent_identity_id,
         ai_tool=budget.ai_tool,
         hard_cap_enabled=bool(budget.hard_cap_enabled),
         monthly_limit_usd=budget.monthly_limit_usd,
