@@ -168,71 +168,42 @@ services:
         value: "5"
       - key: SQLALCHEMY_MAX_OVERFLOW
         value: "10"
-      # ── Feature flags — inherit from delegator-api so both services
-      # ── stay in lockstep and traffic can move without config drift ──
+      # ── Feature flags — hardcoded defaults, ops flips per-service ─────
+      # Independent from delegator-api so the two services can be tuned
+      # separately in the dashboard (v2 canary on api first, then flip
+      # here once healthy). Same defaults as delegator-api so behavior
+      # is identical on first apply.
       #
-      # Gateway v2 execution (cond-* profiles). Without these, v2 traffic
-      # on this service returns 501 because the application default is
-      # OFF. Reviewer flagged this on the initial PR #2066 draft.
+      # fromService inheritance was tried in the initial draft (#2066)
+      # but chicken-and-egg'd with blueprint sync: Render resolves the
+      # ref during service creation, before the paired "Create env var
+      # on delegator-api" actions run, so gateway creation failed with
+      # "environment variable used but not defined". Hardcoded values
+      # eliminate the dependency and sync succeeds.
       - key: GUARD_GATEWAY_PROFILE_V2
-        fromService:
-          type: web
-          name: delegator-api
-          envVarKey: GUARD_GATEWAY_PROFILE_V2
+        value: "false"
       - key: GUARD_GATEWAY_PROFILE_V2_ROLLOUT_PCT
-        fromService:
-          type: web
-          name: delegator-api
-          envVarKey: GUARD_GATEWAY_PROFILE_V2_ROLLOUT_PCT
+        value: "0"
       - key: GUARD_GATEWAY_PROFILE_V2_ALLOWLIST
-        fromService:
-          type: web
-          name: delegator-api
-          envVarKey: GUARD_GATEWAY_PROFILE_V2_ALLOWLIST
-      # Durable audit (Flight Recorder). Application default is OFF;
-      # inherit so audit doesn't disappear when traffic moves here.
+        value: ""
       - key: GUARD_USE_DURABLE_AUDIT
-        fromService:
-          type: web
-          name: delegator-api
-          envVarKey: GUARD_USE_DURABLE_AUDIT
+        value: "false"
       - key: GUARD_DURABLE_AUDIT_ROLLOUT_PCT
-        fromService:
-          type: web
-          name: delegator-api
-          envVarKey: GUARD_DURABLE_AUDIT_ROLLOUT_PCT
+        value: "0"
       - key: GUARD_DURABLE_AUDIT_ALLOWLIST
-        fromService:
-          type: web
-          name: delegator-api
-          envVarKey: GUARD_DURABLE_AUDIT_ALLOWLIST
+        value: ""
       - key: GUARD_DURABLE_AUDIT_FAIL_CLOSED
-        fromService:
-          type: web
-          name: delegator-api
-          envVarKey: GUARD_DURABLE_AUDIT_FAIL_CLOSED
-      # Admission caps mirror delegator-api. Can be overridden here
-      # if the gateway service needs different limits from the API.
+        value: "false"
+      # Admission caps — same defaults as delegator-api, tunable
+      # per-service in the dashboard.
       - key: GATEWAY_ADMISSION_MAX_INFLIGHT
-        fromService:
-          type: web
-          name: delegator-api
-          envVarKey: GATEWAY_ADMISSION_MAX_INFLIGHT
+        value: "40"
       - key: GATEWAY_ADMISSION_WORKSPACE_MAX
-        fromService:
-          type: web
-          name: delegator-api
-          envVarKey: GATEWAY_ADMISSION_WORKSPACE_MAX
+        value: "10"
       - key: MCP_ADMISSION_MAX_INFLIGHT
-        fromService:
-          type: web
-          name: delegator-api
-          envVarKey: MCP_ADMISSION_MAX_INFLIGHT
+        value: "40"
       - key: MCP_ADMISSION_WORKSPACE_MAX
-        fromService:
-          type: web
-          name: delegator-api
-          envVarKey: MCP_ADMISSION_WORKSPACE_MAX
+        value: "10"
       # ── Rest of the shared env ────────────────────────────────────────
       - key: API_BASE_URL
         fromService:
