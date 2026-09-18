@@ -1346,7 +1346,7 @@ grant_type=urn:ietf:params:oauth:grant-type:token-exchange
           Spec-compliant MCP clients (Claude.ai native "Add MCP", Cursor, etc.) discover and authenticate against Conduct without a pasted token. The chain:
         </p>
         <ol className="text-stone-500 text-sm leading-relaxed mb-4 list-decimal ml-5 space-y-1">
-          <li>Client hits <Code>https://api.conductai.ai/mcp</Code>, receives 401 with <Code>WWW-Authenticate: Bearer resource_metadata=…</Code>.</li>
+          <li>Client hits <Code>https://gateway.conductai.ai/mcp</Code>, receives 401 with <Code>WWW-Authenticate: Bearer resource_metadata=…</Code>.</li>
           <li>Client fetches <Code>/.well-known/oauth-protected-resource/mcp</Code>, follows <Code>authorization_servers</Code>.</li>
           <li>Client fetches <Code>/.well-known/oauth-authorization-server</Code>, reads endpoints.</li>
           <li>Client self-registers via <Code>POST /oauth/register</Code> (RFC 7591 DCR).</li>

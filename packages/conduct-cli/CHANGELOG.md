@@ -8,6 +8,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
 
+## [0.14.9] - 2026-09-17
+
+### Changed
+- Default gateway and MCP URLs now point at `gateway.conductai.ai` (the
+  isolated gateway service introduced in the 6-series scaling work,
+  epic #2057). `api.conductai.ai/gateway/*` and `api.conductai.ai/mcp`
+  continue to work — same image serves both — but new `conduct login` /
+  `conduct guard install` invocations pick up the new URL automatically.
+  Existing installs are unaffected until they re-run setup.
+
 ## [0.14.4] - 2026-09-13
 
 ### Added

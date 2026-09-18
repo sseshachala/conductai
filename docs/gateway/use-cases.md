@@ -22,8 +22,8 @@ snippets below.
 
    | SDK you're using | Base URL |
    |---|---|
-   | Anthropic SDK | `https://api.conductai.ai/gateway/v1/anthropic` |
-   | OpenAI SDK (incl. OpenRouter passthrough) | `https://api.conductai.ai/gateway/v1/openai` |
+   | Anthropic SDK | `https://gateway.conductai.ai/gateway/v1/anthropic` |
+   | OpenAI SDK (incl. OpenRouter passthrough) | `https://gateway.conductai.ai/gateway/v1/openai` |
 
 5. **Model field** is always the profile's cond-code identifier:
    ```
@@ -80,7 +80,7 @@ from anthropic import Anthropic
 
 client = Anthropic(
     api_key="guard-mt-YOUR_TOKEN",
-    base_url="https://api.conductai.ai/gateway/v1/anthropic",
+    base_url="https://gateway.conductai.ai/gateway/v1/anthropic",
 )
 resp = client.messages.create(
     model="cond-abc12345-claude-sonnet",
@@ -117,7 +117,7 @@ from openai import OpenAI
 
 client = OpenAI(
     api_key="guard-mt-YOUR_TOKEN",
-    base_url="https://api.conductai.ai/gateway/v1/openai",
+    base_url="https://gateway.conductai.ai/gateway/v1/openai",
 )
 resp = client.chat.completions.create(
     model="cond-abc12345-gpt-4o",
@@ -277,7 +277,7 @@ from openai import OpenAI
 
 client = OpenAI(
     api_key="guard-mt-YOUR_TOKEN",
-    base_url="https://api.conductai.ai/gateway/v1/openai",
+    base_url="https://gateway.conductai.ai/gateway/v1/openai",
 )
 resp = client.chat.completions.create(
     model="cond-abc12345-via-openrouter",
@@ -296,7 +296,7 @@ from anthropic import Anthropic
 
 client = Anthropic(
     api_key="guard-mt-YOUR_TOKEN",
-    base_url="https://api.conductai.ai/gateway/v1/anthropic",
+    base_url="https://gateway.conductai.ai/gateway/v1/anthropic",
 )
 with client.messages.stream(
     model="cond-abc12345-claude-sonnet",
@@ -318,7 +318,7 @@ from openai import OpenAI
 
 client = OpenAI(
     api_key="guard-mt-YOUR_TOKEN",
-    base_url="https://api.conductai.ai/gateway/v1/openai",
+    base_url="https://gateway.conductai.ai/gateway/v1/openai",
 )
 stream = client.chat.completions.create(
     model="cond-abc12345-gpt-4o",
@@ -342,7 +342,7 @@ from anthropic import Anthropic
 
 client = Anthropic(
     api_key="guard-mt-YOUR_TOKEN",
-    base_url="https://api.conductai.ai/gateway/v1/anthropic",
+    base_url="https://gateway.conductai.ai/gateway/v1/anthropic",
 )
 resp = client.messages.count_tokens(
     model="cond-abc12345-claude-sonnet",
@@ -365,7 +365,7 @@ from openai import OpenAI
 
 client = OpenAI(
     api_key="guard-mt-YOUR_TOKEN",
-    base_url="https://api.conductai.ai/gateway/v1/openai",
+    base_url="https://gateway.conductai.ai/gateway/v1/openai",
 )
 resp = client.responses.create(
     model="cond-abc12345-gpt-4o",
@@ -388,7 +388,7 @@ from anthropic import Anthropic
 
 client = Anthropic(
     api_key="guard-mt-YOUR_TOKEN",
-    base_url="https://api.conductai.ai/gateway/v1/anthropic",
+    base_url="https://gateway.conductai.ai/gateway/v1/anthropic",
     default_headers={"anthropic-beta": "prompt-caching-2024-07-31"},
 )
 resp = client.messages.create(

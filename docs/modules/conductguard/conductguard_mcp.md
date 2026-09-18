@@ -14,7 +14,7 @@
 ## What replaces it
 
 `conduct mcp install` now writes an `mcp-remote` entry pointing at
-`https://api.conductai.ai/mcp` into every AI-tool config it detects
+`https://gateway.conductai.ai/mcp` into every AI-tool config it detects
 (Claude Code, Cursor, Windsurf, VS Code Copilot, Codex).
 
 Example generated config (Cursor `~/.cursor/mcp.json`):
@@ -25,7 +25,7 @@ Example generated config (Cursor `~/.cursor/mcp.json`):
     "conduct": {
       "command": "npx",
       "args": [
-        "-y", "mcp-remote", "https://api.conductai.ai/mcp",
+        "-y", "mcp-remote", "https://gateway.conductai.ai/mcp",
         "--header", "Authorization: Bearer <your-token>"
       ]
     }

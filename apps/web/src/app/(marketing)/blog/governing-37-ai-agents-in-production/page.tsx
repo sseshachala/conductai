@@ -315,8 +315,8 @@ conduct verify <run-id>`}</code></pre>
         <p className="text-stone-700 leading-relaxed mb-4">
           For the proxy path:
         </p>
-        <pre className="bg-stone-900 text-stone-100 text-sm rounded-lg p-4 overflow-x-auto mb-4"><code>{`export ANTHROPIC_BASE_URL="https://api.conductai.ai/gateway/v1/anthropic"
-export OPENAI_BASE_URL="https://api.conductai.ai/gateway/v1/openai/v1"`}</code></pre>
+        <pre className="bg-stone-900 text-stone-100 text-sm rounded-lg p-4 overflow-x-auto mb-4"><code>{`export ANTHROPIC_BASE_URL="https://gateway.conductai.ai/gateway/v1/anthropic"
+export OPENAI_BASE_URL="https://gateway.conductai.ai/gateway/v1/openai/v1"`}</code></pre>
         <p className="text-stone-700 leading-relaxed mb-6">
           Every SDK call from now on runs through Guard. Every playbook
           invocation runs through Guard. Every tool call runs through Guard.

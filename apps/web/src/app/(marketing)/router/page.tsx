@@ -112,14 +112,14 @@ function TwoPathsSection() {
           </div>
           <h3 className="text-xl font-bold text-stone-900 mb-2">Conduct Router</h3>
           <p className="text-sm text-stone-600 leading-relaxed mb-4">
-            Point any provider SDK at <code className="text-stone-800 text-xs">api.conductai.ai/gateway/v1/&lt;provider&gt;</code>.
+            Point any provider SDK at <code className="text-stone-800 text-xs">gateway.conductai.ai/gateway/v1/&lt;provider&gt;</code>.
             No new infrastructure — Router speaks each provider&apos;s native API, per-agent tokens, retries, and audit
             chain out of the box.
           </p>
           <div className="bg-stone-950 rounded-lg p-3 mb-4">
             <pre className="text-xs font-mono text-stone-100 overflow-x-auto">
 {`export ANTHROPIC_BASE_URL=\\
-  https://api.conductai.ai/gateway/v1/anthropic
+  https://gateway.conductai.ai/gateway/v1/anthropic
 export ANTHROPIC_API_KEY=cond_agt_...`}
             </pre>
           </div>
@@ -210,7 +210,7 @@ guardrails:
 function UsageSection() {
   const [tab, setTab] = useState<"curl" | "python" | "ts">("curl")
   const samples = {
-    curl: `curl https://api.conductai.ai/gateway/v1/anthropic/v1/messages \\
+    curl: `curl https://gateway.conductai.ai/gateway/v1/anthropic/v1/messages \\
   -H "Authorization: Bearer cond_agt_..." \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -221,7 +221,7 @@ function UsageSection() {
     python: `from anthropic import Anthropic
 
 client = Anthropic(
-    base_url="https://api.conductai.ai/gateway/v1/anthropic",
+    base_url="https://gateway.conductai.ai/gateway/v1/anthropic",
     api_key="cond_agt_...",   # agent token, not the raw Anthropic key
 )
 msg = client.messages.create(
@@ -232,7 +232,7 @@ msg = client.messages.create(
     ts: `import Anthropic from "@anthropic-ai/sdk"
 
 const client = new Anthropic({
-  baseURL: "https://api.conductai.ai/gateway/v1/anthropic",
+  baseURL: "https://gateway.conductai.ai/gateway/v1/anthropic",
   apiKey: process.env.CONDUCT_AGENT_TOKEN!,
 })
 const msg = await client.messages.create({
@@ -310,7 +310,7 @@ docker compose up`}
           </div>
           <pre className="bg-stone-950 text-stone-100 p-4 rounded-lg text-xs font-mono overflow-x-auto">
 {`export ANTHROPIC_BASE_URL=\\
-  https://api.conductai.ai/gateway/v1/anthropic
+  https://gateway.conductai.ai/gateway/v1/anthropic
 export ANTHROPIC_API_KEY=cond_agt_...`}
           </pre>
           <p className="text-sm text-stone-600 mt-4 leading-relaxed">
