@@ -423,6 +423,20 @@ function MarketingFooter() {
               </svg>
             </a>
             <span>Made with ♥ from Houston</span>
+            <a
+              href="https://launchnest.io/p/conductai-runtime-governance-for-ai-agents"
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="ConductAI on LaunchNest"
+              className="inline-block ml-1"
+            >
+              <img
+                src="https://launchnest.io/badge/conductai-runtime-governance-for-ai-agents.svg?variant=featured"
+                alt="ConductAI on LaunchNest"
+                width={220}
+                height={56}
+              />
+            </a>
           </div>
         </div>
       </div>
