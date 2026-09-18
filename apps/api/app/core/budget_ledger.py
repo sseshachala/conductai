@@ -185,6 +185,30 @@ def _ready_key(ws, user, agent, tool, period):
     return f"budget:{ws}:{_scope_slug(user, agent, tool)}:{period}:ready"
 
 
+def _scope_keys(
+    ws: str,
+    user: str | None,
+    agent: str | None,
+    tool: str | None,
+    period: str,
+) -> dict[str, str]:
+    """Return every Redis key for a budget scope tuple in one shot.
+
+    Post Fix 1 (P1 #1) every ledger operation that touches Redis needs
+    the same four keys keyed by the same 5-tuple. This helper collapses
+    the four sibling calls into one dict lookup so a caller cannot
+    accidentally pass different scopes to reserved vs committed vs
+    res_hash vs ready — one source of truth, byte-identical output.
+    """
+    prefix = f"budget:{ws}:{_scope_slug(user, agent, tool)}:{period}"
+    return {
+        "reserved":  f"{prefix}:reserved",
+        "committed": f"{prefix}:committed",
+        "res_hash":  f"{prefix}:res",
+        "ready":     f"{prefix}:ready",
+    }
+
+
 # ── Lua scripts ──────────────────────────────────────────────────────
 #
 # Every mutating operation runs inside Lua so the check → mutation
@@ -356,16 +380,12 @@ class BudgetLedger:
             self._reservations_redis_down += 1
             return BudgetDecision.REDIS_DOWN, None
 
-        # 2) Atomic Redis reserve.
-        # Fix 1 (P1 #1): key by full scope so budgets differing only by
-        # clerk_user_id or agent_identity_id do NOT share one counter.
+        # 2) Atomic Redis reserve. Fix 1 (P1 #1): key by full scope.
+        _sk = _scope_keys(workspace_id, clerk_user_id, agent_identity_id, ai_tool, period)
         try:
             ret = self._client().eval(
                 _RESERVE_SCRIPT, 4,
-                _reserved_key(workspace_id, clerk_user_id, agent_identity_id, ai_tool, period),
-                _committed_key(workspace_id, clerk_user_id, agent_identity_id, ai_tool, period),
-                _res_hash_key(workspace_id, clerk_user_id, agent_identity_id, ai_tool, period),
-                _ready_key(workspace_id, clerk_user_id, agent_identity_id, ai_tool, period),
+                _sk["reserved"], _sk["committed"], _sk["res_hash"], _sk["ready"],
                 rid, estimated_cents, cap_cents,
                 _seconds_until_next_period(),
             )
@@ -416,23 +436,17 @@ class BudgetLedger:
         if reservation.estimated_cents <= 0:
             return
         ai_tool = None if reservation.ai_tool == "_all" else reservation.ai_tool
+        _sk = _scope_keys(
+            reservation.workspace_id,
+            reservation.clerk_user_id,
+            reservation.agent_identity_id,
+            ai_tool,
+            reservation.period_key,
+        )
         try:
             self._client().eval(
                 _RELEASE_SCRIPT, 2,
-                _reserved_key(
-                    reservation.workspace_id,
-                    reservation.clerk_user_id,
-                    reservation.agent_identity_id,
-                    ai_tool,
-                    reservation.period_key,
-                ),
-                _res_hash_key(
-                    reservation.workspace_id,
-                    reservation.clerk_user_id,
-                    reservation.agent_identity_id,
-                    ai_tool,
-                    reservation.period_key,
-                ),
+                _sk["reserved"], _sk["res_hash"],
                 reservation.reservation_id,
                 _seconds_until_next_period(),
             )
@@ -467,30 +481,17 @@ class BudgetLedger:
         if reservation.estimated_cents <= 0 and actual_cents <= 0:
             return
         ai_tool = None if reservation.ai_tool == "_all" else reservation.ai_tool
+        _sk = _scope_keys(
+            reservation.workspace_id,
+            reservation.clerk_user_id,
+            reservation.agent_identity_id,
+            ai_tool,
+            reservation.period_key,
+        )
         try:
             self._client().eval(
                 _COMMIT_SCRIPT, 3,
-                _reserved_key(
-                    reservation.workspace_id,
-                    reservation.clerk_user_id,
-                    reservation.agent_identity_id,
-                    ai_tool,
-                    reservation.period_key,
-                ),
-                _committed_key(
-                    reservation.workspace_id,
-                    reservation.clerk_user_id,
-                    reservation.agent_identity_id,
-                    ai_tool,
-                    reservation.period_key,
-                ),
-                _res_hash_key(
-                    reservation.workspace_id,
-                    reservation.clerk_user_id,
-                    reservation.agent_identity_id,
-                    ai_tool,
-                    reservation.period_key,
-                ),
+                _sk["reserved"], _sk["committed"], _sk["res_hash"],
                 reservation.reservation_id,
                 max(0, actual_cents),
                 _seconds_until_next_period(),
@@ -650,19 +651,16 @@ class BudgetLedger:
         ttl = _seconds_until_next_period()
         client = self._client()
         pipe = client.pipeline()
-        _res_key = _reserved_key(workspace_id, clerk_user_id, agent_identity_id, ai_tool, period)
-        _com_key = _committed_key(workspace_id, clerk_user_id, agent_identity_id, ai_tool, period)
-        _hash_key = _res_hash_key(workspace_id, clerk_user_id, agent_identity_id, ai_tool, period)
-        _rdy = _ready_key(workspace_id, clerk_user_id, agent_identity_id, ai_tool, period)
-        pipe.set(_com_key, committed_cents, ex=ttl)
-        pipe.delete(_res_key)
-        pipe.delete(_hash_key)
+        _sk = _scope_keys(workspace_id, clerk_user_id, agent_identity_id, ai_tool, period)
+        pipe.set(_sk["committed"], committed_cents, ex=ttl)
+        pipe.delete(_sk["reserved"])
+        pipe.delete(_sk["res_hash"])
         if reserved_total > 0:
-            pipe.set(_res_key, reserved_total, ex=ttl)
+            pipe.set(_sk["reserved"], reserved_total, ex=ttl)
         if hash_payload:
-            pipe.hset(_hash_key, mapping=hash_payload)
-            pipe.expire(_hash_key, ttl)
-        pipe.set(_rdy, "1", ex=ttl)
+            pipe.hset(_sk["res_hash"], mapping=hash_payload)
+            pipe.expire(_sk["res_hash"], ttl)
+        pipe.set(_sk["ready"], "1", ex=ttl)
         pipe.execute()
 
     def stats(self) -> dict:
