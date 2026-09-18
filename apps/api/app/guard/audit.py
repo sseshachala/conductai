@@ -221,7 +221,7 @@ def record(
                 ) VALUES (
                   CAST(:row_id AS uuid),
                   :ws, :uid, CAST(:agent_id AS uuid), :ai, NULL,
-                  'proxy', :prov, :model,
+                  'gateway', :prov, :model,
                   :dec, :rid, :ts,
                   :tin, :tout, :dur,
                   :cost, :summary, :email,
@@ -273,7 +273,7 @@ def record(
                         pass
                 notify_guard_block(db, workspace_id, decision=decision, rule_id=rule_id,
                                    user_email=_display_email or "unknown user",
-                                   provider=provider, source="proxy")
+                                   provider=provider, source="gateway")
             except Exception:
                 pass
     except Exception as e:
@@ -383,7 +383,7 @@ def insert_accepted(
                 ) VALUES (
                   CAST(:row_id AS uuid),
                   :ws, :uid, CAST(:agent_id AS uuid), :ai, NULL,
-                  'proxy', :prov, :model,
+                  'gateway', :prov, :model,
                   'accepted', NULL, :ts,
                   :tin,
                   :summary, :email,
@@ -545,7 +545,7 @@ def finalize(
                     rule_id=rule_id,
                     user_email=_display_email or "unknown user",
                     provider=provider,
-                    source="proxy",
+                    source="gateway",
                 )
             except Exception:
                 pass

@@ -334,7 +334,7 @@ def test_finalize_calls_notify_guard_block_on_blocked_decision():
     kw = _notifier.call_args.kwargs
     assert kw["decision"] == "blocked"
     assert kw["rule_id"] == "proxy-no-credential-leak"
-    assert kw["source"] == "proxy"
+    assert kw["source"] == "gateway"
 
 
 def test_finalize_does_not_notify_when_no_row_matched():

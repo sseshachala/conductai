@@ -95,7 +95,7 @@ def list_inbox(
     _perm: str = Depends(require_permission("guard.activity.view_all")),
     status_filter: InboxStatus | None = Query(default=None, alias="status"),
     severity: Literal["critical", "medium", "low"] | None = Query(default=None),
-    source: Literal["proxy", "mcp", "hook", "runtime"] | None = Query(default=None),
+    source: Literal["gateway", "proxy", "mcp", "hook", "runtime"] | None = Query(default=None),
     limit: int = Query(default=100, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),

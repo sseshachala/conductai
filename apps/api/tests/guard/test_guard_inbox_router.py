@@ -71,7 +71,7 @@ def _row(status="open", resolved_reason=None, resolved_at=None, resolved_by=None
     r.workspace_id = uuid.UUID(WS_ID)
     r.dedup_key = "abc" * 16
     r.rule_id = "proxy-no-prompt-injection"
-    r.source = "proxy"
+    r.source = "gateway"
     r.severity = "critical"
     r.description = "Prompt injection pattern detected."
     r.occurrences = 7
