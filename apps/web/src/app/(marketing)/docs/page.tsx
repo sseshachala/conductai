@@ -372,7 +372,7 @@ function TabGettingStarted() {
           {[
             { name: "SaaS", icon: "☁️", desc: "Managed by Conduct. Up in minutes, no infra required. Default for most teams." },
             { name: "BYOC", icon: "🏢", desc: "Runs inside your AWS, GCP, or Azure account. Data stays in your cloud boundary." },
-            { name: "On-premise", icon: "🔒", desc: "Air-gapped deployment. Nothing leaves your network. Available on Enterprise." },
+            { name: "On-premise", icon: "🔒", desc: "Docker self-hosted shipped. Fully air-gapped installs are running with design partners — not yet GA." },
           ].map(t => (
             <div key={t.name} className="rounded-xl border border-stone-200 bg-stone-50 px-4 py-3">
               <p className="font-semibold text-stone-800 text-sm">{t.icon} {t.name}</p>

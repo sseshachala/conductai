@@ -128,10 +128,11 @@ export default function MCPPage() {
           <h2 className="text-lg font-bold text-stone-900 mb-4">What Guard brings to MCP</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 text-sm text-stone-600">
             <div>
-              <p className="font-semibold text-stone-900 mb-2">Tool discovery and registration</p>
+              <p className="font-semibold text-stone-900 mb-2">MCP transport + OAuth discovery</p>
               <p className="leading-relaxed">
-                Conduct exposes a <span className="font-mono text-stone-700">.well-known/mcp.json</span> endpoint.
-                MCP clients can discover and register Guard-wrapped servers automatically.
+                Conduct exposes MCP over Streamable HTTP at <span className="font-mono text-stone-700">/mcp</span>, with
+                OAuth 2.1 protected-resource discovery at <span className="font-mono text-stone-700">/.well-known/oauth-protected-resource/mcp</span>.
+                Register the URL once; the server advertises capabilities and Guard-wrapped tools per session.
               </p>
             </div>
             <div>
