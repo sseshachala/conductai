@@ -7,10 +7,19 @@ published profile, then reports latency distribution, status
 breakdown, and an estimated dollar cost.
 
 Safety belts (always on):
-  - Max wall time (default 90s)
+  - ``--max-wall`` — whole-run wall-clock budget (default 90s)
+  - ``--request-timeout`` — per-request client-side deadline (default 30s);
+    independent from ``--max-wall``
   - Max total requests (--total)
-  - Kill switch when non-2xx rate > 5% AND at least 20 requests fired
+  - Kill switch when the *real-error* rate > 5% AND at least 20 requests
+    fired. Conduct admission refusals (our 429 backpressure layer) are
+    excluded by default — they mean the service protected itself, not
+    failed. Pass ``--kill-on-admission`` to count them.
   - Small ``max_tokens`` so provider cost stays bounded
+
+Report separates status codes from *categories*: admission-refused vs
+budget-refused vs upstream-rate-limit vs upstream-5xx vs client_timeout.
+Correlate categories with Flight Recorder before increasing load.
 
 Usage:
     scripts/stress_gateway.py cond-6zq8mzpc-claude-sonnet \\
@@ -62,10 +71,41 @@ def _load_creds() -> tuple[str, str]:
 _CLEAN_PROMPT = "Reply with the single word: pong"
 
 
-async def _fire_one_async(session, url, headers, body):
+def _classify_error(status: int, body: bytes) -> str:
+    """Bucket a non-2xx response so the report separates admission
+    refusals (our layer) from upstream rate limits, client timeouts,
+    and unclassified errors. Reads the body prefix — Conduct admission
+    refusals include ``conduct_gateway_admission_refused`` verbatim.
+    """
+    if 200 <= status < 300:
+        return "ok"
+    if status == 599:
+        return "client_timeout"
+    if status == 598:
+        return "client_error"
+    snippet = body[:256].decode("utf-8", "replace") if body else ""
+    if "conduct_gateway_admission_refused" in snippet:
+        return "conduct_admission_refused"
+    if "budget_reservation_refused" in snippet:
+        return "conduct_budget_refused"
+    if status == 429:
+        return "upstream_rate_limit"
+    if status == 503:
+        return "upstream_unavailable"
+    if 500 <= status < 600:
+        return "upstream_5xx"
+    if 400 <= status < 500:
+        return "client_4xx"
+    return "other"
+
+
+async def _fire_one_async(session, url, headers, body, request_timeout):
     t0 = time.monotonic()
     try:
-        async with session.post(url, headers=headers, json=body) as r:
+        async with session.post(
+            url, headers=headers, json=body,
+            timeout=aiohttp.ClientTimeout(total=request_timeout),
+        ) as r:
             data = await r.read()
             return r.status, time.monotonic() - t0, data
     except asyncio.TimeoutError:
@@ -75,10 +115,13 @@ async def _fire_one_async(session, url, headers, body):
 
 
 async def _run_async(url, token, model, total, concurrency, max_tokens,
-                     use_stream, max_wall, prompt):
+                     use_stream, max_wall, prompt, request_timeout,
+                     include_admission_in_kill):
     sem = asyncio.Semaphore(concurrency)
     latencies: list[float] = []
     statuses: Counter = Counter()
+    categories: Counter = Counter()
+    admission_sample: str | None = None
     input_tokens_seen = 0
     output_tokens_seen = 0
     # Fix 8 (P1 #8): track the actual stop reason instead of reconstructing
@@ -97,11 +140,14 @@ async def _run_async(url, token, model, total, concurrency, max_tokens,
 
     headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 
-    timeout = aiohttp.ClientTimeout(total=30)
-    async with aiohttp.ClientSession(timeout=timeout) as session:
+    # Session-wide timeout is a hard ceiling; each request gets its own
+    # ``request_timeout`` so ``--max-wall`` (whole-run) and per-request
+    # deadlines are independent.
+    async with aiohttp.ClientSession() as session:
 
         async def _bounded_fire(_i: int):
             nonlocal stop_reason, input_tokens_seen, output_tokens_seen
+            nonlocal admission_sample
             if stop_reason is not None or time.monotonic() - started > max_wall:
                 if stop_reason is None and time.monotonic() - started > max_wall:
                     stop_reason = "wall_clock"
@@ -112,10 +158,14 @@ async def _run_async(url, token, model, total, concurrency, max_tokens,
                         stop_reason = "wall_clock"
                     return
                 status, lat, resp = await _fire_one_async(
-                    session, url, headers, body_template
+                    session, url, headers, body_template, request_timeout,
                 )
             latencies.append(lat)
             statuses[status] += 1
+            category = _classify_error(status, resp)
+            categories[category] += 1
+            if category == "conduct_admission_refused" and admission_sample is None:
+                admission_sample = resp[:200].decode("utf-8", "replace")
             if status == 200 and not use_stream:
                 try:
                     payload = json.loads(resp)
@@ -126,10 +176,21 @@ async def _run_async(url, token, model, total, concurrency, max_tokens,
                     pass
             fired = sum(statuses.values())
             if fired >= 20:
-                bad = sum(v for k, v in statuses.items() if not (200 <= k < 300))
+                # Distinguish admission-mediated backpressure from real
+                # errors. When admission is protecting the service, 429s
+                # from our layer aren't the same signal as upstream 5xx.
+                if include_admission_in_kill:
+                    bad = sum(v for k, v in statuses.items() if not (200 <= k < 300))
+                else:
+                    bad = sum(
+                        v for cat, v in categories.items()
+                        if cat not in ("ok", "conduct_admission_refused")
+                    )
                 if bad / fired > 0.05 and stop_reason is None:
                     print(
-                        f"\n  kill-switch: non-2xx rate {bad/fired:.1%} at {fired} requests",
+                        f"\n  kill-switch: real-error rate {bad/fired:.1%} "
+                        f"at {fired} requests"
+                        f"{' (admission refusals not counted)' if not include_admission_in_kill else ''}",
                         file=sys.stderr,
                     )
                     stop_reason = "error_rate"
@@ -137,10 +198,12 @@ async def _run_async(url, token, model, total, concurrency, max_tokens,
         tasks = [_bounded_fire(i) for i in range(total)]
         await asyncio.gather(*tasks)
 
-    return latencies, statuses, input_tokens_seen, output_tokens_seen, stop_reason
+    return (latencies, statuses, categories, admission_sample,
+            input_tokens_seen, output_tokens_seen, stop_reason)
 
 
-def _report(latencies, statuses, input_tok, output_tok, stop_reason, wall):
+def _report(latencies, statuses, categories, admission_sample,
+            input_tok, output_tok, stop_reason, wall):
     fired = sum(statuses.values())
     print()
     print(f"=== Stress report — {fired} requests in {wall:.1f}s ===")
@@ -162,6 +225,26 @@ def _report(latencies, statuses, input_tok, output_tok, stop_reason, wall):
     for status, n in sorted(statuses.items()):
         marker = "OK" if 200 <= status < 300 else ("BLK" if status == 451 else "ERR")
         print(f"    [{marker}] {status}: {n}")
+    if categories:
+        print("  categories:")
+        _cat_order = [
+            "ok",
+            "conduct_admission_refused",
+            "conduct_budget_refused",
+            "upstream_rate_limit",
+            "upstream_unavailable",
+            "upstream_5xx",
+            "client_4xx",
+            "client_timeout",
+            "client_error",
+            "other",
+        ]
+        for cat in _cat_order:
+            n = categories.get(cat, 0)
+            if n:
+                print(f"    {cat:32s} {n}")
+    if admission_sample:
+        print(f"  admission_body_sample  {admission_sample}")
     if input_tok or output_tok:
         cost = (
             input_tok  * _SONNET_INPUT_PER_MTOK  / 1_000_000 +
@@ -190,7 +273,18 @@ def main() -> int:
     ap.add_argument("--max-tokens", type=int, default=5)
     ap.add_argument("--stream", action="store_true")
     ap.add_argument("--provider", choices=["anthropic", "openai"], default="anthropic")
-    ap.add_argument("--max-wall", type=int, default=90)
+    ap.add_argument("--max-wall", type=int, default=90,
+                    help="Whole-run wall-clock budget in seconds. Independent "
+                         "from --request-timeout.")
+    ap.add_argument("--request-timeout", type=int, default=30,
+                    help="Per-request client timeout in seconds. Requests "
+                         "exceeding this are recorded as client_timeout "
+                         "(status 599). Independent from --max-wall.")
+    ap.add_argument("--kill-on-admission", action="store_true",
+                    help="Count Conduct admission refusals (429 with body "
+                         "``conduct_gateway_admission_refused``) toward the "
+                         "5%% kill-switch. Default is to exclude them: "
+                         "admission is protecting the service, not failing.")
     ap.add_argument("--prompt-env", default=None,
                     help="Env var holding the prompt to send (default: hard-coded pong)")
     args = ap.parse_args()
@@ -230,6 +324,8 @@ def main() -> int:
             max_tokens=args.max_tokens,
             use_stream=args.stream, max_wall=args.max_wall,
             prompt=prompt,
+            request_timeout=args.request_timeout,
+            include_admission_in_kill=args.kill_on_admission,
         ))
     except KeyboardInterrupt:
         print("\n^C — cancelled", file=sys.stderr)
