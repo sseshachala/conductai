@@ -250,11 +250,40 @@ def test_kill_switch_default_off(monkeypatch):
 # ── NOT_READY before reconcile ─────────────────────────────────────
 # Reviewer P1 #3.
 
-def test_reserve_before_reconcile_is_not_ready(ledger, db):
-    """Cold worker with no reconcile ⇒ reserve must refuse with
-    NOT_READY, not blind-INCR a counter that may be missing open
-    reservations from a previous instance."""
+def test_reserve_before_reconcile_self_heals(ledger, db):
+    """Cold worker on a scope the startup reconciler never enumerated
+    (new workspace, first hit ever) must self-heal by calling
+    ``reconcile()`` inline once, not sit at NOT_READY forever.
+
+    Before self-heal, prod gateways for brand-new workspaces returned
+    503 ``budget_reservation_refused / not_ready`` on every request
+    because the startup reconciler only enumerates scopes that already
+    have rows in ``budget_reservations`` or ``guard_audit_events``.
+    """
     from app.core.budget_ledger import BudgetDecision
+
+    ws = str(uuid.uuid4())
+    decision, res = ledger.reserve(
+        db=db, workspace_id=ws, ai_tool=None,
+        estimated_cents=100, cap_cents=1000,
+    )
+    assert decision == BudgetDecision.ACCEPTED
+    assert res is not None
+    # After self-heal, the durable row from THIS reserve is the only
+    # open row for the scope.
+    assert len(db.open_rows_for(ws, None, _current_period())) == 1
+
+
+def test_reserve_stays_not_ready_when_self_heal_raises(ledger, db, monkeypatch):
+    """If the inline reconcile itself blows up (DB unreachable etc.),
+    the Lua's own :ready check must still fail-closed with NOT_READY.
+    Never accept blind."""
+    from app.core.budget_ledger import BudgetDecision
+
+    def _boom(*a, **kw):
+        raise RuntimeError("simulated DB outage during reconcile")
+
+    monkeypatch.setattr(ledger, "reconcile", _boom)
 
     ws = str(uuid.uuid4())
     decision, res = ledger.reserve(
@@ -263,7 +292,7 @@ def test_reserve_before_reconcile_is_not_ready(ledger, db):
     )
     assert decision == BudgetDecision.NOT_READY
     assert res is None
-    # Durable log must not have been polluted with a phantom row.
+    # Phantom durable row from the failed attempt must be cleaned up.
     assert len(db.open_rows_for(ws, None, _current_period())) == 0
 
 
