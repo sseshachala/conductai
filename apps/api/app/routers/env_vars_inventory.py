@@ -52,12 +52,33 @@ class CollisionDetail(BaseModel):
     # (hard collision) or just holds the target handle (soft — the field
     # slot is free, but the row identity contract still needs care).
     field_already_present: bool
+    # True when the destination row's ciphertext failed to decrypt: we
+    # can't tell whether the field is present or not, so migration must
+    # not treat the slot as free. Operator has to unblock manually.
+    destination_unreadable: bool = False
 
 
 class InventoryFieldOut(BaseModel):
     name: str
+    # Classification the operator should act on:
+    #  - "reroutable" — canonical mapping exists and the target is free.
+    #  - "collision"  — canonical mapping exists but target is occupied.
+    #  - "needs_review" — no exact mapping. Includes case-insensitive
+    #    matches (name differs from canonical only in case) and unknown
+    #    provider-shaped names. Reviewer's contract: unmapped ≠ safe.
+    #  - "unreadable" — the source row's ciphertext could not be decrypted;
+    #    field name is best-effort and the operator must inspect manually.
+    status: str
     suggested_reroute: SuggestedReroute | None
     collision: CollisionDetail | None
+    # Present when we matched a canonical name only after case-normalising
+    # the source. Never auto-migrate on a case-only match — the reviewer
+    # explicitly said no blind uppercasing. Operator confirms.
+    canonical_name_hint: str | None = None
+    # When another source field in the same workspace inventory also
+    # targets the same (handle, field), this field is flagged so migration
+    # can't collapse two sources into one destination silently.
+    many_to_one_conflict_with: list[str] = []
 
 
 class InventoryEnvVarsRowOut(BaseModel):
@@ -76,8 +97,11 @@ class InventoryReport(BaseModel):
     total_env_vars_rows: int
     total_env_vars_fields: int
     reroutable_field_count: int
-    unreroutable_field_count: int
+    # Fields we can't safely classify without operator input — see the
+    # per-field ``status`` for the specific reason.
+    needs_review_field_count: int
     collision_count: int
+    unreadable_source_count: int
     environments: list[InventoryEnvironmentOut]
 
 
@@ -100,15 +124,20 @@ def _target_row_for(
     ).first()
 
 
-def _decrypt_fields(row: Integration) -> dict[str, str]:
-    """Best-effort field-name extraction. Never returns values to callers."""
+def _decrypt_fields(row: Integration) -> dict[str, str] | None:
+    """Return the row's decrypted field names, or None if unreadable.
+
+    Callers use ``None`` to mean "we can't tell what's in there" so
+    downstream classification never silently treats an unreadable target
+    as a free slot. Values are dropped immediately after keys are extracted.
+    """
     if not row.encrypted_credentials:
         return {}
     try:
         blob = decrypt(row.encrypted_credentials) or {}
         return dict(blob) if isinstance(blob, dict) else {}
     except Exception:
-        return {}
+        return None
 
 
 def _classify_field(
@@ -116,25 +145,78 @@ def _classify_field(
     workspace_id: str,
     environment_id,
     field_name: str,
-) -> tuple[SuggestedReroute | None, CollisionDetail | None]:
-    """Suggest a reroute + report any collision. Field names only."""
-    mapped = _ENV_VAR_MAP.get(field_name)
-    if not mapped:
-        # No canonical mapping — legitimate arbitrary variable. Leave in
-        # ``env_vars``; the epic explicitly wants this class untouched.
-        return None, None
-    target_handle, target_field = mapped
-    suggestion = SuggestedReroute(handle=target_handle, field=target_field)
+    source_readable: bool,
+) -> InventoryFieldOut:
+    """Classify one env_vars bag field. Field names only.
 
-    existing = _target_row_for(db, workspace_id, environment_id, target_handle)
-    if existing is None:
-        return suggestion, None
-    existing_fields = _decrypt_fields(existing)
-    return suggestion, CollisionDetail(
-        handle=target_handle,
-        field=target_field,
-        existing_integration_id=str(existing.id),
-        field_already_present=target_field in existing_fields,
+    Rules (per reviewer contract):
+    - Unmapped fields default to ``needs_review`` — never ``custom_variable``.
+      The operator confirms which unmapped fields are legitimate custom
+      variables; the inventory only surfaces facts.
+    - Case-insensitive matches (e.g. ``github_token`` → ``GITHUB_TOKEN``)
+      never auto-migrate. Flagged as ``needs_review`` with
+      ``canonical_name_hint`` so the operator can decide.
+    - Unreadable source blob → ``unreadable``. Migration must skip.
+    - Collision destination row unreadable → destination_unreadable=True
+      on the collision, so migration can't treat it as "field is free".
+    """
+    if not source_readable:
+        return InventoryFieldOut(
+            name=field_name,
+            status="unreadable",
+            suggested_reroute=None,
+            collision=None,
+        )
+
+    mapped = _ENV_VAR_MAP.get(field_name)
+    if mapped:
+        target_handle, target_field = mapped
+        suggestion = SuggestedReroute(handle=target_handle, field=target_field)
+        existing = _target_row_for(db, workspace_id, environment_id, target_handle)
+        if existing is None:
+            return InventoryFieldOut(
+                name=field_name,
+                status="reroutable",
+                suggested_reroute=suggestion,
+                collision=None,
+            )
+        existing_fields = _decrypt_fields(existing)
+        destination_unreadable = existing_fields is None
+        return InventoryFieldOut(
+            name=field_name,
+            status="collision",
+            suggested_reroute=suggestion,
+            collision=CollisionDetail(
+                handle=target_handle,
+                field=target_field,
+                existing_integration_id=str(existing.id),
+                # An unreadable destination MUST NOT report the slot as free.
+                field_already_present=(
+                    True if destination_unreadable
+                    else target_field in (existing_fields or {})
+                ),
+                destination_unreadable=destination_unreadable,
+            ),
+        )
+
+    # No exact mapping. Try a case-insensitive match; if found, still
+    # ``needs_review`` — reviewer explicitly disallowed blind uppercasing.
+    upper = field_name.upper()
+    if upper != field_name and upper in _ENV_VAR_MAP:
+        return InventoryFieldOut(
+            name=field_name,
+            status="needs_review",
+            suggested_reroute=None,
+            collision=None,
+            canonical_name_hint=upper,
+        )
+    # Truly unmapped. Reviewer contract: unmapped means "needs
+    # classification", not "legitimate custom variable". Operator decides.
+    return InventoryFieldOut(
+        name=field_name,
+        status="needs_review",
+        suggested_reroute=None,
+        collision=None,
     )
 
 
@@ -163,27 +245,30 @@ def inventory_env_vars(
         Integration.handle == "env_vars",
     ).order_by(Integration.environment_id, Integration.created_at).all()
 
-    # Cheap env name lookup — a single query beats N per-row queries.
+    # Workspace-scoped env name lookup — the JOIN prevents a
+    # malformed integration.environment_id from surfacing another
+    # workspace's env metadata.
     env_ids = {r.environment_id for r in env_vars_rows if r.environment_id is not None}
     env_name_by_id: dict = {}
     if env_ids:
-        for e in db.query(Environment).filter(Environment.id.in_(env_ids)).all():
+        for e in db.query(Environment).filter(
+            Environment.id.in_(env_ids),
+            Environment.workspace_id == workspace_id,
+        ).all():
             env_name_by_id[e.id] = e.name
 
     per_env: dict = {}
+    # First pass: classify every field independently.
     for row in env_vars_rows:
         env_id = row.environment_id
         bucket = per_env.setdefault(env_id, [])
-        fields_out: list[InventoryFieldOut] = []
-        for field_name in _decrypt_fields(row):
-            suggestion, collision = _classify_field(
-                db, workspace_id, env_id, field_name,
-            )
-            fields_out.append(InventoryFieldOut(
-                name=field_name,
-                suggested_reroute=suggestion,
-                collision=collision,
-            ))
+        decrypted = _decrypt_fields(row)
+        source_readable = decrypted is not None
+        field_names = list((decrypted or {}).keys())
+        fields_out: list[InventoryFieldOut] = [
+            _classify_field(db, workspace_id, env_id, name, source_readable)
+            for name in field_names
+        ]
         bucket.append(InventoryEnvVarsRowOut(
             integration_id=str(row.id),
             field_count=len(fields_out),
@@ -199,6 +284,33 @@ def inventory_env_vars(
         for env_id, rows in per_env.items()
     ]
 
+    # Second pass: many-to-one detection. If two source fields (across
+    # any env_vars bag in the workspace) both suggest the same
+    # ``(handle, field)`` destination, flag them so migration can't
+    # collapse them silently. Reviewer's #5 defect: without this,
+    # GITHUB_TOKEN and GITHUB_PAT both look independently reroutable.
+    target_index: dict[tuple[str, str], list[str]] = {}
+    for env in environments:
+        for r in env.env_vars_rows:
+            for f in r.fields:
+                if f.suggested_reroute is None:
+                    continue
+                key = (f.suggested_reroute.handle, f.suggested_reroute.field)
+                target_index.setdefault(key, []).append(f.name)
+    for env in environments:
+        for r in env.env_vars_rows:
+            for f in r.fields:
+                if f.suggested_reroute is None:
+                    continue
+                key = (f.suggested_reroute.handle, f.suggested_reroute.field)
+                others = [n for n in target_index[key] if n != f.name]
+                if others:
+                    f.many_to_one_conflict_with = others
+                    # A many-to-one is not safely reroutable even if the
+                    # destination row itself doesn't exist yet.
+                    if f.status == "reroutable":
+                        f.status = "collision"
+
     total_rows = len(env_vars_rows)
     total_fields = sum(r.field_count for env in environments for r in env.env_vars_rows)
     reroutable = sum(
@@ -206,28 +318,36 @@ def inventory_env_vars(
         for env in environments
         for r in env.env_vars_rows
         for f in r.fields
-        if f.suggested_reroute is not None and f.collision is None
+        if f.status == "reroutable"
     )
-    unreroutable = sum(
+    needs_review = sum(
         1
         for env in environments
         for r in env.env_vars_rows
         for f in r.fields
-        if f.suggested_reroute is None
+        if f.status == "needs_review"
     )
     collisions = sum(
         1
         for env in environments
         for r in env.env_vars_rows
         for f in r.fields
-        if f.collision is not None
+        if f.status == "collision"
+    )
+    unreadable = sum(
+        1
+        for env in environments
+        for r in env.env_vars_rows
+        for f in r.fields
+        if f.status == "unreadable"
     )
 
     return InventoryReport(
         total_env_vars_rows=total_rows,
         total_env_vars_fields=total_fields,
         reroutable_field_count=reroutable,
-        unreroutable_field_count=unreroutable,
+        needs_review_field_count=needs_review,
         collision_count=collisions,
+        unreadable_source_count=unreadable,
         environments=environments,
     )

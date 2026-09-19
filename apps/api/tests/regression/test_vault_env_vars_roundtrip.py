@@ -813,3 +813,42 @@ def test_delete_last_field_promotes_to_row_delete_so_recreate_works(
         assert _decrypted(row) == {"token": "sen-recreated"}
     finally:
         _cleanup(ws_id, env_id)
+
+
+
+# --- 15. Adding a new field to an existing env_vars bag doesn't 409 ---
+
+
+def test_new_field_can_piggyback_on_existing_bag_revision(client, seeded_workspace):
+    """Screenshot bug: env_vars bag has revision=N holding e2b_api_key.
+    User adds a new field to the same bag; new item has no
+    expected_revision (client didn't know about the row). Previous logic
+    treated (N, None) as disagreement and 409'd. Fix: non-null revisions
+    must all agree; None piggybacks.
+    """
+    ws_id, _token = seeded_workspace
+    env_id = _seed_environment(ws_id)
+    try:
+        _seed_integration(
+            ws_id, env_id, "env_vars", {"e2b_api_key": "opaque-existing"},
+        )
+        r = client.put(
+            f"/credentials/env-vars/{env_id}?workspace_id={ws_id}",
+            json=[
+                {
+                    "key": "e2b_api_key", "value": "opaque-existing",
+                    "handle": "env_vars", "field": "e2b_api_key",
+                    "expected_revision": 1,
+                },
+                # New item: no handle/field/revision. Server resolves to
+                # (env_vars, MY_NEW_KEY) via alias fallback and piggybacks
+                # on the group's expected_revision (1).
+                {"key": "MY_NEW_KEY", "value": "opaque-new"},
+            ],
+        )
+        assert r.status_code == 200, r.text
+        row = _list_row(ws_id, env_id, "env_vars")
+        merged = _decrypted(row)
+        assert merged == {"e2b_api_key": "opaque-existing", "MY_NEW_KEY": "opaque-new"}
+    finally:
+        _cleanup(ws_id, env_id)
