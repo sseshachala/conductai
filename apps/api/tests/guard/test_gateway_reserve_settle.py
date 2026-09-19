@@ -307,6 +307,41 @@ def test_settle_dispatched_with_actual_cents_commits():
     fake_ledger.release_all.assert_not_called()
 
 
+def test_reserve_accepts_and_forwards_estimated_micros():
+    # Regression: gateway_handler passes ``estimated_micros=`` at every call
+    # site (R9). If this helper's signature drops it, every gateway request
+    # 503s with ``reserve raised: TypeError``. Cover that the kwarg is
+    # accepted AND forwarded to reserve_all so microdollar precision reaches
+    # the ledger.
+    fake_ledger = MagicMock()
+    fake_ledger.reserve_all.return_value = (
+        __import__("app.core.budget_ledger", fromlist=["BudgetDecision"]).BudgetDecision.ACCEPTED,
+        [],
+        None,
+    )
+    with patch("app.core.budget_ledger.enabled", return_value=True), \
+         patch("app.core.budget_ledger.enabled_for", return_value=True), \
+         patch("app.core.budget_ledger.get_budget_ledger", return_value=fake_ledger), \
+         patch(
+             "app.modules.guard.spend_lookup.lookup_applicable_budgets",
+             return_value=[],
+         ):
+        result = reserve_budgets_for_request(
+            db=MagicMock(),
+            workspace_id=WORKSPACE_ID,
+            agent_identity_id=AGENT_A,
+            transport="gateway",
+            client_tool="cursor",
+            clerk_user_id=None,
+            estimated_cents=1,
+            estimated_micros=7_500,
+            request_id=str(uuid.uuid4()),
+        )
+    assert result.outcome is ReserveOutcome.ACCEPTED_NO_HARD_CAP
+    call = fake_ledger.reserve_all.call_args
+    assert call.kwargs["estimated_micros"] == 7_500
+
+
 def test_settle_dispatched_without_actual_cents_marks_pending_reconciler():
     """LOAD-BEARING: bytes flew, outcome unknown -> DO NOT release.
     Reconciler owns cleanup via lease expiry."""

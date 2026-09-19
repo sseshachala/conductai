@@ -363,6 +363,7 @@ def reserve_budgets_for_request(
     clerk_user_id: str | None,
     estimated_cents: int,
     request_id: str,
+    estimated_micros: int | None = None,
 ) -> ReserveBudgetsResult:
     """Reserve all applicable hard-cap budgets for a request.
 
@@ -435,6 +436,7 @@ def reserve_budgets_for_request(
             workspace_id=workspace_id,
             applicable_budgets=applicable,
             estimated_cents=estimated_cents,
+            estimated_micros=estimated_micros,
             agent_identity_id=agent_identity_id,
             source=transport,
             client_tool=client_tool,
