@@ -49,14 +49,42 @@ class CredentialStore:
 
 
 def get_credential(db, workspace_id: str, handle: str, environment_id=None) -> dict:
-    """Fetch and decrypt a single integration by handle. Returns {} if not found."""
+    """Fetch and decrypt a single integration by handle. Returns ``{}`` if not found.
+
+    Resolution policy (part of #2054 Phase 1 — retrieval clarity):
+
+    - ``environment_id`` supplied → strict lookup in that env only.
+    - No env supplied → **documented Default-first fallback**:
+        1. Row scoped to the workspace's ``Default`` environment.
+        2. Then a workspace-level unscoped row (``environment_id IS NULL``).
+        3. Never an arbitrary ``.first()`` across every environment — that
+           is the P1-3 defect the reviewer flagged. Cross-env matches are
+           unreliable and can leak a rotated staging key into a prod path.
+
+    Callers that legitimately need a cross-env lookup MUST pass an explicit
+    env; the ambient background-worker paths (email, watchdog, Slack
+    webhooks) get the Default row instead of whatever ``.first()`` returned.
+    """
     q = db.query(Integration).filter(
         Integration.workspace_id == workspace_id,
         Integration.handle == handle,
     )
     if environment_id:
-        q = q.filter(Integration.environment_id == environment_id)
-    row = q.first()
+        row = q.filter(Integration.environment_id == environment_id).first()
+    else:
+        from app.models.environment import Environment
+        default_env = db.query(Environment).filter(
+            Environment.workspace_id == workspace_id,
+            Environment.name == "Default",
+        ).first()
+        row = None
+        if default_env is not None:
+            row = q.filter(Integration.environment_id == default_env.id).first()
+        # Fall back to workspace-level (env-agnostic) rows so callers that
+        # predate environments (proxy_config, agent_identity token bag)
+        # still resolve. Still never an arbitrary cross-env first-match.
+        if row is None:
+            row = q.filter(Integration.environment_id.is_(None)).first()
     if not row or not row.encrypted_credentials:
         return {}
     return decrypt(row.encrypted_credentials) or {}

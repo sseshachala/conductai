@@ -64,9 +64,17 @@ _ENV_VAR_MAP: dict[str, tuple[str, str]] = {
     "VERCEL_TOKEN":       ("vercel",       "token"),
     "MODAL_TOKEN_ID":     ("modal",        "token_id"),
     "MODAL_TOKEN_SECRET": ("modal",        "token_secret"),
-    # AI
+    # AI — only entries with a real runtime consumer. Anthropic + OpenAI
+    # are natively certified in ``capability_catalog``. OpenRouter is
+    # certified as an HTTP passthrough. Perplexity is a legacy entry from
+    # the pre-catalog era.
     "ANTHROPIC_API_KEY":  ("anthropic",    "api_key"),
+    "OPENAI_API_KEY":     ("openai",       "api_key"),
+    "OPENROUTER_API_KEY": ("openrouter",   "api_key"),
     "PERPLEXITY_API_KEY": ("perplexity",   "api_key"),
+    # Observability — mirrors ``runtime/mcp_credentials._SERVER_CRED_MAP``.
+    "SENTRY_TOKEN":       ("sentry",       "token"),
+    "DATADOG_API_KEY":    ("datadog",      "api_key"),
     # Email
     "RESEND_API_KEY":     ("email",        "resend_api_key"),
     "SENDGRID_API_KEY":   ("email",        "sendgrid_api_key"),
@@ -272,11 +280,16 @@ def save_env_vars(
         ).first()
 
         if existing:
-            # Concurrency guard — every item on this handle MUST agree on the
-            # same expected_revision. A mixed batch (rev=1 + rev=2 with actual=2)
-            # would let a stale write ride the coattails of a current one.
-            expected_revs = {i.expected_revision for _f, i in items}
-            if None in expected_revs or len(expected_revs) != 1:
+            # Concurrency guard — every explicitly-carried expected_revision
+            # on this handle MUST agree with the others. Items without one
+            # (a new field the user just added to an existing bag) piggyback
+            # on the group's revision. Legacy-client with NO revisions at
+            # all is rejected so a stale save can't sneak through.
+            explicit = {
+                i.expected_revision for _f, i in items
+                if i.expected_revision is not None
+            }
+            if len(explicit) > 1:
                 raise HTTPException(
                     status_code=409,
                     detail={
@@ -285,7 +298,16 @@ def save_env_vars(
                         "current_revision": existing.revision,
                     },
                 )
-            expected_rev = next(iter(expected_revs))
+            if not explicit:
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "code": "expected_revision_required",
+                        "handle": handle,
+                        "current_revision": existing.revision,
+                    },
+                )
+            expected_rev = next(iter(explicit))
             # Build the merged blob against the row we just read. Rejection
                 # happens later via a conditional UPDATE so two racing writers
                 # can't both pass this check and clobber each other.

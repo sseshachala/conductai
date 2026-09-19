@@ -90,17 +90,26 @@ def upsert_credential(body: CredentialUpsert, db: Session = Depends(get_db), wor
 
     auth_method = "api_key" if "api_key" in body.credentials else "oauth"
 
-    # Resolve environment: explicit ID > Default environment > error
+    # Resolve environment: explicit ID > Default environment > error.
+    # Always verify workspace ownership of the resolved env, otherwise a
+    # cross-workspace environment_id in the payload would write a row
+    # against another tenant's environment.
+    from app.models.environment import Environment
     if body.environment_id:
-        env_id = body.environment_id
+        env = db.query(Environment).filter(
+            Environment.id == body.environment_id,
+            Environment.workspace_id == workspace_id,
+        ).first()
+        if not env:
+            # 404 leaks nothing about whether the env exists elsewhere.
+            raise HTTPException(status_code=404, detail="Environment not found")
+        env_id = str(env.id)
     else:
-        from app.models.environment import Environment
         default_env = db.query(Environment).filter(
             Environment.workspace_id == workspace_id,
             Environment.name == "Default",
         ).first()
         if not default_env:
-            from fastapi import HTTPException
             raise HTTPException(
                 status_code=422,
                 detail="No Default environment found. Create an environment first in Settings → Environments.",

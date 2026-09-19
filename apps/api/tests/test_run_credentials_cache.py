@@ -88,3 +88,23 @@ class TestFetchCredentialCacheFirst:
         with patch("httpx.post", side_effect=Exception("connection reset")):
             result = fetch_credential("cond_cred_exc", "anthropic", "http://api")
             assert result == {}
+
+
+
+def test_cache_ttl_expires_and_forces_broker_recheck(monkeypatch):
+    """P1-3 second half: process-local cache used to serve indefinitely,
+    bypassing the broker's per-call expiry + use-count. A coarse TTL
+    bounds the staleness window - after it, resolve() returns None so
+    the caller round-trips to the broker."""
+    monkeypatch.setattr(run_credentials, "_CACHE_TTL_SEC", 0.05)
+    run_credentials._CACHE.clear()
+    run_credentials.populate("cond_run_test", {"anthropic": {"api_key": "cached"}})
+    assert run_credentials.resolve("cond_run_test", "anthropic") == {"api_key": "cached"}
+
+    import time as _time
+    _time.sleep(0.07)
+    assert run_credentials.resolve("cond_run_test", "anthropic") is None, (
+        "resolve returned a stale snapshot past the TTL - the broker will "
+        "never get a chance to enforce expiry/use-count."
+    )
+    run_credentials.purge("cond_run_test")

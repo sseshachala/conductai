@@ -813,3 +813,122 @@ def test_delete_last_field_promotes_to_row_delete_so_recreate_works(
         assert _decrypted(row) == {"token": "sen-recreated"}
     finally:
         _cleanup(ws_id, env_id)
+
+
+
+# --- 15. Adding a new field to an existing env_vars bag doesn't 409 ---
+
+
+def test_new_field_can_piggyback_on_existing_bag_revision(client, seeded_workspace):
+    """Screenshot bug: env_vars bag has revision=N holding e2b_api_key.
+    User adds a new field to the same bag; new item has no
+    expected_revision (client didn't know about the row). Previous logic
+    treated (N, None) as disagreement and 409'd. Fix: non-null revisions
+    must all agree; None piggybacks.
+    """
+    ws_id, _token = seeded_workspace
+    env_id = _seed_environment(ws_id)
+    try:
+        _seed_integration(
+            ws_id, env_id, "env_vars", {"e2b_api_key": "opaque-existing"},
+        )
+        r = client.put(
+            f"/credentials/env-vars/{env_id}?workspace_id={ws_id}",
+            json=[
+                {
+                    "key": "e2b_api_key", "value": "opaque-existing",
+                    "handle": "env_vars", "field": "e2b_api_key",
+                    "expected_revision": 1,
+                },
+                # New item: no handle/field/revision. Server resolves to
+                # (env_vars, MY_NEW_KEY) via alias fallback and piggybacks
+                # on the group's expected_revision (1).
+                {"key": "MY_NEW_KEY", "value": "opaque-new"},
+            ],
+        )
+        assert r.status_code == 200, r.text
+        row = _list_row(ws_id, env_id, "env_vars")
+        merged = _decrypted(row)
+        assert merged == {"e2b_api_key": "opaque-existing", "MY_NEW_KEY": "opaque-new"}
+    finally:
+        _cleanup(ws_id, env_id)
+
+
+
+# --- 16. get_credential fallback prefers Default env, not arbitrary cross-env ---
+
+
+def test_get_credential_no_env_prefers_default_over_arbitrary_first_match(
+    client, seeded_workspace,
+):
+    """Reviewer P1-3: previously an arbitrary .first() across every
+    environment could return a staging key when a background worker
+    (Slack webhook, watchdog, email) asked for a handle without an env.
+    Fix: no env supplied → workspace's Default env row wins; only then
+    workspace-unscoped rows; never cross-env first-match."""
+    from app.core.database import SessionLocal
+    from app.core.credentials import get_credential
+    from app.models.environment import Environment
+
+    ws_id, _token = seeded_workspace
+    # Two named envs; a Default with the correct anthropic row and a
+    # staging env with a rotated key that must NEVER surface via the
+    # env-less fallback.
+    default_env = uuid.uuid4()
+    staging_env = uuid.uuid4()
+    with SessionLocal() as db:
+        db.add(Environment(id=default_env, workspace_id=ws_id, name="Default"))
+        db.add(Environment(id=staging_env, workspace_id=ws_id, name="staging"))
+        db.commit()
+
+    _seed_integration(ws_id, default_env, "anthropic", {"api_key": "prod-key"})
+    _seed_integration(ws_id, staging_env, "anthropic", {"api_key": "staging-key"})
+    try:
+        with SessionLocal() as db:
+            got = get_credential(db, str(ws_id), "anthropic")
+            assert got.get("api_key") == "prod-key", (
+                "env-less fallback resolved a non-Default environment — "
+                "reintroduced the P1-3 cross-env leak."
+            )
+    finally:
+        _cleanup(ws_id, default_env)
+        with SessionLocal() as db:
+            db.query(Environment).filter(Environment.id == staging_env).delete()
+            db.commit()
+
+
+def test_get_credential_no_env_falls_back_to_workspace_unscoped_row(
+    client, seeded_workspace,
+):
+    """Some legacy tables use env-agnostic rows (proxy_config, etc.). When
+    no Default env has a matching row, fall through to a workspace-level
+    unscoped row rather than searching other envs."""
+    from app.core.database import SessionLocal
+    from app.core.credentials import get_credential
+    from app.models.environment import Environment
+    from app.models.integration import Integration
+    from app.core.crypto import encrypt
+
+    ws_id, _token = seeded_workspace
+    default_env = uuid.uuid4()
+    with SessionLocal() as db:
+        db.add(Environment(id=default_env, workspace_id=ws_id, name="Default"))
+        # Unscoped (workspace-level) row for the legacy handle.
+        db.add(Integration(
+            id=uuid.uuid4(),
+            workspace_id=ws_id,
+            environment_id=None,
+            service="proxy_config",
+            handle="proxy_config",
+            auth_method="api_key",
+            encrypted_credentials=encrypt({"LLM_UPSTREAM": "https://prod"}),
+            revision=1,
+        ))
+        db.commit()
+    try:
+        with SessionLocal() as db:
+            got = get_credential(db, str(ws_id), "proxy_config")
+            assert got.get("LLM_UPSTREAM") == "https://prod"
+    finally:
+        _cleanup(ws_id, default_env)
+

@@ -25,22 +25,43 @@ segment.
 """
 from __future__ import annotations
 
-# cred_token -> {handle: decrypted-creds-dict}
-_CACHE: dict[str, dict[str, dict]] = {}
+import os
+import time
+
+# Coarse TTL cap so a rotated credential or an invalidated run token can't
+# be served indefinitely by an in-process cache. The broker still enforces
+# per-call expiry + use-count; this only bounds the STALENESS window when
+# the cache short-circuits the broker. Tune via env if a long-running run
+# genuinely needs a longer cache window; default is a compromise between
+# hit-rate on the hot path and freshness under rotation (#2054 P1-3).
+_CACHE_TTL_SEC = float(os.environ.get("RUN_CREDENTIALS_CACHE_TTL_SEC", "60"))
+
+# cred_token -> (populated_at, {handle: decrypted-creds-dict})
+_CACHE: dict[str, tuple[float, dict[str, dict]]] = {}
 
 
 def populate(cred_token: str, credentials: dict[str, dict]) -> None:
     """Snapshot the decrypted credential map for this run segment."""
     if not cred_token:
         return
-    _CACHE[cred_token] = dict(credentials)
+    _CACHE[cred_token] = (time.monotonic(), dict(credentials))
 
 
 def resolve(cred_token: str, handle: str) -> dict | None:
-    """Cache lookup. Returns None on miss so callers can fall back to broker."""
+    """Cache lookup. Returns None on miss OR on TTL expiry so callers fall
+    through to the broker (which re-verifies expiry + use-count)."""
     if not cred_token:
         return None
-    return _CACHE.get(cred_token, {}).get(handle)
+    entry = _CACHE.get(cred_token)
+    if entry is None:
+        return None
+    populated_at, snapshot = entry
+    if time.monotonic() - populated_at > _CACHE_TTL_SEC:
+        # Stale — force a broker round-trip so a rotated credential or an
+        # invalidated run token is caught. Don't purge here so a concurrent
+        # populate can refresh the snapshot in-place.
+        return None
+    return snapshot.get(handle)
 
 
 def purge(cred_token: str) -> None:

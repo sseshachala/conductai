@@ -114,16 +114,11 @@ def _write_token_to_env(db: Session, workspace_id: str, environment_id: str, pla
         Integration.environment_id == environment_id,
     ).first()
 
-    if existing:
-        # Read → merge one field → conditional write. Prevents a concurrent
-        # env-var editor from silently overwriting the token we just minted.
-        from app.core.integration_writer import merge_and_write
-        merge_and_write(
-            db,
-            existing.id,
-            lambda prev: {**prev, "CONDUCT_AGENT_TOKEN": plaintext},
-        )
-    else:
+    # Insert-if-absent, then always merge. If we lost the existence race
+    # to a concurrent writer, ON CONFLICT DO NOTHING leaves their row
+    # intact and merge_and_write then patches our token in without
+    # overwriting whatever fields they were writing.
+    if not existing:
         stmt = (
             pg_insert(Integration)
             .values(
@@ -131,18 +126,27 @@ def _write_token_to_env(db: Session, workspace_id: str, environment_id: str, pla
                 service="agent_identity",
                 handle="env_vars",
                 auth_method="api_key",
-                encrypted_credentials=encrypt({"CONDUCT_AGENT_TOKEN": plaintext}),
+                encrypted_credentials=encrypt({}),
                 environment_id=environment_id,
             )
-            .on_conflict_do_update(
+            .on_conflict_do_nothing(
                 constraint="uq_integrations_workspace_handle_env",
-                set_=dict(
-                    encrypted_credentials=encrypt({"CONDUCT_AGENT_TOKEN": plaintext}),
-                    revision=Integration.revision + 1,
-                ),
             )
         )
         db.execute(stmt)
+        existing = db.query(Integration).filter(
+            Integration.workspace_id == workspace_id,
+            Integration.handle == "env_vars",
+            Integration.environment_id == environment_id,
+        ).first()
+    # Read → merge one field → conditional write. Idempotent — safe
+    # regardless of which of the two racing writers created the row.
+    from app.core.integration_writer import merge_and_write
+    merge_and_write(
+        db,
+        existing.id,
+        lambda prev: {**prev, "CONDUCT_AGENT_TOKEN": plaintext},
+    )
     db.commit()
 
 

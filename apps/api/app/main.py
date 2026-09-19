@@ -7,7 +7,7 @@ import structlog
 from app.core.config import settings
 from app.core.logging import setup_logging
 from app.middleware.logging import LoggingMiddleware
-from app.routers import credentials, email_templates, env_vars as env_vars_router, environments, playbooks, projects, runs, webhooks, workflows
+from app.routers import credentials, email_templates, env_vars as env_vars_router, env_vars_inventory as env_vars_inventory_router, environments, playbooks, projects, runs, webhooks, workflows
 from app.routers.playbooks import catalog_router as playbooks_catalog_router
 from app.routers.eval import router as eval_router
 from app.routers.insights import router as insights_router
@@ -235,6 +235,7 @@ app.include_router(workflows.router)
 app.include_router(runs.router)
 app.include_router(workspace_runs_router)
 app.include_router(credentials.router)
+app.include_router(env_vars_inventory_router.router)
 app.include_router(env_vars_router.router)
 app.include_router(environments.router)
 app.include_router(email_templates.router)
