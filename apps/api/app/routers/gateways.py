@@ -212,16 +212,26 @@ def push_gateway(
         Integration.handle == "env_vars",
         Integration.environment_id == body.environment_id,
     ).first()
-    ev_creds: dict[str, Any] = {}
-    if ev_row and ev_row.encrypted_credentials:
-        ev_creds = decrypt(ev_row.encrypted_credentials) or {}
-    ev_creds["PROXY_CONFIG_LLM_UPSTREAM"] = config.upstream_url
-    if upstream_key:
-        ev_creds["PROXY_CONFIG_LLM_UPSTREAM_API_KEY"] = upstream_key
-    encrypted = encrypt(ev_creds)
     if ev_row:
-        ev_row.encrypted_credentials = encrypted
+        # merge_and_write reads the current ciphertext, applies our patch,
+        # and writes it back under a conditional UPDATE. Two concurrent
+        # push_gateway calls no longer clobber each other's fields.
+        from app.core.integration_writer import merge_and_write
+
+        def _merge_gateway_config(prev: dict) -> dict:
+            prev["PROXY_CONFIG_LLM_UPSTREAM"] = config.upstream_url
+            if upstream_key:
+                prev["PROXY_CONFIG_LLM_UPSTREAM_API_KEY"] = upstream_key
+            return prev
+
+        merge_and_write(db, ev_row.id, _merge_gateway_config)
     else:
+        ev_creds: dict[str, Any] = {
+            "PROXY_CONFIG_LLM_UPSTREAM": config.upstream_url,
+        }
+        if upstream_key:
+            ev_creds["PROXY_CONFIG_LLM_UPSTREAM_API_KEY"] = upstream_key
+        encrypted = encrypt(ev_creds)
         db.add(Integration(
             workspace_id=scoped_ws_id,
             service="env_vars",

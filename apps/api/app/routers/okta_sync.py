@@ -219,10 +219,14 @@ def _save_config(db: Session, workspace_id: str, payload: dict) -> None:
         Integration.workspace_id == ws_uuid,
         Integration.handle == _OKTA_HANDLE,
     ).first()
-    encrypted = encrypt(payload)
     if row:
-        row.encrypted_credentials = encrypted
+        # Full replacement of the okta-scoped credential; merge_and_write
+        # guarantees the write happens under the revision we read, so a
+        # concurrent editor or okta_sync call can't stomp us.
+        from app.core.integration_writer import merge_and_write
+        merge_and_write(db, row.id, lambda _prev: payload)
     else:
+        encrypted = encrypt(payload)
         db.add(Integration(
             workspace_id=ws_uuid,
             service=_OKTA_HANDLE,

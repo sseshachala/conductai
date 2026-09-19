@@ -310,25 +310,25 @@ def save_proxy_config(
         Integration.environment_id.is_(None),
     ).first()
 
-    existing: dict = {}
     if pc_row:
-        try:
-            existing = decrypt(pc_row.encrypted_credentials) or {}
-        except Exception:
-            pass
+        # Atomic read-merge-write. The "preserve existing api_key" fallback
+        # stays inside the merge lambda so a retry re-reads the newest
+        # ciphertext instead of racing on the one we loaded first.
+        from app.core.integration_writer import merge_and_write
 
-    # Preserve existing upstream key if not supplied
-    api_key = body.llm_upstream_api_key or existing.get("LLM_UPSTREAM_API_KEY", "")
+        def _merge_proxy_config(prev: dict) -> dict:
+            api_key_now = body.llm_upstream_api_key or prev.get("LLM_UPSTREAM_API_KEY", "")
+            prev["LLM_UPSTREAM"] = body.llm_upstream
+            if api_key_now:
+                prev["LLM_UPSTREAM_API_KEY"] = api_key_now
+            return prev
 
-    existing["LLM_UPSTREAM"] = body.llm_upstream
-    if api_key:
-        existing["LLM_UPSTREAM_API_KEY"] = api_key
-
-    encrypted = encrypt(existing)
-
-    if pc_row:
-        pc_row.encrypted_credentials = encrypted
+        merge_and_write(db, pc_row.id, _merge_proxy_config)
     else:
+        seed: dict = {"LLM_UPSTREAM": body.llm_upstream}
+        if body.llm_upstream_api_key:
+            seed["LLM_UPSTREAM_API_KEY"] = body.llm_upstream_api_key
+        encrypted = encrypt(seed)
         db.add(Integration(
             workspace_id=workspace_id, service="proxy_config", handle="proxy_config",
             auth_method="api_key", encrypted_credentials=encrypted,
@@ -377,21 +377,21 @@ def push_proxy_config(
         Integration.environment_id == body.environment_id,
     ).first()
 
-    ev_creds: dict = {}
     if ev_row:
-        try:
-            ev_creds = decrypt(ev_row.encrypted_credentials) or {}
-        except Exception:
-            pass
+        from app.core.integration_writer import merge_and_write
 
-    ev_creds["PROXY_CONFIG_LLM_UPSTREAM"] = upstream
-    if upstream_key:
-        ev_creds["PROXY_CONFIG_LLM_UPSTREAM_API_KEY"] = upstream_key
+        def _merge_env_vars(prev: dict) -> dict:
+            prev["PROXY_CONFIG_LLM_UPSTREAM"] = upstream
+            if upstream_key:
+                prev["PROXY_CONFIG_LLM_UPSTREAM_API_KEY"] = upstream_key
+            return prev
 
-    encrypted = encrypt(ev_creds)
-    if ev_row:
-        ev_row.encrypted_credentials = encrypted
+        merge_and_write(db, ev_row.id, _merge_env_vars)
     else:
+        seed: dict = {"PROXY_CONFIG_LLM_UPSTREAM": upstream}
+        if upstream_key:
+            seed["PROXY_CONFIG_LLM_UPSTREAM_API_KEY"] = upstream_key
+        encrypted = encrypt(seed)
         db.add(Integration(
             workspace_id=workspace_id, service="env_vars", handle="env_vars",
             auth_method="api_key", encrypted_credentials=encrypted,

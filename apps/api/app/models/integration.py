@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import Column, String, Text, DateTime, ForeignKey, Index, UniqueConstraint, Boolean
+from sqlalchemy import Column, String, Text, DateTime, ForeignKey, Index, Integer, UniqueConstraint, Boolean
 from sqlalchemy.dialects.postgresql import UUID, ARRAY
 from sqlalchemy.orm import relationship
 from app.core.database import Base
@@ -19,6 +19,10 @@ class Integration(Base):
     last_used_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
     environment_id = Column(UUID(as_uuid=True), ForeignKey("environments.id"), nullable=True)
+    # Optimistic-concurrency counter — bumped on every save_env_vars /
+    # delete_env_var write. Clients pass ``expected_revision`` on their
+    # payload; a stale write returns 409 with the current revision.
+    revision = Column(Integer, nullable=False, default=1, server_default="1")
     # Okta JWT auth (#1056). okta_issuer indexed — reverse lookup from an
     # unverified JWT `iss` to the workspace that trusts it. NULL on non-Okta rows.
     okta_issuer = Column(String(500), nullable=True)

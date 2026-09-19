@@ -12,7 +12,7 @@ interface Environment {
   allowed_hosts?: string[] | null
 }
 
-interface EnvVar { key: string; value: string; handle?: string }
+interface EnvVar { key: string; value: string; handle?: string; field?: string; revision?: number }
 
 // Canonical env var names are uppercase by convention (POSIX + 12-factor).
 function normalizeKey(raw: string): string {
@@ -227,8 +227,31 @@ function EnvironmentDetail({
   async function saveAll(updated: EnvVar[]) {
     setSaving(true); setError(""); setSaved(false)
     try {
-      const res = await credentials.envVars.update(authFetch, environment.id, updated.map(v => ({ key: v.key, value: v.value })) as unknown as Record<string, unknown>)
+      const res = await credentials.envVars.update(
+        authFetch,
+        environment.id,
+        updated.map(v => ({
+          key: v.key,
+          value: v.value,
+          // Echo identity back verbatim so the server preserves the row
+          // rather than re-parsing the display name into a catch-all.
+          handle: v.handle ?? null,
+          field: v.field ?? null,
+          expected_revision: v.revision ?? null,
+        })) as unknown as Record<string, unknown>,
+      )
+      if (res.status === 409) {
+        // Someone else edited these credentials — reload before the user
+        // overwrites work they can't see. UI-safe: no data loss because we
+        // never sent partial writes to the DB (server rejected the batch).
+        await load()
+        setError("Values changed elsewhere — reloaded. Review and re-save.")
+        return
+      }
       if (!res.ok) throw new Error("Save failed")
+      // Backend bumped revision on every affected row; the editor is now
+      // holding stale revisions. Reload so the next edit doesn't hit 409.
+      await load()
       setSaved(true)
       setTimeout(() => setSaved(false), 2000)
     } catch { setError("Save failed") } finally { setSaving(false) }
@@ -238,12 +261,60 @@ function EnvironmentDetail({
     setVars(prev => prev.map((v, idx) => idx === i ? { ...v, [field]: val } : v))
   }
 
-  function removeVar(i: number) {
-    const updated = vars.filter((_, idx) => idx !== i)
-    setVars(updated)
+  async function removeVar(i: number) {
+    // Explicit deletion — the server refuses to remove a credential referenced
+    // by Gateway / MCP / workflows unless force=true. Bulk save no longer
+    // deletes by omission.
+    const target = vars[i]
     setConfirmVarIndex(null)
     setConfirmVarValue("")
-    saveAll(updated)
+    if (!target?.handle || target.revision == null) {
+      // Unsaved row typed in the UI — just drop it locally.
+      setVars(prev => prev.filter((_, idx) => idx !== i))
+      return
+    }
+    setSaving(true); setError("")
+    try {
+      const res = await credentials.envVars.remove(authFetch, environment.id, target.handle, {
+        expected_revision: target.revision,
+        field: target.field,
+      })
+      if (res.status === 409) {
+        // Either a stale revision (reload + retry) or the credential is
+        // referenced elsewhere (offer force=true). The API returns which
+        // in detail.code — surface it to the user rather than silently
+        // dropping the row.
+        try {
+          const body = await res.json()
+          const code = body?.detail?.code
+          if (code === "credential_referenced") {
+            const refs = body.detail.references || {}
+            const summary = [
+              refs.gateway_profiles?.length ? `${refs.gateway_profiles.length} gateway profile(s)` : null,
+              refs.mcp_servers?.length ? `${refs.mcp_servers.length} MCP server(s)` : null,
+              refs.workflows_soft?.length ? `${refs.workflows_soft.length} workflow(s)` : null,
+            ].filter(Boolean).join(", ")
+            setError(`Cannot delete — referenced by ${summary}. Update those first.`)
+          } else if (code === "stale_revision") {
+            await load()
+            setError("Values changed elsewhere — reloaded. Try Remove again.")
+          } else {
+            setError("Remove failed")
+          }
+        } catch {
+          setError("Remove failed")
+        }
+        return
+      }
+      if (!res.ok) throw new Error("Remove failed")
+      // Field-delete bumped the row's revision; whole-row delete evicted
+      // the row entirely. Reload so sibling fields' revisions stay accurate.
+      await load()
+    } catch {
+      setError("Remove failed")
+    } finally {
+      setSaving(false)
+    }
   }
 
   function addVar() {
@@ -276,8 +347,19 @@ function EnvironmentDetail({
     let newCount = 0, updateCount = 0
     for (const p of parsed) {
       const existing = merged.findIndex(v => v.key === p.key)
-      if (existing >= 0) { merged[existing] = p; updateCount++ }
-      else { merged.push(p); newCount++ }
+      if (existing >= 0) {
+        // Preserve the existing row's identity so the server updates the
+        // same handle instead of routing the new value into a catch-all
+        // bucket (which would 409 or create a duplicate row).
+        merged[existing] = {
+          ...merged[existing],
+          value: p.value,
+        }
+        updateCount++
+      } else {
+        merged.push(p)
+        newCount++
+      }
     }
     setPendingImport({ vars: merged, newCount, updateCount })
   }
