@@ -83,6 +83,9 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: Run bounded production canary
+        env:
+          PROD_E2E_ANTHROPIC_MODEL: ${{ vars.PROD_E2E_ANTHROPIC_MODEL }}
+          PROD_E2E_OPENAI_MODEL: ${{ vars.PROD_E2E_OPENAI_MODEL }}
         run: |
           python3 tools/security-e2e/production.py \
             --credentials-file "$E2E_SECRET_DIR/accounts.env" \
