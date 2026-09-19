@@ -227,7 +227,7 @@ function MarketingNav() {
           <div className="pt-3 space-y-1">
             <MobileNavGroup label="Product">
               <MobileNavItem href="/guard" label="Guard" />
-              <MobileNavItem href="/registry" label="Registry" />
+              <MobileNavItem href="/playbooks" label="Playbooks" />
               <MobileNavItem href="/evidence" label="Evidence" />
               <MobileNavItem href="/mcp-gateway" label="MCP" />
             </MobileNavGroup>
@@ -309,7 +309,6 @@ function MarketingFooter() {
       links: [
         ["Agent Discovery", "/docs/discovery"],
         ["Router", "/router"],
-        ["Templates", "/docs/templates"],
         ["Registry", "/registry"],
         ["Team OS", "/team-os"],
         ["CLI", "/tools/conduct-cli"],

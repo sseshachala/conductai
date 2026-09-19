@@ -65,12 +65,12 @@ const TIERS: Tier[] = [
   {
     name: "Enterprise",
     price: "Contact us",
-    cap: "100+ agents · Self-hosted · Air-gapped",
+    cap: "100+ agents · Self-hosted · Air-gapped (design partners)",
     tagline: "For regulated industries, self-host, and design-partner engagements.",
     cta: { label: "Contact us", href: "/book-demo" },
     includes: [
       "Everything in Business",
-      "Self-hosted deployment (Docker, Kubernetes, air-gapped)",
+      "Self-hosted deployment (Docker shipped; Kubernetes preview; air-gapped design partner program)",
       "Signed SLA + dedicated success engineer",
       "Custom policy development",
       "Procurement, security review, and MSA support",
@@ -85,7 +85,7 @@ const FAQ: { q: string; a: string }[] = [
   },
   {
     q: "Does self-hosted include air-gapped deployments?",
-    a: "Yes, on Enterprise. Docker, Kubernetes, and fully air-gapped installs all deploy from the same image and run the same policy engine. Same list price as SaaS — you\u2019re paying for enforcement and audit, not where the pods run.",
+    a: "Docker self-hosted ships today; Kubernetes reference templates are in preview; fully air-gapped installs are running with design partners and not yet generally available. Same image, same policy engine, same list price as SaaS — you\u2019re paying for enforcement and audit, not where the pods run. Talk to us if you need the air-gapped track before it opens up.",
   },
   {
     q: "What if my agent count varies month to month?",
@@ -101,7 +101,7 @@ const FAQ: { q: string; a: string }[] = [
   },
   {
     q: "How is our data stored and processed when it passes through third-party LLMs?",
-    a: "Every call flows through the Conduct proxy first: workspace-scoped vault keys (no shared credentials), pre-flight redaction of PII, secrets, and path prefixes, and a policy check that decides allow / block / approve / audit before the request leaves your perimeter. Every decision writes a SHA-256 hash-chained audit receipt. Deployment can be SaaS, self-hosted, or air-gapped — you choose where the data physically lives.",
+    a: "Every call flows through the Conduct proxy first: workspace-scoped vault keys (no shared credentials), pre-flight redaction of PII, secrets, and path prefixes, and a policy check that decides allow / block / approve / audit before the request leaves your perimeter. Every decision writes a SHA-256 hash-chained audit receipt. Deployment options: SaaS shipped, Docker self-hosted shipped, Kubernetes preview, air-gapped design partner program.",
   },
   {
     q: "What happens to our margins when model prices jump 2\u20133\u00d7 overnight?",
@@ -191,8 +191,9 @@ export default function PricingPage() {
             Self-hosted? Same list price. Same features.
           </h2>
           <p className="text-sm text-stone-600 leading-relaxed max-w-3xl">
-            Self-hosted deployments (Docker, Kubernetes, air-gapped) are available on Enterprise.
-            The list price is the same — you're paying for policy enforcement, audit, and support,
+            Docker self-hosted is available on Enterprise today. Kubernetes reference templates
+            are in preview and air-gapped installs are running with design partners. The list
+            price is the same as SaaS — you're paying for policy enforcement, audit, and support,
             not for where the pods run. Deploy where your compliance boundary needs it, keep the
             same commercial terms.
           </p>
@@ -211,7 +212,7 @@ export default function PricingPage() {
             },
             {
               title: "Bring your own LLM",
-              body: "100+ providers — Anthropic, OpenAI, Bedrock, Azure, Ollama, self-host — through one gateway. No provider markup.",
+              body: "Native routes for Anthropic + OpenAI, and OpenRouter passthrough for the long tail. Add more via the LiteLLM SDK matrix — see the deployment page for the certified operation list. No provider markup.",
             },
           ].map((f) => (
             <div key={f.title} className="rounded-xl border border-stone-200 bg-white p-5">

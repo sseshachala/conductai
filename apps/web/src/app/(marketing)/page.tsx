@@ -524,7 +524,7 @@ const DEPLOYMENT_OPTIONS: Array<{
     label: "Docker",
     status: "SHIPPED",
     desc: "Self-hosted via Docker Compose. Full control. Apache-2.0.",
-    cta: { text: "View docs", href: "/docs/self-hosted" },
+    cta: { text: "View docs", href: "/deployment" },
   },
   {
     label: "Kubernetes",
