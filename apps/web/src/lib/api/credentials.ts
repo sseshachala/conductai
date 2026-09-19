@@ -19,6 +19,12 @@ export const credentials = {
     // Explicit deletion. Server enforces reference checks (Gateway / MCP /
     // workflow) and refuses referenced credentials unless force=true. Caller
     // MUST pass expected_revision — a stale value returns 409 with current.
+    reveal: (
+      f: AuthFetch,
+      envId: string,
+      handle: string,
+      field: string,
+    ) => post(f, `${base()}/env-vars/${envId}/reveal`, { handle, field }),
     remove: (
       f: AuthFetch,
       envId: string,
