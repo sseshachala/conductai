@@ -221,7 +221,8 @@ def _save_config(db: Session, workspace_id: str, payload: dict) -> None:
     ).first()
     encrypted = encrypt(payload)
     if row:
-        row.encrypted_credentials = encrypted
+        from app.core.integration_writer import bump_encrypted
+        bump_encrypted(row, encrypted)
     else:
         db.add(Integration(
             workspace_id=ws_uuid,

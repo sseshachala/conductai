@@ -220,7 +220,10 @@ def push_gateway(
         ev_creds["PROXY_CONFIG_LLM_UPSTREAM_API_KEY"] = upstream_key
     encrypted = encrypt(ev_creds)
     if ev_row:
-        ev_row.encrypted_credentials = encrypted
+        # bump_encrypted preserves the concurrency contract: any editor
+        # holding a stale revision is refused on its next save.
+        from app.core.integration_writer import bump_encrypted
+        bump_encrypted(ev_row, encrypted)
     else:
         db.add(Integration(
             workspace_id=scoped_ws_id,

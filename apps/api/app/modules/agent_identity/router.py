@@ -117,7 +117,8 @@ def _write_token_to_env(db: Session, workspace_id: str, environment_id: str, pla
     if existing:
         current = decrypt(existing.encrypted_credentials) if existing.encrypted_credentials else {}
         current["CONDUCT_AGENT_TOKEN"] = plaintext
-        existing.encrypted_credentials = encrypt(current)
+        from app.core.integration_writer import bump_encrypted
+        bump_encrypted(existing, encrypt(current))
     else:
         stmt = (
             pg_insert(Integration)
@@ -131,7 +132,10 @@ def _write_token_to_env(db: Session, workspace_id: str, environment_id: str, pla
             )
             .on_conflict_do_update(
                 constraint="uq_integrations_workspace_handle_env",
-                set_=dict(encrypted_credentials=encrypt({"CONDUCT_AGENT_TOKEN": plaintext})),
+                set_=dict(
+                    encrypted_credentials=encrypt({"CONDUCT_AGENT_TOKEN": plaintext}),
+                    revision=Integration.revision + 1,
+                ),
             )
         )
         db.execute(stmt)

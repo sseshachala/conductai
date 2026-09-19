@@ -327,7 +327,8 @@ def save_proxy_config(
     encrypted = encrypt(existing)
 
     if pc_row:
-        pc_row.encrypted_credentials = encrypted
+        from app.core.integration_writer import bump_encrypted
+        bump_encrypted(pc_row, encrypted)
     else:
         db.add(Integration(
             workspace_id=workspace_id, service="proxy_config", handle="proxy_config",
@@ -390,7 +391,8 @@ def push_proxy_config(
 
     encrypted = encrypt(ev_creds)
     if ev_row:
-        ev_row.encrypted_credentials = encrypted
+        from app.core.integration_writer import bump_encrypted
+        bump_encrypted(ev_row, encrypted)
     else:
         db.add(Integration(
             workspace_id=workspace_id, service="env_vars", handle="env_vars",

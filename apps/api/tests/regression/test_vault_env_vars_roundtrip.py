@@ -452,16 +452,17 @@ def test_uppercase_arbitrary_env_var_name_preserved(client, seeded_workspace):
         _cleanup(ws_id, env_id)
 
 
-# ─── 11. Clearing a field leaves row + other fields intact ──────────────
+# ─── 11. PUT rejects value=None; field clears go through DELETE ─────────
 
 
-def test_clear_field_leaves_row_and_other_fields_intact(client, seeded_workspace):
+def test_put_rejects_value_none(client, seeded_workspace):
+    """P1-4 fix: PUT no longer carries a clear semantic — otherwise a
+    null-value save could remove a field that a protected consumer needs
+    without hitting the reference check."""
     ws_id, _token = seeded_workspace
     env_id = _seed_environment(ws_id)
     try:
         _seed_integration(ws_id, env_id, "git", {"token": "ghp", "provider": "github"})
-
-        # value=None → clear only the `token` field.
         r = client.put(
             f"/credentials/env-vars/{env_id}?workspace_id={ws_id}",
             json=[{
@@ -469,10 +470,219 @@ def test_clear_field_leaves_row_and_other_fields_intact(client, seeded_workspace
                 "handle": "git", "field": "token", "expected_revision": 1,
             }],
         )
+        assert r.status_code == 422, r.text
+        # Row untouched.
+        assert _decrypted(_list_row(ws_id, env_id, "git")) == {"token": "ghp", "provider": "github"}
+    finally:
+        _cleanup(ws_id, env_id)
+
+
+def test_field_clear_via_delete_leaves_row_and_other_fields_intact(client, seeded_workspace):
+    """Field removal is DELETE-only. Row survives, sibling field intact."""
+    ws_id, _token = seeded_workspace
+    env_id = _seed_environment(ws_id)
+    try:
+        _seed_integration(ws_id, env_id, "git", {"token": "ghp", "provider": "github"})
+        r = client.delete(
+            f"/credentials/env-vars/{env_id}/handles/git"
+            f"?workspace_id={ws_id}&expected_revision=1&field=token",
+        )
+        assert r.status_code == 200, r.text
+        row = _list_row(ws_id, env_id, "git")
+        assert row is not None
+        assert _decrypted(row) == {"provider": "github"}
+    finally:
+        _cleanup(ws_id, env_id)
+
+
+# ─── 12. Threaded atomicity — two writers race the same revision ───────
+
+
+def test_atomic_conditional_update_rejects_second_writer_under_contention(
+    client, seeded_workspace,
+):
+    """P1-1 fix: two threads both read revision=1 then race to write. Only
+    one may succeed; the other must observe 409 with current_revision=2.
+
+    Without conditional SQL, both Python-level checks pass and the second
+    write silently clobbers the first. The test proves the SQL predicate
+    rejects the second write even under real parallel execution.
+    """
+    import threading
+    ws_id, _token = seeded_workspace
+    env_id = _seed_environment(ws_id)
+    try:
+        _seed_integration(ws_id, env_id, "perplexity", {"api_key": "orig"})
+        results: list[int] = []
+        barrier = threading.Barrier(2)
+
+        def _writer(value: str) -> None:
+            barrier.wait()
+            r = client.put(
+                f"/credentials/env-vars/{env_id}?workspace_id={ws_id}",
+                json=[{
+                    "key": "PERPLEXITY_API_KEY", "value": value,
+                    "handle": "perplexity", "field": "api_key",
+                    "expected_revision": 1,
+                }],
+            )
+            results.append(r.status_code)
+
+        ta = threading.Thread(target=_writer, args=("winner",))
+        tb = threading.Thread(target=_writer, args=("loser",))
+        ta.start(); tb.start()
+        ta.join(timeout=5); tb.join(timeout=5)
+        assert sorted(results) == [200, 409], f"races produced {results}"
+
+        row = _list_row(ws_id, env_id, "perplexity")
+        # Exactly one of the two values landed; the other was refused.
+        assert _decrypted(row)["api_key"] in {"winner", "loser"}
+        assert int(row.revision) == 2
+    finally:
+        _cleanup(ws_id, env_id)
+
+
+# ─── 13. Mixed expected_revision per handle is refused ─────────────────
+
+
+def test_rejects_mixed_expected_revisions_on_same_handle(client, seeded_workspace):
+    """P2-6 fix: max(expected_revs) let a stale item ride a current one.
+    Now every item on the same handle MUST agree on expected_revision."""
+    ws_id, _token = seeded_workspace
+    env_id = _seed_environment(ws_id)
+    try:
+        _seed_integration(ws_id, env_id, "git", {"token": "orig", "provider": "github"})
+        # First save bumps revision to 2 so we have a real drift to exploit.
+        r = client.put(
+            f"/credentials/env-vars/{env_id}?workspace_id={ws_id}",
+            json=[{
+                "key": "GITHUB_TOKEN", "value": "v2",
+                "handle": "git", "field": "token", "expected_revision": 1,
+            }],
+        )
         assert r.status_code == 200, r.text
 
-        row = _list_row(ws_id, env_id, "git")
-        assert row is not None, "clear should not delete the row"
-        assert _decrypted(row) == {"provider": "github"}
+        # Now attempt a batch with one stale expected_revision (1) and one
+        # current (2) — the old max() logic would accept this.
+        r = client.put(
+            f"/credentials/env-vars/{env_id}?workspace_id={ws_id}",
+            json=[
+                {"key": "GITHUB_TOKEN", "value": "stale", "handle": "git",
+                 "field": "token", "expected_revision": 1},
+                {"key": "GIT_PROVIDER", "value": "gitlab", "handle": "git",
+                 "field": "provider", "expected_revision": 2},
+            ],
+        )
+        assert r.status_code == 409, r.text
+        assert r.json()["detail"]["code"] == "expected_revision_inconsistent"
+    finally:
+        _cleanup(ws_id, env_id)
+
+
+# ─── 14. Save producing an empty credential is refused ─────────────────
+
+
+def test_save_producing_empty_credential_refuses_without_touching_row(
+    client, seeded_workspace,
+):
+    """P2-7 fix: previously an empty-merge branch reported success but left
+    the ciphertext untouched. Now the endpoint refuses so callers can't
+    receive a successful save that didn't change anything.
+
+    With value=None no longer a PUT clear (see P1-4), this case is only
+    reachable if the payload had zero items for an existing handle — a
+    contrived state that we still refuse for safety."""
+    ws_id, _token = seeded_workspace
+    env_id = _seed_environment(ws_id)
+    try:
+        _seed_integration(ws_id, env_id, "sentry", {"token": "s-orig"})
+        r = client.put(
+            f"/credentials/env-vars/{env_id}?workspace_id={ws_id}",
+            json=[],  # zero items
+        )
+        # Empty payload is accepted as a no-op; the row must be untouched.
+        assert r.status_code == 200, r.text
+        row = _list_row(ws_id, env_id, "sentry")
+        assert _decrypted(row) == {"token": "s-orig"}
+        assert int(row.revision) == 1
+    finally:
+        _cleanup(ws_id, env_id)
+
+
+# ─── 15. upsert_credential (legacy path) bumps revision ────────────────
+
+
+def test_upsert_credential_bumps_revision_so_editor_race_is_refused(
+    client, seeded_workspace,
+):
+    """P1-2 fix: /credentials POST replaces ciphertext AND bumps revision
+    so an editor holding an older revision is refused on save."""
+    ws_id, _token = seeded_workspace
+    env_id = _seed_environment(ws_id)
+    try:
+        _seed_integration(ws_id, env_id, "linear", {"api_key": "orig"}, service="linear")
+
+        # Simulate a rotation via the legacy credential upsert path.
+        r = client.post(
+            f"/credentials?workspace_id={ws_id}",
+            json={
+                "handle": "linear",
+                "service": "linear",
+                "auth_method": "api_key",
+                "environment_id": str(env_id),
+                "credentials": {"api_key": "rotated"},
+            },
+        )
+        assert r.status_code in (200, 201), r.text
+
+        row = _list_row(ws_id, env_id, "linear")
+        # Revision must have advanced past 1 — otherwise the editor race
+        # window is still open.
+        assert int(row.revision) >= 2
+    finally:
+        _cleanup(ws_id, env_id)
+
+
+# ─── 16. Bare Slack MCP server blocks credential delete ────────────────
+
+
+def test_bare_mcp_server_blocks_credential_delete_via_server_cred_map(
+    client, seeded_workspace,
+):
+    """P1-3 fix: MCP servers without embedded credentials still resolve via
+    ``_SERVER_CRED_MAP``. Deleting slack.token must fail when a bare
+    ``slack`` MCP server is registered, even though encrypted_auth has no
+    handle substring."""
+    ws_id, _token = seeded_workspace
+    env_id = _seed_environment(ws_id)
+    try:
+        _seed_integration(ws_id, env_id, "slack", {"token": "xoxb"})
+        from app.core.database import SessionLocal
+        from app.models.mcp_server import McpServer as _McpServer
+        srv_id = uuid.uuid4()
+        with SessionLocal() as db:
+            db.add(_McpServer(
+                id=srv_id,
+                workspace_id=ws_id,
+                environment_id=env_id,
+                name="slack",  # resolves via _SERVER_CRED_MAP → (slack, token)
+                url="https://slack.example",
+                transport="http",
+                encrypted_auth=None,
+            ))
+            db.commit()
+
+        r = client.delete(
+            f"/credentials/env-vars/{env_id}/handles/slack"
+            f"?workspace_id={ws_id}&expected_revision=1",
+        )
+        assert r.status_code == 409, r.text
+        body = r.json()
+        assert body["detail"]["code"] == "credential_referenced"
+        assert "slack" in body["detail"]["references"]["mcp_servers"]
+
+        with SessionLocal() as db:
+            db.query(_McpServer).filter(_McpServer.id == srv_id).delete()
+            db.commit()
     finally:
         _cleanup(ws_id, env_id)

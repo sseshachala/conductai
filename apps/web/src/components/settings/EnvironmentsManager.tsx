@@ -249,6 +249,9 @@ function EnvironmentDetail({
         return
       }
       if (!res.ok) throw new Error("Save failed")
+      // Backend bumped revision on every affected row; the editor is now
+      // holding stale revisions. Reload so the next edit doesn't hit 409.
+      await load()
       setSaved(true)
       setTimeout(() => setSaved(false), 2000)
     } catch { setError("Save failed") } finally { setSaving(false) }
@@ -304,7 +307,9 @@ function EnvironmentDetail({
         return
       }
       if (!res.ok) throw new Error("Remove failed")
-      setVars(prev => prev.filter((_, idx) => idx !== i))
+      // Field-delete bumped the row's revision; whole-row delete evicted
+      // the row entirely. Reload so sibling fields' revisions stay accurate.
+      await load()
     } catch {
       setError("Remove failed")
     } finally {

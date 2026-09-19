@@ -129,6 +129,11 @@ def upsert_credential(body: CredentialUpsert, db: Session = Depends(get_db), wor
                 service=body.service,
                 auth_method=auth_method,
                 encrypted_credentials=encrypted,
+                # Bump revision so any editor holding an older value is
+                # refused on its next save. Without this, a rotation via
+                # this endpoint is invisible to the env-vars editor's
+                # optimistic-concurrency check.
+                revision=Integration.revision + 1,
             ),
         )
     )

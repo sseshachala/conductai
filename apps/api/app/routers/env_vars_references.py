@@ -73,12 +73,36 @@ def reference_report(
                 if owner not in report["gateway_profiles"]:
                     report["gateway_profiles"].append(owner)
 
-    # MCP servers — substring match on ciphertext (false positives OK: force=true).
+    # MCP servers — two paths resolve to the same handle:
+    #   1. embedded credential in encrypted_auth (some registrations paste
+    #      the token directly);
+    #   2. resolver map ``runtime/mcp_credentials._SERVER_CRED_MAP`` that
+    #      maps server name → (integration handle, field) so the runtime
+    #      goes look up the token from the Integration store at call time.
+    # Path 2 leaves no trace in encrypted_auth but is exactly the case the
+    # reviewer flagged (a bare Slack server → slack.token). Enumerate both.
+    from app.runtime.mcp_credentials import _SERVER_CRED_MAP  # local import to
+    # avoid a hard runtime dep just for the reference check.
+
+    mapped_names = {
+        server_name
+        for server_name, (mapped_handle, _field) in _SERVER_CRED_MAP.items()
+        if mapped_handle == handle
+    }
     mcp_rows = db.query(McpServer).filter(
         McpServer.workspace_id == workspace_id,
     ).all()
     for m in mcp_rows:
+        hit = False
         if m.encrypted_auth and handle in str(m.encrypted_auth):
+            hit = True
+        # A stored server named ``slack``/``github``/etc. (or one whose
+        # display name matches the map key) resolves via the map. Match
+        # both the raw ``name`` and a lowercased variant for tolerance.
+        name_lc = (m.name or "").lower()
+        if not hit and (m.name in mapped_names or name_lc in mapped_names):
+            hit = True
+        if hit and m.name not in report["mcp_servers"]:
             report["mcp_servers"].append(m.name)
 
     # Workflows — best-effort yaml substring scan of the current version.

@@ -35,6 +35,11 @@ from sqlalchemy.orm import Session
 from app.core.auth import audit, get_workspace_id, require_permission
 from app.core.crypto import decrypt, encrypt
 from app.core.database import get_db
+from app.core.integration_writer import (
+    bump_encrypted,
+    conditional_delete,
+    conditional_update,
+)
 from app.models.integration import Integration
 from app.routers.env_vars_references import reference_report as _reference_report
 
@@ -92,16 +97,16 @@ class EnvVarUpsert(BaseModel):
       passed together. Server uses them verbatim (case preserved, no
       re-parsing of ``key``). Absent → treated as a new user-typed row and
       falls through the ``_ENV_VAR_MAP`` alias table.
-    - ``value``:
-        - non-empty string → set that field to the string
-        - empty string     → literal empty value (NOT a delete signal)
-        - ``None``         → clear this field from the credential blob
+    - ``value`` MUST be a string. Empty string is a literal empty value.
+      Removing a field or a row goes through the DELETE endpoint — PUT
+      does not carry a clear semantic (avoids bypassing reference checks).
     - ``expected_revision`` MUST be passed when updating any existing row;
       the writer refuses to apply an update whose expected revision doesn't
-      match the current row.
+      match the current row. All items targeting the same handle in one
+      payload MUST agree on ``expected_revision``.
     """
     key: str
-    value: str | None = None
+    value: str
     handle: str | None = None
     field: str | None = None
     expected_revision: int | None = None
@@ -258,48 +263,56 @@ def save_env_vars(
         ).first()
 
         if existing:
-            # Concurrency guard — max expected across items for this handle
-            # must match the row's current revision. All items on the same
-            # handle share a revision, so any one match is sufficient.
-            expected_revs = [
-                i.expected_revision for _f, i in items if i.expected_revision is not None
-            ]
-            if not expected_revs:
+            # Concurrency guard — every item on this handle MUST agree on the
+            # same expected_revision. A mixed batch (rev=1 + rev=2 with actual=2)
+            # would let a stale write ride the coattails of a current one.
+            expected_revs = {i.expected_revision for _f, i in items}
+            if None in expected_revs or len(expected_revs) != 1:
                 raise HTTPException(
                     status_code=409,
                     detail={
-                        "code": "expected_revision_required",
+                        "code": "expected_revision_inconsistent",
                         "handle": handle,
                         "current_revision": existing.revision,
                     },
                 )
-            if max(expected_revs) != existing.revision:
+            expected_rev = next(iter(expected_revs))
+            # Build the merged blob against the row we just read. Rejection
+                # happens later via a conditional UPDATE so two racing writers
+                # can't both pass this check and clobber each other.
+            merged: dict[str, str] = {}
+            if existing.encrypted_credentials:
+                merged.update(decrypt(existing.encrypted_credentials))
+            for field, item in items:
+                merged[field] = item.value
+            if not merged:
+                # Should be unreachable now that clears go via DELETE, but
+                # keep the guard so an empty result never claims success.
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Save for handle '{handle}' produced an empty credential; use DELETE.",
+                )
+            new_ct = encrypt(merged)
+            rowcount = conditional_update(
+                db,
+                existing.id,
+                expected_revision=expected_rev,
+                new_ciphertext=new_ct,
+            )
+            if rowcount == 0:
+                # Refetch to get the truth for the client to reload against.
+                current = db.query(Integration).filter(
+                    Integration.id == existing.id,
+                ).with_for_update(nowait=False, of=Integration).first()
+                current_rev = int(current.revision) if current else 0
                 raise HTTPException(
                     status_code=409,
                     detail={
                         "code": "stale_revision",
                         "handle": handle,
-                        "current_revision": existing.revision,
+                        "current_revision": current_rev,
                     },
                 )
-            merged: dict[str, str] = {}
-            if existing.encrypted_credentials:
-                merged.update(decrypt(existing.encrypted_credentials))
-            for field, item in items:
-                if item.value is None:
-                    # Explicit clear — drop the field from the blob but keep
-                    # the row so other fields survive.
-                    merged.pop(field, None)
-                else:
-                    merged[field] = item.value
-            if merged:
-                existing.encrypted_credentials = encrypt(merged)
-            else:
-                # A save that leaves the row with zero fields is degenerate
-                # — leave the ciphertext untouched and let the caller use
-                # DELETE explicitly. Avoids implicit deletion via clears.
-                pass
-            existing.revision = existing.revision + 1
         else:
             # Brand-new row — expected_revision must NOT be sent; the row
             # didn't exist for the caller to have a revision for. If the
@@ -312,13 +325,7 @@ def save_env_vars(
                         "handle": handle,
                     },
                 )
-            new_fields: dict[str, str] = {}
-            for field, item in items:
-                # Skip clear-only entries for a nonexistent row — nothing to clear.
-                if item.value is not None:
-                    new_fields[field] = item.value
-            if not new_fields:
-                continue
+            new_fields = {field: item.value for field, item in items}
             row = Integration(
                 workspace_id=workspace_id,
                 environment_id=env_id,
@@ -405,16 +412,28 @@ def delete_env_var(
             },
         )
 
+    row_id = row.id
     if field is None:
-        # Whole-row delete.
-        db.delete(row)
+        # Whole-row delete via conditional DELETE — rowcount 0 means a
+        # concurrent writer beat us to the row.
+        deleted = conditional_delete(db, row_id, expected_revision=expected_revision)
+        if deleted == 0:
+            current = db.query(Integration).filter(Integration.id == row_id).first()
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "stale_revision",
+                    "handle": handle,
+                    "current_revision": int(current.revision) if current else 0,
+                },
+            )
         if any_refs:
             audit(
                 db,
                 workspace_id,
                 "credential.force_delete",
                 resource_type="integration",
-                resource_id=str(row.id),
+                resource_id=str(row_id),
                 metadata={
                     "handle": handle,
                     "environment_id": env_id,
@@ -422,20 +441,35 @@ def delete_env_var(
                 },
             )
     else:
-        # Field-only delete — merge, drop, re-encrypt.
+        # Field-only delete — merge, drop, re-encrypt via conditional UPDATE.
         creds = decrypt(row.encrypted_credentials) if row.encrypted_credentials else {}
         if field not in creds:
             raise HTTPException(status_code=404, detail="Field not found on credential")
         del creds[field]
-        row.encrypted_credentials = encrypt(creds) if creds else None
-        row.revision = row.revision + 1
+        new_ct = encrypt(creds) if creds else None
+        updated = conditional_update(
+            db,
+            row_id,
+            expected_revision=expected_revision,
+            new_ciphertext=new_ct,
+        )
+        if updated == 0:
+            current = db.query(Integration).filter(Integration.id == row_id).first()
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "stale_revision",
+                    "handle": handle,
+                    "current_revision": int(current.revision) if current else 0,
+                },
+            )
         if any_refs:
             audit(
                 db,
                 workspace_id,
                 "credential.force_field_delete",
                 resource_type="integration",
-                resource_id=str(row.id),
+                resource_id=str(row_id),
                 metadata={
                     "handle": handle,
                     "field": field,
