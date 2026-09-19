@@ -107,6 +107,26 @@ def _decrypted(row) -> dict[str, str]:
     return decrypt(row.encrypted_credentials)
 
 
+
+
+def _list_with_reveal(client, workspace_id, env_id):
+    """Test helper: list metadata + reveal each field. Used by older
+    "no-edit save" tests that were written against the pre-audit list
+    response; new tests should call the reveal endpoint explicitly."""
+    r = client.get(f"/credentials/env-vars/{env_id}?workspace_id={workspace_id}")
+    assert r.status_code == 200, r.text
+    rows = []
+    for meta in r.json():
+        if meta.get("unreadable"):
+            continue
+        rr = client.post(
+            f"/credentials/env-vars/{env_id}/reveal?workspace_id={workspace_id}",
+            json={"handle": meta["handle"], "field": meta["field"]},
+        )
+        assert rr.status_code == 200, rr.text
+        rows.append({**meta, "value": rr.json()["value"]})
+    return rows
+
 # ─── 1. No-edit round trip preserves custom handle (epic reproduction) ──
 
 
@@ -117,9 +137,7 @@ def test_no_edit_save_preserves_custom_handle(client, seeded_workspace):
         _seed_integration(ws_id, env_id, "openai-primary", {"api_key": "sk-original"})
 
         # 1) List — client sees the row with its identity + revision.
-        r = client.get(f"/credentials/env-vars/{env_id}?workspace_id={ws_id}")
-        assert r.status_code == 200, r.text
-        rows = r.json()
+        rows = _list_with_reveal(client, ws_id, env_id)
         assert len(rows) == 1
         assert rows[0]["handle"] == "openai-primary"
         assert rows[0]["field"] == "api_key"
@@ -444,10 +462,13 @@ def test_uppercase_arbitrary_env_var_name_preserved(client, seeded_workspace):
         # Casing MUST survive round trip — the old fallback lowercased it.
         assert _decrypted(row) == {"MY_CUSTOM_VAR": "42"}
 
-        # List returns the same casing back to the client.
+        # List returns the same casing back to the client + no leaked value.
         r = client.get(f"/credentials/env-vars/{env_id}?workspace_id={ws_id}")
         assert r.status_code == 200
-        assert r.json()[0]["key"] == "MY_CUSTOM_VAR"
+        meta = r.json()[0]
+        assert meta["key"] == "MY_CUSTOM_VAR"
+        assert meta.get("has_value") is True
+        assert "value" not in meta, "list_env_vars must not leak values"
     finally:
         _cleanup(ws_id, env_id)
 
@@ -932,3 +953,141 @@ def test_get_credential_no_env_falls_back_to_workspace_unscoped_row(
     finally:
         _cleanup(ws_id, default_env)
 
+
+
+
+# --- 20. list_env_vars never returns values (Phase 1 finisher) ---
+
+
+def test_list_env_vars_never_returns_values(client, seeded_workspace):
+    """Reviewer P2 (round 1): the environment editor was a mass-reveal
+    endpoint dressed up as a list. Now the list carries metadata only —
+    values must never appear even for a caller with full permissions."""
+    ws_id, _token = seeded_workspace
+    env_id = _seed_environment(ws_id)
+    try:
+        _seed_integration(ws_id, env_id, "anthropic", {"api_key": "sk-secret-anthropic"})
+        _seed_integration(ws_id, env_id, "env_vars", {"CUSTOM": "value-should-not-appear"})
+
+        r = client.get(f"/credentials/env-vars/{env_id}?workspace_id={ws_id}")
+        assert r.status_code == 200, r.text
+        body_text = r.text
+        assert "sk-secret-anthropic" not in body_text
+        assert "value-should-not-appear" not in body_text
+        for row in r.json():
+            assert "value" not in row
+            assert "has_value" in row
+    finally:
+        _cleanup(ws_id, env_id)
+
+
+# --- 21. reveal returns one field value and writes an audit row ---
+
+
+def test_reveal_returns_value_and_writes_audit_event(client, seeded_workspace):
+    ws_id, _token = seeded_workspace
+    env_id = _seed_environment(ws_id)
+    try:
+        _seed_integration(ws_id, env_id, "anthropic", {"api_key": "sk-real"})
+
+        # Snapshot audit-log row count before.
+        from app.core.database import SessionLocal
+        from app.models.audit_log import AuditLog
+        with SessionLocal() as db:
+            before = db.query(AuditLog).filter(
+                AuditLog.workspace_id == ws_id,
+                AuditLog.action == "credential.reveal",
+            ).count()
+
+        r = client.post(
+            f"/credentials/env-vars/{env_id}/reveal?workspace_id={ws_id}",
+            json={"handle": "anthropic", "field": "api_key"},
+        )
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body == {"handle": "anthropic", "field": "api_key", "value": "sk-real"}
+
+        with SessionLocal() as db:
+            after = db.query(AuditLog).filter(
+                AuditLog.workspace_id == ws_id,
+                AuditLog.action == "credential.reveal",
+            ).count()
+        assert after == before + 1, "reveal did not write an audit row"
+    finally:
+        _cleanup(ws_id, env_id)
+
+
+# --- 22. reveal audits failed attempts too ---
+
+
+def test_reveal_audits_failure_when_field_not_present(client, seeded_workspace):
+    ws_id, _token = seeded_workspace
+    env_id = _seed_environment(ws_id)
+    try:
+        _seed_integration(ws_id, env_id, "anthropic", {"api_key": "sk-real"})
+
+        from app.core.database import SessionLocal
+        from app.models.audit_log import AuditLog
+        with SessionLocal() as db:
+            before = db.query(AuditLog).filter(
+                AuditLog.workspace_id == ws_id,
+                AuditLog.action == "credential.reveal",
+            ).count()
+
+        r = client.post(
+            f"/credentials/env-vars/{env_id}/reveal?workspace_id={ws_id}",
+            json={"handle": "anthropic", "field": "no_such_field"},
+        )
+        assert r.status_code == 404, r.text
+
+        with SessionLocal() as db:
+            after = db.query(AuditLog).filter(
+                AuditLog.workspace_id == ws_id,
+                AuditLog.action == "credential.reveal",
+            ).count()
+        assert after == before + 1, "failed reveal did not write an audit row"
+    finally:
+        _cleanup(ws_id, env_id)
+
+
+# --- 23. reveal refuses cross-workspace env ---
+
+
+def test_reveal_refuses_cross_workspace_environment(client, seeded_workspace):
+    ws_a, _t = seeded_workspace
+    env_a = _seed_environment(ws_a)
+
+    from datetime import datetime, timezone
+    from app.core.database import SessionLocal
+    from app.models.environment import Environment
+    from app.models.workspace import Workspace
+
+    ws_b = uuid.uuid4()
+    env_b = uuid.uuid4()
+    with SessionLocal() as db:
+        db.add(Workspace(
+            id=ws_b,
+            name=f"cross-{ws_b.hex[:8]}",
+            owner_id=f"user_test_cross_{ws_b.hex[:8]}",
+            plan="free",
+            is_approved=True,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+        ))
+        db.add(Environment(id=env_b, workspace_id=ws_b, name="rival"))
+        db.commit()
+    _seed_integration(ws_b, env_b, "anthropic", {"api_key": "sk-other"})
+    try:
+        r = client.post(
+            f"/credentials/env-vars/{env_b}/reveal?workspace_id={ws_a}",
+            json={"handle": "anthropic", "field": "api_key"},
+        )
+        assert r.status_code == 404, r.text
+    finally:
+        _cleanup(ws_a, env_a)
+        with SessionLocal() as db:
+            from app.models.integration import Integration
+            db.query(Integration).filter(Integration.workspace_id == ws_b).delete()
+            db.query(Environment).filter(Environment.id == env_b).delete()
+            db.query(Workspace).filter(Workspace.id == ws_b).delete()
+            db.commit()

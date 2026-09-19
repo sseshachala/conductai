@@ -37,6 +37,7 @@ from app.core.crypto import decrypt, encrypt
 from app.core.database import get_db
 from app.core.integration_writer import conditional_delete, conditional_update
 from app.models.integration import Integration
+from app.routers.env_vars_helpers import verify_env_ownership
 from app.routers.env_vars_references import reference_report as _reference_report
 
 router = APIRouter(prefix="/credentials", tags=["credentials"])
@@ -132,19 +133,6 @@ class EnvVarUpsert(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-def _verify_env_ownership(db: Session, env_id: str, workspace_id: str) -> None:
-    """Refuse cross-workspace writes to an environment."""
-    from app.models.environment import Environment as _Env
-    env = db.query(_Env).filter(
-        _Env.id == env_id,
-        _Env.workspace_id == workspace_id,
-    ).first()
-    if not env:
-        # 404 not 403 — leaks nothing about whether the env exists in
-        # another workspace.
-        raise HTTPException(status_code=404, detail="Environment not found")
-
-
 def _raise_stale_revision(db: Session, row_id, handle: str) -> None:
     """Refetch the row so the client can reload against a real revision."""
     current = db.query(Integration).filter(Integration.id == row_id).first()
@@ -186,13 +174,16 @@ def list_env_vars(
     workspace_id: str = Depends(get_workspace_id),
     _: str = Depends(require_permission("platform.credentials.manage")),
 ):
-    """Return all credentials for an environment as flat key-value pairs.
+    """Return credential **metadata** for an environment.
 
-    Each row includes ``handle``, ``field``, and ``revision`` so the client
-    can echo them back verbatim on save and use the revision for optimistic
-    concurrency. See ``EnvVarUpsert`` for the write contract.
+    Values are never included — every row exposes only ``key``, ``handle``,
+    ``field``, ``revision``, and a ``has_value`` flag. To read the actual
+    value, the caller must hit ``POST .../env-vars/{env_id}/reveal`` which
+    records an audit event. This closes the reviewer's round-1 P2:
+    previously the environment editor was effectively a mass-reveal
+    endpoint with no audit trail.
     """
-    _verify_env_ownership(db, env_id, workspace_id)
+    verify_env_ownership(db, env_id, workspace_id)
 
     rows = db.query(Integration).filter(
         Integration.workspace_id == workspace_id,
@@ -203,7 +194,21 @@ def list_env_vars(
     for row in rows:
         if not row.encrypted_credentials:
             continue
-        creds = decrypt(row.encrypted_credentials)
+        try:
+            creds = decrypt(row.encrypted_credentials) or {}
+        except Exception:
+            # Unreadable row — surface it so the operator sees a stale
+            # or corrupt entry, but no fields are decoded from it. Use a
+            # sentinel key that can be filtered client-side.
+            result.append({
+                "key": f"__unreadable__:{row.handle}",
+                "handle": row.handle,
+                "field": None,
+                "revision": row.revision,
+                "has_value": False,
+                "unreadable": True,
+            })
+            continue
         for field, value in creds.items():
             if row.handle == "env_vars":
                 # Arbitrary user-typed variable — display name is the field
@@ -213,10 +218,10 @@ def list_env_vars(
                 key = _ENV_VAR_REVERSE.get((row.handle, field)) or f"{row.handle.upper()}_{field.upper()}"
             result.append({
                 "key": key,
-                "value": value,
                 "handle": row.handle,
                 "field": field,
                 "revision": row.revision,
+                "has_value": bool(value) or value == "",
             })
     return result
 
@@ -248,7 +253,7 @@ def save_env_vars(
       the literal empty string. Row deletion requires the DELETE endpoint.
     - Handles omitted from the payload are **not** deleted.
     """
-    _verify_env_ownership(db, env_id, workspace_id)
+    verify_env_ownership(db, env_id, workspace_id)
 
     # Reject duplicate targets across the payload — otherwise two items
     # would silently overwrite each other and last-write-wins would decide.
@@ -400,7 +405,7 @@ def delete_env_var(
     - Any non-empty list → 409 unless ``force=true``. Force deletions are
       recorded in the audit log with the reference report.
     """
-    _verify_env_ownership(db, env_id, workspace_id)
+    verify_env_ownership(db, env_id, workspace_id)
 
     row = db.query(Integration).filter(
         Integration.workspace_id == workspace_id,

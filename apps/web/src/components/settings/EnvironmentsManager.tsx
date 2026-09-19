@@ -12,7 +12,7 @@ interface Environment {
   allowed_hosts?: string[] | null
 }
 
-interface EnvVar { key: string; value: string; handle?: string; field?: string; revision?: number }
+interface EnvVar { key: string; value: string; handle?: string; field?: string; revision?: number; hasValue?: boolean; revealed?: boolean; dirty?: boolean; unreadable?: boolean; }
 
 // Canonical env var names are uppercase by convention (POSIX + 12-factor).
 function normalizeKey(raw: string): string {
@@ -218,7 +218,20 @@ function EnvironmentDetail({
     setLoading(true)
     try {
       const data = await credentials.envVars.get(authFetch, environment.id)
-      setVars(Array.isArray(data) ? data : [])
+      // Server returns metadata only (no values). Populate the local shape
+      // with a masked placeholder; the user reveals per-field on demand.
+      const rows: EnvVar[] = Array.isArray(data) ? data.map((d: EnvVar) => ({
+        key: d.key,
+        value: "",
+        handle: d.handle,
+        field: d.field,
+        revision: d.revision,
+        hasValue: d.hasValue,
+        revealed: false,
+        dirty: false,
+        unreadable: d.unreadable,
+      })) : []
+      setVars(rows)
     } finally { setLoading(false) }
   }, [authFetch, environment.id])
 
@@ -227,14 +240,22 @@ function EnvironmentDetail({
   async function saveAll(updated: EnvVar[]) {
     setSaving(true); setError(""); setSaved(false)
     try {
+      // Only send items the user actually changed. Untouched fields stay
+      // on the server intact via the merge path. This closes the reveal
+      // round-trip gap: unrevealed masked rows never get shipped as
+      // empty strings that would overwrite real values.
+      const dirtyItems = updated.filter(v => v.dirty)
+      if (dirtyItems.length === 0) {
+        setSaved(true)
+        setTimeout(() => setSaved(false), 2000)
+        return
+      }
       const res = await credentials.envVars.update(
         authFetch,
         environment.id,
-        updated.map(v => ({
+        dirtyItems.map(v => ({
           key: v.key,
           value: v.value,
-          // Echo identity back verbatim so the server preserves the row
-          // rather than re-parsing the display name into a catch-all.
           handle: v.handle ?? null,
           field: v.field ?? null,
           expected_revision: v.revision ?? null,
@@ -258,7 +279,32 @@ function EnvironmentDetail({
   }
 
   function updateVar(i: number, field: "key" | "value", val: string) {
-    setVars(prev => prev.map((v, idx) => idx === i ? { ...v, [field]: val } : v))
+    setVars(prev => prev.map((v, idx) => idx === i ? { ...v, [field]: val, dirty: true } : v))
+  }
+
+  async function revealVar(i: number) {
+    // POST /reveal writes an audit row per field. Fetch only when the
+    // user asks. Displaying the value inline switches the row to
+    // "revealed" but does NOT mark it dirty; the user still has to edit
+    // before we send anything on save.
+    const target = vars[i]
+    if (!target?.handle || !target.field) return
+    setError("")
+    try {
+      const res = await credentials.envVars.reveal(
+        authFetch, environment.id, target.handle, target.field,
+      )
+      if (!res.ok) {
+        setError("Reveal failed")
+        return
+      }
+      const body = await res.json()
+      setVars(prev => prev.map((v, idx) =>
+        idx === i ? { ...v, value: body.value, revealed: true } : v,
+      ))
+    } catch {
+      setError("Reveal failed")
+    }
   }
 
   async function removeVar(i: number) {
@@ -320,7 +366,10 @@ function EnvironmentDetail({
   function addVar() {
     if (!newKey.trim()) return
     const key = normalizeKey(newKey)
-    const updated = [...vars, { key, value: newValue }]
+    const updated: EnvVar[] = [
+      ...vars,
+      { key, value: newValue, dirty: true, revealed: true, hasValue: true },
+    ]
     setVars(updated)
     setNewKey(""); setNewValue(""); setShowNew(false)
     saveAll(updated)
@@ -449,12 +498,28 @@ function EnvironmentDetail({
                   <input
                     type={showValues[v.key] ? "text" : "password"}
                     value={v.value}
+                    placeholder={
+                      v.unreadable
+                        ? "(unreadable — contact admin)"
+                        : (v.hasValue && !v.revealed ? "•••••••• (click eye to reveal)" : "")
+                    }
+                    disabled={v.hasValue && !v.revealed}
                     onChange={e => updateVar(i, "value", e.target.value)}
                     className="mono"
                     style={{ fontSize: 12, color: "var(--text-2)", background: "transparent", border: "none", outline: "none", width: "100%", paddingRight: 28 }}
                   />
-                  <button type="button" onClick={() => setShowValues(prev => ({ ...prev, [v.key]: !prev[v.key] }))}
-                    style={{ position: "absolute", right: 4, color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center" }}>
+                  <button type="button"
+                    onClick={async () => {
+                      // Reveal-on-demand: fetch value (audited) then flip
+                      // the show/hide toggle. If already revealed, this
+                      // becomes a plain visibility toggle with no fetch.
+                      if (!v.revealed && v.hasValue && !v.unreadable) {
+                        await revealVar(i)
+                      }
+                      setShowValues(prev => ({ ...prev, [v.key]: !prev[v.key] }))
+                    }}
+                    disabled={v.unreadable}
+                    style={{ position: "absolute", right: 4, color: "var(--text-muted)", background: "none", border: "none", cursor: v.unreadable ? "not-allowed" : "pointer", display: "flex", alignItems: "center" }}>
                     <EyeIcon open={!!showValues[v.key]} />
                   </button>
                 </div>
