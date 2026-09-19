@@ -1091,3 +1091,24 @@ def test_reveal_refuses_cross_workspace_environment(client, seeded_workspace):
             db.query(Environment).filter(Environment.id == env_b).delete()
             db.query(Workspace).filter(Workspace.id == ws_b).delete()
             db.commit()
+
+
+
+# --- 24. list_env_vars uses snake_case wire keys (client contract) ---
+
+
+def test_list_env_vars_wire_keys_are_snake_case(client, seeded_workspace):
+    """Regression pin: the frontend reads has_value from the wire and
+    would silently short-circuit reveal-gating if we ever renamed to
+    camelCase. Freezing the wire keys stops that class of bug."""
+    ws_id, _token = seeded_workspace
+    env_id = _seed_environment(ws_id)
+    try:
+        _seed_integration(ws_id, env_id, "anthropic", {"api_key": "sk-x"})
+        r = client.get(f"/credentials/env-vars/{env_id}?workspace_id={ws_id}")
+        assert r.status_code == 200, r.text
+        row = r.json()[0]
+        assert "has_value" in row
+        assert "hasValue" not in row
+    finally:
+        _cleanup(ws_id, env_id)

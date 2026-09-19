@@ -226,10 +226,12 @@ function EnvironmentDetail({
         handle: d.handle,
         field: d.field,
         revision: d.revision,
-        hasValue: d.hasValue,
+        // Server sends snake_case; read the raw fields so the reveal
+        // gating (v.hasValue check in onClick) actually gets a boolean.
+        hasValue: (d as any).has_value,
         revealed: false,
         dirty: false,
-        unreadable: d.unreadable,
+        unreadable: (d as any).unreadable,
       })) : []
       setVars(rows)
     } finally { setLoading(false) }
