@@ -1,17 +1,24 @@
-"""Regression guard for scripts/stress_gateway.py — the stop-condition
-must be re-evaluated AFTER acquiring the semaphore, not just before.
+"""Regression guard for scripts/stress_gateway.py.
 
-Without a post-acquire re-check, tasks queued for the semaphore during
-a healthy-looking window continue to dispatch after the stop condition
-fires (kill switch or wall-clock deadline).
+Original invariant (R14, pre-#2141): every task loop had to re-check
+BOTH the kill-switch flag AND the wall-clock deadline before and after
+the semaphore — otherwise queued tasks could dispatch past a stop.
 
-R14 rewrite (post-Fix 8 #2106): the previous tests asserted literal
-strings ('kill or time.monotonic...' and 'Re-check AFTER acquiring the
-semaphore') that Fix 8 renamed / removed. The invariant they were
-guarding is still true — it is just expressed with ``stop_reason``
-instead of the boolean ``kill``. These tests now check the structural
-invariant instead of the exact variable name so a future rename does
-not break the guard again.
+PR #2141 rewrite: the wall-clock check moved OUT of the per-task loop
+and INTO ``asyncio.wait_for`` wrapping the gather. That gives a real
+overall deadline (reviewer P1 #2) — the previous per-task check only
+stopped NEW dispatch, not in-flight work. The invariant the old tests
+guarded now takes a different shape:
+
+  - Per-task loop still guards against post-kill-switch dispatch via
+    ``stop_reason`` check, both before AND after ``async with sem``.
+  - Overall deadline is guaranteed by ``asyncio.wait_for(..., timeout=
+    max_wall)`` at the gather layer.
+  - The old ``'error_rate'`` label split into ``'admitted_error_rate'``
+    (real fault axis) and ``'rejection_rate'`` (backpressure axis).
+
+These tests assert the new invariants so future refactors can't
+silently regress either guarantee.
 """
 from __future__ import annotations
 
@@ -24,56 +31,58 @@ _STRESS = (
 ).read_text(encoding="utf-8")
 
 
-# Identifiers that any 'stop' state check must include. Post-Fix 8 that
-# is ``stop_reason``; pre-Fix 8 it was ``kill``. Accept either so a
-# rename does not re-break the test.
-_STOP_STATE_TOKENS = ("stop_reason", "kill")
-
-
-def _has_stop_check(block: str) -> bool:
-    """Return True if `block` contains a stop-state check paired with the
-    wall-clock deadline. Both stop signals must appear so a caller can't
-    reintroduce the single-condition form."""
-    stop_matched = any(tok in block for tok in _STOP_STATE_TOKENS)
-    deadline_matched = "time.monotonic() - started > max_wall" in block
-    return stop_matched and deadline_matched
-
-
 def test_stop_condition_rechecked_after_semaphore_acquire():
     """After ``async with sem`` acquires the semaphore, the inner body
-    must re-evaluate both stop signals so queued tasks can't dispatch
+    must re-evaluate the kill-switch so queued tasks can't dispatch
     once the stop condition has fired."""
     idx = _STRESS.index("async with sem:")
-    body = _STRESS[idx : idx + 500]
-    assert _has_stop_check(body), (
-        "post-acquire stop check missing inside ``async with sem`` block. "
-        "Without a re-check, queued tasks continue firing requests after "
-        "the stop condition fires. See PR review R14 / P1."
+    body = _STRESS[idx : idx + 400]
+    assert "stop_reason is not None" in body and "return" in body, (
+        "post-acquire kill-switch re-check missing inside "
+        "``async with sem`` block. Without it, queued tasks continue "
+        "firing requests after ``stop_reason`` is set."
     )
 
 
 def test_stop_condition_also_precheck():
     """A post-acquire check alone would let every queued task pay the
-    semaphore-wait latency before short-circuiting. The two-phase pattern
-    (pre-acquire cheap + post-acquire authoritative) must remain."""
+    semaphore-wait latency before short-circuiting. Pre-acquire cheap
+    check must remain."""
     idx = _STRESS.index("async with sem:")
     prelude = _STRESS[max(0, idx - 400) : idx]
-    assert _has_stop_check(prelude), (
-        "pre-acquire stop check missing before ``async with sem`` block. "
-        "Every queued task paying the semaphore-wait latency for nothing "
-        "would fill the connection pool during a real incident. See PR "
-        "review R14 / P1."
+    assert "stop_reason is not None" in prelude, (
+        "pre-acquire kill-switch check missing before ``async with "
+        "sem`` block. Every queued task would pay semaphore-wait "
+        "latency for nothing during a real incident."
     )
 
 
-def test_stop_reason_names_the_actual_stop():
-    """Report must be able to distinguish wall-clock vs error-rate stops.
-    Post-Fix 8 the state is a string 'wall_clock' | 'error_rate' | None
-    so the report can name the actual stop cause instead of inferring it
-    from the final status counts.
+def test_overall_deadline_via_wait_for():
+    """PR #2141 P1 #2: ``--max-wall`` must be a REAL overall deadline
+    that also cancels in-flight tasks. The previous per-task check only
+    stopped NEW dispatch. Enforce that the gather is wrapped in
+    ``asyncio.wait_for(..., timeout=max_wall)``."""
+    assert "asyncio.wait_for(" in _STRESS, (
+        "overall deadline must be enforced via asyncio.wait_for around "
+        "the gather, not a per-task loop check. Otherwise --max-wall "
+        "doesn't stop in-flight requests (reviewer P1 #2)."
+    )
+    # And it must be parameterised by max_wall.
+    idx = _STRESS.index("asyncio.wait_for(")
+    call = _STRESS[idx : idx + 200]
+    assert "max_wall" in call, (
+        "asyncio.wait_for must use ``timeout=max_wall`` so the whole-"
+        "run deadline is honored."
+    )
 
-    R14 asserts the state value shape survives future refactors."""
-    for label in ("wall_clock", "error_rate"):
+
+def test_stop_reason_labels_are_named():
+    """Report must be able to distinguish which threshold fired.
+    PR #2141 split the old ``'error_rate'`` into two axes — admitted-
+    error (real fault) vs rejection-rate (backpressure) — plus the
+    existing wall-clock stop. All three labels must appear as literal
+    strings so ``_report`` can name the actual stop cause."""
+    for label in ("wall_clock", "admitted_error_rate", "rejection_rate"):
         assert f'"{label}"' in _STRESS or f"'{label}'" in _STRESS, (
             f"stress script must emit stop_reason={label!r} at the "
             "matching branch so _report can print the accurate line "
