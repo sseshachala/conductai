@@ -432,6 +432,30 @@ class BudgetLedger:
         period = monthly_period_key()
         rid = uuid.uuid4().hex
 
+        # 0) Cold-start self-heal. The startup reconciler only enumerates
+        # scopes that already have rows in guard_audit_events or
+        # budget_reservations for the current period. A workspace's
+        # FIRST-EVER reserve is invisible to it — :ready never gets set,
+        # the Lua below returns -1, and every request 503s with NOT_READY
+        # forever (fail-closed cold-start loop). Reconcile this specific
+        # scope inline when :ready is missing so the Lua can proceed.
+        # reconcile() is idempotent and empty-scope-safe (committed=0,
+        # reserved=0, ready=1).
+        _sk_precheck = _scope_keys(
+            workspace_id, clerk_user_id, agent_identity_id, ai_tool, period
+        )
+        try:
+            if not self._client().exists(_sk_precheck["ready"]):
+                self.reconcile(
+                    db=db,
+                    workspace_id=workspace_id,
+                    ai_tool=ai_tool,
+                    clerk_user_id=clerk_user_id,
+                    agent_identity_id=agent_identity_id,
+                )
+        except Exception as e:  # noqa: BLE001 — never let self-heal break the reserve
+            log.warning("budget_ledger.reserve_ready_precheck_failed", err=str(e))
+
         # 1) Durable row FIRST — this is the crash-safe log.
         from app.modules.guard.models import BudgetReservation
         row = BudgetReservation(
