@@ -686,3 +686,130 @@ def test_bare_mcp_server_blocks_credential_delete_via_server_cred_map(
             db.commit()
     finally:
         _cleanup(ws_id, env_id)
+
+
+# --- 17. Background rotation vs editor --- merge_and_write refuses stale writes
+
+
+def test_background_rotation_conflicts_do_not_produce_same_revision(
+    client, seeded_workspace,
+):
+    """P1-round-2 fix: rotation writers used ORM-level bump_encrypted which
+    only advanced the Python-loaded revision. Two rotation-flavored writers
+    that both read revision=1 could both write revision=2 and clobber each
+    other.
+
+    With merge_and_write, one wins the conditional UPDATE and the other
+    retries against the newer state -- no lost update.
+    """
+    import threading
+
+    from app.core.database import SessionLocal
+    from app.core.integration_writer import merge_and_write
+
+    ws_id, _token = seeded_workspace
+    env_id = _seed_environment(ws_id)
+    try:
+        row_id = _seed_integration(ws_id, env_id, "linear", {"api_key": "orig"})
+        barrier = threading.Barrier(2)
+
+        def _rotate(new_value: str) -> None:
+            barrier.wait()
+            with SessionLocal() as db:
+                merge_and_write(
+                    db,
+                    row_id,
+                    lambda prev: {**prev, "api_key": new_value},
+                )
+                db.commit()
+
+        a = threading.Thread(target=_rotate, args=("value-a",))
+        b = threading.Thread(target=_rotate, args=("value-b",))
+        a.start(); b.start()
+        a.join(timeout=5); b.join(timeout=5)
+
+        row = _list_row(ws_id, env_id, "linear")
+        assert _decrypted(row)["api_key"] in {"value-a", "value-b"}
+        assert int(row.revision) == 3, (
+            f"expected revision 3 after seed + 2 conditional writes; got {row.revision}"
+        )
+    finally:
+        _cleanup(ws_id, env_id)
+
+
+# --- 18. Paste import preserves identity + revision on update
+
+
+def test_paste_import_update_does_not_drop_identity(client, seeded_workspace):
+    """P2 fix: paste-import previously replaced the whole EnvVar object
+    with the parsed {key, value}, losing handle/field/revision. The subsequent
+    save then re-parsed the display name into a different bucket. The
+    frontend now merges parsed values into the existing row, keeping
+    identity. This test verifies the server accepts the resulting payload
+    as a normal update.
+    """
+    ws_id, _token = seeded_workspace
+    env_id = _seed_environment(ws_id)
+    try:
+        _seed_integration(ws_id, env_id, "openai-primary", {"api_key": "sk-orig"})
+
+        r = client.get(f"/credentials/env-vars/{env_id}?workspace_id={ws_id}")
+        assert r.status_code == 200
+        existing = r.json()[0]
+        payload = [{
+            "key": existing["key"],
+            "value": "sk-rotated-via-paste",
+            "handle": existing["handle"],
+            "field": existing["field"],
+            "expected_revision": existing["revision"],
+        }]
+        r = client.put(
+            f"/credentials/env-vars/{env_id}?workspace_id={ws_id}",
+            json=payload,
+        )
+        assert r.status_code == 200, r.text
+        row = _list_row(ws_id, env_id, "openai-primary")
+        assert _decrypted(row) == {"api_key": "sk-rotated-via-paste"}
+    finally:
+        _cleanup(ws_id, env_id)
+
+
+# --- 19. Delete last field then recreate cycle works
+
+
+def test_delete_last_field_promotes_to_row_delete_so_recreate_works(
+    client, seeded_workspace,
+):
+    """P2 fix: previously field-delete of the last field left an
+    encrypted_credentials=None row with a bumped revision that the client
+    couldn't observe (list_env_vars filters empty ciphertext), so recreating
+    the credential via PUT tried to insert a new row and hit the unique
+    constraint. The endpoint now promotes an empty-result field-delete to
+    a whole-row delete so the recreate path is clean.
+    """
+    ws_id, _token = seeded_workspace
+    env_id = _seed_environment(ws_id)
+    try:
+        _seed_integration(ws_id, env_id, "sentry", {"token": "sen-orig"})
+
+        r = client.delete(
+            f"/credentials/env-vars/{env_id}/handles/sentry"
+            f"?workspace_id={ws_id}&expected_revision=1&field=token",
+        )
+        assert r.status_code == 200, r.text
+
+        assert _list_row(ws_id, env_id, "sentry") is None
+
+        r = client.put(
+            f"/credentials/env-vars/{env_id}?workspace_id={ws_id}",
+            json=[{
+                "key": "SENTRY_TOKEN", "value": "sen-recreated",
+                "handle": "sentry", "field": "token",
+            }],
+        )
+        assert r.status_code == 200, r.text
+        row = _list_row(ws_id, env_id, "sentry")
+        assert row is not None
+        assert _decrypted(row) == {"token": "sen-recreated"}
+    finally:
+        _cleanup(ws_id, env_id)

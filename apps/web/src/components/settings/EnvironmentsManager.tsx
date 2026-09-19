@@ -347,8 +347,19 @@ function EnvironmentDetail({
     let newCount = 0, updateCount = 0
     for (const p of parsed) {
       const existing = merged.findIndex(v => v.key === p.key)
-      if (existing >= 0) { merged[existing] = p; updateCount++ }
-      else { merged.push(p); newCount++ }
+      if (existing >= 0) {
+        // Preserve the existing row's identity so the server updates the
+        // same handle instead of routing the new value into a catch-all
+        // bucket (which would 409 or create a duplicate row).
+        merged[existing] = {
+          ...merged[existing],
+          value: p.value,
+        }
+        updateCount++
+      } else {
+        merged.push(p)
+        newCount++
+      }
     }
     setPendingImport({ vars: merged, newCount, updateCount })
   }

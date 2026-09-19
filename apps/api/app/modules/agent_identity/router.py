@@ -115,10 +115,14 @@ def _write_token_to_env(db: Session, workspace_id: str, environment_id: str, pla
     ).first()
 
     if existing:
-        current = decrypt(existing.encrypted_credentials) if existing.encrypted_credentials else {}
-        current["CONDUCT_AGENT_TOKEN"] = plaintext
-        from app.core.integration_writer import bump_encrypted
-        bump_encrypted(existing, encrypt(current))
+        # Read → merge one field → conditional write. Prevents a concurrent
+        # env-var editor from silently overwriting the token we just minted.
+        from app.core.integration_writer import merge_and_write
+        merge_and_write(
+            db,
+            existing.id,
+            lambda prev: {**prev, "CONDUCT_AGENT_TOKEN": plaintext},
+        )
     else:
         stmt = (
             pg_insert(Integration)

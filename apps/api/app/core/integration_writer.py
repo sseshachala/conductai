@@ -6,24 +6,21 @@ concurrent updates never silently overwrite each other.
 
 Two entry points:
 
-- ``bump_encrypted(row, new_ciphertext)`` — ORM-flavored: mutates the
-  loaded row and bumps its revision. Callers that don't need to guard
-  against a concurrent writer (identity provisioning, gateway push,
-  server-side rotations) use this. It always increments revision, which
-  is what unblocks the editor-open-during-rotation race the reviewer
-  flagged in P1-2.
-
 - ``conditional_update(...)`` / ``conditional_delete(...)`` — SQL-level:
   execute an UPDATE/DELETE with a ``revision = :expected`` predicate and
-  return the rowcount. Used by the env-vars editor path where a stale
-  client must be told to reload instead of silently clobbering another
-  editor's save.
+  return the rowcount. Used by callers that already hold an expected
+  revision (the env-vars editor). A rowcount of 0 means the row moved
+  on and the caller must decide whether to refetch, remerge, or 409.
 
-The env-vars endpoints use the conditional variants for correctness under
-contention; the other writers just bump so any editor holding an old
-revision is refused on its next save. Both flows write through this
-module — no other code path is allowed to touch
-``Integration.encrypted_credentials`` without at least bumping revision.
+- ``merge_and_write(db, integration_id, merge_fn)`` — read/merge/write
+  loop that uses ``conditional_update`` under the hood and refetches on
+  contention. Used by every server-side rotation (gateway push, MCP
+  push, agent identity provisioning, okta sync) so two racing writers
+  don't lose each other's fields.
+
+No other code path is allowed to touch
+``Integration.encrypted_credentials``. Direct ORM assignment silently
+skips revision, which is what the reviewer's P1-2 flagged.
 """
 from __future__ import annotations
 
@@ -33,15 +30,54 @@ from sqlalchemy.orm import Session
 from app.models.integration import Integration
 
 
-def bump_encrypted(row: Integration, new_ciphertext: str | None) -> None:
-    """Set ciphertext and bump revision atomically at the ORM layer.
+class IntegrationWriteExhausted(RuntimeError):
+    """Raised when merge_and_write can't win the race after max_retries."""
 
-    Not race-safe against concurrent writers on the same row — it just
-    guarantees the revision advances so the next editor save fails fast
-    on its ``expected_revision`` check.
+
+def merge_and_write(
+    db: Session,
+    integration_id,
+    merge_fn,
+    *,
+    max_retries: int = 5,
+) -> None:
+    """Read → decrypt → merge_fn(prev) → encrypt → conditional UPDATE.
+
+    Retries on stale revision by refetching the row and running the merge
+    against the newer state. Prevents lost updates when two rotation-style
+    writers (gateway push, okta sync, identity provisioning, proxy config)
+    race for the same row.
+
+    ``merge_fn(prev_dict) -> new_dict`` — receives the current decrypted
+    credentials (empty dict if the row has none) and returns the desired
+    new state. Called once per attempt so a retry sees the latest state.
     """
-    row.encrypted_credentials = new_ciphertext
-    row.revision = int(row.revision or 1) + 1
+    from app.core.crypto import decrypt as _decrypt, encrypt as _encrypt
+
+    last_seen_revision: int | None = None
+    for _ in range(max_retries):
+        row = db.query(Integration).filter(Integration.id == integration_id).first()
+        if row is None:
+            raise IntegrationWriteExhausted(
+                f"Integration {integration_id} disappeared during merge_and_write"
+            )
+        prev = _decrypt(row.encrypted_credentials) if row.encrypted_credentials else {}
+        new_state = merge_fn(dict(prev))
+        new_ct = _encrypt(new_state) if new_state else None
+        rowcount = conditional_update(
+            db,
+            row.id,
+            expected_revision=int(row.revision),
+            new_ciphertext=new_ct,
+        )
+        if rowcount == 1:
+            return
+        last_seen_revision = int(row.revision)
+        db.expire(row)
+    raise IntegrationWriteExhausted(
+        f"Integration {integration_id} still contended after {max_retries} retries "
+        f"(last observed revision {last_seen_revision})"
+    )
 
 
 def conditional_update(

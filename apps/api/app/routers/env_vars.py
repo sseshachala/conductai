@@ -35,11 +35,7 @@ from sqlalchemy.orm import Session
 from app.core.auth import audit, get_workspace_id, require_permission
 from app.core.crypto import decrypt, encrypt
 from app.core.database import get_db
-from app.core.integration_writer import (
-    bump_encrypted,
-    conditional_delete,
-    conditional_update,
-)
+from app.core.integration_writer import conditional_delete, conditional_update
 from app.models.integration import Integration
 from app.routers.env_vars_references import reference_report as _reference_report
 
@@ -139,6 +135,19 @@ def _verify_env_ownership(db: Session, env_id: str, workspace_id: str) -> None:
         # 404 not 403 — leaks nothing about whether the env exists in
         # another workspace.
         raise HTTPException(status_code=404, detail="Environment not found")
+
+
+def _raise_stale_revision(db: Session, row_id, handle: str) -> None:
+    """Refetch the row so the client can reload against a real revision."""
+    current = db.query(Integration).filter(Integration.id == row_id).first()
+    raise HTTPException(
+        status_code=409,
+        detail={
+            "code": "stale_revision",
+            "handle": handle,
+            "current_revision": int(current.revision) if current else 0,
+        },
+    )
 
 
 def _resolve_identity(item: EnvVarUpsert) -> tuple[str, str]:
@@ -300,19 +309,7 @@ def save_env_vars(
                 new_ciphertext=new_ct,
             )
             if rowcount == 0:
-                # Refetch to get the truth for the client to reload against.
-                current = db.query(Integration).filter(
-                    Integration.id == existing.id,
-                ).with_for_update(nowait=False, of=Integration).first()
-                current_rev = int(current.revision) if current else 0
-                raise HTTPException(
-                    status_code=409,
-                    detail={
-                        "code": "stale_revision",
-                        "handle": handle,
-                        "current_revision": current_rev,
-                    },
-                )
+                _raise_stale_revision(db, existing.id, handle)
         else:
             # Brand-new row — expected_revision must NOT be sent; the row
             # didn't exist for the caller to have a revision for. If the
@@ -418,15 +415,7 @@ def delete_env_var(
         # concurrent writer beat us to the row.
         deleted = conditional_delete(db, row_id, expected_revision=expected_revision)
         if deleted == 0:
-            current = db.query(Integration).filter(Integration.id == row_id).first()
-            raise HTTPException(
-                status_code=409,
-                detail={
-                    "code": "stale_revision",
-                    "handle": handle,
-                    "current_revision": int(current.revision) if current else 0,
-                },
-            )
+            _raise_stale_revision(db, row_id, handle)
         if any_refs:
             audit(
                 db,
@@ -442,41 +431,57 @@ def delete_env_var(
             )
     else:
         # Field-only delete — merge, drop, re-encrypt via conditional UPDATE.
+        # If dropping this field would leave the row empty, promote to a
+        # whole-row delete so the caller can freely recreate the credential
+        # afterwards. Reference protection already ran above; skipping it
+        # here would be inconsistent between "field is the last one" and
+        # "field is one of many".
         creds = decrypt(row.encrypted_credentials) if row.encrypted_credentials else {}
         if field not in creds:
             raise HTTPException(status_code=404, detail="Field not found on credential")
         del creds[field]
-        new_ct = encrypt(creds) if creds else None
-        updated = conditional_update(
-            db,
-            row_id,
-            expected_revision=expected_revision,
-            new_ciphertext=new_ct,
-        )
-        if updated == 0:
-            current = db.query(Integration).filter(Integration.id == row_id).first()
-            raise HTTPException(
-                status_code=409,
-                detail={
-                    "code": "stale_revision",
-                    "handle": handle,
-                    "current_revision": int(current.revision) if current else 0,
-                },
-            )
-        if any_refs:
-            audit(
+        if not creds:
+            deleted = conditional_delete(db, row_id, expected_revision=expected_revision)
+            if deleted == 0:
+                _raise_stale_revision(db, row_id, handle)
+            if any_refs:
+                audit(
+                    db,
+                    workspace_id,
+                    "credential.force_delete",
+                    resource_type="integration",
+                    resource_id=str(row_id),
+                    metadata={
+                        "handle": handle,
+                        "environment_id": env_id,
+                        "references": refs,
+                        "reason": "last_field_removed",
+                    },
+                )
+        else:
+            new_ct = encrypt(creds)
+            updated = conditional_update(
                 db,
-                workspace_id,
-                "credential.force_field_delete",
-                resource_type="integration",
-                resource_id=str(row_id),
-                metadata={
-                    "handle": handle,
-                    "field": field,
-                    "environment_id": env_id,
-                    "references": refs,
-                },
+                row_id,
+                expected_revision=expected_revision,
+                new_ciphertext=new_ct,
             )
+            if updated == 0:
+                _raise_stale_revision(db, row_id, handle)
+            if any_refs:
+                audit(
+                    db,
+                    workspace_id,
+                    "credential.force_field_delete",
+                    resource_type="integration",
+                    resource_id=str(row_id),
+                    metadata={
+                        "handle": handle,
+                        "field": field,
+                        "environment_id": env_id,
+                        "references": refs,
+                    },
+                )
 
     db.commit()
     return DeleteEnvVarResponse(
