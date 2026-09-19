@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto"
 import { expect, test, type APIResponse, type Browser, type BrowserContext, type Page } from "@playwright/test"
+import { legacyCatalogModels, publishedGatewayFixture, type LegacyCatalogProfile } from "./gateway-fixture"
 
 type Account = { email: string; password: string }
 type Session = { context: BrowserContext; page: Page; userId: string }
@@ -10,15 +11,6 @@ type Environment = { id: string; name: string }
 type ApiToken = { id: string; token_name: string; token_prefix: string; token?: string }
 type Policy = { workspace_id: string; rule_id: string; action: string; enabled: boolean }
 type AuditEntry = { id: string; actor_id: string | null; action: string; resource_id: string | null }
-type GatewayProfile = {
-  id: string | null
-  name: string
-  provider: string
-  protocol: string
-  credential_ref: string | null
-  environment_id: string | null
-  deployments: { alias: string; model: string }[]
-}
 type GuardEvent = {
   id: string
   workspace_id: string
@@ -327,24 +319,12 @@ async function canonicalGatewayProfile(
   page: Page,
   workspaceId: string,
   provider: "anthropic" | "openai",
-): Promise<GatewayProfile> {
-  const response = await api(page, `/workspaces/${workspaceId}/gateways`, "GET", undefined, workspaceId)
-  expect(response.status()).toBe(200)
-  const profiles = await response.json() as GatewayProfile[]
-  const defaults = profiles.filter(profile => profile.id && profile.environment_id === null)
-  expect(defaults, `${provider} canary workspace must have exactly one persisted default Gateway Profile`).toHaveLength(1)
-  const profile = defaults[0]
-  expect([provider, "litellm"]).toContain(profile.provider)
-  expect(
-    provider === "anthropic"
-      ? profile.protocol === "anthropic"
-      : ["openai", "openai_compatible"].includes(profile.protocol),
-  ).toBe(true)
-  expect(profile.credential_ref).toMatch(
-    /^vault:\/\/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\/[a-z0-9_-]+$/i,
-  )
-  expect(profile.deployments.length).toBeGreaterThan(0)
-  return profile
+) {
+  return publishedGatewayFixture(async path => {
+    const response = await api(page, path, "GET", undefined, workspaceId)
+    expect(response.status(), "Published Gateway canary profile must be readable").toBe(200)
+    return response.json()
+  }, workspaceId, provider, process.env[`PROD_E2E_${provider.toUpperCase()}_MODEL`])
 }
 
 async function gatewayToken(page: Page, workspaceId: string): Promise<string> {
@@ -386,10 +366,6 @@ function expectNoCredentialMaterial(value: unknown): void {
   expect(encoded).not.toMatch(/sk-ant-[A-Za-z0-9_-]{8,}/)
   expect(encoded).not.toMatch(/sk-(?:proj-)?[A-Za-z0-9_-]{20,}/)
   expect(encoded).not.toMatch(/cond_(?:agt|api|ref)_[A-Za-z0-9_-]{8,}/)
-}
-
-function uniqueDeploymentModels(profile: GatewayProfile): string[] {
-  return [...new Set(profile.deployments.map(deployment => deployment.model.trim()).filter(Boolean))]
 }
 
 type Harness = {
@@ -473,9 +449,11 @@ test.describe("bounded production security canaries", () => {
     expect(invalid.status()).toBe(401)
   })
 
-  test("@prod-gateway Claude model discovery exposes only canonical profile deployments", async () => {
+  test("@prod-gateway Claude legacy model discovery exposes only persisted default deployments", async () => {
     const { a, workspaceA } = harness
-    const profile = await canonicalGatewayProfile(a.page, workspaceA.id, "anthropic")
+    const profilesResponse = await api(a.page, `/workspaces/${workspaceA.id}/gateways`, "GET", undefined, workspaceA.id)
+    expect(profilesResponse.status()).toBe(200)
+    const profiles = await profilesResponse.json() as LegacyCatalogProfile[]
     const token = await gatewayToken(a.page, workspaceA.id)
     const since = new Date(Date.now() - 1_000).toISOString()
     const response = await a.page.request.get(`${apiBase}/gateway/v1/anthropic/v1/models?limit=1000`, {
@@ -487,7 +465,7 @@ test.describe("bounded production security canaries", () => {
     })
     expect(response.status()).toBe(200)
     const body = await response.json() as { data: { id: string; display_name?: string }[] }
-    expect(body.data.map(model => model.id)).toEqual(uniqueDeploymentModels(profile))
+    expect(body.data.map(model => model.id)).toEqual(legacyCatalogModels(profiles))
     expectNoCredentialMaterial(body)
 
     const event = await waitForGuardEvent(
@@ -504,7 +482,7 @@ test.describe("bounded production security canaries", () => {
   test("@prod-gateway Claude token counting resolves the Vault profile and stays non-billable", async () => {
     const { a, workspaceA } = harness
     const profile = await canonicalGatewayProfile(a.page, workspaceA.id, "anthropic")
-    const model = uniqueDeploymentModels(profile)[0]
+    const model = profile.model
     const token = await gatewayToken(a.page, workspaceA.id)
     const hookSession = `${runPrefix}-count-tokens`
     const since = new Date(Date.now() - 1_000).toISOString()
@@ -530,6 +508,7 @@ test.describe("bounded production security canaries", () => {
       candidate => candidate.hook_session_id === hookSession,
     )
     expect(event.routing_meta).toMatchObject({ operation: "token_count", billable: false })
+    expect(event.routing_meta).toMatchObject({ gateway_version: "v2", revision_id: profile.revisionId })
     expect(event.cost_usd_after).toBeNull()
     expectNoCredentialMaterial(event)
   })
@@ -537,7 +516,7 @@ test.describe("bounded production security canaries", () => {
   test("@prod-gateway Claude non-streaming inference records attributed billable activity", async () => {
     const { a, workspaceA } = harness
     const profile = await canonicalGatewayProfile(a.page, workspaceA.id, "anthropic")
-    const model = uniqueDeploymentModels(profile)[0]
+    const model = profile.model
     const token = await gatewayToken(a.page, workspaceA.id)
     const hookSession = `${runPrefix}-claude-message`
     const since = new Date(Date.now() - 1_000).toISOString()
@@ -569,12 +548,13 @@ test.describe("bounded production security canaries", () => {
     expect(event).toMatchObject({
       workspace_id: workspaceA.id,
       ai_tool: "production-canary",
-      source: "proxy",
+      source: "gateway",
       provider: "anthropic",
       model,
       decision: "allowed",
     })
     expect(event.routing_meta?.billable).not.toBe(false)
+    expect(event.routing_meta).toMatchObject({ gateway_version: "v2", revision_id: profile.revisionId })
     expect(event.tokens_before).toBeGreaterThan(0)
     expect(event.tokens_after).toBeGreaterThan(0)
     expect(typeof event.cost_usd_after).toBe("number")
@@ -584,7 +564,7 @@ test.describe("bounded production security canaries", () => {
   test("@prod-gateway Claude streaming inference emits content and closes cleanly", async () => {
     const { a, workspaceA } = harness
     const profile = await canonicalGatewayProfile(a.page, workspaceA.id, "anthropic")
-    const model = uniqueDeploymentModels(profile)[0]
+    const model = profile.model
     const token = await gatewayToken(a.page, workspaceA.id)
     const hookSession = `${runPrefix}-claude-stream`
     const since = new Date(Date.now() - 1_000).toISOString()
@@ -617,13 +597,14 @@ test.describe("bounded production security canaries", () => {
       candidate => candidate.hook_session_id === hookSession,
     )
     expect(event.execution_status).not.toBe("error")
+    expect(event.routing_meta).toMatchObject({ gateway_version: "v2", revision_id: profile.revisionId })
     expectNoCredentialMaterial(event)
   })
 
   test("@prod-gateway OpenAI Responses inference remains functional after transport refactor", async () => {
     const { b, workspaceB } = harness
     const profile = await canonicalGatewayProfile(b.page, workspaceB.id, "openai")
-    const model = uniqueDeploymentModels(profile)[0]
+    const model = profile.model
     const token = await gatewayToken(b.page, workspaceB.id)
     const hookSession = `${runPrefix}-openai-response`
     const since = new Date(Date.now() - 1_000).toISOString()
@@ -650,11 +631,12 @@ test.describe("bounded production security canaries", () => {
     expect(event).toMatchObject({
       workspace_id: workspaceB.id,
       ai_tool: "production-canary",
-      source: "proxy",
+      source: "gateway",
       provider: "openai",
       model,
       decision: "allowed",
     })
+    expect(event.routing_meta).toMatchObject({ gateway_version: "v2", revision_id: profile.revisionId })
     expectNoCredentialMaterial(event)
   })
 
@@ -692,10 +674,10 @@ test.describe("bounded production security canaries", () => {
       if (new URL(response.url()).pathname.endsWith('/guard/events/stream')) streamStatuses.push(response.status())
     })
     await a.page.goto('/logs/guard')
-    const goLive = a.page.getByRole('button', { name: 'Go Live', exact: true })
+    const goLive = a.page.getByRole('button', { name: 'Resume realtime stream', exact: true })
     await expect(goLive).toBeVisible()
     await goLive.click()
-    await expect(a.page.getByRole('button', { name: 'Stop', exact: true })).toBeVisible()
+    await expect(a.page.getByRole('button', { name: 'Pause realtime stream', exact: true })).toBeVisible()
     const marker = `${runPrefix}-live-${randomUUID().slice(0, 8)}`
     const since = new Date(Date.now() - 1000).toISOString()
     const created = await a.page.request.post(`${apiBase}/guard/events`, {

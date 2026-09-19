@@ -140,13 +140,20 @@ discovery, Vault-backed token counting, non-streaming and streaming Anthropic
 inference, OpenAI Responses regression coverage, non-billable utility audit
 metadata, billable inference attribution, credential-material exclusion from
 responses/audit output, and PreToolUse/PostToolUse session correlation. Account
-A's disposable workspace must have exactly one persisted default Anthropic
-(or compatible LiteLLM) Gateway Profile. Account B's must have exactly one
-persisted default OpenAI (or compatible LiteLLM) Gateway Profile. Each profile
-must reference a canonical `vault://<environment-uuid>/<provider>` credential
-and expose at least one deployment. The
-runner validates these prerequisites and never creates, changes, or prints
-Gateway Profiles or provider credentials.
+A's disposable workspace needs a published v2 profile accepting
+`anthropic_messages` and `anthropic_count_tokens`; B's needs one accepting
+`openai_responses`. Targets must use the corresponding provider via
+`native_http` or `litellm_sdk`, with Vault credential references. Gateway v2
+must be enabled for both workspaces. The canary reads the active revision,
+sends its `cond-<code>-<alias>` identifier, and verifies that revision in audit.
+Set `PROD_E2E_ANTHROPIC_MODEL` and `PROD_E2E_OPENAI_MODEL` as shell environment
+variables locally or GitHub environment variables in `production-e2e` to pin
+profiles explicitly. Otherwise exactly one eligible profile per workspace is
+required; missing or ambiguous fixtures fail, never skip or fall back to v1.
+The separate model-discovery test still checks the legacy v1 catalog contract,
+including an empty catalog when no persisted default v1 profile exists. It
+does not claim v2 profile discovery coverage. The runner never creates or
+changes profiles or provider credentials.
 
 The first command is a one-time Gmail read-only authorization. It discovers the
 single OAuth desktop-client JSON in `~/.conduct/e2e/otpbroker/` and writes the
