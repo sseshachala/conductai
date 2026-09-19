@@ -16,6 +16,20 @@ export const credentials = {
       post(f, `${base()}/env-vars/${envId}`, body),
     update: (f: AuthFetch, envId: string, body: Record<string, unknown>) =>
       put(f, `${base()}/env-vars/${envId}`, body),
+    // Explicit deletion. Server enforces reference checks (Gateway / MCP /
+    // workflow) and refuses referenced credentials unless force=true. Caller
+    // MUST pass expected_revision — a stale value returns 409 with current.
+    remove: (
+      f: AuthFetch,
+      envId: string,
+      handle: string,
+      opts: { expected_revision: number; field?: string; force?: boolean },
+    ) => {
+      const q = new URLSearchParams({ expected_revision: String(opts.expected_revision) })
+      if (opts.field) q.set("field", opts.field)
+      if (opts.force) q.set("force", "true")
+      return del(f, `${base()}/env-vars/${envId}/handles/${handle}?${q}`)
+    },
   },
 
   github: {
