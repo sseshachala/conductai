@@ -26,6 +26,7 @@ from app.core.workspace_context import set_workspace_rls
 from app.guard.audit import record as _record_audit
 from app.modules.guard.gateway_runtime import TransportResolver
 from app.modules.guard.gateway_handler import handle_gateway_request
+from app.modules.guard.completions_shim import gateway_completions_impl
 
 # Test and extension seam retained under the old private name; this now points
 # at the neutral canonical handler rather than importing the legacy router.
@@ -257,3 +258,16 @@ async def gateway_perplexity(request: Request, background: BackgroundTasks):
         bearer=True,
         canonical_profile=True,
     )
+
+
+@router.post("/completions")
+async def gateway_completions(request: Request, background: BackgroundTasks):
+    """Profile-native, provider-independent completions endpoint (#2144).
+
+    Accepts a canonical request ``{profile, messages, ...}`` and delegates
+    to the same v2 executor that serves the SDK-shaped routes. Implementation
+    lives in ``completions_shim`` so this router stays a flat route table.
+    PR 1 supports OpenAI-target profiles only; Anthropic-target support
+    lands in the follow-up PR from the #2144 chain.
+    """
+    return await gateway_completions_impl(request, background)
