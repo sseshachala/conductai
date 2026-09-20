@@ -122,6 +122,10 @@ def _it_migrated(_it_engine):
 
 
 _TABLES_TO_WIPE = [
+    # ``guard_audit_events`` is where Guard writes gateway decisions — the
+    # ``audit_log`` model in app/models/audit_log.py is a different, platform-
+    # level audit surface and is not touched by the gateway path.
+    "guard_audit_events",
     "audit_log",
     "budget_reservations",
     "gateway_profile_revisions",
@@ -271,10 +275,18 @@ def stub_openai_transport(monkeypatch: pytest.MonkeyPatch):
     # non-streaming contract the v2 executor expects.
     async def _fake_execute(self, *, target, operation, payload, credential_resolver,
                             stream=False, client_headers=None):
+        # Mirror what NativeHTTPTransport.execute would send upstream: the
+        # payload verbatim with ``model`` rewritten to the target's own
+        # model id. Tests assert against ``dispatched_body`` because that
+        # is the wire-level fact — a bypass that reached the transport
+        # without the rewrite would show up here as the caller's alias.
+        dispatched_body = dict(payload)
+        dispatched_body["model"] = target.model
         stub.calls.append({
             "target_id": target.id,
+            "target_model": target.model,
             "operation": operation,
-            "payload": dict(payload),
+            "dispatched_body": dispatched_body,
             "stream": stream,
         })
         return dict(stub.canned)
