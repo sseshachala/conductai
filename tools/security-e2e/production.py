@@ -29,6 +29,7 @@ def main() -> int:
     parser.add_argument("--credentials-file", type=Path)
     parser.add_argument("--allow-disposable-workspaces", action="store_true")
     parser.add_argument("--grep", help="Run only production canaries matching this pattern")
+    parser.add_argument("--gateway-preflight", action="store_true", help="Read-only Gateway fixture check; no cleanup, mutations, or inference")
     parser.add_argument("--authorize-gmail", action="store_true")
     parser.add_argument("--gmail-client-file", type=Path)
     parser.add_argument("--gmail-token-file", type=Path, default=DEFAULT_TOKEN_FILE)
@@ -44,7 +45,7 @@ def main() -> int:
         parser.error(str(error))
     if args.credentials_file is None:
         parser.error("--credentials-file is required unless --authorize-gmail is used")
-    if not args.allow_disposable_workspaces:
+    if not args.allow_disposable_workspaces and not args.gateway_preflight:
         parser.error("explicit --allow-disposable-workspaces consent is required")
     if not args.credentials_file.is_file():
         parser.error("credential file does not exist")
@@ -60,9 +61,12 @@ def main() -> int:
         parser.error("production test accounts must be distinct")
     environment["PROD_E2E_ALLOW_MUTATION"] = "1"
     environment["PROD_E2E_HEADLESS"] = "0" if args.headed else "1"
+    environment["PROD_E2E_GATEWAY_PREFLIGHT"] = "1" if args.gateway_preflight else "0"
 
     command = playwright_command()
-    if args.grep:
+    if args.gateway_preflight:
+        command.extend(["--grep", "@prod-gateway-fixture"])
+    elif args.grep:
         command.extend(["--grep", args.grep])
     try:
         if args.manual_otp:
