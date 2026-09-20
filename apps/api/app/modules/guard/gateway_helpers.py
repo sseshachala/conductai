@@ -334,6 +334,9 @@ def _evaluate_response_body(
     agent_identity_id: str | None,
     agent_risk_tier: str | None = None,
     ai_tool: str | None = None,
+    tool_names_offered: list[str] | None = None,
+    tool_names_generated: list[str] | None = None,
+    tool_names_supplied: list[str] | None = None,
 ):
     """#1733 PRs 4+5 — shared response-gate evaluator. Called by both the
     non-streaming path (post-upstream, pre-return) and the streaming path
@@ -355,6 +358,9 @@ def _evaluate_response_body(
             gate="response",  # #1733: inbound model reply
             risk_tier=agent_risk_tier,
             ai_tool=ai_tool,
+            tool_names_offered=tool_names_offered,
+            tool_names_generated=tool_names_generated,
+            tool_names_supplied=tool_names_supplied,
         )
         return _eval_composed(_ctx)
     except Exception as _e:
@@ -372,6 +378,9 @@ def _apply_response_gate(
     agent_identity_id: str | None,
     agent_risk_tier: str | None = None,
     ai_tool: str | None = None,
+    tool_names_offered: list[str] | None = None,
+    tool_names_generated: list[str] | None = None,
+    tool_names_supplied: list[str] | None = None,
 ) -> JSONResponse:
     """#1733 PR 4 — evaluate the response body against gate='response' rules.
 
@@ -392,6 +401,9 @@ def _apply_response_gate(
             clerk_user_id=clerk_user_id, agent_identity_id=agent_identity_id,
             agent_risk_tier=agent_risk_tier,
             ai_tool=ai_tool,
+            tool_names_offered=tool_names_offered,
+            tool_names_generated=tool_names_generated,
+            tool_names_supplied=tool_names_supplied,
         )
         if decision is None or decision.action != _PA.BLOCK:
             return response

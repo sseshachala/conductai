@@ -131,8 +131,17 @@ def flatten_response(body: dict) -> str:
 def _is_proxy_rule(rule: dict) -> bool:
     """True if the rule has at least one proxy-applicable matcher.
     match_pattern is proxy-applicable only when match_tool is absent
-    (rules with match_tool are hook-event rules, not LLM-call rules)."""
-    if any(k in rule for k in ("match_provider", "match_model", "match_prompt")):
+    (rules with match_tool are hook-event rules, not LLM-call rules).
+
+    #2159 PR 2 (#2156) — match_tool_name_offered / _generated /
+    _supplied are all proxy-applicable, matching on tool identity
+    signals populated by the gateway.
+    """
+    if any(k in rule for k in (
+        "match_provider", "match_model", "match_prompt",
+        "match_tool_name_offered", "match_tool_name_generated",
+        "match_tool_name_supplied",
+    )):
         return True
     return "match_pattern" in rule and "match_tool" not in rule
 
@@ -144,6 +153,9 @@ def _rule_matches(
     prompt_text: str,
     gate: str | None = "prompt",
     agent_risk_tier: str | None = None,
+    tool_names_offered: list[str] | None = None,
+    tool_names_generated: list[str] | None = None,
+    tool_names_supplied: list[str] | None = None,
 ) -> bool:
     """Proxy-side rule matcher. ``gate`` filters by declared rule gates —
     default ``"prompt"`` because every existing proxy caller today evaluates
@@ -172,6 +184,25 @@ def _rule_matches(
         return False
     pp = rule.get("match_prompt")
     pat = rule.get("match_pattern")
+    # #2159 PR 2 (#2156) — tool-name selectors. Checked BEFORE the
+    # prompt/pattern early-return so a rule keyed only on tool identity
+    # still fires. Each is a regex; the rule matches only if ANY name
+    # in the corresponding list matches. None means the caller PEP did
+    # not populate this list; the rule cannot fire against unset data
+    # (safe default — matches how match_agent_risk_tier handles a null
+    # tier).
+    for key, names in (
+        ("match_tool_name_offered", tool_names_offered),
+        ("match_tool_name_generated", tool_names_generated),
+        ("match_tool_name_supplied", tool_names_supplied),
+    ):
+        pattern = rule.get(key)
+        if pattern is None:
+            continue
+        if not names:
+            return False
+        if not any(re.search(pattern, n, re.IGNORECASE) for n in names):
+            return False
     if not pp and not pat:
         return True
     variants = _normalize_text(prompt_text or "")
@@ -191,6 +222,9 @@ def evaluate(
     body: dict,
     gate: str = "prompt",
     agent_risk_tier: str | None = None,
+    tool_names_offered: list[str] | None = None,
+    tool_names_generated: list[str] | None = None,
+    tool_names_supplied: list[str] | None = None,
 ) -> dict:
     """Pre-call Guard policy evaluation.
 
@@ -244,7 +278,13 @@ def evaluate(
         for r in rules:
             if not _is_proxy_rule(r):
                 continue
-            if not _rule_matches(r, provider, model, prompt_text, gate=gate, agent_risk_tier=agent_risk_tier):
+            if not _rule_matches(
+                r, provider, model, prompt_text, gate=gate,
+                agent_risk_tier=agent_risk_tier,
+                tool_names_offered=tool_names_offered,
+                tool_names_generated=tool_names_generated,
+                tool_names_supplied=tool_names_supplied,
+            ):
                 continue
             rule_id = r.get("rule_id") or r.get("id")
             action = (r.get("action") or "warn").lower()
