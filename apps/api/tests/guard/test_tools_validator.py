@@ -579,3 +579,67 @@ class TestResponseGateReason:
         # strings; changing them silently would break dashboards.
         assert ResponseGateReason.POLICY_BLOCK == "policy_block"
         assert ResponseGateReason.VALIDATION_FAILURE == "validation_failure"
+
+
+# --- correlation id helpers (#2158) ---
+
+
+from app.modules.guard.tools_validator import (
+    encode_correlation_header,
+    generate_tool_call_correlation_ids,
+)
+
+
+class TestGenerateToolCallCorrelationIds:
+    def test_empty_returns_empty(self) -> None:
+        assert generate_tool_call_correlation_ids([]) == {}
+        assert generate_tool_call_correlation_ids(None) == {}  # type: ignore[arg-type]
+
+    def test_one_id_per_tool_call(self) -> None:
+        calls = [
+            {"name": "a", "id": "call_1"},
+            {"name": "b", "id": "call_2"},
+        ]
+        out = generate_tool_call_correlation_ids(calls)
+        assert set(out.keys()) == {"call_1", "call_2"}
+        assert len(set(out.values())) == 2
+
+    def test_correlation_id_shape(self) -> None:
+        # 16 hex chars sliced from uuid4.
+        out = generate_tool_call_correlation_ids([{"name": "x", "id": "call_1"}])
+        cid = out["call_1"]
+        assert len(cid) == 16
+        assert all(c in "0123456789abcdef" for c in cid)
+
+    def test_missing_id_skipped(self) -> None:
+        # Defensive: if a call comes in without an id, don't allocate a
+        # correlation for it (no way to join back to the audit).
+        out = generate_tool_call_correlation_ids([{"name": "x"}])
+        assert out == {}
+
+    def test_correlations_distinct_across_calls(self) -> None:
+        # Each helper call is its own correlation event, so retried
+        # attempts get distinct correlations (intentional randomness).
+        calls = [{"name": "x", "id": "call_1"}]
+        out1 = generate_tool_call_correlation_ids(calls)
+        out2 = generate_tool_call_correlation_ids(calls)
+        assert set(out1.keys()) == set(out2.keys())
+        assert out1["call_1"] != out2["call_1"]
+
+
+class TestEncodeCorrelationHeader:
+    def test_empty_returns_empty_string(self) -> None:
+        # Caller must SKIP setting the header on empty (many servers
+        # drop empty-valued headers).
+        assert encode_correlation_header({}) == ""
+
+    def test_single_entry(self) -> None:
+        assert encode_correlation_header({"call_1": "corr_a"}) == "call_1=corr_a"
+
+    def test_multiple_entries_comma_separated(self) -> None:
+        out = encode_correlation_header({
+            "call_1": "corr_a",
+            "call_2": "corr_b",
+        })
+        parts = set(out.split(","))
+        assert parts == {"call_1=corr_a", "call_2=corr_b"}

@@ -123,7 +123,82 @@ def flatten_response(body: dict) -> str:
                 text = part.get("text")
                 if text:
                     out.append(text)
+    # Reviewer P1 #2 (2026-09-20, #2159 PR 2 follow-up) — fold tool_call
+    # argument text into the response-gate's pattern surface. Without
+    # this a response that contains ONLY a tool_call (assistant.content
+    # is null; the payload lives in tool_calls[].function.arguments)
+    # produced empty policy text and pattern rules like
+    # {command: "DROP TABLE"} could never fire. Argument strings are
+    # parsed as JSON and every string leaf is emitted; parse failures
+    # fall back to the raw string so a broken payload still gets
+    # scanned. Anthropic response shape (content:[{type:"tool_use"}])
+    # gets the same treatment via the ``input`` block.
+    _tool_arg_lines = _flatten_response_tool_args(body)
+    if _tool_arg_lines:
+        out.extend(_tool_arg_lines)
     return "\n".join(out)
+
+
+def _flatten_response_tool_args(body: dict) -> list[str]:
+    """Extract every string leaf from tool_call arguments / tool_use input.
+
+    Returns a flat list of strings that the response-pattern matcher
+    sees alongside the model's text content. Never raises — a malformed
+    payload contributes whatever partial string values are extractable
+    and the caller's pattern still gets a shot at them.
+    """
+    import json as _json
+
+    def _walk_strings(node) -> list[str]:
+        found: list[str] = []
+        if isinstance(node, str):
+            if node:
+                found.append(node)
+        elif isinstance(node, dict):
+            for v in node.values():
+                found.extend(_walk_strings(v))
+        elif isinstance(node, list):
+            for v in node:
+                found.extend(_walk_strings(v))
+        return found
+
+    lines: list[str] = []
+
+    # OpenAI chat completions: choices[].message.tool_calls[].function.arguments
+    for choice in body.get("choices") or []:
+        if not isinstance(choice, dict):
+            continue
+        msg = choice.get("message") or {}
+        if not isinstance(msg, dict):
+            continue
+        for tc in msg.get("tool_calls") or []:
+            if not isinstance(tc, dict):
+                continue
+            fn = tc.get("function")
+            if not isinstance(fn, dict):
+                continue
+            args = fn.get("arguments")
+            if isinstance(args, str) and args:
+                try:
+                    parsed = _json.loads(args)
+                except Exception:
+                    # Parse failure — surface the raw text so pattern
+                    # rules still see something. tools_validator would
+                    # have blocked this pre-response upstream, but
+                    # flatten runs on legacy shapes too.
+                    lines.append(args)
+                    continue
+                lines.extend(_walk_strings(parsed))
+
+    # Anthropic Messages: content:[{type:"tool_use", input:{...}}]
+    for block in body.get("content") or []:
+        if not isinstance(block, dict):
+            continue
+        if block.get("type") == "tool_use":
+            inp = block.get("input")
+            lines.extend(_walk_strings(inp))
+
+    return lines
 
 
 # ─── Rule matching helpers ────────────────────────────────────────────────────

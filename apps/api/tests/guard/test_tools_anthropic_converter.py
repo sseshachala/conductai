@@ -269,11 +269,13 @@ class TestToolChoiceRewrite:
         out = canonical_to_anthropic(body)
         assert out["tool_choice"] == {"type": "any"}
 
-    def test_none_omits_tool_choice(self) -> None:
-        # Anthropic has no equivalent to OpenAI "none". Omit the field.
+    def test_none_maps_to_type_none(self) -> None:
+        # Reviewer P2 #5 (2026-09-20): Anthropic does support
+        # {"type":"none"}; the previous "omit" behavior let Anthropic
+        # default-auto-select tools the caller had disabled.
         body = {"model": "m", "max_tokens": 5, "messages": [{"role": "user", "content": "x"}], "tool_choice": "none"}
         out = canonical_to_anthropic(body)
-        assert "tool_choice" not in out
+        assert out["tool_choice"] == {"type": "none"}
 
     def test_named_function_becomes_type_tool(self) -> None:
         body = {

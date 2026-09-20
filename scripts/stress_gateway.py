@@ -34,9 +34,12 @@ To send a specific prompt per request set ``--prompt-env VARNAME`` and
 export the prompt in that env var (avoids embedding sensitive strings
 in this file).
 
-ponytail: streaming supported via ``--stream``. Reports TTFB
-(time-to-first-chunk), drain wall, and chunk count on top of the
-normal metrics. Tools/vision still rejected server-side.
+ponytail: streaming supported via ``--stream``. Tool-calling
+supported via ``--tools`` (target gateway MUST have
+``GUARD_GATEWAY_TOOLS_ENABLED=true`` — off by default). Reports TTFB
+(streaming), tool-call yield, correlation-header presence, and the
+new tool-args validation-failure category on top of the normal metrics.
+Vision still rejected server-side.
 """
 from __future__ import annotations
 
@@ -82,6 +85,31 @@ def _load_creds() -> tuple[str, str]:
 _CLEAN_PROMPT = "Reply with the single word: pong"
 
 
+# #2159 PR 2 — hardcoded tool definition used when --tools is set.
+# Kept intentionally small (one function, one required string param) so
+# every request has the same tool-schema token overhead and results are
+# comparable across runs. Extend cautiously — larger schemas skew both
+# TTFB and admitted-latency percentiles.
+_TOOLS_STRESS_DEF = [{
+    "type": "function",
+    "function": {
+        "name": "get_weather",
+        "description": "Look up the current weather in a city.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "city": {"type": "string", "description": "City name"},
+            },
+            "required": ["city"],
+        },
+    },
+}]
+# Prompt tuned to actually elicit a tool call from most chat models so
+# the tool_call_yield metric measures something useful. Overridable via
+# --prompt-env.
+_TOOLS_STRESS_PROMPT = "What is the current weather in San Francisco?"
+
+
 # Buckets marked ``rejected=True`` were refused before upstream
 # inference dispatch (best-effort, client-visible only). The reviewer's
 # point on P2 #3: do not attribute an unclassified 429/503 to the
@@ -89,12 +117,17 @@ _CLEAN_PROMPT = "Reply with the single word: pong"
 # limits, missing credentials, and audit failures. Default to
 # ``unknown_origin`` when the body prefix does not name a layer.
 _KNOWN_CONDUCT_ERROR_MARKERS = (
-    ("conduct_gateway_admission_refused", "conduct_admission_refused", True),
-    ("budget_reservation_refused",        "conduct_budget_refused",    True),
-    ("conduct_guard_proxy",               "conduct_guard_proxy",       True),
-    ("policy_block",                      "conduct_policy_block",      True),
-    ("rate-limit",                        "conduct_rate_limit",        True),
-    ("trial_exceeded",                    "conduct_trial_quota",       True),
+    ("conduct_gateway_admission_refused",            "conduct_admission_refused",       True),
+    ("budget_reservation_refused",                   "conduct_budget_refused",          True),
+    ("conduct_guard_proxy",                          "conduct_guard_proxy",             True),
+    ("policy_block",                                 "conduct_policy_block",            True),
+    ("rate-limit",                                   "conduct_rate_limit",              True),
+    ("trial_exceeded",                               "conduct_trial_quota",             True),
+    # #2159 PR 2 — tool_call arguments failed validation (JSON parse or
+    # non-string type). Terminal, upstream was already billed. Rejected=False
+    # because the upstream call DID happen — this is a post-dispatch decision
+    # to refuse the response, not backpressure.
+    ("conduct_gateway_tool_arguments_validation_failed", "conduct_tool_args_validation_failed", False),
 )
 
 
@@ -167,6 +200,12 @@ def _parse_usage_payload(resp: bytes, *, stream: bool) -> dict:
 
 
 async def _fire_one_async(session, url, headers, body, request_timeout):
+    """Non-streaming request. Returns (status, latency, body_bytes, response_headers).
+
+    Header dict is returned so the caller can inspect vendor + Conduct
+    response headers (X-Conduct-Tool-Correlation-Ids, etc.). Empty dict
+    on connect / timeout failures where there is no response.
+    """
     t0 = time.monotonic()
     try:
         async with session.post(
@@ -174,11 +213,11 @@ async def _fire_one_async(session, url, headers, body, request_timeout):
             timeout=aiohttp.ClientTimeout(total=request_timeout),
         ) as r:
             data = await r.read()
-            return r.status, time.monotonic() - t0, data
+            return r.status, time.monotonic() - t0, data, dict(r.headers)
     except asyncio.TimeoutError:
-        return 599, time.monotonic() - t0, b"timeout"
+        return 599, time.monotonic() - t0, b"timeout", {}
     except Exception as e:
-        return 598, time.monotonic() - t0, str(e).encode()
+        return 598, time.monotonic() - t0, str(e).encode(), {}
 
 
 async def _fire_one_stream_async(session, url, headers, body, request_timeout):
@@ -239,7 +278,9 @@ async def _fire_one_stream_async(session, url, headers, body, request_timeout):
 async def _run_async(url, token, profile, total, concurrency, max_tokens,
                      max_wall, prompt, request_timeout,
                      max_admitted_error_rate, max_rejection_rate,
-                     kill_min_samples, stream: bool = False):
+                     kill_min_samples, stream: bool = False,
+                     tools_body: dict | None = None,
+                     tool_choice: str | dict | None = None):
     """Run the load. Returns a dict of measurements.
 
     Reviewer P1s addressed:
@@ -267,6 +308,12 @@ async def _run_async(url, token, profile, total, concurrency, max_tokens,
     # so the report doesn't print stream sections that never applied.
     ttfb_latencies: list[float] = []
     chunk_counts: list[int] = []
+    # #2159 PR 2 — tool-call counters. tool_call_yield = 200s that returned
+    # tool_calls[]; correlation_header_present = same but with the response
+    # header the runtime executor reads. Divergence between these two ==
+    # a correlation-emission bug worth chasing.
+    tool_call_yield = 0
+    correlation_header_present = 0
     stop_reason: str | None = None  # 'admitted_error_rate' | 'rejection_rate' | 'wall_clock' | None
     started = time.monotonic()
 
@@ -279,6 +326,12 @@ async def _run_async(url, token, profile, total, concurrency, max_tokens,
         # Server injects ``stream_options.include_usage=true`` regardless;
         # the flag on the wire only tells it to stream.
         body_template["stream"] = True
+    if tools_body:
+        # Fixed tool definition per run — same shape every request so the
+        # model's decision-to-call rate is comparable across runs.
+        body_template["tools"] = tools_body
+        if tool_choice is not None:
+            body_template["tool_choice"] = tool_choice
 
     headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 
@@ -292,6 +345,7 @@ async def _run_async(url, token, profile, total, concurrency, max_tokens,
             async with sem:
                 if stop_reason is not None:
                     return
+                _resp_headers: dict | None = None
                 if stream:
                     status, lat, ttfb, ncks, resp = await _fire_one_stream_async(
                         session, url, headers, body_template, request_timeout,
@@ -301,11 +355,30 @@ async def _run_async(url, token, profile, total, concurrency, max_tokens,
                     if ncks:
                         chunk_counts.append(ncks)
                 else:
-                    status, lat, resp = await _fire_one_async(
+                    status, lat, resp, _resp_headers = await _fire_one_async(
                         session, url, headers, body_template, request_timeout,
                     )
             latencies.append(lat)
             statuses[status] += 1
+            # #2159 PR 2 — tool-call yield accounting on non-streaming
+            # 200s. Stream path returns bytes we'd have to SSE-parse to
+            # detect tool_calls; skip for now to keep the counter simple.
+            if status == 200 and not stream and tools_body:
+                try:
+                    _body = json.loads(resp)
+                    _choices = _body.get("choices") or []
+                    if _choices and _choices[0].get("message", {}).get("tool_calls"):
+                        tool_call_yield += 1
+                        # Header check for correlation emission. Case-
+                        # insensitive header lookup: aiohttp lower-cases
+                        # them by default, but be robust.
+                        for _h in ("x-conduct-tool-correlation-ids",
+                                   "X-Conduct-Tool-Correlation-Ids"):
+                            if _resp_headers is not None and _h in _resp_headers:
+                                correlation_header_present += 1
+                                break
+                except Exception:
+                    pass
             category, is_rejection = _classify_error(status, resp)
             categories[category] += 1
             if category == "conduct_admission_refused" and admission_sample is None:
@@ -420,6 +493,8 @@ async def _run_async(url, token, profile, total, concurrency, max_tokens,
         "stop_reason":       stop_reason,
         "ttfb_latencies":    ttfb_latencies,
         "chunk_counts":      chunk_counts,
+        "tool_call_yield":   tool_call_yield,
+        "correlation_header_present": correlation_header_present,
     }
 
 
@@ -498,6 +573,22 @@ def _report(results: dict, wall: float, max_admitted_error_rate: float,
         print(f"  stream chunks per response  "
               f"min={min(cks_sorted)}  p50={_pct(cks_sorted, 0.5)}  "
               f"p95={_pct(cks_sorted, 0.95)}  max={max(cks_sorted)}")
+
+    tcy = results.get("tool_call_yield") or 0
+    corr_hdr = results.get("correlation_header_present") or 0
+    if tcy or corr_hdr:
+        # Yield rate over admitted (successful) responses — how often did
+        # the model actually decide to call a tool given tools were offered.
+        yield_rate = (tcy / successes) if successes else 0.0
+        print(f"  tool_call_yield         {tcy}/{successes} ({yield_rate:.1%})")
+        # Correlation header MUST match tool_call_yield on non-streaming
+        # requests — every 200-with-tool_calls should carry the header.
+        # Divergence is a correlation-emission bug worth chasing.
+        if tcy != corr_hdr:
+            print(f"  correlation-header      MISMATCH: {corr_hdr}/{tcy} "
+                  f"tool_call responses carried X-Conduct-Tool-Correlation-Ids")
+        else:
+            print(f"  correlation-header      {corr_hdr}/{tcy} (all present)")
     if latencies and len(latencies) != len(admitted_lats):
         # Show all-request latency too so operators can see rejection
         # speed vs admitted-request speed side-by-side.
@@ -527,6 +618,7 @@ def _report(results: dict, wall: float, max_admitted_error_rate: float,
             "client_timeout",
             "client_error",
             "stream_truncated",
+            "conduct_tool_args_validation_failed",
             "other",
         ]
         for cat in _cat_order:
@@ -622,6 +714,21 @@ def main() -> int:
                          "and chunk-count distributions. 200 responses that error "
                          "mid-body count as admitted errors (status 597, "
                          "category stream_truncated).")
+    ap.add_argument("--tools", action="store_true",
+                    help="Include a hardcoded ``tools`` array in every request "
+                         "so the server exercises the tool_call response gate. "
+                         "PREREQUISITE: target gateway must have "
+                         "GUARD_GATEWAY_TOOLS_ENABLED=true (default off — the "
+                         "shim rejects tools with 400 until PR 2 of #2159 lands "
+                         "and ops enables the flag). Report adds tool_call_yield, "
+                         "correlation-header-present, and the "
+                         "conduct_tool_args_validation_failed category.")
+    ap.add_argument("--tool-choice", default=None,
+                    help="Value for the ``tool_choice`` field. One of: "
+                         "``auto`` | ``none`` | ``required`` | a JSON object "
+                         "like {\"type\":\"function\",\"function\":{\"name\":\"get_weather\"}}. "
+                         "Requires --tools. Absent = tool_choice not sent "
+                         "(server defaults to \"auto\").")
     ap.add_argument("--prompt-env", default=None,
                     help="Env var holding the prompt to send (default: hard-coded pong)")
     ap.add_argument("--self-check", action="store_true",
@@ -661,11 +768,33 @@ def main() -> int:
         return 1
 
     prompt = _CLEAN_PROMPT
+    if args.tools:
+        # Default prompt geared to elicit a tool call so tool_call_yield
+        # measures something meaningful. Overridable via --prompt-env.
+        prompt = _TOOLS_STRESS_PROMPT
     if args.prompt_env:
         prompt = os.environ.get(args.prompt_env)
         if not prompt:
             print(f"error: env var {args.prompt_env} is not set", file=sys.stderr)
             return 1
+
+    tools_body = _TOOLS_STRESS_DEF if args.tools else None
+    tool_choice = None
+    if args.tool_choice:
+        if not args.tools:
+            print("error: --tool-choice requires --tools", file=sys.stderr)
+            return 1
+        # Accept JSON for the object form; fall through to the string
+        # form for auto/none/required.
+        _tc_raw = args.tool_choice.strip()
+        if _tc_raw.startswith("{"):
+            try:
+                tool_choice = json.loads(_tc_raw)
+            except json.JSONDecodeError as _e:
+                print(f"error: --tool-choice JSON invalid: {_e}", file=sys.stderr)
+                return 1
+        else:
+            tool_choice = _tc_raw
 
     token, server = _load_creds()
     if args.server:
@@ -690,6 +819,8 @@ def main() -> int:
             max_rejection_rate=args.max_rejection_rate,
             kill_min_samples=args.kill_min_samples,
             stream=args.stream,
+            tools_body=tools_body,
+            tool_choice=tool_choice,
         ))
     except KeyboardInterrupt:
         print("\n^C — cancelled", file=sys.stderr)
@@ -728,6 +859,9 @@ def _self_check() -> int:
     assert _classify_error(598, b'boom') == ("client_error", False)
     # Streaming: 597 = mid-body error; counts as admitted error (not rejection).
     assert _classify_error(597, b'stream_truncated: broken pipe') == ("stream_truncated", False)
+    # #2159 PR 2: 502 tool_args_validation_failed classified + admitted.
+    _tool_env = b'{"error":{"type":"conduct_gateway_tool_arguments_validation_failed","gate":"response"}}'
+    assert _classify_error(502, _tool_env) == ("conduct_tool_args_validation_failed", False)
     # Streaming: SSE usage-frame parser picks the last frame with usage.
     sse_body = (
         b'data: {"id":"x","choices":[{"delta":{"content":"a"}}]}\n\n'
