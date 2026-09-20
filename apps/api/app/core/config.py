@@ -137,6 +137,15 @@ class Settings(BaseSettings):
     # workspace can be dark-launched even at pct=0.
     guard_gateway_profile_v2_allowlist: str = ""
 
+    # #2159 — Tools / function calling on /gateway/v1/completions.
+    # PR 1 (this) lands the shim wire-in behind this flag; PR 2 adds
+    # the response gate + audit fields. Default OFF so today's
+    # ``extra="forbid"`` rejection of ``tools`` is preserved in prod
+    # until PR 2 is in — accepting ``tools`` without the response gate
+    # would let unscanned tool_call arguments flow back to callers.
+    # Flip on per-workspace via env var after PR 2 lands.
+    guard_gateway_tools_enabled: bool = False
+
     # #2001 commit 4 — LiteLLM in-process transport switch. When true,
     # v2 profiles whose targets carry transport=litellm_sdk execute
     # through the embedded LiteLLM SDK (anthropic_messages,

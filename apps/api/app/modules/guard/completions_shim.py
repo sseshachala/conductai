@@ -61,10 +61,21 @@ from pydantic import (
     field_validator,
 )
 
+from app.core.config import settings
 from app.guard.router import fail_closed as _fail_closed
 from app.modules.guard.gateway_handler import (
     _extract_cond_code,
     handle_gateway_request,
+)
+from app.modules.guard.tools_validator import (
+    RedactionFailure,
+    ValidationFailure as ToolValidationFailure,
+    redact_tool_arguments_json,
+    redact_tool_parameters_schema,
+    redact_tool_result_content,
+    validate_messages as _validate_tool_messages,
+    validate_tool_choice,
+    validate_tools,
 )
 
 
@@ -85,12 +96,35 @@ def _reject(status: int, message: str) -> JSONResponse:
 
 
 class _CanonicalMessage(BaseModel):
-    """One turn in the canonical envelope. Text content only in PR 1."""
+    """One turn in the canonical envelope.
+
+    ``tools`` support (#2159 PR 1) widens this to accept ``role: "tool"``
+    messages (with ``tool_call_id``) and assistant messages carrying
+    ``tool_calls`` (with nullable ``content``). Both are gated by
+    ``settings.guard_gateway_tools_enabled`` — when off, the shim
+    stripping in ``gateway_completions_impl`` refuses ``tools``/
+    ``tool_calls``/``role: "tool"`` at the boundary so today's
+    behavior is preserved.
+
+    Structural validity is enforced here (Pydantic); Conduct's
+    contract rules (unique names, matching tool_call_id, redaction)
+    live in ``tools_validator`` so the shim and the response gate
+    (PR 2) share one implementation.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
-    role: Literal["system", "user", "assistant"]
-    content: str = Field(min_length=0, max_length=1_000_000)
+    role: Literal["system", "user", "assistant", "tool"]
+    # Nullable to allow assistant messages that carry only tool_calls.
+    # ``validate_messages`` enforces "null only when tool_calls present".
+    content: str | None = Field(default=None, max_length=1_000_000)
+    # Present on ``role: "tool"`` messages; validator enforces non-empty
+    # string. Absent on all other roles (Pydantic allows None default).
+    tool_call_id: str | None = Field(default=None, max_length=256)
+    # Present on ``role: "assistant"`` messages that ask for tool calls.
+    # Shape validated by ``validate_messages`` in tools_validator so we
+    # don't duplicate the JSON schema here.
+    tool_calls: list[dict[str, Any]] | None = None
 
 
 class _CanonicalRequest(BaseModel):
@@ -114,6 +148,20 @@ class _CanonicalRequest(BaseModel):
     # reviewer P2 fix from PR 1 stays intact even though this field now
     # accepts True (previously locked to False by ``Literal[False]``).
     stream: StrictBool = False
+    # #2159 PR 1 — tools + tool_choice accepted at the shim boundary
+    # only when ``settings.guard_gateway_tools_enabled`` is on. Absent
+    # by default (None) so callers who don't send them see identical
+    # behavior to the pre-tools shim. Structural rules are enforced by
+    # ``tools_validator`` inside ``gateway_completions_impl`` so the
+    # same rules govern the response-gate side (PR 2).
+    #
+    # ``tool_choice`` is intentionally typed loosely here — the validator
+    # accepts ``"auto" | "none" | "required"`` OR
+    # ``{"type":"function", "function":{"name": str}}``. Pydantic can't
+    # express the named-choice-matches-declared-tool rule in a type; the
+    # validator does it in one place.
+    tools: list[dict[str, Any]] | None = None
+    tool_choice: str | dict[str, Any] | None = None
     # Same trick for the alias — an "unknown" field would be forbidden
     # by ``extra="forbid"``, but making ``model`` an explicitly-typed
     # ``None``-only field gives the client a targeted error message
@@ -181,10 +229,83 @@ async def gateway_completions_impl(
             "`profile` instead. The profile picks the model server-side.",
         )
 
+    # #2159 PR 1 — feature-flag gate. When tools are disabled globally,
+    # refuse any request that carries them so the pre-tools contract
+    # (``extra="forbid"`` rejecting the field) is preserved. We check
+    # BEFORE Pydantic because the widened schema now accepts these
+    # fields structurally — the flag decides whether they're allowed
+    # at all in this deployment.
+    if not settings.guard_gateway_tools_enabled:
+        if raw.get("tools") is not None or raw.get("tool_choice") is not None:
+            return _reject(
+                400,
+                "tools/tool_choice not accepted on /gateway/v1/completions "
+                "in this deployment. Ops must set "
+                "GUARD_GATEWAY_TOOLS_ENABLED=true after epic #2159 PR 2 lands.",
+            )
+        for m in raw.get("messages") or []:
+            if not isinstance(m, dict):
+                continue
+            if m.get("role") == "tool" or m.get("tool_calls") is not None:
+                return _reject(
+                    400,
+                    "tool-role messages and assistant tool_calls not accepted "
+                    "in this deployment. Enable GUARD_GATEWAY_TOOLS_ENABLED.",
+                )
+
     try:
         canonical = _CanonicalRequest.model_validate(raw)
     except ValidationError as exc:
         return _reject(400, _format_validation_error(exc))
+
+    # #2159 PR 1 — tools + stream=true rejected at the shim.
+    # OpenAI streams ``delta.tool_calls[].function.arguments`` in
+    # fragments across many SSE chunks; a secret can span deltas. Real
+    # prevention requires per-tool-call buffering until the arguments
+    # complete (tracked as follow-up #2155). Until that lands, refuse
+    # the combination — detection-only would be worse than an honest
+    # 400 because callers might think their args are being scanned.
+    if canonical.stream and canonical.tools:
+        return _reject(
+            400,
+            "stream=true combined with tools is not supported yet — "
+            "buffered-delta validation is tracked as #2155. Send "
+            "stream=false when tools are present, or send tools=null "
+            "when stream is required.",
+        )
+
+    # #2159 PR 1 — Conduct's own contract validation (unique tool names,
+    # matching tool_choice, tool_call_id required, assistant content
+    # nullable only with tool_calls, ...). Kept in ``tools_validator``
+    # so the same rules govern the response gate in PR 2.
+    if canonical.tools is not None:
+        try:
+            validate_tools(canonical.tools)
+        except ToolValidationFailure as exc:
+            return _reject(400, f"{exc.field}: {exc.reason}")
+    if canonical.tool_choice is not None:
+        try:
+            validate_tool_choice(canonical.tool_choice, canonical.tools)
+        except ToolValidationFailure as exc:
+            return _reject(400, f"{exc.field}: {exc.reason}")
+    # Message-level validation runs on the dumped shape so tool_calls
+    # and tool_call_id are structurally visible to the validator.
+    try:
+        _validate_tool_messages([msg.model_dump(exclude_none=True) for msg in canonical.messages])
+    except ToolValidationFailure as exc:
+        return _reject(400, f"{exc.field}: {exc.reason}")
+
+    # #2159 PR 1 — redaction is terminal on failure. Reviewer guidance:
+    # scrubbing to a placeholder can change an action's meaning, so
+    # we block instead. Same taxonomy applies to the response gate in
+    # PR 2 (there it maps to 502; here it maps to 400 pre-dispatch).
+    try:
+        canonical = _redact_tools_in_canonical(canonical)
+    except RedactionFailure as exc:
+        return _reject(
+            400,
+            f"tool_arguments_validation_failed: {exc.source}: {exc.reason}",
+        )
 
     provider_body = _canonical_to_openai_body(canonical)
 
@@ -213,13 +334,18 @@ def _canonical_to_openai_body(canonical: _CanonicalRequest) -> dict[str, Any]:
     """Rewrite ``profile`` → ``model``; drop schema-only fields.
 
     The canonical envelope IS OpenAI Chat Completions shape by design, so
-    PR 1's OpenAI-only path needs no field conversion. When PR 2 adds
-    Anthropic-target support it will branch here to build an Anthropic
-    Messages body instead (extract system → top-level, etc).
+    PR 1's OpenAI-only path needs no field conversion. When the
+    Anthropic-target support epic (#2157) lands it will branch here to
+    build an Anthropic Messages body instead (extract system →
+    top-level, convert tool_use blocks, etc).
+
+    ``exclude_none=True`` on message dump so absent fields
+    (``tool_call_id``, ``tool_calls``) don't show up as literal
+    ``null`` on the wire — OpenAI 400s on some of those.
     """
     body: dict[str, Any] = {
         "model": canonical.profile,
-        "messages": [msg.model_dump() for msg in canonical.messages],
+        "messages": [msg.model_dump(exclude_none=True) for msg in canonical.messages],
         "max_tokens": canonical.max_tokens,
         # Pass ``stream`` through verbatim. The downstream v2 executor
         # (handle_gateway_request -> _execute_v2 with stream=True) returns
@@ -246,7 +372,59 @@ def _canonical_to_openai_body(canonical: _CanonicalRequest) -> dict[str, Any]:
         body["top_p"] = canonical.top_p
     if canonical.stop is not None:
         body["stop"] = canonical.stop
+    if canonical.tools is not None:
+        body["tools"] = canonical.tools
+    if canonical.tool_choice is not None:
+        body["tool_choice"] = canonical.tool_choice
     return body
+
+
+def _redact_tools_in_canonical(canonical: _CanonicalRequest) -> _CanonicalRequest:
+    """Redact tool-related payloads on the canonical request in-place.
+
+    Mutates the pydantic model instance rather than round-tripping
+    through model_dump/model_validate — cheaper and preserves the
+    validated shape. Raises ``RedactionFailure`` on parse or walk
+    errors; caller (``gateway_completions_impl``) maps that to a 400.
+
+    Scope:
+      - ``tools[].function.parameters`` — JSON Schema string leaves
+      - ``tools[].function.description`` — plain string
+      - assistant ``tool_calls[].function.arguments`` — JSON string
+      - ``role: "tool"`` ``content`` — plain string
+    """
+    if canonical.tools:
+        for i, tool in enumerate(canonical.tools):
+            fn = tool.get("function") if isinstance(tool, dict) else None
+            if not isinstance(fn, dict):
+                continue
+            if isinstance(fn.get("description"), str) and fn["description"]:
+                cleaned, _ = redact_tool_result_content(fn["description"])
+                fn["description"] = cleaned
+            if "parameters" in fn:
+                cleaned, _ = redact_tool_parameters_schema(
+                    fn["parameters"], source=f"tools[{i}].function.parameters",
+                )
+                fn["parameters"] = cleaned
+
+    for i, msg in enumerate(canonical.messages):
+        if msg.role == "tool" and isinstance(msg.content, str) and msg.content:
+            cleaned, _ = redact_tool_result_content(msg.content)
+            msg.content = cleaned
+        if msg.role == "assistant" and msg.tool_calls:
+            for j, tc in enumerate(msg.tool_calls):
+                if not isinstance(tc, dict):
+                    continue
+                fn = tc.get("function")
+                if not isinstance(fn, dict):
+                    continue
+                args = fn.get("arguments")
+                if isinstance(args, str) and args:
+                    cleaned, _ = redact_tool_arguments_json(
+                        args, source=f"messages[{i}].tool_calls[{j}].function.arguments",
+                    )
+                    fn["arguments"] = cleaned
+    return canonical
 
 
 def _format_validation_error(exc: ValidationError) -> str:
