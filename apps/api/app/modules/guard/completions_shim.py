@@ -228,6 +228,18 @@ def _canonical_to_openai_body(canonical: _CanonicalRequest) -> dict[str, Any]:
         # streams in the same OpenAI Chat Completions SSE format.
         "stream": canonical.stream,
     }
+    if canonical.stream:
+        # Reviewer P1 (streaming PR): OpenAI's streaming responses omit
+        # the ``usage`` block by default; the final usage chunk is only
+        # emitted when the client sends ``stream_options.include_usage=true``
+        # (https://help.openai.com/en/articles/10478918). Without it,
+        # ``_extract_token_counts`` returns (None, None) so audit rows
+        # and budget settlement carry zero tokens for successful streams.
+        # Injected server-side rather than exposed to the canonical
+        # request schema — /completions callers should not need to know
+        # about wire-level accounting knobs, and Conduct owns the audit
+        # trail regardless of what the caller wants.
+        body["stream_options"] = {"include_usage": True}
     if canonical.temperature is not None:
         body["temperature"] = canonical.temperature
     if canonical.top_p is not None:

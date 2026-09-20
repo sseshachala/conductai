@@ -218,13 +218,16 @@ def test_non_bool_stream_value_is_rejected(
     assert captured_handler.captured is None
 
 
-def test_stream_true_delegates_with_stream_flag_set(
+def test_stream_true_delegates_with_stream_flag_and_usage_option_set(
     client: TestClient, captured_handler: _CapturedCall
 ) -> None:
-    """``stream: true`` is now accepted and passed through to the v2
-    executor unchanged. The wire-level response (SSE vs JSON) is decided
-    by ``handle_gateway_request`` downstream — the shim only guarantees
-    the flag reaches it.
+    """``stream: true`` is accepted and passed through to the v2 executor
+    with ``stream_options.include_usage=true`` injected server-side.
+
+    OpenAI omits the usage chunk on streaming responses unless the
+    request explicitly asks for it. Without the injection, audit rows
+    and budget settlement carry zero tokens for successful streams —
+    reviewer P1 on the streaming PR.
     """
     resp = client.post(
         "/gateway/v1/completions",
@@ -237,6 +240,32 @@ def test_stream_true_delegates_with_stream_flag_set(
     assert forwarded_body["stream"] is True, (
         f"stream flag lost between shim and executor — forwarded body: "
         f"{forwarded_body}"
+    )
+    assert forwarded_body.get("stream_options") == {"include_usage": True}, (
+        f"stream_options.include_usage=true must be injected server-side "
+        f"when stream=true; forwarded body: {forwarded_body}"
+    )
+
+
+def test_stream_false_does_not_inject_stream_options(
+    client: TestClient, captured_handler: _CapturedCall
+) -> None:
+    """The stream_options injection is scoped to stream=true. A non-
+    streaming request MUST NOT carry stream_options — the field is
+    meaningful only when streaming, and OpenAI rejects it otherwise
+    with a 400.
+    """
+    resp = client.post(
+        "/gateway/v1/completions",
+        headers={"Authorization": "Bearer cond_mt_test_token"},
+        json=_valid_body(stream=False),
+    )
+    assert resp.status_code == 200
+    assert captured_handler.captured is not None
+    forwarded_body = captured_handler.captured["body"]
+    assert "stream_options" not in forwarded_body, (
+        f"stream_options must not be injected when stream=false; "
+        f"forwarded body: {forwarded_body}"
     )
 
 
@@ -269,6 +298,13 @@ def test_stream_false_and_omitted_both_forward_stream_false(
         {"logprobs": True},
         {"n": 3},
         {"random_unknown_field": "hello"},
+        # stream_options is deliberately forbidden: the shim injects it
+        # server-side when stream=true so audit + budget always get token
+        # counts. Letting the caller override would let them opt out of
+        # accounting for their own request — that's Conduct's decision,
+        # not the caller's.
+        {"stream_options": {"include_usage": True}},
+        {"stream_options": {"include_usage": False}},
     ],
 )
 def test_unknown_or_forbidden_top_level_fields_are_rejected(
