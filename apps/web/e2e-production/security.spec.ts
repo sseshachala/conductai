@@ -391,6 +391,11 @@ test.describe("bounded production security canaries", () => {
       const workspaceB = await ownedWorkspace(b)
       if (workspaceA.id === workspaceB.id) throw new Error("Production test workspaces must be distinct")
 
+      if (process.env.PROD_E2E_GATEWAY_PREFLIGHT === "1") {
+        harness = { a, b, workspaceA, workspaceB, originalMembersB: [] }
+        return
+      }
+
       await removeStaleCanaryIdentities(a.page, workspaceA.id)
       await removeStaleCanaryIdentities(b.page, workspaceB.id)
       await removeStaleCanaryEnvironments(a.page, workspaceA.id)
@@ -418,13 +423,36 @@ test.describe("bounded production security canaries", () => {
     const { a, b, workspaceB, originalMembersB } = harness
     try {
       const current = await members(b.page, workspaceB.id).catch(() => [])
-      if (!originalMembersB.some(member => member.clerk_user_id === a.userId)
+      if (process.env.PROD_E2E_GATEWAY_PREFLIGHT !== "1"
+          && !originalMembersB.some(member => member.clerk_user_id === a.userId)
           && current.some(member => member.clerk_user_id === a.userId)) {
         await removeMember(b, workspaceB.id, a.userId).catch(() => undefined)
       }
     } finally {
       await Promise.all([a.context.close().catch(() => {}), b.context.close().catch(() => {})])
     }
+  })
+
+  test("@prod-gateway-fixture published profiles are ready", async () => {
+    const { a, b, workspaceA, workspaceB } = harness
+    const errors: string[] = []
+    for (const [session, workspace, provider] of [[a, workspaceA, "anthropic"], [b, workspaceB, "openai"]] as const) {
+      try {
+        await canonicalGatewayProfile(session.page, workspace.id, provider)
+      } catch (error) {
+        errors.push(error instanceof Error ? error.message : "Gateway fixture check failed")
+        if (process.env.PROD_E2E_GATEWAY_PREFLIGHT === "1") {
+          const response = await api(session.page, "/credentials", "GET", undefined, workspace.id)
+          if (response.ok()) {
+            const credentials = await response.json() as { service: string; fields: string[] }[]
+            errors.push(`${provider} credential metadata: ${credentials.filter(c => c.service === provider && c.fields.includes("api_key")).length} matching API-key records. Values were not requested.`)
+          } else {
+            errors.push(`${provider} credential metadata unavailable (HTTP ${response.status()}).`)
+          }
+        }
+      }
+    }
+    expect(errors, errors.join("\n")).toEqual([])
   })
 
   test("@prod account ownership and disposable workspace preflight", async () => {

@@ -441,6 +441,172 @@ def estimate_tools_tokens(tools: Any) -> int:
         return 0
 
 
+
+# ─── response-gate helpers (PR 2 of #2159) ─────────────────────────
+
+
+class ResponseGateReason:
+    """String constants for the audit ``routing_meta.response_gate_reason``.
+
+    Kept as attributes on a stable class (not an Enum) so JSON
+    serialization is trivial and downstream string comparisons in
+    Flight Recorder + audit UIs don't need import glue.
+    """
+
+    POLICY_BLOCK = "policy_block"
+    VALIDATION_FAILURE = "validation_failure"
+
+
+class ScanResult:
+    """Return type of ``scan_response_tool_calls``.
+
+    ``scanned_body`` is the deep-copied response with ``arguments``
+    strings replaced by their redacted equivalents. ``generated_calls``
+    is the audit-friendly list of ``{name, id}`` for
+    ``routing_meta.tool_calls_generated``. ``error`` is populated ONLY
+    on redaction failure; the caller MUST refuse the response when
+    error is set (block, don't scrub).
+    """
+
+    __slots__ = ("scanned_body", "generated_calls", "error")
+
+    def __init__(
+        self,
+        scanned_body: dict | None,
+        generated_calls: list[dict[str, str]],
+        error: RedactionFailure | None,
+    ) -> None:
+        self.scanned_body = scanned_body
+        self.generated_calls = generated_calls
+        self.error = error
+
+
+def scan_response_tool_calls(response_body: dict) -> ScanResult:
+    """Walk OpenAI-shape response body, redact tool_call arguments.
+
+    Extracts + validates every ``choices[].message.tool_calls[]`` entry:
+
+      1. Records ``{name, id}`` for audit.
+      2. Parses ``function.arguments`` as JSON.
+      3. Walks string leaves through the existing PII + secret scrubbers.
+      4. Re-serializes and writes back into the body.
+
+    On JSON parse failure or walk failure at any tool_call, returns a
+    ``ScanResult`` with ``error`` set and ``scanned_body=None``. The
+    caller MUST convert that to a 502 ``tool_arguments_validation_failed``
+    response envelope — see epic #2159 for the reasoning
+    (blocking is safer than scrubbing to a placeholder because an
+    executor might still act on it, apply defaults, or retry
+    unpredictably).
+
+    Non-tool responses (no ``choices[].message.tool_calls``) return
+    the body unchanged with an empty generated_calls list and no error.
+    """
+    import copy as _copy
+
+    if not isinstance(response_body, dict):
+        return ScanResult(scanned_body=response_body, generated_calls=[], error=None)
+
+    choices = response_body.get("choices")
+    if not isinstance(choices, list) or not choices:
+        return ScanResult(scanned_body=response_body, generated_calls=[], error=None)
+
+    generated: list[dict[str, str]] = []
+    any_tool_call = False
+
+    # Detect FIRST — deep-copy only when we actually need to mutate.
+    for choice in choices:
+        if not isinstance(choice, dict):
+            continue
+        msg = choice.get("message")
+        if not isinstance(msg, dict):
+            continue
+        tool_calls = msg.get("tool_calls")
+        if isinstance(tool_calls, list) and tool_calls:
+            any_tool_call = True
+            break
+
+    if not any_tool_call:
+        return ScanResult(scanned_body=response_body, generated_calls=[], error=None)
+
+    scanned = _copy.deepcopy(response_body)
+    for i, choice in enumerate(scanned.get("choices") or []):
+        if not isinstance(choice, dict):
+            continue
+        msg = choice.get("message")
+        if not isinstance(msg, dict):
+            continue
+        tool_calls = msg.get("tool_calls")
+        if not isinstance(tool_calls, list):
+            continue
+        for j, tc in enumerate(tool_calls):
+            if not isinstance(tc, dict):
+                continue
+            tc_id = tc.get("id") if isinstance(tc.get("id"), str) else ""
+            fn = tc.get("function")
+            fn_name = ""
+            if isinstance(fn, dict):
+                if isinstance(fn.get("name"), str):
+                    fn_name = fn["name"]
+                args = fn.get("arguments")
+                # Empty / absent arguments == valid no-arg call; skip.
+                if isinstance(args, str) and args:
+                    try:
+                        redacted, _found = redact_tool_arguments_json(
+                            args,
+                            source=f"choices[{i}].message.tool_calls[{j}].function.arguments",
+                        )
+                        fn["arguments"] = redacted
+                    except RedactionFailure as exc:
+                        return ScanResult(
+                            scanned_body=None, generated_calls=[], error=exc,
+                        )
+            generated.append({"name": fn_name, "id": tc_id})
+    return ScanResult(scanned_body=scanned, generated_calls=generated, error=None)
+
+
+def extract_tools_offered(request_body: dict) -> list[str]:
+    """Names from ``request.tools[].function.name`` for audit.
+
+    Read-only; returns empty list when the request has no tools or the
+    structure is malformed. Never raises — audit rows should land even
+    when the request shape is off-spec.
+    """
+    tools = request_body.get("tools") if isinstance(request_body, dict) else None
+    if not isinstance(tools, list):
+        return []
+    names: list[str] = []
+    for t in tools:
+        if not isinstance(t, dict):
+            continue
+        fn = t.get("function")
+        if isinstance(fn, dict) and isinstance(fn.get("name"), str):
+            names.append(fn["name"])
+    return names
+
+
+def extract_tool_results_supplied(request_body: dict) -> list[str]:
+    """``tool_call_id`` values from ``role: "tool"`` messages.
+
+    These are results the CALLER supplied for tool_calls made in a
+    previous turn. Distinct from ``tool_calls_generated`` (what the
+    model returned THIS turn) — the audit UI must show them as
+    different events per the epic's "gateway sees generation, not
+    execution" language.
+    """
+    messages = request_body.get("messages") if isinstance(request_body, dict) else None
+    if not isinstance(messages, list):
+        return []
+    ids: list[str] = []
+    for m in messages:
+        if not isinstance(m, dict):
+            continue
+        if m.get("role") == "tool":
+            tcid = m.get("tool_call_id")
+            if isinstance(tcid, str) and tcid:
+                ids.append(tcid)
+    return ids
+
 __all__ = [
     "ValidationFailure",
     "RedactionFailure",
@@ -451,4 +617,9 @@ __all__ = [
     "redact_tool_parameters_schema",
     "redact_tool_result_content",
     "estimate_tools_tokens",
+    "scan_response_tool_calls",
+    "extract_tools_offered",
+    "extract_tool_results_supplied",
+    "ResponseGateReason",
+    "ScanResult",
 ]

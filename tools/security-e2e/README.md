@@ -120,6 +120,20 @@ rtk proxy python3.11 tools/security-e2e/production.py \
 Use `--grep '<pattern>'` to rerun a named canary or a bounded subset after a
 failure. The same preflight and cleanup guards run for targeted selections.
 
+To diagnose Gateway fixtures without inference or workspace mutations:
+
+```sh
+rtk proxy python3.11 tools/security-e2e/production.py \
+  --credentials-file ~/.conduct/e2e/production-accounts.env \
+  --gateway-preflight
+```
+
+This authenticates both accounts and reads their owned workspaces and published
+profile snapshots. It skips stale-resource cleanup and membership changes.
+Failure output contains counts and exclusion reasons, never credential values
+or profile snapshots. A zero-match result requires fixing the fixture, not
+merely setting a model identifier. The normal suite includes the same check.
+
 The production suite does not create or delete accounts or workspaces. Its 30
 independently reported canaries check account/workspace preflight, anonymous
 and forged-header rejection, owner MCP access, foreign and unknown workspace

@@ -55,6 +55,23 @@ class PolicyContext:
     # trustworthy tool label" — the SpendCap source treats both as absence
     # and falls back to workspace-wide + per-user caps.
     ai_tool: str | None = None
+    # #2159 PR 2 (#2156) — tool-name signals for rules that select on
+    # tool identity. Distinguished per the epic's "gateway sees
+    # generation, not execution" language:
+    #   - ``tool_names_offered``   : names in ``body["tools"][].function.name``
+    #                                (what the caller advertised to upstream).
+    #   - ``tool_names_generated`` : names in ``choices[].message.tool_calls[]``
+    #                                (what the model returned this turn;
+    #                                 response-gate only).
+    #   - ``tool_names_supplied``  : ``tool_call_id``s from ``role:tool``
+    #                                messages (previous-turn tool results the
+    #                                caller supplied THIS turn).
+    # None = "not populated by the PEP" (legacy callers, non-inference
+    # gates). Empty list = "PEP populated, no tools present" — semantically
+    # distinct so rules can distinguish "unset" from "explicitly empty".
+    tool_names_offered: list[str] | None = None
+    tool_names_generated: list[str] | None = None
+    tool_names_supplied: list[str] | None = None
 
 
 @dataclass

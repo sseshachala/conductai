@@ -393,3 +393,189 @@ class TestEstimateToolsTokens:
         class _NotJson:
             pass
         assert estimate_tools_tokens([_NotJson()]) == 0
+
+
+
+# ─── response-side helpers (PR 2 additions) ────────────────────────
+
+
+from app.modules.guard.tools_validator import (
+    ResponseGateReason,
+    extract_tool_results_supplied,
+    extract_tools_offered,
+    scan_response_tool_calls,
+)
+
+
+class TestScanResponseToolCalls:
+    def test_body_without_tool_calls_passes_through(self) -> None:
+        body = {
+            "id": "x", "object": "chat.completion",
+            "choices": [{"index": 0, "message": {"role": "assistant", "content": "hi"}}],
+        }
+        r = scan_response_tool_calls(body)
+        assert r.error is None
+        assert r.generated_calls == []
+        # No deep-copy needed when nothing to scan — helper returns same ref.
+        assert r.scanned_body is body
+
+    def test_empty_body_passes_through(self) -> None:
+        r = scan_response_tool_calls({})
+        assert r.error is None
+        assert r.generated_calls == []
+
+    def test_extracts_generated_tool_calls(self) -> None:
+        body = {
+            "choices": [{
+                "index": 0,
+                "message": {
+                    "role": "assistant", "content": None,
+                    "tool_calls": [
+                        {"id": "call_1", "type": "function",
+                         "function": {"name": "get_weather",
+                                      "arguments": json.dumps({"city": "SF"})}},
+                        {"id": "call_2", "type": "function",
+                         "function": {"name": "send_email",
+                                      "arguments": json.dumps({"to": "x@y.com"})}},
+                    ],
+                },
+            }],
+        }
+        r = scan_response_tool_calls(body)
+        assert r.error is None
+        assert r.generated_calls == [
+            {"name": "get_weather", "id": "call_1"},
+            {"name": "send_email", "id": "call_2"},
+        ]
+
+    def test_redacts_arguments_in_place(self) -> None:
+        # Arguments come back as valid JSON; scanner walks + re-serializes.
+        # Value preservation of non-string types is enforced by the
+        # underlying redact_tool_arguments_json (tested elsewhere) —
+        # here we just confirm the wrapping call substitutes the
+        # scanned body.
+        body = {
+            "choices": [{
+                "index": 0,
+                "message": {
+                    "role": "assistant", "content": None,
+                    "tool_calls": [{
+                        "id": "call_1", "type": "function",
+                        "function": {"name": "x",
+                                     "arguments": json.dumps({"n": 3, "s": "hello"})},
+                    }],
+                },
+            }],
+        }
+        r = scan_response_tool_calls(body)
+        assert r.error is None
+        assert r.scanned_body is not body   # deep-copied because tool_calls present
+        # Non-string preserved.
+        args = json.loads(r.scanned_body["choices"][0]["message"]["tool_calls"][0]["function"]["arguments"])
+        assert args["n"] == 3
+
+    def test_malformed_arguments_json_returns_error(self) -> None:
+        # This is the "block, don't scrub" scenario. Parse failure MUST
+        # bubble up so caller emits 502 tool_arguments_validation_failed.
+        body = {
+            "choices": [{
+                "index": 0,
+                "message": {
+                    "role": "assistant", "content": None,
+                    "tool_calls": [{
+                        "id": "call_1", "type": "function",
+                        "function": {"name": "x", "arguments": '{"broken'},
+                    }],
+                },
+            }],
+        }
+        r = scan_response_tool_calls(body)
+        assert r.error is not None
+        assert r.scanned_body is None
+        assert "not valid JSON" in r.error.reason
+        # Source path names the offending location for audit.
+        assert "choices[0].message.tool_calls[0]" in r.error.source
+
+    def test_no_arguments_still_records_generation(self) -> None:
+        # A tool_call with no arguments is legal (no-arg function).
+        # Audit should still record the {name, id}.
+        body = {
+            "choices": [{
+                "index": 0,
+                "message": {
+                    "role": "assistant", "content": None,
+                    "tool_calls": [{
+                        "id": "call_1", "type": "function",
+                        "function": {"name": "ping", "arguments": ""},
+                    }],
+                },
+            }],
+        }
+        r = scan_response_tool_calls(body)
+        assert r.error is None
+        assert r.generated_calls == [{"name": "ping", "id": "call_1"}]
+
+    def test_non_dict_body_pass_through(self) -> None:
+        r = scan_response_tool_calls("not a dict")  # type: ignore[arg-type]
+        assert r.error is None
+        assert r.generated_calls == []
+
+
+class TestExtractToolsOffered:
+    def test_none_returns_empty(self) -> None:
+        assert extract_tools_offered({}) == []
+        assert extract_tools_offered({"tools": None}) == []
+        assert extract_tools_offered("not a dict") == []  # type: ignore[arg-type]
+
+    def test_names_extracted(self) -> None:
+        body = {
+            "tools": [
+                {"type": "function", "function": {"name": "a"}},
+                {"type": "function", "function": {"name": "b"}},
+            ],
+        }
+        assert extract_tools_offered(body) == ["a", "b"]
+
+    def test_malformed_entries_skipped(self) -> None:
+        body = {
+            "tools": [
+                {"type": "function", "function": {"name": "a"}},
+                "not-a-dict",
+                {"type": "function"},  # missing function
+                {"type": "function", "function": {"name": ""}},  # empty name
+                {"type": "function", "function": {"name": "b"}},
+            ],
+        }
+        # Non-dict skipped; missing function skipped; empty-name accepted
+        # here (extractor is best-effort; validator rejects earlier so
+        # this path is theoretical, but audit should still land).
+        result = extract_tools_offered(body)
+        assert "a" in result and "b" in result
+
+
+class TestExtractToolResultsSupplied:
+    def test_no_tool_messages(self) -> None:
+        body = {"messages": [{"role": "user", "content": "hi"}]}
+        assert extract_tool_results_supplied(body) == []
+
+    def test_tool_call_ids_extracted(self) -> None:
+        body = {"messages": [
+            {"role": "user", "content": "x"},
+            {"role": "assistant", "content": "y"},
+            {"role": "tool", "content": "42", "tool_call_id": "call_a"},
+            {"role": "tool", "content": "7", "tool_call_id": "call_b"},
+        ]}
+        assert extract_tool_results_supplied(body) == ["call_a", "call_b"]
+
+    def test_malformed_input_returns_empty(self) -> None:
+        assert extract_tool_results_supplied({}) == []
+        assert extract_tool_results_supplied({"messages": "not a list"}) == []
+        assert extract_tool_results_supplied("not a dict") == []  # type: ignore[arg-type]
+
+
+class TestResponseGateReason:
+    def test_stable_string_values(self) -> None:
+        # Audit tables + Flight Recorder queries hard-code these
+        # strings; changing them silently would break dashboards.
+        assert ResponseGateReason.POLICY_BLOCK == "policy_block"
+        assert ResponseGateReason.VALIDATION_FAILURE == "validation_failure"

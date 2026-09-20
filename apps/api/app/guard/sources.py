@@ -33,7 +33,14 @@ class RulePolicySource:
 
     def evaluate(self, ctx: PolicyContext) -> PolicyDecision:
         evaluator = self._evaluator or self._default_evaluator()
-        raw = evaluator(ctx.workspace_id, ctx.provider, ctx.model, ctx.body, gate=ctx.gate, agent_risk_tier=ctx.risk_tier)
+        raw = evaluator(
+            ctx.workspace_id, ctx.provider, ctx.model, ctx.body,
+            gate=ctx.gate, agent_risk_tier=ctx.risk_tier,
+            # #2159 PR 2 (#2156) — tool-name signals from the PEP.
+            tool_names_offered=ctx.tool_names_offered,
+            tool_names_generated=ctx.tool_names_generated,
+            tool_names_supplied=ctx.tool_names_supplied,
+        )
         action_str = (raw.get("action") or "ALLOW").upper()
         try:
             action = PolicyAction(action_str)

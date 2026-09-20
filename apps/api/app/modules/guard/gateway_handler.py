@@ -26,6 +26,87 @@ from app.core.config import settings
 log = structlog.get_logger(__name__)
 
 
+def apply_tool_call_gate(
+    response: JSONResponse,
+    routing_meta: dict | None,
+    *,
+    workspace_id: str,
+    provider: str,
+    model: str,
+) -> tuple[JSONResponse, dict | None]:
+    """#2159 PR 2 — tool-call scanner + reason marker.
+
+    Contract:
+      - Parses ``response.body`` as JSON.
+      - Walks ``choices[].message.tool_calls[].function.arguments``,
+        redacting string leaves via ``tools_validator.scan_response_tool_calls``.
+      - On ``RedactionFailure``: returns (502 envelope, routing_meta with
+        ``response_gate_reason=validation_failure`` and empty
+        ``tool_calls_generated``). Upstream cost stays on the audit row
+        because inference already happened; only the tool_call is refused.
+      - Otherwise: returns (response with redacted body substituted,
+        routing_meta with ``tool_calls_generated`` populated).
+
+    Never raises. The existing composed-engine ``_apply_response_gate``
+    runs AFTER this helper — a 502 here short-circuits the gate; a
+    successful scan hands off the sanitised body to the gate for
+    policy evaluation. The gate's own 451 result is marked separately
+    in the caller so the two ``response_gate_reason`` values stay
+    distinct.
+    """
+    import json as _json_tc
+    from app.modules.guard.tools_validator import (
+        ResponseGateReason,
+        scan_response_tool_calls,
+    )
+
+    try:
+        _resp_parsed = _json_tc.loads(response.body or b"{}")
+    except Exception:
+        _resp_parsed = {}
+    scan = scan_response_tool_calls(_resp_parsed)
+    if scan.error is not None:
+        log.warning(
+            "guard.response.tool_args_validation_failed",
+            workspace_id=workspace_id, provider=provider, model=model,
+            source=scan.error.source, reason=scan.error.reason,
+        )
+        routing_meta = {
+            **(routing_meta or {}),
+            "response_gate_reason": ResponseGateReason.VALIDATION_FAILURE,
+            "tool_calls_generated": [],
+        }
+        response = JSONResponse(
+            status_code=502,
+            content={
+                "error": {
+                    "type": "conduct_gateway_tool_arguments_validation_failed",
+                    "message": (
+                        "Tool_call arguments failed validation and cannot "
+                        "be safely delivered. Upstream inference completed "
+                        "and is billed; the tool call is refused."
+                    ),
+                    "detail": scan.error.reason,
+                    "source": scan.error.source,
+                    "gate": "response",
+                }
+            },
+        )
+        return response, routing_meta
+
+    if scan.generated_calls:
+        routing_meta = {
+            **(routing_meta or {}),
+            "tool_calls_generated": scan.generated_calls,
+        }
+    if scan.scanned_body is not None and scan.scanned_body is not _resp_parsed:
+        response = JSONResponse(
+            status_code=response.status_code,
+            content=scan.scanned_body,
+        )
+    return response, routing_meta
+
+
 async def handle_gateway_request(
     request: Request,
     background: BackgroundTasks,
@@ -187,6 +268,26 @@ async def handle_gateway_request(
                 "billable": False,
             }
 
+        # #2159 PR 2 — record tools offered by the caller AND tool
+        # results the caller supplied (multi-turn continuation). Kept
+        # here (pre-dispatch) so audit lands the fields even when the
+        # response gate blocks or the coordinator returns an error.
+        # ``tool_calls_generated`` lands later after the response gate
+        # sees what the model actually returned.
+        from app.modules.guard.tools_validator import (
+            extract_tool_results_supplied as _extract_tool_results_supplied,
+            extract_tools_offered as _extract_tools_offered,
+        )
+        _tools_offered = _extract_tools_offered(body)
+        _tool_results_supplied = _extract_tool_results_supplied(body)
+        if _tools_offered:
+            _routing_meta = {**(_routing_meta or {}), "tools_offered": _tools_offered}
+        if _tool_results_supplied:
+            _routing_meta = {
+                **(_routing_meta or {}),
+                "tool_results_supplied": _tool_results_supplied,
+            }
+
         # #2004 Phase 1 — v2 lookup + credential pre-fetch. Runs while
         # the DB session is still open; if a binding matches, we hand
         # the coordinator a pre-resolved credential map so the forward
@@ -326,6 +427,11 @@ async def handle_gateway_request(
                     gate="prompt",
                     risk_tier=_agent_risk_tier,
                     ai_tool=ai_tool or None,
+                    # #2159 PR 2 (#2156) — tool-name signals populated on
+                    # the request-gate side. Empty list stays semantically
+                    # distinct from None (unset) so rules can distinguish.
+                    tool_names_offered=_tools_offered or None,
+                    tool_names_supplied=_tool_results_supplied or None,
                 )
                 return _eval_composed(_ctx)
             finally:
@@ -847,7 +953,24 @@ async def handle_gateway_request(
                     vendor_key=_vault_key_val,
                     provider=provider,
                 )
-            # #1733 PR 4: response gate (non-streaming).
+            # #2159 PR 2 — scan tool_call arguments BEFORE the existing
+            # composed-engine gate. See ``apply_tool_call_gate`` for the
+            # full contract (RedactionFailure → 502 terminal, redacted
+            # body substituted otherwise, routing_meta updated with
+            # generated_calls / response_gate_reason).
+            if (
+                operation == "inference"
+                and not is_stream
+                and isinstance(_response, JSONResponse)
+                and _response.status_code < 400
+            ):
+                _response, _routing_meta = apply_tool_call_gate(
+                    _response, _routing_meta,
+                    workspace_id=workspace_id, provider=provider, model=model,
+                )
+
+            # #1733 PR 4: response gate (non-streaming). Only runs when
+            # the tool-call scanner above didn't already 502.
             if (
                 operation == "inference"
                 and not is_stream
@@ -856,6 +979,14 @@ async def handle_gateway_request(
             ):
                 # PR 2 Commit 3 — response gate policy eval hits DB; offload.
                 import functools as _ft
+                # #2159 PR 2 (#2156) — thread tool-name signals from
+                # routing_meta into the response-gate PolicyContext so
+                # composed-engine rules can select on tool identity.
+                _rm_now = _routing_meta or {}
+                _tng_names = [
+                    tc.get("name", "") for tc in (_rm_now.get("tool_calls_generated") or [])
+                    if isinstance(tc, dict) and tc.get("name")
+                ] or None
                 _response = await run_in_threadpool(
                     _ft.partial(
                         _apply_response_gate,
@@ -867,8 +998,23 @@ async def handle_gateway_request(
                         agent_identity_id=_agent_identity_id,
                         agent_risk_tier=_agent_risk_tier,
                         ai_tool=ai_tool,
+                        tool_names_offered=_rm_now.get("tools_offered") or None,
+                        tool_names_generated=_tng_names,
+                        tool_names_supplied=_rm_now.get("tool_results_supplied") or None,
                     )
                 )
+                # #2159 PR 2 — mark policy-block reason on audit when the
+                # existing composed-engine gate 451'd. The scanner's
+                # ``VALIDATION_FAILURE`` reason (above) is distinct from
+                # this one so ops can tell the two apart.
+                if _response.status_code == 451:
+                    from app.modules.guard.tools_validator import (
+                        ResponseGateReason as _RGR_block,
+                    )
+                    _routing_meta = {
+                        **(_routing_meta or {}),
+                        "response_gate_reason": _RGR_block.POLICY_BLOCK,
+                    }
             # #1733 PR 5: response gate (streaming, buffered end-of-stream scan).
             elif (
                 operation == "inference"
@@ -1483,6 +1629,15 @@ def _build_policy_check(
         _db = SessionLocal()
         try:
             set_workspace_rls(_db, workspace_id)
+            # #2159 PR 2 (#2156) — extract tool-name signals from the
+            # request body so per-target policy re-check can select on
+            # tool identity. Called per-target so extraction is cheap.
+            from app.modules.guard.tools_validator import (
+                extract_tool_results_supplied as _extract_tool_results_supplied_t,
+                extract_tools_offered as _extract_tools_offered_t,
+            )
+            _t_offered = _extract_tools_offered_t(body) or None
+            _t_supplied = _extract_tool_results_supplied_t(body) or None
             ctx = _PolicyContext(
                 workspace_id=workspace_id,
                 clerk_user_id=clerk_user_id,
@@ -1495,6 +1650,8 @@ def _build_policy_check(
                 gate="prompt",
                 risk_tier=risk_tier,
                 ai_tool=ai_tool or None,
+                tool_names_offered=_t_offered,
+                tool_names_supplied=_t_supplied,
             )
             pd = _eval_composed(ctx)
         finally:

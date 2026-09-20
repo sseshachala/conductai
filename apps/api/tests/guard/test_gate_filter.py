@@ -116,7 +116,7 @@ def test_rule_policy_source_threads_ctx_gate_to_evaluator():
 
     seen = {}
 
-    def _fake_evaluate(workspace_id, provider, model, body, gate="prompt", agent_risk_tier=None):
+    def _fake_evaluate(workspace_id, provider, model, body, gate="prompt", agent_risk_tier=None, **_extra_kwargs):
         seen["gate"] = gate
         return {"action": "ALLOW", "rule_id": None, "message": None}
 

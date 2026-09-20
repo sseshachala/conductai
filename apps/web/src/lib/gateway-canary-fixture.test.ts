@@ -32,6 +32,25 @@ describe("production Gateway fixture", () => {
   it("requires all tested operations", async () => {
     await expect(publishedGatewayFixture(reader([profile], { ...snapshot, accepts: ["anthropic_messages"] }), "ws", "anthropic")).rejects.toThrow("found 0")
   })
+  it("reports empty inventories with actionable setup guidance", async () => {
+    await expect(publishedGatewayFixture(reader([]), "ws", "anthropic")).rejects.toThrow('Inventory: {"total":0,"excluded":{}}')
+  })
+  it("explains missing capabilities without disclosing profile data", async () => {
+    const read = reader([{ ...profile, working_copy: { model_alias: "private-name" } }], {
+      ...snapshot, accepts: ["anthropic_messages"],
+      targets: [{ ...snapshot.targets[0], credential_ref: "vault://private-env/private-key" }],
+    })
+    try {
+      await publishedGatewayFixture(read, "ws", "anthropic")
+      throw new Error("expected fixture failure")
+    } catch (error) {
+      expect(String(error)).toContain("missing_operations:anthropic_count_tokens")
+      expect(String(error)).not.toMatch(/private-name|private-env|private-key/)
+    }
+  })
+  it("distinguishes stale configured identifiers from missing profiles", async () => {
+    await expect(publishedGatewayFixture(reader(), "ws", "anthropic", "cond-xxxxxxxx-old")).rejects.toThrow("configured_identifier_mismatch")
+  })
   it.each([
     { ...snapshot.targets[0], provider: "openai" },
     { ...snapshot.targets[0], transport: "http_passthrough" },
