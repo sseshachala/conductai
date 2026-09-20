@@ -145,8 +145,24 @@ def _db_for_legacy(member_row):
 
 
 def _agt_token():
+    """Return a random cond_agt_* token that never collides with the
+    session-credential prefix (``cond_agt_s1_``).
+
+    ``secrets.token_urlsafe`` uses a 64-char alphabet
+    (``A-Za-z0-9-_``). Once every ~262k invocations the random tail
+    starts with ``s1_`` — the resulting ``cond_agt_s1_...`` matches
+    ``SESSION_ACCESS_PREFIX`` and routes ``resolve_agent_token`` down
+    the session path, where the test's MagicMock ``db`` produces
+    a MagicMock ``expires_at`` that then blows up the ``<=``
+    comparison in ``app/core/auth.py``. Loop until the collision
+    doesn't happen (#2162). Retry cost is negligible; the loop body
+    runs at most twice in practical terms.
+    """
     import secrets
-    return "cond_agt_" + secrets.token_urlsafe(32)
+    while True:
+        tail = secrets.token_urlsafe(32)
+        if not tail.startswith("s1_"):
+            return "cond_agt_" + tail
 
 
 def _api_token():
