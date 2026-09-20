@@ -1,0 +1,395 @@
+"""Unit tests for tools_validator — Conduct's tool-calling contract.
+
+These tests exist so the validator + redactor can be reviewed in
+isolation from the shim wire-in. The shim (PR 1) and response gate
+(PR 2 of epic #2159) both consume this module, so any drift in the
+contract shows up here first.
+"""
+from __future__ import annotations
+
+import json
+
+import pytest
+
+from app.modules.guard.tools_validator import (
+    RedactionFailure,
+    ValidationFailure,
+    estimate_tools_tokens,
+    redact_tool_arguments_json,
+    redact_tool_parameters_schema,
+    redact_tool_result_content,
+    validate_messages,
+    validate_tool_choice,
+    validate_tools,
+)
+
+
+# ─── tool_choice ────────────────────────────────────────────────────
+
+
+class TestValidateToolChoice:
+    def test_none_is_ok(self) -> None:
+        validate_tool_choice(None, [])
+        validate_tool_choice(None, None)
+
+    @pytest.mark.parametrize("mode", ["auto", "none", "required"])
+    def test_supported_string_modes_pass(self, mode: str) -> None:
+        validate_tool_choice(mode, None)
+
+    @pytest.mark.parametrize("mode", ["Auto", "AUTO", "", "yes", "any", "true"])
+    def test_unsupported_string_modes_rejected(self, mode: str) -> None:
+        with pytest.raises(ValidationFailure) as e:
+            validate_tool_choice(mode, None)
+        assert e.value.field == "tool_choice"
+        assert "unsupported mode" in e.value.reason
+
+    @pytest.mark.parametrize("bad", [1, 1.5, True, [], ("auto",)])
+    def test_non_string_non_dict_rejected(self, bad) -> None:
+        with pytest.raises(ValidationFailure) as e:
+            validate_tool_choice(bad, None)
+        assert e.value.field == "tool_choice"
+
+    def test_named_choice_matches_declared_tool(self) -> None:
+        tools = [{"type": "function", "function": {"name": "get_weather"}}]
+        validate_tool_choice(
+            {"type": "function", "function": {"name": "get_weather"}}, tools,
+        )
+
+    def test_named_choice_missing_from_tools_rejected(self) -> None:
+        tools = [{"type": "function", "function": {"name": "get_weather"}}]
+        with pytest.raises(ValidationFailure) as e:
+            validate_tool_choice(
+                {"type": "function", "function": {"name": "send_email"}}, tools,
+            )
+        assert e.value.field == "tool_choice.function.name"
+        assert "does not appear" in e.value.reason
+
+    def test_named_choice_with_no_tools_rejected(self) -> None:
+        with pytest.raises(ValidationFailure) as e:
+            validate_tool_choice(
+                {"type": "function", "function": {"name": "x"}}, None,
+            )
+        assert e.value.field == "tool_choice.function.name"
+
+    @pytest.mark.parametrize("bad_type", ["tool", "any", "function_call", None])
+    def test_bad_type_rejected(self, bad_type) -> None:
+        with pytest.raises(ValidationFailure) as e:
+            validate_tool_choice({"type": bad_type, "function": {"name": "x"}}, None)
+        assert e.value.field == "tool_choice.type"
+
+    def test_missing_function_object_rejected(self) -> None:
+        with pytest.raises(ValidationFailure) as e:
+            validate_tool_choice({"type": "function"}, None)
+        assert e.value.field == "tool_choice.function"
+
+    def test_empty_function_name_rejected(self) -> None:
+        with pytest.raises(ValidationFailure) as e:
+            validate_tool_choice({"type": "function", "function": {"name": ""}}, None)
+        assert e.value.field == "tool_choice.function.name"
+
+
+# ─── tools list ─────────────────────────────────────────────────────
+
+
+class TestValidateTools:
+    def test_valid_single_tool(self) -> None:
+        validate_tools([{"type": "function", "function": {"name": "get_weather"}}])
+
+    def test_valid_multiple_tools(self) -> None:
+        validate_tools([
+            {"type": "function", "function": {"name": "a"}},
+            {"type": "function", "function": {"name": "b"}},
+            {"type": "function", "function": {"name": "c"}},
+        ])
+
+    def test_non_list_rejected(self) -> None:
+        with pytest.raises(ValidationFailure) as e:
+            validate_tools({"foo": "bar"})
+        assert e.value.field == "tools"
+
+    def test_empty_list_rejected(self) -> None:
+        # An empty list is a caller mistake — omit the field instead.
+        with pytest.raises(ValidationFailure):
+            validate_tools([])
+
+    def test_duplicate_names_rejected(self) -> None:
+        with pytest.raises(ValidationFailure) as e:
+            validate_tools([
+                {"type": "function", "function": {"name": "search"}},
+                {"type": "function", "function": {"name": "search"}},
+            ])
+        assert e.value.field == "tools[1].function.name"
+        assert "duplicate" in e.value.reason
+
+    def test_non_function_type_rejected(self) -> None:
+        with pytest.raises(ValidationFailure) as e:
+            validate_tools([{"type": "code_interpreter"}])
+        assert e.value.field == "tools[0].type"
+
+    def test_missing_function_name_rejected(self) -> None:
+        with pytest.raises(ValidationFailure) as e:
+            validate_tools([{"type": "function", "function": {"description": "x"}}])
+        assert e.value.field == "tools[0].function.name"
+
+    def test_empty_function_name_rejected(self) -> None:
+        with pytest.raises(ValidationFailure) as e:
+            validate_tools([{"type": "function", "function": {"name": ""}}])
+        assert e.value.field == "tools[0].function.name"
+
+
+# ─── message structure ─────────────────────────────────────────────
+
+
+class TestValidateMessages:
+    def test_plain_conversation_ok(self) -> None:
+        validate_messages([
+            {"role": "user", "content": "hi"},
+            {"role": "assistant", "content": "hello"},
+        ])
+
+    def test_tool_role_requires_tool_call_id(self) -> None:
+        with pytest.raises(ValidationFailure) as e:
+            validate_messages([
+                {"role": "tool", "content": "result"},
+            ])
+        assert e.value.field == "messages[0].tool_call_id"
+
+    def test_tool_role_empty_tool_call_id_rejected(self) -> None:
+        with pytest.raises(ValidationFailure):
+            validate_messages([{"role": "tool", "content": "r", "tool_call_id": ""}])
+
+    def test_tool_role_with_valid_tool_call_id(self) -> None:
+        validate_messages([
+            {"role": "tool", "content": "42", "tool_call_id": "call_abc"},
+        ])
+
+    def test_assistant_null_content_needs_tool_calls(self) -> None:
+        with pytest.raises(ValidationFailure) as e:
+            validate_messages([{"role": "assistant", "content": None}])
+        assert e.value.field == "messages[0].content"
+
+    def test_assistant_null_content_with_tool_calls_ok(self) -> None:
+        validate_messages([{
+            "role": "assistant",
+            "content": None,
+            "tool_calls": [{
+                "id": "call_1",
+                "type": "function",
+                "function": {"name": "get_weather", "arguments": "{}"},
+            }],
+        }])
+
+    def test_assistant_null_content_with_empty_tool_calls_rejected(self) -> None:
+        with pytest.raises(ValidationFailure):
+            validate_messages([{
+                "role": "assistant", "content": None, "tool_calls": [],
+            }])
+
+    def test_tool_call_missing_id_rejected(self) -> None:
+        with pytest.raises(ValidationFailure) as e:
+            validate_messages([{
+                "role": "assistant", "content": None,
+                "tool_calls": [{
+                    "type": "function",
+                    "function": {"name": "x", "arguments": "{}"},
+                }],
+            }])
+        assert e.value.field.endswith(".id")
+
+    def test_tool_call_missing_function_name_rejected(self) -> None:
+        with pytest.raises(ValidationFailure) as e:
+            validate_messages([{
+                "role": "assistant", "content": None,
+                "tool_calls": [{
+                    "id": "call_1", "type": "function",
+                    "function": {"arguments": "{}"},
+                }],
+            }])
+        assert e.value.field.endswith(".function.name")
+
+    def test_tool_call_non_function_type_rejected(self) -> None:
+        with pytest.raises(ValidationFailure) as e:
+            validate_messages([{
+                "role": "assistant", "content": None,
+                "tool_calls": [{
+                    "id": "call_1", "type": "code",
+                    "function": {"name": "x", "arguments": "{}"},
+                }],
+            }])
+        assert e.value.field.endswith(".type")
+
+    def test_tool_call_arguments_must_be_string(self) -> None:
+        # OpenAI wire contract: arguments is a JSON-encoded string,
+        # never a dict. Dict here means the caller wrote a non-portable
+        # shape that upstream rejects inconsistently across providers.
+        with pytest.raises(ValidationFailure) as e:
+            validate_messages([{
+                "role": "assistant", "content": None,
+                "tool_calls": [{
+                    "id": "call_1", "type": "function",
+                    "function": {"name": "x", "arguments": {"a": 1}},
+                }],
+            }])
+        assert e.value.field.endswith(".function.arguments")
+
+
+# ─── redaction — arguments JSON ────────────────────────────────────
+
+
+class TestRedactToolArgumentsJson:
+    def test_no_secrets_roundtrips(self) -> None:
+        args = '{"city":"San Francisco","units":"metric"}'
+        out, found = redact_tool_arguments_json(args, source="req.tool_calls[0]")
+        assert json.loads(out) == {"city": "San Francisco", "units": "metric"}
+        assert found == []
+
+    def test_empty_string_ok(self) -> None:
+        out, found = redact_tool_arguments_json("", source="s")
+        assert out == ""
+        assert found == []
+
+    def test_preserves_non_string_types(self) -> None:
+        # Reviewer's guidance: preserve keys and non-string types.
+        # Bool / int / float / null must round-trip untouched.
+        args = json.dumps({
+            "temperature": 0.7,
+            "n": 3,
+            "stream": True,
+            "extra": None,
+            "tags": ["a", "b"],
+        })
+        out, found = redact_tool_arguments_json(args, source="s")
+        parsed = json.loads(out)
+        assert parsed["temperature"] == 0.7
+        assert parsed["n"] == 3
+        assert parsed["stream"] is True
+        assert parsed["extra"] is None
+        assert parsed["tags"] == ["a", "b"]
+
+    def test_invalid_json_raises_redaction_failure(self) -> None:
+        # This is the "escaped secret" reviewer note: scanning encoded
+        # strings can produce broken JSON. Instead we parse — and if
+        # parse fails, block.
+        with pytest.raises(RedactionFailure) as e:
+            redact_tool_arguments_json('{"not:valid', source="s")
+        assert e.value.source == "s"
+        assert "not valid JSON" in e.value.reason
+
+    def test_non_string_input_raises(self) -> None:
+        with pytest.raises(RedactionFailure) as e:
+            redact_tool_arguments_json({"a": 1}, source="s")  # type: ignore[arg-type]
+        assert "JSON-encoded string" in e.value.reason
+
+    def test_nested_structures_walked(self) -> None:
+        args = json.dumps({
+            "level1": {
+                "level2": {
+                    "value": "plain text",
+                    "arr": ["a", "b", 1, 2],
+                }
+            }
+        })
+        out, _ = redact_tool_arguments_json(args, source="s")
+        parsed = json.loads(out)
+        assert parsed["level1"]["level2"]["value"] == "plain text"
+        assert parsed["level1"]["level2"]["arr"] == ["a", "b", 1, 2]
+
+
+# ─── redaction — parameters JSON Schema ────────────────────────────
+
+
+class TestRedactToolParametersSchema:
+    def test_none_is_ok(self) -> None:
+        out, found = redact_tool_parameters_schema(None, source="s")
+        assert out is None
+        assert found == []
+
+    def test_simple_schema_roundtrips(self) -> None:
+        schema = {
+            "type": "object",
+            "properties": {
+                "city": {"type": "string", "description": "The city name"},
+            },
+        }
+        out, _ = redact_tool_parameters_schema(schema, source="s")
+        assert out == schema
+
+    def test_walks_deep_string_leaves(self) -> None:
+        schema = {
+            "type": "object",
+            "properties": {
+                "x": {"description": "hello", "enum": ["a", "b"]},
+            },
+        }
+        out, _ = redact_tool_parameters_schema(schema, source="s")
+        assert out["properties"]["x"]["description"] == "hello"
+        assert out["properties"]["x"]["enum"] == ["a", "b"]
+
+
+# ─── redaction — tool_result content ───────────────────────────────
+
+
+class TestRedactToolResultContent:
+    def test_string_content_roundtrips(self) -> None:
+        out, found = redact_tool_result_content("The weather is 72F")
+        assert out == "The weather is 72F"
+        assert found == []
+
+    def test_empty_string_ok(self) -> None:
+        out, found = redact_tool_result_content("")
+        assert out == ""
+        assert found == []
+
+    def test_non_string_raises(self) -> None:
+        with pytest.raises(RedactionFailure) as e:
+            redact_tool_result_content({"result": 42})  # type: ignore[arg-type]
+        assert e.value.source == "tool_result_content"
+
+
+# ─── token estimation ─────────────────────────────────────────────
+
+
+class TestEstimateToolsTokens:
+    def test_empty_returns_zero(self) -> None:
+        assert estimate_tools_tokens(None) == 0
+        assert estimate_tools_tokens([]) == 0
+
+    def test_scales_with_size(self) -> None:
+        small = [{"type": "function", "function": {"name": "x"}}]
+        big = [{
+            "type": "function",
+            "function": {
+                "name": "x" * 100,
+                "description": "d" * 500,
+                "parameters": {"type": "object", "properties": {}},
+            },
+        }]
+        assert estimate_tools_tokens(big) > estimate_tools_tokens(small)
+
+    def test_conservative_upper_bound(self) -> None:
+        # A single-word tool with a short description should still land
+        # in the double-digit token range — not zero. Under-estimating
+        # is the failure mode we're guarding against.
+        tools = [{
+            "type": "function",
+            "function": {
+                "name": "get_weather",
+                "description": "Look up today's weather in a city.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "city": {"type": "string"},
+                    },
+                    "required": ["city"],
+                },
+            },
+        }]
+        est = estimate_tools_tokens(tools)
+        assert est > 20, f"expected non-trivial estimate, got {est}"
+
+    def test_non_serializable_returns_zero_gracefully(self) -> None:
+        # Should never reach here (validator catches earlier), but the
+        # helper must not crash the request path if it does.
+        class _NotJson:
+            pass
+        assert estimate_tools_tokens([_NotJson()]) == 0

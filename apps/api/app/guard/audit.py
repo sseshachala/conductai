@@ -63,7 +63,22 @@ def _estimate_input_tokens(body: dict) -> int:
                 for part in content:
                     if isinstance(part, dict) and isinstance(part.get("text"), str):
                         all_text.append(part["text"])
-    return max(1, len(" ".join(all_text)) // 4)
+    text_tokens = len(" ".join(all_text)) // 4
+    # #2159 PR 1 — tool schemas contribute real input tokens too.
+    # Under-reserving here is a silent regression of #2154's reservation
+    # hardening (customers exceed their budget by the tool-schema
+    # overhead every request). Conservative fallback via
+    # ``tools_validator.estimate_tools_tokens``; imported inline to
+    # avoid a hard dependency on modules/ from the guard package.
+    tools = body.get("tools") if isinstance(body, dict) else None
+    tools_tokens = 0
+    if tools:
+        try:
+            from app.modules.guard.tools_validator import estimate_tools_tokens
+            tools_tokens = estimate_tools_tokens(tools)
+        except Exception:
+            tools_tokens = 0
+    return max(1, text_tokens + tools_tokens)
 
 
 def _extract_token_counts(body: dict, response_bytes: bytes | None) -> tuple[int | None, int | None]:
