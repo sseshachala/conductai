@@ -1388,13 +1388,22 @@ class _V2Plan:
     durable audit row.
     """
 
-    __slots__ = ("resolved", "operation", "credential_resolver", "last_meta")
+    __slots__ = (
+        "resolved", "operation", "credential_resolver", "last_meta",
+        # #2157 wire-in — set True when the caller sent OpenAI-shape
+        # canonical body but the profile targets Anthropic. Signals
+        # _execute_v2 to run canonical_to_anthropic pre-dispatch and
+        # anthropic_to_canonical post-dispatch so the response gate +
+        # client both see canonical shape regardless of upstream.
+        "needs_anthropic_conversion",
+    )
 
-    def __init__(self, resolved, operation, credential_resolver):
+    def __init__(self, resolved, operation, credential_resolver, needs_anthropic_conversion: bool = False):
         self.resolved = resolved
         self.operation = operation
         self.credential_resolver = credential_resolver
         self.last_meta: dict = {}
+        self.needs_anthropic_conversion = needs_anthropic_conversion
 
 
 _COND_CODE_RE = None
@@ -1555,17 +1564,34 @@ def _build_v2_plan(
             ),
         )
 
+    needs_anthropic_conversion = False
     if operation not in resolved.profile.accepts:
-        raise _HTTPException(
-            status_code=400,
-            detail=(
-                f"Gateway Profile v2 {cond_code!r} does not accept "
-                f"operation {operation!r}. Advertised: "
-                f"{list(resolved.profile.accepts)!r}. Republish with "
-                f"{operation!r} in ``accepts`` or route this URL to a "
-                f"different profile."
-            ),
+        # #2157 wire-in — canonical /gateway/v1/completions always sends
+        # operation=openai_chat_completions. If profile advertises
+        # anthropic_messages instead and ALL targets are Anthropic,
+        # convert on the way in + normalize on the way out.
+        _can_convert_to_anthropic = (
+            operation == "openai_chat_completions"
+            and "anthropic_messages" in resolved.profile.accepts
+            and all(
+                getattr(t, "provider", None) == "anthropic"
+                for t in resolved.profile.targets
+            )
         )
+        if _can_convert_to_anthropic:
+            operation = "anthropic_messages"
+            needs_anthropic_conversion = True
+        else:
+            raise _HTTPException(
+                status_code=400,
+                detail=(
+                    f"Gateway Profile v2 {cond_code!r} does not accept "
+                    f"operation {operation!r}. Advertised: "
+                    f"{list(resolved.profile.accepts)!r}. Republish with "
+                    f"{operation!r} in ``accepts`` or route this URL to a "
+                    f"different profile."
+                ),
+            )
 
     try:
         resolver = build_credential_resolver(
@@ -1581,7 +1607,10 @@ def _build_v2_plan(
             detail=str(exc),
         ) from exc
 
-    return _V2Plan(resolved=resolved, operation=operation, credential_resolver=resolver)
+    return _V2Plan(
+        resolved=resolved, operation=operation, credential_resolver=resolver,
+        needs_anthropic_conversion=needs_anthropic_conversion,
+    )
 
 
 def _build_policy_check(
@@ -1746,6 +1775,26 @@ async def _execute_v2(
             ),
         )
 
+    # #2157 wire-in — SSE-to-SSE Anthropic→OpenAI translation is a
+    # separate follow-up (#2155). Reject streaming when conversion is
+    # needed; non-streaming Anthropic works end-to-end.
+    if plan.needs_anthropic_conversion and stream:
+        raise _HTTPException(
+            status_code=501,
+            detail=(
+                "Streaming to an Anthropic-target profile via the "
+                "canonical /gateway/v1/completions is not supported "
+                "yet — SSE-to-SSE format translation is deferred to a "
+                "follow-up. Send stream=false or route to an "
+                "OpenAI-target profile."
+            ),
+        )
+    if plan.needs_anthropic_conversion:
+        from app.modules.guard.tools_anthropic_converter import (
+            canonical_to_anthropic as _canonical_to_anthropic,
+        )
+        body = _canonical_to_anthropic(body)
+
     # X5 — worker-lifetime singleton, NOT a per-request instance. The
     # transports inside share one httpx.AsyncClient pool across every
     # request handled by this worker, so ``max_connections=100`` is a
@@ -1832,7 +1881,13 @@ async def _execute_v2(
                 "request stream=false."
             ),
         )
-    return JSONResponse(content=coerce_response_body(result.response))
+    _resp_body = coerce_response_body(result.response)
+    if plan.needs_anthropic_conversion and isinstance(_resp_body, dict):
+        from app.modules.guard.tools_anthropic_converter import (
+            anthropic_to_canonical as _anthropic_to_canonical,
+        )
+        _resp_body = _anthropic_to_canonical(_resp_body)
+    return JSONResponse(content=_resp_body)
 
 
 # hop-by-hop headers httpx already handles or Starlette re-emits — never
