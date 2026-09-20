@@ -34,9 +34,9 @@ To send a specific prompt per request set ``--prompt-env VARNAME`` and
 export the prompt in that env var (avoids embedding sensitive strings
 in this file).
 
-ponytail: streaming + tools intentionally NOT supported here. The
-/completions endpoint rejects both in PR 1 of #2144. Upgrade path: land
-the streaming follow-up on the server, then add ``--stream`` back.
+ponytail: streaming supported via ``--stream``. Reports TTFB
+(time-to-first-chunk), drain wall, and chunk count on top of the
+normal metrics. Tools/vision still rejected server-side.
 """
 from __future__ import annotations
 
@@ -113,6 +113,8 @@ def _classify_error(status: int, body: bytes) -> tuple[str, bool]:
     """
     if 200 <= status < 300:
         return "ok", False
+    if status == 597:
+        return "stream_truncated", False  # 200 arrived, body errored mid-drain
     if status == 599:
         return "client_timeout", False  # client aborted; upstream may have been called
     if status == 598:
@@ -135,6 +137,35 @@ def _classify_error(status: int, body: bytes) -> tuple[str, bool]:
     return "other", False
 
 
+def _parse_usage_payload(resp: bytes, *, stream: bool) -> dict:
+    """Pull the usage dict out of a completions response.
+
+    Non-streaming: response is one JSON object; parse the whole body.
+    Streaming: response is SSE (``data: {...}\\n\\n`` frames + final
+    ``data: [DONE]\\n\\n``). Return the LAST parseable frame that
+    contains a ``usage`` key — that's the accounting frame OpenAI emits
+    when ``stream_options.include_usage=true`` is set.
+    """
+    if not stream:
+        return json.loads(resp)
+    last_with_usage: dict = {}
+    for raw_line in resp.split(b"\n"):
+        line = raw_line.strip()
+        if not line.startswith(b"data: "):
+            continue
+        payload = line[len(b"data: "):]
+        if payload == b"[DONE]":
+            continue
+        try:
+            obj = json.loads(payload)
+        except Exception:
+            continue
+        if isinstance(obj, dict) and obj.get("usage"):
+            last_with_usage = obj
+    return last_with_usage
+
+
+
 async def _fire_one_async(session, url, headers, body, request_timeout):
     t0 = time.monotonic()
     try:
@@ -150,10 +181,65 @@ async def _fire_one_async(session, url, headers, body, request_timeout):
         return 598, time.monotonic() - t0, str(e).encode()
 
 
+async def _fire_one_stream_async(session, url, headers, body, request_timeout):
+    """Streaming counterpart to ``_fire_one_async``.
+
+    Returns ``(status, total_latency, ttfb, chunk_count, resp_bytes)``.
+    ``ttfb`` is seconds to first TCP chunk (SSE frames are usually one
+    per chunk but not guaranteed — chunk_count is a sanity signal, not
+    an SSE-event count). ``resp_bytes`` is the concatenated body so the
+    caller can still parse a final ``usage`` chunk for token accounting.
+
+    Truncation handling: a 200 response whose body raises mid-drain
+    (``ClientPayloadError`` / socket close) is downgraded to status
+    597 (``stream_truncated``) so the admitted-error rate counts it.
+    A stream that never delivered a first chunk sets ``ttfb=None`` —
+    caller filters those out of the TTFB distribution.
+    """
+    t0 = time.monotonic()
+    ttfb: float | None = None
+    chunk_count = 0
+    buf = bytearray()
+    try:
+        async with session.post(
+            url, headers=headers, json=body,
+            timeout=aiohttp.ClientTimeout(total=request_timeout),
+        ) as r:
+            status = r.status
+            # Non-200: drain once + return like the non-streaming path.
+            # Server emits a JSON error envelope, not SSE, so no TTFB.
+            if status != 200:
+                data = await r.read()
+                return status, time.monotonic() - t0, None, 0, data
+            try:
+                async for chunk in r.content.iter_any():
+                    if ttfb is None:
+                        ttfb = time.monotonic() - t0
+                    chunk_count += 1
+                    # Cap the buffer so a runaway stream can't OOM the
+                    # driver. First ~64 KiB is more than enough to
+                    # capture the final ``usage`` frame.
+                    if len(buf) < 65536:
+                        buf.extend(chunk)
+            except aiohttp.ClientPayloadError as e:
+                # Truncated mid-body: 200 headers arrived but the body
+                # errored. Reviewer-line: this is an admitted failure,
+                # NOT a success.
+                return 597, time.monotonic() - t0, ttfb, chunk_count, (
+                    b"stream_truncated: " + str(e).encode()[:200]
+                )
+            return status, time.monotonic() - t0, ttfb, chunk_count, bytes(buf)
+    except asyncio.TimeoutError:
+        return 599, time.monotonic() - t0, ttfb, chunk_count, b"timeout"
+    except Exception as e:
+        return 598, time.monotonic() - t0, ttfb, chunk_count, str(e).encode()
+
+
+
 async def _run_async(url, token, profile, total, concurrency, max_tokens,
                      max_wall, prompt, request_timeout,
                      max_admitted_error_rate, max_rejection_rate,
-                     kill_min_samples):
+                     kill_min_samples, stream: bool = False):
     """Run the load. Returns a dict of measurements.
 
     Reviewer P1s addressed:
@@ -177,6 +263,10 @@ async def _run_async(url, token, profile, total, concurrency, max_tokens,
     admitted_errors = 0
     rejections = 0
     successes = 0
+    # Streaming-only accumulators; stay empty on the non-streaming path
+    # so the report doesn't print stream sections that never applied.
+    ttfb_latencies: list[float] = []
+    chunk_counts: list[int] = []
     stop_reason: str | None = None  # 'admitted_error_rate' | 'rejection_rate' | 'wall_clock' | None
     started = time.monotonic()
 
@@ -185,6 +275,10 @@ async def _run_async(url, token, profile, total, concurrency, max_tokens,
         "max_tokens": max_tokens,
         "messages": [{"role": "user", "content": prompt}],
     }
+    if stream:
+        # Server injects ``stream_options.include_usage=true`` regardless;
+        # the flag on the wire only tells it to stream.
+        body_template["stream"] = True
 
     headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 
@@ -198,9 +292,18 @@ async def _run_async(url, token, profile, total, concurrency, max_tokens,
             async with sem:
                 if stop_reason is not None:
                     return
-                status, lat, resp = await _fire_one_async(
-                    session, url, headers, body_template, request_timeout,
-                )
+                if stream:
+                    status, lat, ttfb, ncks, resp = await _fire_one_stream_async(
+                        session, url, headers, body_template, request_timeout,
+                    )
+                    if ttfb is not None:
+                        ttfb_latencies.append(ttfb)
+                    if ncks:
+                        chunk_counts.append(ncks)
+                else:
+                    status, lat, resp = await _fire_one_async(
+                        session, url, headers, body_template, request_timeout,
+                    )
             latencies.append(lat)
             statuses[status] += 1
             category, is_rejection = _classify_error(status, resp)
@@ -231,8 +334,15 @@ async def _run_async(url, token, profile, total, concurrency, max_tokens,
                 # ``input_tokens`` / ``output_tokens`` keys are read as a
                 # fallback so the report still tallies if the response
                 # normalizer changes in a future PR.
+                #
+                # Streaming: the body is SSE text, not one JSON blob.
+                # Scan for the final ``data: {...}`` frame that carries
+                # a ``usage`` object — OpenAI emits it as the second-to-
+                # last chunk (right before ``data: [DONE]``) whenever
+                # ``stream_options.include_usage=true`` is set, which
+                # the shim always injects.
                 try:
-                    payload = json.loads(resp)
+                    payload = _parse_usage_payload(resp, stream=stream)
                     usage = payload.get("usage") or {}
                     input_tokens_seen  += int(
                         usage.get("prompt_tokens", usage.get("input_tokens", 0))
@@ -308,6 +418,8 @@ async def _run_async(url, token, profile, total, concurrency, max_tokens,
         "rejections":        rejections,
         "successes":         successes,
         "stop_reason":       stop_reason,
+        "ttfb_latencies":    ttfb_latencies,
+        "chunk_counts":      chunk_counts,
     }
 
 
@@ -368,6 +480,24 @@ def _report(results: dict, wall: float, max_admitted_error_rate: float,
         for label, p in (("p50", 0.50), ("p90", 0.90), ("p95", 0.95), ("p99", 0.99)):
             print(f"    {label:5s} {_pct(lat_sorted, p) * 1000:6.0f} ms")
         print(f"    max   {max(admitted_lats) * 1000:6.0f} ms")
+
+    ttfb_lats = results.get("ttfb_latencies") or []
+    chunk_counts = results.get("chunk_counts") or []
+    if ttfb_lats:
+        # TTFB is the streaming-UX metric — how fast the first token
+        # reaches the caller. Diverges sharply from total latency when
+        # the model is generating many tokens; a healthy stream should
+        # have TTFB p95 << admitted p95.
+        ttfb_sorted = sorted(ttfb_lats)
+        print(f"  stream TTFB  ({len(ttfb_lats)} samples):")
+        for label, p in (("p50", 0.50), ("p90", 0.90), ("p95", 0.95), ("p99", 0.99)):
+            print(f"    {label:5s} {_pct(ttfb_sorted, p) * 1000:6.0f} ms")
+        print(f"    max   {max(ttfb_lats) * 1000:6.0f} ms")
+    if chunk_counts:
+        cks_sorted = sorted(chunk_counts)
+        print(f"  stream chunks per response  "
+              f"min={min(cks_sorted)}  p50={_pct(cks_sorted, 0.5)}  "
+              f"p95={_pct(cks_sorted, 0.95)}  max={max(cks_sorted)}")
     if latencies and len(latencies) != len(admitted_lats):
         # Show all-request latency too so operators can see rejection
         # speed vs admitted-request speed side-by-side.
@@ -396,6 +526,7 @@ def _report(results: dict, wall: float, max_admitted_error_rate: float,
             "client_4xx",
             "client_timeout",
             "client_error",
+            "stream_truncated",
             "other",
         ]
         for cat in _cat_order:
@@ -486,6 +617,11 @@ def main() -> int:
     ap.add_argument("--kill-min-samples", type=int, default=20,
                     help="Minimum requests before either kill-switch may "
                          "fire. Default 20.")
+    ap.add_argument("--stream", action="store_true",
+                    help="Send stream=true. Report adds TTFB (time-to-first-chunk) "
+                         "and chunk-count distributions. 200 responses that error "
+                         "mid-body count as admitted errors (status 597, "
+                         "category stream_truncated).")
     ap.add_argument("--prompt-env", default=None,
                     help="Env var holding the prompt to send (default: hard-coded pong)")
     ap.add_argument("--self-check", action="store_true",
@@ -553,6 +689,7 @@ def main() -> int:
             max_admitted_error_rate=args.max_admitted_error_rate,
             max_rejection_rate=args.max_rejection_rate,
             kill_min_samples=args.kill_min_samples,
+            stream=args.stream,
         ))
     except KeyboardInterrupt:
         print("\n^C — cancelled", file=sys.stderr)
@@ -589,6 +726,20 @@ def _self_check() -> int:
     # Client timeout, client error preserved.
     assert _classify_error(599, b'timeout') == ("client_timeout", False)
     assert _classify_error(598, b'boom') == ("client_error", False)
+    # Streaming: 597 = mid-body error; counts as admitted error (not rejection).
+    assert _classify_error(597, b'stream_truncated: broken pipe') == ("stream_truncated", False)
+    # Streaming: SSE usage-frame parser picks the last frame with usage.
+    sse_body = (
+        b'data: {"id":"x","choices":[{"delta":{"content":"a"}}]}\n\n'
+        b'data: {"id":"x","choices":[],"usage":{"prompt_tokens":7,"completion_tokens":3}}\n\n'
+        b'data: [DONE]\n\n'
+    )
+    parsed = _parse_usage_payload(sse_body, stream=True)
+    assert parsed.get("usage", {}).get("prompt_tokens") == 7, parsed
+    assert parsed.get("usage", {}).get("completion_tokens") == 3, parsed
+    # Non-streaming still routes to json.loads.
+    plain = _parse_usage_payload(b'{"usage":{"prompt_tokens":1,"completion_tokens":2}}', stream=False)
+    assert plain["usage"]["completion_tokens"] == 2, plain
 
     # Reviewer P1 #1 reproducer: 95 refusals + 4 admitted-errors + 1
     # success. The OLD math (bad excluded from numerator, rejections

@@ -21,6 +21,63 @@ from sqlalchemy import text
 
 from app.runtime.native_http_transport import StreamingUpstream
 
+from app.core import admission as _admission
+
+
+@pytest.fixture()
+def _admission_cap_one(monkeypatch: pytest.MonkeyPatch):
+    """Force ADMISSION on with workspace_max=1 so a leaked slot is
+    detectable as a follow-up 429 (or, when the follow-up races the
+    release, as a non-zero ``global_inflight`` counter after the wait).
+
+    Reviewer P2 (#2152): the earlier tests couldn't tell a released
+    slot from a spare one — default caps (workspace_max=25) meant a
+    second request always succeeded whether or not admission leaked.
+    This fixture removes that ambiguity.
+    """
+    monkeypatch.setenv("ADMISSION_ENABLED", "true")
+    # Wipe any pre-existing per-process state so cap changes stick.
+    _admission._STATE.clear()
+    _admission.configure_defaults()
+    st = _admission._STATE["gateway"]
+    st.workspace_max = 1
+    # Global slot kept comfortable — the workspace slot is the one
+    # under test. Two is enough headroom for a race between release
+    # and follow-up admission.
+    st.global_max = 4
+    assert st.global_inflight == 0, "leaked slot from a prior test"
+    yield st
+    # Post-test invariant: counter must have returned to zero. If it
+    # didn't, the test proved the leak the reviewer was worried about.
+    _wait_zero = _wait_for_inflight_zero(st, workspace_id=None, timeout_s=2.0)
+    assert _wait_zero, (
+        f"admission slot leaked at end of test: "
+        f"global_inflight={st.global_inflight} "
+        f"workspace_inflight={dict(st.workspace_inflight)}"
+    )
+
+
+def _wait_for_inflight_zero(state, *, workspace_id: str | None, timeout_s: float) -> bool:
+    """Poll the admission counter until it drops to zero or timeout.
+
+    The stream ``on_close`` release runs in a background task after
+    the response drains — a synchronous read right after the client
+    exits can race. Bounded poll keeps the assertion deterministic
+    without hard-coding a sleep.
+    """
+    import time as _t
+    deadline = _t.monotonic() + timeout_s
+    while _t.monotonic() < deadline:
+        g = state.global_inflight
+        w = (
+            state.workspace_inflight.get(workspace_id, 0)
+            if workspace_id is not None else max(state.workspace_inflight.values(), default=0)
+        )
+        if g == 0 and w == 0:
+            return True
+        _t.sleep(0.02)
+    return False
+
 
 class _CannedByteStream(httpx.AsyncByteStream):
     """Emit a pre-baked list of chunks then close.
@@ -137,7 +194,7 @@ def _stream_audit_row(db, workspace_id: str) -> dict | None:
 
 
 def test_stream_true_returns_sse_response(
-    seeded_profile, gateway_app, stub_streaming_transport, it_db,
+    seeded_profile, gateway_app, stub_streaming_transport, it_db, _admission_cap_one,
 ) -> None:
     client = TestClient(gateway_app)
 
@@ -401,18 +458,138 @@ def stub_timeout_streaming_transport(monkeypatch: pytest.MonkeyPatch):
 
 @pytest.mark.asyncio
 async def test_client_disconnect_midstream_releases_admission(
-    seeded_profile, gateway_app, stub_slow_streaming_transport, it_db,
+    seeded_profile, gateway_app, stub_slow_streaming_transport, _admission_cap_one,
 ) -> None:
-    """A client that abandons the stream mid-flight MUST NOT leak an
-    admission slot. The stream's ``on_close`` hook is the release seam;
-    if disconnect skips it, workspace inflight counters ratchet up
-    forever and eventually every request refuses.
+    """Real mid-stream disconnect via a live uvicorn server.
+
+    Reviewer P2 (#2152): httpx.ASGITransport buffers the whole response
+    before returning, so ``break`` after the first yielded chunk fires
+    AFTER the ASGI app has already produced every chunk — the previous
+    test proved nothing about admission cleanup on a genuine disconnect.
+
+    Running against a real uvicorn socket means closing the client
+    connection actually cancels the ASGI task upstream, which is the
+    only path where the stream's ``on_close`` release must fire from
+    a CancelledError. Combined with ``_admission_cap_one`` (cap=1), a
+    leaked slot shows as a non-zero ``global_inflight`` after the wait.
     """
-    transport = httpx.ASGITransport(app=gateway_app)
+    import contextlib
+    import socket
+    import threading
+    import time as _time
+
+    import uvicorn
+
+    # Bind :0 to reserve a free port, close, hand off to uvicorn. Tight
+    # race window is fine — uvicorn re-binds within a few ms and no
+    # other pytest worker uses this port ephemerally.
+    _sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    _sock.bind(("127.0.0.1", 0))
+    _port = _sock.getsockname()[1]
+    _sock.close()
+
+    _cfg = uvicorn.Config(
+        gateway_app, host="127.0.0.1", port=_port,
+        log_level="error", lifespan="off", access_log=False,
+    )
+    _server = uvicorn.Server(_cfg)
+    _thread = threading.Thread(target=_server.run, daemon=True)
+    _thread.start()
+    try:
+        # Poll for server-ready — Server.started flips true after
+        # startup completes. 5s is generous for a bare FastAPI app.
+        _deadline = _time.monotonic() + 5.0
+        while not _server.started and _time.monotonic() < _deadline:
+            _time.sleep(0.02)
+        assert _server.started, "uvicorn did not come up in time"
+
+        _base = f"http://127.0.0.1:{_port}"
+
+        # ── Real disconnect: open a stream on a live TCP socket, read
+        #    one chunk, then bail out of the context. httpx closes the
+        #    socket on exit; uvicorn sees the disconnect and cancels
+        #    the ASGI task, which is the CancelledError path that
+        #    _wrap_v2_stream_finalize catches and turns into
+        #    execution_status="interrupted".
+        async with httpx.AsyncClient(base_url=_base, timeout=5.0) as ac:
+            async with ac.stream(
+                "POST",
+                "/gateway/v1/completions",
+                headers={
+                    "Authorization": f"Bearer {seeded_profile['agent_token']}",
+                },
+                json={
+                    "profile": seeded_profile["profile_identifier"],
+                    "messages": [{"role": "user", "content": "ping"}],
+                    "max_tokens": 5,
+                    "stream": True,
+                },
+            ) as resp:
+                assert resp.status_code == 200
+                async for _first in resp.aiter_raw():
+                    # First chunk arrived — abandon the response so the
+                    # remaining upstream chunks are still in flight when
+                    # the client-side socket closes.
+                    break
+
+        # ── Cap=1 probe: with a leaked slot the follow-up cannot get
+        #    a workspace ticket and returns 429. With a released slot
+        #    it returns 200 (the fake non-streaming stub above).
+        async with httpx.AsyncClient(base_url=_base, timeout=5.0) as ac2:
+            _followup = await ac2.post(
+                "/gateway/v1/completions",
+                headers={
+                    "Authorization": f"Bearer {seeded_profile['agent_token']}",
+                },
+                json={
+                    "profile": seeded_profile["profile_identifier"],
+                    "messages": [{"role": "user", "content": "ping"}],
+                    "max_tokens": 5,
+                },
+            )
+        assert _followup.status_code == 200, (
+            f"follow-up after disconnect returned {_followup.status_code}: "
+            f"{_followup.text[:200]} — admission slot leaked on real "
+            "mid-stream client disconnect"
+        )
+    finally:
+        _server.should_exit = True
+        _thread.join(timeout=5.0)
+
+
+
+@pytest.mark.asyncio
+async def test_upstream_timeout_midstream_finalizes_and_releases(
+    seeded_profile, gateway_app, stub_timeout_streaming_transport, it_db,
+    _admission_cap_one,
+) -> None:
+    """Upstream stops sending bytes mid-stream (simulated
+    ``httpx.ReadTimeout``). The stream ``on_close`` hook must fire so
+    admission releases, and the durable audit row must land in an
+    error/timeout state so ops can see what happened.
+
+    Reviewer P2 (#2152): the previous test wrapped the read loop AND
+    the outer stream context in ``except BaseException`` — that also
+    swallowed ``AssertionError`` from the ``status_code == 200`` check,
+    so a broken response would have passed silently. It also never
+    asserted the audit outcome, so an unfinalized row wouldn't have
+    surfaced either. Both are load-bearing invariants here.
+    """
+    # ─── Snapshot the newest audit row id BEFORE the failing stream so
+    #     we can prove the timeout produced a *new* row (rather than
+    #     the last completed row lingering from a previous test).
+    _pre_row = _stream_audit_row(it_db, seeded_profile["workspace_id"])
+    _pre_row_id = _pre_row["id"] if _pre_row else None
+
+    # ─── Failing stream: separate client so httpx.ReadTimeout state
+    #     doesn't contaminate the follow-up's pool. Narrow the inner
+    #     except to the actual failure classes; assertion failures
+    #     inside the try MUST bubble out.
+    transport1 = httpx.ASGITransport(app=gateway_app)
     async with httpx.AsyncClient(
-        transport=transport, base_url="http://it-test",
-    ) as ac:
-        async with ac.stream(
+        transport=transport1, base_url="http://it-test",
+    ) as ac1:
+        async with ac1.stream(
             "POST",
             "/gateway/v1/completions",
             headers={"Authorization": f"Bearer {seeded_profile['agent_token']}"},
@@ -423,75 +600,37 @@ async def test_client_disconnect_midstream_releases_admission(
                 "stream": True,
             },
         ) as resp:
+            # OUTSIDE the try: a non-200 here is a bug we must see.
             assert resp.status_code == 200
-            # Read only the first chunk, then abandon by exiting the
-            # context. Slow stream fixture ensures more chunks are still
-            # pending upstream when we close, so this really cancels.
-            async for _first in resp.aiter_raw():
-                break
+            try:
+                async for _ in resp.aiter_raw():
+                    pass
+            except (httpx.ReadTimeout, httpx.RemoteProtocolError):
+                # Expected: fake transport raises ReadTimeout mid-stream.
+                # RemoteProtocolError shows up when starlette closes
+                # the response early on the same signal.
+                pass
 
-        # Fire a non-streaming follow-up. If admission wasn't released
-        # when we bailed, this either 429s or hangs. Doing it inside
-        # the same client to reuse the connection pool.
-        followup = await ac.post(
-            "/gateway/v1/completions",
-            headers={"Authorization": f"Bearer {seeded_profile['agent_token']}"},
-            json={
-                "profile": seeded_profile["profile_identifier"],
-                "messages": [{"role": "user", "content": "ping"}],
-                "max_tokens": 5,
-            },
-        )
-    assert followup.status_code == 200, (
-        f"follow-up after client disconnect returned "
-        f"{followup.status_code} — admission slot leaked on disconnect"
+    # ─── Post-stream: durable audit row must be finalized as
+    #     error/timeout. execution_status is set by _wrap_v2_stream_finalize
+    #     to "timeout" (wait_for timeout) or "error" (transport raise),
+    #     so both are acceptable. What is NOT acceptable is
+    #     "accepted" — that would mean the row stayed open.
+    it_db.commit()   # reload the session so we see BackgroundTask commits
+    _post_row = _stream_audit_row(it_db, seeded_profile["workspace_id"])
+    assert _post_row is not None, "no audit row landed for the failed stream"
+    assert _post_row["id"] != _pre_row_id, (
+        f"audit row id did not advance after failed stream "
+        f"(pre={_pre_row_id}, post={_post_row['id']}) — finalize did not run"
+    )
+    assert _post_row["route"] == "/gateway/v1/completions"
+    assert _post_row["execution_status"] in ("error", "timeout"), (
+        f"failed stream should finalize with execution_status "
+        f"error|timeout, got {_post_row['execution_status']!r}"
     )
 
-
-@pytest.mark.asyncio
-async def test_upstream_timeout_midstream_finalizes_and_releases(
-    seeded_profile, gateway_app, stub_timeout_streaming_transport, it_db,
-) -> None:
-    """When upstream stops sending bytes mid-stream (simulated by
-    ``httpx.ReadTimeout``), the stream on_close hook must still fire so
-    admission releases and the run doesn't wedge. The client sees a
-    truncated body — an audit row should still land so ops can see
-    what happened.
-    """
-    # Fire the failing stream through its OWN client — httpx's connection
-    # pool holds broken-transport state after the ReadTimeout that
-    # otherwise leaks into subsequent requests on the same client.
-    # A fresh client for the follow-up isolates the admission-release
-    # invariant from the client-side pool cleanup.
-    transport1 = httpx.ASGITransport(app=gateway_app)
-    async with httpx.AsyncClient(
-        transport=transport1, base_url="http://it-test",
-    ) as ac1:
-        try:
-            async with ac1.stream(
-                "POST",
-                "/gateway/v1/completions",
-                headers={"Authorization": f"Bearer {seeded_profile['agent_token']}"},
-                json={
-                    "profile": seeded_profile["profile_identifier"],
-                    "messages": [{"role": "user", "content": "ping"}],
-                    "max_tokens": 5,
-                    "stream": True,
-                },
-            ) as resp:
-                assert resp.status_code == 200
-                try:
-                    async for _ in resp.aiter_raw():
-                        pass
-                except BaseException:  # noqa: BLE001
-                    pass
-        except BaseException:  # noqa: BLE001
-            pass
-
-    # Fresh client + fresh transport for the admission-release probe.
-    # A leaked slot on the timeout path is a much nastier bug in
-    # production than a leaked slot on client disconnect, because
-    # timeouts happen every day even without misbehaving clients.
+    # ─── Admission-release probe. With cap=1 a leaked slot would 429.
+    #     Fresh client + fresh transport isolates from httpx pool state.
     transport2 = httpx.ASGITransport(app=gateway_app)
     async with httpx.AsyncClient(
         transport=transport2, base_url="http://it-test",
@@ -509,6 +648,7 @@ async def test_upstream_timeout_midstream_finalizes_and_releases(
         f"follow-up after upstream timeout returned "
         f"{followup.status_code} — admission slot leaked on timeout"
     )
+
 
 
 def test_stream_false_still_returns_json_after_streaming_support_lands(
