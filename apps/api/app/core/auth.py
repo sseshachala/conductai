@@ -233,7 +233,11 @@ def _resolve_agent_token(token: str, db: Session):
         if matched is None:
             raise HTTPException(status_code=401, detail="Invalid agent token")
         ai, expires_at = matched
-        if expires_at <= datetime.now(_tz.utc):
+        # #2162 — a NULL expiry column (or a mocked expiry in tests) would
+        # otherwise trip TypeError on the comparison. Treat missing
+        # ``expires_at`` as "no explicit expiry"; the credential is still
+        # subject to ``lifecycle_state`` below.
+        if expires_at is not None and expires_at <= datetime.now(_tz.utc):
             raise HTTPException(status_code=401, detail="Agent token expired")
         if ai.token_type != "cli" or ai.lifecycle_state in ("deactivated", "expired"):
             raise HTTPException(status_code=401, detail="Agent identity is inactive")
