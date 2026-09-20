@@ -297,17 +297,28 @@ async def handle_gateway_request(
         # ``tool_calls_generated`` lands later after the response gate
         # sees what the model actually returned.
         from app.modules.guard.tools_validator import (
+            extract_tool_names_supplied as _extract_tool_names_supplied,
             extract_tool_results_supplied as _extract_tool_results_supplied,
             extract_tools_offered as _extract_tools_offered,
         )
         _tools_offered = _extract_tools_offered(body)
         _tool_results_supplied = _extract_tool_results_supplied(body)
+        # Reviewer P2 #3 (2026-09-20): supplied-tool NAMES are the
+        # policy-relevant signal (rule fires on "bank_transfer", not on
+        # "call_abc"). IDs stay on routing_meta for the correlation
+        # trail; names go into PolicyContext.tool_names_supplied.
+        _tool_names_supplied = _extract_tool_names_supplied(body)
         if _tools_offered:
             _routing_meta = {**(_routing_meta or {}), "tools_offered": _tools_offered}
         if _tool_results_supplied:
             _routing_meta = {
                 **(_routing_meta or {}),
                 "tool_results_supplied": _tool_results_supplied,
+            }
+        if _tool_names_supplied:
+            _routing_meta = {
+                **(_routing_meta or {}),
+                "tool_names_supplied": _tool_names_supplied,
             }
 
         # #2004 Phase 1 — v2 lookup + credential pre-fetch. Runs while
@@ -453,7 +464,7 @@ async def handle_gateway_request(
                     # the request-gate side. Empty list stays semantically
                     # distinct from None (unset) so rules can distinguish.
                     tool_names_offered=_tools_offered or None,
-                    tool_names_supplied=_tool_results_supplied or None,
+                    tool_names_supplied=_tool_names_supplied or None,
                 )
                 return _eval_composed(_ctx)
             finally:
@@ -1022,7 +1033,7 @@ async def handle_gateway_request(
                         ai_tool=ai_tool,
                         tool_names_offered=_rm_now.get("tools_offered") or None,
                         tool_names_generated=_tng_names,
-                        tool_names_supplied=_rm_now.get("tool_results_supplied") or None,
+                        tool_names_supplied=_rm_now.get("tool_names_supplied") or None,
                     )
                 )
                 # #2159 PR 2 — mark policy-block reason on audit when the
@@ -1684,11 +1695,12 @@ def _build_policy_check(
             # request body so per-target policy re-check can select on
             # tool identity. Called per-target so extraction is cheap.
             from app.modules.guard.tools_validator import (
-                extract_tool_results_supplied as _extract_tool_results_supplied_t,
+                extract_tool_names_supplied as _extract_tool_names_supplied_t,
                 extract_tools_offered as _extract_tools_offered_t,
             )
             _t_offered = _extract_tools_offered_t(body) or None
-            _t_supplied = _extract_tool_results_supplied_t(body) or None
+            # Reviewer P2 #3 — supplied field is names, not ids.
+            _t_supplied = _extract_tool_names_supplied_t(body) or None
             ctx = _PolicyContext(
                 workspace_id=workspace_id,
                 clerk_user_id=clerk_user_id,

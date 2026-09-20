@@ -10,7 +10,7 @@ Request side (canonical OpenAI → Anthropic):
     → ``tools:[{name, description, input_schema}]``
   - ``tool_choice: "auto" | "required"`` → ``{type:"auto"|"any"}``
   - ``tool_choice: {type:"function", function:{name}}`` → ``{type:"tool", name}``
-  - ``tool_choice: "none"`` → OMIT tools entirely (Anthropic has no "none")
+  - ``tool_choice: "none"`` → ``{type:"none"}`` (Anthropic's explicit no-call form)
   - assistant ``tool_calls[]`` → assistant content blocks
     ``{type:"tool_use", id, name, input}`` where ``input = json.loads(arguments)``
   - ``role:"tool"`` message → user content block
@@ -104,17 +104,14 @@ def canonical_to_anthropic(body: dict) -> dict:
     if body.get("tools"):
         result["tools"] = _rewrite_tools(body["tools"])
 
-    # tool_choice: three-mode → Anthropic dict form.
+    # tool_choice: three-mode → Anthropic dict form. All three modes
+    # produce a non-None result now (P2 #5 fix — "none" maps to
+    # {"type":"none"} rather than omitting the field, which used to
+    # let Anthropic default-auto-select tools the caller had disabled).
     if body.get("tool_choice") is not None:
         converted = _rewrite_tool_choice(body["tool_choice"])
         if converted is not None:
             result["tool_choice"] = converted
-        # None here means "OpenAI 'none'" — Anthropic has no equivalent;
-        # dropping tool_choice + tools is how you disable tools upstream.
-        # We keep ``tools`` around so downstream can still audit tool
-        # names, but Anthropic will not call them without a permissive
-        # tool_choice. If the caller sent "none" they explicitly don't
-        # want a call; letting tools remain is defensive belt-and-braces.
 
     return result
 
@@ -253,7 +250,12 @@ def _rewrite_tool_choice(tool_choice: Any) -> dict[str, Any] | None:
             # Anthropic calls this "any" — pick ANY tool but must pick one.
             return {"type": "any"}
         if tool_choice == "none":
-            return None
+            # #2157 reviewer P2 #5 — omitting the choice while keeping
+            # tools in the payload lets Anthropic default-auto-select.
+            # Anthropic supports {"type":"none"} to forbid tool use even
+            # when tools are declared; use that so the caller's "none"
+            # is honoured on both providers.
+            return {"type": "none"}
         raise ConverterError(
             "canonical_to_anthropic",
             f"unsupported tool_choice string mode: {tool_choice!r}",
