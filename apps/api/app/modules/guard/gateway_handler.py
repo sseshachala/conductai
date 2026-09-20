@@ -94,16 +94,38 @@ def apply_tool_call_gate(
         )
         return response, routing_meta
 
+    correlation_ids: dict[str, str] = {}
     if scan.generated_calls:
+        # #2158 — assign a correlation id per generated tool_call.
+        # Runtime executor reads the X-Conduct-Tool-Correlation-Ids
+        # response header and attaches it to its own Flight Recorder
+        # entry so both sides can be joined. Stored alongside
+        # tool_calls_generated in routing_meta for audit-side lookup.
+        from app.modules.guard.tools_validator import (
+            generate_tool_call_correlation_ids as _gen_corr,
+        )
+        correlation_ids = _gen_corr(scan.generated_calls)
         routing_meta = {
             **(routing_meta or {}),
             "tool_calls_generated": scan.generated_calls,
+            "tool_call_correlation_ids": correlation_ids,
         }
+
     if scan.scanned_body is not None and scan.scanned_body is not _resp_parsed:
         response = JSONResponse(
             status_code=response.status_code,
             content=scan.scanned_body,
         )
+
+    if correlation_ids:
+        # Attach correlation header on the outgoing response. Existing
+        # headers preserved by JSONResponse are all defaults (content
+        # type + length), so setting one custom header is safe.
+        from app.modules.guard.tools_validator import (
+            encode_correlation_header as _enc_corr,
+        )
+        response.headers["X-Conduct-Tool-Correlation-Ids"] = _enc_corr(correlation_ids)
+
     return response, routing_meta
 
 

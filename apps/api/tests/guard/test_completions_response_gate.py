@@ -161,3 +161,81 @@ class TestApplyToolCallGate:
             _resp(body), None, workspace_id="ws", provider="openai", model="gpt-4o",
         )
         assert meta is None
+
+
+# --- correlation id wire tests (#2158) ---
+
+
+class TestApplyToolCallGateCorrelation:
+    def test_correlation_ids_populated_when_tool_calls_present(self) -> None:
+        body = {
+            "choices": [{
+                "index": 0,
+                "message": {
+                    "role": "assistant", "content": None,
+                    "tool_calls": [{
+                        "id": "call_1", "type": "function",
+                        "function": {"name": "get_weather",
+                                     "arguments": json.dumps({"city": "SF"})},
+                    }],
+                },
+                "finish_reason": "tool_calls",
+            }],
+        }
+        out, meta = apply_tool_call_gate(
+            _resp(body), None,
+            workspace_id="ws-1", provider="openai", model="gpt-4o",
+        )
+        assert meta is not None
+        # tool_call_correlation_ids populated alongside tool_calls_generated.
+        assert "tool_call_correlation_ids" in meta
+        assert set(meta["tool_call_correlation_ids"].keys()) == {"call_1"}
+        # Correlation header present on the response with the same id.
+        header = out.headers.get("x-conduct-tool-correlation-ids")
+        assert header is not None
+        assert header.startswith("call_1=")
+        # And the correlation value matches what's in routing_meta.
+        assert header == f"call_1={meta['tool_call_correlation_ids']['call_1']}"
+
+    def test_no_correlation_header_when_no_tool_calls(self) -> None:
+        body = {
+            "choices": [{
+                "index": 0,
+                "message": {"role": "assistant", "content": "hello"},
+                "finish_reason": "stop",
+            }],
+        }
+        out, meta = apply_tool_call_gate(
+            _resp(body), None,
+            workspace_id="ws-1", provider="openai", model="gpt-4o",
+        )
+        # Header must not be set (empty header is misleading).
+        assert out.headers.get("x-conduct-tool-correlation-ids") is None
+        assert meta is None
+
+    def test_correlation_per_tool_call_multiple(self) -> None:
+        body = {
+            "choices": [{
+                "index": 0,
+                "message": {
+                    "role": "assistant", "content": None,
+                    "tool_calls": [
+                        {"id": "call_a", "type": "function",
+                         "function": {"name": "s", "arguments": "{}"}},
+                        {"id": "call_b", "type": "function",
+                         "function": {"name": "e", "arguments": "{}"}},
+                    ],
+                },
+                "finish_reason": "tool_calls",
+            }],
+        }
+        out, meta = apply_tool_call_gate(
+            _resp(body), None,
+            workspace_id="ws", provider="openai", model="gpt-4o",
+        )
+        corrs = meta["tool_call_correlation_ids"]
+        assert set(corrs.keys()) == {"call_a", "call_b"}
+        # Header contains both entries.
+        header = out.headers["x-conduct-tool-correlation-ids"]
+        parts = set(header.split(","))
+        assert parts == {f"call_a={corrs['call_a']}", f"call_b={corrs['call_b']}"}

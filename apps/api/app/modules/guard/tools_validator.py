@@ -565,6 +565,54 @@ def scan_response_tool_calls(response_body: dict) -> ScanResult:
     return ScanResult(scanned_body=scanned, generated_calls=generated, error=None)
 
 
+def generate_tool_call_correlation_ids(
+    generated_calls: list[dict[str, str]],
+) -> dict[str, str]:
+    """#2158 — assign a stable correlation id per generated tool_call.
+
+    Returns a mapping of ``tool_call_id → correlation_id`` where each
+    correlation_id is a fresh 16-hex UUID slice. The runtime executor
+    reads the ``X-Conduct-Tool-Correlation-Ids`` response header and
+    attaches the correlation to its own Flight Recorder entry so both
+    sides can be joined: gateway audit row X (``tool_call.generated``)
+    ↔ executor entry Y (``tool_call.completed``).
+
+    Uses uuid4 not the tool_call.id itself so:
+      - the identifier is not model-controlled (LLMs choose call_id;
+        we never want Flight Recorder correlation to be steerable by
+        the model);
+      - the same tool_call re-tried across audit rows lands with
+        distinct correlations (each attempt is its own event).
+
+    Empty input returns an empty mapping — helper is safe to call
+    unconditionally.
+    """
+    import uuid as _uuid
+
+    out: dict[str, str] = {}
+    for call in generated_calls or []:
+        if not isinstance(call, dict):
+            continue
+        tcid = call.get("id")
+        if not isinstance(tcid, str) or not tcid:
+            continue
+        out[tcid] = _uuid.uuid4().hex[:16]
+    return out
+
+
+def encode_correlation_header(correlation_ids: dict[str, str]) -> str:
+    """Encode ``{tool_call_id: correlation_id}`` for the response header.
+
+    Format: ``call_1=corr_hex1,call_2=corr_hex2`` — one line, comma
+    separated. Empty map returns empty string; caller must skip
+    setting the header when the string is empty (many HTTP servers
+    drop headers with empty values, and an empty header is misleading).
+    """
+    if not correlation_ids:
+        return ""
+    return ",".join(f"{k}={v}" for k, v in correlation_ids.items())
+
+
 def extract_tools_offered(request_body: dict) -> list[str]:
     """Names from ``request.tools[].function.name`` for audit.
 
@@ -620,6 +668,8 @@ __all__ = [
     "scan_response_tool_calls",
     "extract_tools_offered",
     "extract_tool_results_supplied",
+    "generate_tool_call_correlation_ids",
+    "encode_correlation_header",
     "ResponseGateReason",
     "ScanResult",
 ]
