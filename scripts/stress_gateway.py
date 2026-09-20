@@ -1,20 +1,25 @@
 #!/usr/bin/env python3
-"""Bounded concurrent stress test for the Gateway v2.
+"""Bounded concurrent stress test for the Gateway v2 canonical endpoint.
+
+Posts against ``POST /gateway/v1/completions`` — the profile-native
+canonical endpoint added by #2144. One URL, one body shape, regardless
+of which upstream the profile targets. The gateway resolves the profile
+server-side and routes; no ``--provider`` knob or wire-format branching
+lives on the client anymore.
 
 Reads token + server from ``~/.conduct/config.json`` (same as
-``smoke_gateway.py``). Fires N requests at concurrency C against a
-published profile, then reports latency distribution, status
-breakdown, and an estimated dollar cost.
+``smoke_gateway.py``), fires N requests at concurrency C carrying one
+profile identifier, then reports latency distribution, status breakdown,
+and an estimated dollar cost.
 
 Safety belts (always on):
   - ``--max-wall`` — whole-run wall-clock budget (default 90s)
   - ``--request-timeout`` — per-request client-side deadline (default 30s);
     independent from ``--max-wall``
   - Max total requests (--total)
-  - Kill switch when the *real-error* rate > 5% AND at least 20 requests
-    fired. Conduct admission refusals (our 429 backpressure layer) are
-    excluded by default — they mean the service protected itself, not
-    failed. Pass ``--kill-on-admission`` to count them.
+  - Kill switch on the ADMITTED-request error rate (rejections excluded
+    from both numerator + denominator — see ``_run_async`` for the P1
+    rationale)
   - Small ``max_tokens`` so provider cost stays bounded
 
 Report separates status codes from *categories*: admission-refused vs
@@ -22,12 +27,16 @@ budget-refused vs upstream-rate-limit vs upstream-5xx vs client_timeout.
 Correlate categories with Flight Recorder before increasing load.
 
 Usage:
-    scripts/stress_gateway.py cond-6zq8mzpc-claude-sonnet \\
+    scripts/stress_gateway.py cond-e785vpmb-gpt-4o \\
         --total 1000 --concurrency 20
 
-For streaming stress add ``--stream``. To send a specific prompt
-per request set ``--prompt-env VARNAME`` and export the prompt in
-that env var (avoids embedding sensitive strings in this file).
+To send a specific prompt per request set ``--prompt-env VARNAME`` and
+export the prompt in that env var (avoids embedding sensitive strings
+in this file).
+
+ponytail: streaming + tools intentionally NOT supported here. The
+/completions endpoint rejects both in PR 1 of #2144. Upgrade path: land
+the streaming follow-up on the server, then add ``--stream`` back.
 """
 from __future__ import annotations
 
@@ -48,8 +57,10 @@ except ImportError:
     _HAVE_AIOHTTP = False
 
 
-# Cheap-model-cost estimate ($/1M tokens). Adjust if you point at a
-# non-Sonnet profile.
+# Fixed Sonnet-rate ballpark for a rough $ sanity check on the run. The
+# canonical /completions endpoint can target any upstream, so a single
+# hardcoded rate is deliberately approximate — the report labels it as
+# such. Real per-profile cost lives in guard_audit_events.cost_usd_after.
 _SONNET_INPUT_PER_MTOK  = 3.00
 _SONNET_OUTPUT_PER_MTOK = 15.00
 
@@ -139,8 +150,8 @@ async def _fire_one_async(session, url, headers, body, request_timeout):
         return 598, time.monotonic() - t0, str(e).encode()
 
 
-async def _run_async(url, token, model, total, concurrency, max_tokens,
-                     use_stream, max_wall, prompt, request_timeout,
+async def _run_async(url, token, profile, total, concurrency, max_tokens,
+                     max_wall, prompt, request_timeout,
                      max_admitted_error_rate, max_rejection_rate,
                      kill_min_samples):
     """Run the load. Returns a dict of measurements.
@@ -170,9 +181,8 @@ async def _run_async(url, token, model, total, concurrency, max_tokens,
     started = time.monotonic()
 
     body_template = {
-        "model": model,
+        "profile": profile,
         "max_tokens": max_tokens,
-        "stream": use_stream,
         "messages": [{"role": "user", "content": prompt}],
     }
 
@@ -197,6 +207,14 @@ async def _run_async(url, token, model, total, concurrency, max_tokens,
             categories[category] += 1
             if category == "conduct_admission_refused" and admission_sample is None:
                 admission_sample = resp[:200].decode("utf-8", "replace")
+            # ponytail: single tick per completed request, on stderr so
+            # stdout stays reserved for the final report. Prints "." for
+            # a 2xx and the numeric status for anything else, followed by
+            # a newline every 50 to keep terminals from wrapping. Cheap;
+            # a hung run now looks obviously hung instead of silent.
+            _tick = "." if 200 <= status < 300 else f"[{status}]"
+            print(_tick, end="\n" if (sum(statuses.values()) % 50 == 0) else "",
+                  file=sys.stderr, flush=True)
             if is_rejection:
                 rejections += 1
             else:
@@ -206,12 +224,22 @@ async def _run_async(url, token, model, total, concurrency, max_tokens,
                     successes += 1
                 else:
                     admitted_errors += 1
-            if status == 200 and not use_stream:
+            if status == 200:
+                # Canonical response is OpenAI Chat Completions shape.
+                # ``usage.prompt_tokens`` + ``usage.completion_tokens``
+                # are the OpenAI keys; the older Anthropic-style
+                # ``input_tokens`` / ``output_tokens`` keys are read as a
+                # fallback so the report still tallies if the response
+                # normalizer changes in a future PR.
                 try:
                     payload = json.loads(resp)
                     usage = payload.get("usage") or {}
-                    input_tokens_seen  += int(usage.get("input_tokens", 0))
-                    output_tokens_seen += int(usage.get("output_tokens", 0))
+                    input_tokens_seen  += int(
+                        usage.get("prompt_tokens", usage.get("input_tokens", 0))
+                    )
+                    output_tokens_seen += int(
+                        usage.get("completion_tokens", usage.get("output_tokens", 0))
+                    )
                 except Exception:
                     pass
             fired = sum(statuses.values())
@@ -377,14 +405,21 @@ def _report(results: dict, wall: float, max_admitted_error_rate: float,
     if admission_sample:
         print(f"  admission_body_sample  {admission_sample}")
     if input_tok or output_tok:
+        # ponytail: Sonnet's per-Mtok rate is a fixed ballpark, not the
+        # profile's actual price. /completions can target any upstream
+        # (GPT-4o, Claude, Perplexity, ...), so a single hardcoded rate
+        # is a rough $ sanity check — not authoritative cost. If accurate
+        # per-profile cost matters, pull it from the audit row's
+        # cost_usd_after column instead.
         cost = (
             input_tok  * _SONNET_INPUT_PER_MTOK  / 1_000_000 +
             output_tok * _SONNET_OUTPUT_PER_MTOK / 1_000_000
         )
         print(f"  tokens          in={input_tok}  out={output_tok}")
-        print(f"  est cost        ${cost:.4f} (Sonnet pricing)")
+        print(f"  est cost        ${cost:.4f} (Sonnet-rate ballpark; "
+              f"actual varies by profile)")
     else:
-        print("  tokens          not tracked (streaming or blocked)")
+        print("  tokens          not tracked (blocked or usage stripped)")
 
     print()
     exit_code = 0
@@ -419,17 +454,17 @@ def _report(results: dict, wall: float, max_admitted_error_rate: float,
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("model", nargs="?",
-                    help="Full cond-<code>-<alias> string. Optional only "
-                         "with --self-check.")
+    ap.add_argument("profile", nargs="?",
+                    help="Full cond-<code>-<alias> profile identifier. "
+                         "The gateway resolves upstream, wire format, and "
+                         "credentials server-side. Optional only with "
+                         "--self-check.")
     ap.add_argument("--server", default=None,
                     help="Override server URL (e.g. https://gateway.conductai.ai). "
                          "Defaults to server in ~/.conduct/config.json.")
     ap.add_argument("--total", type=int, default=200)
     ap.add_argument("--concurrency", type=int, default=10)
     ap.add_argument("--max-tokens", type=int, default=5)
-    ap.add_argument("--stream", action="store_true")
-    ap.add_argument("--provider", choices=["anthropic", "openai"], default="anthropic")
     ap.add_argument("--max-wall", type=int, default=90,
                     help="Overall run deadline in seconds. In-flight tasks "
                          "are cancelled when this fires (real deadline, not "
@@ -461,8 +496,8 @@ def main() -> int:
     if args.self_check:
         return _self_check()
 
-    if not args.model:
-        print("error: model is required (unless --self-check)", file=sys.stderr)
+    if not args.profile:
+        print("error: profile is required (unless --self-check)", file=sys.stderr)
         return 1
 
     # Reject nonsensical inputs early (reviewer P1 #2 also asked for this).
@@ -499,25 +534,20 @@ def main() -> int:
     token, server = _load_creds()
     if args.server:
         server = args.server.rstrip("/")
-    if args.provider == "anthropic":
-        url = f"{server}/gateway/v1/anthropic/v1/messages"
-    else:
-        url = f"{server}/gateway/v1/openai/v1/chat/completions"
+    url = f"{server}/gateway/v1/completions"
 
     print(f"Target:      {url}")
-    print(f"Model:       {args.model}")
+    print(f"Profile:     {args.profile}")
     print(f"Total:       {args.total}  Concurrency: {args.concurrency}  max_tokens: {args.max_tokens}")
-    if args.stream:
-        print("Streaming:   yes (cost tracking disabled)")
     print()
 
     started = time.monotonic()
     try:
         results = asyncio.run(_run_async(
-            url=url, token=token, model=args.model,
+            url=url, token=token, profile=args.profile,
             total=args.total, concurrency=args.concurrency,
             max_tokens=args.max_tokens,
-            use_stream=args.stream, max_wall=args.max_wall,
+            max_wall=args.max_wall,
             prompt=prompt,
             request_timeout=args.request_timeout,
             max_admitted_error_rate=args.max_admitted_error_rate,
