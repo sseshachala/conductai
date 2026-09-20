@@ -247,7 +247,12 @@ async def test_execute_v2_streaming_returns_streaming_response(monkeypatch):
     plan = _V2Plan(
         resolved=SimpleNamespace(
             revision_id="rev-1",
-            profile=SimpleNamespace(accepts=["anthropic_messages"]),
+            profile=SimpleNamespace(
+                accepts=["anthropic_messages"],
+                # #2152 P1 — new pre-dispatch capability gate scans
+                # targets. Native target here so the gate passes.
+                targets=[SimpleNamespace(transport="native_http")],
+            ),
         ),
         operation="anthropic_messages",
         credential_resolver=lambda ref: "sk-fake",
@@ -262,30 +267,110 @@ async def test_execute_v2_streaming_returns_streaming_response(monkeypatch):
 
 
 @pytest.mark.anyio("asyncio")
-async def test_execute_v2_streaming_501_for_non_native_transport(monkeypatch):
-    """If the coordinator wins with a non-native transport (LiteLLM SDK,
-    which returns a generator, or passthrough), streaming through
-    _execute_v2 raises 501 rather than crashing inside coerce_response_body.
-    Names the winning target so the operator knows which one to swap."""
+async def test_execute_v2_streaming_501_pre_dispatch_when_no_native_target(monkeypatch):
+    """#2152 P1 — capability gate MUST fire before the coordinator runs.
+
+    A plan whose targets are all non-native (litellm_sdk /
+    http_passthrough) cannot serve a streaming request. Reject BEFORE
+    upstream bytes fly; the previous post-hoc 501 raised only after
+    ``coordinator.execute`` had already dispatched. This test asserts
+    the coordinator is NEVER invoked when the gate rejects.
+    """
     from fastapi import HTTPException
+
+    from app.modules.guard.gateway_handler import _execute_v2, _V2Plan
+
+    called = {"execute": False, "get_coordinator": False}
+
+    class _ExplodingCoordinator:
+        async def execute(self, **_kw):
+            called["execute"] = True
+            raise AssertionError(
+                "coordinator.execute must not run when the pre-dispatch "
+                "capability gate rejects"
+            )
+
+    async def _fake_get_coordinator():
+        # Even reaching this call is a failure — the gate should raise
+        # first. Flip and let the test assertion below catch it.
+        called["get_coordinator"] = True
+        return _ExplodingCoordinator()
+
+    monkeypatch.setattr(
+        "app.runtime.gateway_transports.get_coordinator",
+        _fake_get_coordinator,
+    )
+
+    from types import SimpleNamespace
+    plan = _V2Plan(
+        resolved=SimpleNamespace(
+            revision_id="rev-only-litellm",
+            profile=SimpleNamespace(
+                accepts=["anthropic_messages"],
+                targets=[
+                    SimpleNamespace(transport="litellm_sdk"),
+                    SimpleNamespace(transport="http_passthrough"),
+                ],
+            ),
+        ),
+        operation="anthropic_messages",
+        credential_resolver=lambda ref: "sk-fake",
+    )
+
+    with pytest.raises(HTTPException) as excinfo:
+        await _execute_v2(plan=plan, body={"stream": True}, stream=True)
+
+    assert excinfo.value.status_code == 501
+    detail = str(excinfo.value.detail)
+    assert "native_http" in detail
+    assert "rev-only-litellm" in detail
+    assert called["execute"] is False, (
+        "coordinator.execute ran — the gate should have refused before dispatch"
+    )
+    assert called["get_coordinator"] is False, (
+        "get_coordinator ran — the gate should refuse before touching the coordinator singleton"
+    )
+
+
+@pytest.mark.anyio("asyncio")
+async def test_execute_v2_streaming_gate_passes_when_any_target_is_native(monkeypatch):
+    """Positive-path counterpart: the gate must NOT interfere when a
+    profile has at least one native_http target. Ordering doesn't
+    matter — the coordinator picks the winner. A single native_http
+    entry anywhere in the list is enough to let stream requests through.
+    """
+    from fastapi.responses import StreamingResponse
 
     from app.modules.guard.gateway_handler import _execute_v2, _V2Plan
     from app.runtime.attempt_coordinator import (
         AttemptRecord,
         CoordinatorResult,
     )
+    from app.runtime.native_http_transport import StreamingUpstream
+
+    class _FakeHTTPXResp:
+        headers = {"content-type": "text/event-stream"}
+        async def aiter_bytes(self):
+            yield b"data: {}\n\n"
+        async def aclose(self):
+            pass
+
+    upstream = StreamingUpstream(
+        status_code=200,
+        headers=dict(_FakeHTTPXResp.headers),
+        response=_FakeHTTPXResp(),
+        provider="anthropic",
+    )
 
     class _FakeCoordinator:
         async def execute(self, *, resolved, operation, payload, credential_resolver, stream, **_kw):
-            # A LiteLLM stream would return an async generator, not a
-            # StreamingUpstream. Simulate that with a MagicMock().
-            from unittest.mock import MagicMock
+            assert stream is True
             return CoordinatorResult(
-                response=MagicMock(),
-                revision_id=resolved.revision_id if resolved is not None else None,
+                response=upstream,
+                revision_id=resolved.revision_id,
                 attempts=[AttemptRecord(
-                    target_id="litellm-primary",
-                    transport="litellm_sdk",
+                    target_id="secondary-native",
+                    transport="native_http",
                     provider_or_integration="anthropic",
                     started_at_monotonic=0.0,
                     completed_at_monotonic=0.1,
@@ -293,13 +378,9 @@ async def test_execute_v2_streaming_501_for_non_native_transport(monkeypatch):
                     error_class=None,
                     error_summary=None,
                 )],
-                winning_target_id="litellm-primary",
+                winning_target_id="secondary-native",
             )
 
-    # X5 — _execute_v2 now goes through gateway_transports.get_coordinator
-    # (worker-lifetime singleton). Patch that async function so the test
-    # gets our fake coordinator without triggering the real transport
-    # init path (which would try to build httpx clients etc.).
     async def _fake_get_coordinator():
         return _FakeCoordinator()
     monkeypatch.setattr(
@@ -310,18 +391,24 @@ async def test_execute_v2_streaming_501_for_non_native_transport(monkeypatch):
     from types import SimpleNamespace
     plan = _V2Plan(
         resolved=SimpleNamespace(
-            revision_id="rev-1",
-            profile=SimpleNamespace(accepts=["anthropic_messages"]),
+            revision_id="rev-mixed",
+            profile=SimpleNamespace(
+                accepts=["anthropic_messages"],
+                # Non-native first, native second — the gate looks for
+                # "any" native, so ordering shouldn't cause a false 501.
+                targets=[
+                    SimpleNamespace(transport="litellm_sdk"),
+                    SimpleNamespace(transport="native_http"),
+                ],
+            ),
         ),
         operation="anthropic_messages",
         credential_resolver=lambda ref: "sk-fake",
     )
 
-    with pytest.raises(HTTPException) as excinfo:
-        await _execute_v2(plan=plan, body={"stream": True}, stream=True)
-    assert excinfo.value.status_code == 501
-    assert "native_http" in str(excinfo.value.detail)
-    assert "litellm-primary" in str(excinfo.value.detail)
+    response = await _execute_v2(plan=plan, body={"stream": True}, stream=True)
+    assert isinstance(response, StreamingResponse)
+    assert response.status_code == 200
 
 
 # ─── PR 3 canary flip — gateway_handler consults per-workspace resolver ─

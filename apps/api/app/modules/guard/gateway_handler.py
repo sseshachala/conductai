@@ -1566,6 +1566,29 @@ async def _execute_v2(
     from app.runtime.native_http_transport import StreamingUpstream as _StreamingUpstream
     from fastapi import HTTPException as _HTTPException
 
+    # Pre-dispatch capability gate (#2152 reviewer P1). Streaming
+    # works only through ``native_http`` today; the post-hoc 501 below
+    # fired AFTER the coordinator picked a winning target, meaning
+    # upstream bytes were already in flight. Refuse before touch when
+    # the plan has no eligible target.
+    if stream and not any(
+        getattr(t, "transport", None) == "native_http"
+        for t in plan.resolved.profile.targets
+    ):
+        _transports = sorted({
+            getattr(t, "transport", None) or "unknown"
+            for t in plan.resolved.profile.targets
+        })
+        raise _HTTPException(
+            status_code=501,
+            detail=(
+                "Gateway Profile v2 streaming requires a native_http "
+                f"target. Revision {plan.resolved.revision_id} "
+                f"advertises transports: {_transports}. Add a "
+                "native_http target ahead of others, or send stream=false."
+            ),
+        )
+
     # X5 — worker-lifetime singleton, NOT a per-request instance. The
     # transports inside share one httpx.AsyncClient pool across every
     # request handled by this worker, so ``max_connections=100`` is a
