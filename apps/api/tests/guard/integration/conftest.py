@@ -203,6 +203,22 @@ def _rebind_session_and_redis(monkeypatch: pytest.MonkeyPatch, _it_migrated):
     )
     monkeypatch.setattr("app.core.database.SessionLocal", IntegrationSession)
 
+    # Modules that do ``from app.core.database import SessionLocal`` at
+    # module TOP bind the name once at first import — a later monkeypatch
+    # on ``app.core.database.SessionLocal`` does NOT rebind their local
+    # copy. The BackgroundTask audit writer in ``app.guard.audit`` is
+    # the case that bit us: when unit tests import ``guard.audit`` before
+    # this fixture fires, the audit background task keeps writing to the
+    # dev DB even though every foreground call hits the integration DB.
+    # Patch every top-level rebind we depend on here.
+    for _mod in (
+        "app.guard.audit",
+    ):
+        try:
+            monkeypatch.setattr(f"{_mod}.SessionLocal", IntegrationSession)
+        except AttributeError:
+            pass
+
     # Some modules cache the settings.redis_url at import time; setting the
     # env var ensures any fresh Redis client picks it up.
     monkeypatch.setenv("REDIS_URL", _REDIS_URL)

@@ -194,39 +194,94 @@ def test_client_supplied_model_is_rejected(
     assert captured_handler.captured is None
 
 
-# ---- P2 fix: streaming rejection is strict, not truthy-based ----------
+# ---- streaming: strict-bool enforcement + delegation shape ----------
 
 
-@pytest.mark.parametrize("stream_value", [True, 1, "true", "false", "no", "yes", 0.1])
-def test_any_non_false_stream_value_is_rejected(
+@pytest.mark.parametrize("stream_value", [1, "true", "false", "no", "yes", 0.1, "1"])
+def test_non_bool_stream_value_is_rejected(
     client: TestClient, captured_handler: _CapturedCall, stream_value: Any
 ) -> None:
+    """Reviewer P2 fix from PR 1 stays intact via StrictBool. Only JSON
+    ``true`` / ``false`` are accepted; truthy non-bools that the handler's
+    ``bool(...)`` coercion would otherwise interpret as streaming are
+    rejected at the shim boundary.
+    """
     resp = client.post(
         "/gateway/v1/completions",
         headers={"Authorization": "Bearer cond_mt_test_token"},
         json=_valid_body(stream=stream_value),
     )
-    assert resp.status_code == 400
-    # Must not reach the handler — the handler's ``bool(...)`` coercion
-    # would treat any of these values as truthy and try to stream.
+    assert resp.status_code == 400, (
+        f"non-bool stream={stream_value!r} should be rejected, got "
+        f"{resp.status_code}"
+    )
     assert captured_handler.captured is None
 
 
-def test_stream_false_and_omitted_both_work(
+def test_stream_true_delegates_with_stream_flag_and_usage_option_set(
     client: TestClient, captured_handler: _CapturedCall
 ) -> None:
-    resp1 = client.post(
+    """``stream: true`` is accepted and passed through to the v2 executor
+    with ``stream_options.include_usage=true`` injected server-side.
+
+    OpenAI omits the usage chunk on streaming responses unless the
+    request explicitly asks for it. Without the injection, audit rows
+    and budget settlement carry zero tokens for successful streams —
+    reviewer P1 on the streaming PR.
+    """
+    resp = client.post(
+        "/gateway/v1/completions",
+        headers={"Authorization": "Bearer cond_mt_test_token"},
+        json=_valid_body(stream=True),
+    )
+    assert resp.status_code == 200
+    assert captured_handler.captured is not None
+    forwarded_body = captured_handler.captured["body"]
+    assert forwarded_body["stream"] is True, (
+        f"stream flag lost between shim and executor — forwarded body: "
+        f"{forwarded_body}"
+    )
+    assert forwarded_body.get("stream_options") == {"include_usage": True}, (
+        f"stream_options.include_usage=true must be injected server-side "
+        f"when stream=true; forwarded body: {forwarded_body}"
+    )
+
+
+def test_stream_false_does_not_inject_stream_options(
+    client: TestClient, captured_handler: _CapturedCall
+) -> None:
+    """The stream_options injection is scoped to stream=true. A non-
+    streaming request MUST NOT carry stream_options — the field is
+    meaningful only when streaming, and OpenAI rejects it otherwise
+    with a 400.
+    """
+    resp = client.post(
         "/gateway/v1/completions",
         headers={"Authorization": "Bearer cond_mt_test_token"},
         json=_valid_body(stream=False),
     )
-    assert resp1.status_code == 200
-    resp2 = client.post(
-        "/gateway/v1/completions",
-        headers={"Authorization": "Bearer cond_mt_test_token"},
-        json=_valid_body(),  # stream omitted
+    assert resp.status_code == 200
+    assert captured_handler.captured is not None
+    forwarded_body = captured_handler.captured["body"]
+    assert "stream_options" not in forwarded_body, (
+        f"stream_options must not be injected when stream=false; "
+        f"forwarded body: {forwarded_body}"
     )
-    assert resp2.status_code == 200
+
+
+def test_stream_false_and_omitted_both_forward_stream_false(
+    client: TestClient, captured_handler: _CapturedCall
+) -> None:
+    for payload in ({**_valid_body(), "stream": False}, _valid_body()):
+        captured_handler.captured = None
+        resp = client.post(
+            "/gateway/v1/completions",
+            headers={"Authorization": "Bearer cond_mt_test_token"},
+            json=payload,
+        )
+        assert resp.status_code == 200
+        assert captured_handler.captured is not None
+        assert captured_handler.captured["body"]["stream"] is False
 
 
 # ---- P2 fix: text-only contract enforced by schema --------------------
@@ -243,6 +298,13 @@ def test_stream_false_and_omitted_both_work(
         {"logprobs": True},
         {"n": 3},
         {"random_unknown_field": "hello"},
+        # stream_options is deliberately forbidden: the shim injects it
+        # server-side when stream=true so audit + budget always get token
+        # counts. Letting the caller override would let them opt out of
+        # accounting for their own request — that's Conduct's decision,
+        # not the caller's.
+        {"stream_options": {"include_usage": True}},
+        {"stream_options": {"include_usage": False}},
     ],
 )
 def test_unknown_or_forbidden_top_level_fields_are_rejected(
