@@ -871,6 +871,15 @@ async def handle_gateway_request(
         # can read it even if an early raise skips the wrap.
         _v2_stream_wrapped = False
         _tool_stream_outcome = None  # set inside the streaming tool-gate branch
+        # Same reason — the finally block down at ~line 1374 references
+        # ``_response`` when computing actuals for settle. Any raise
+        # inside the try (v2 502 from _execute_v2, v1 forwarder error,
+        # etc.) leaves the assignment unbound and Python raises
+        # UnboundLocalError from the finally, masking the real
+        # HTTPException as a generic 500. Initialise here so the
+        # finally can guard via ``if _response is not None``.
+        _response = None
+        _v2_upstream_body_bytes = None
         try:
             if _v2_plan is not None:
                 # #2004 Phase 1 — v2 executes the coordinator + LiteLLM SDK
@@ -1396,7 +1405,7 @@ async def handle_gateway_request(
                             _snapshot = locals().get("_v2_upstream_body_bytes")
                             if isinstance(_snapshot, (bytes, bytearray)) and _snapshot:
                                 _resp_bytes = bytes(_snapshot)
-                            elif hasattr(_response, "body"):
+                            elif _response is not None and hasattr(_response, "body"):
                                 try:
                                     _resp_bytes = _response.body
                                 except Exception:
