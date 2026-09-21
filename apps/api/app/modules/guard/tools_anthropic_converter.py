@@ -273,23 +273,23 @@ def _canonical_parts_to_anthropic(parts: list[Any]) -> list[dict[str, Any]]:
 def _image_url_to_anthropic_block(url: str) -> dict[str, Any] | None:
     """Turn one ``image_url.url`` string into an Anthropic ``image`` block.
 
-    Returns None when the URL doesn't match either accepted scheme
-    (``data:image/*;base64,`` or ``https://``). The upstream validator
-    already rejects anything else, so None here is a defensive drop.
+    - ``data:image/*;base64,...``: parse the payload directly, emit
+      ``{type:"base64",...}``. No network I/O.
+    - ``https://...``: fetch the image server-side, base64-encode,
+      emit ``{type:"base64",...}``. See ``_fetch_and_encode_image``
+      for the SSRF+size guards. Chosen over ``{type:"url",...}``
+      because URL-source support is inconsistent across Anthropic
+      model versions / API versions / adapter layers (LiteLLM,
+      Bedrock passthrough). Base64 works on every vision-capable
+      Claude model since day one.
 
-    Never raises — a malformed data URL that snuck past validation
-    yields None so the outer message stays convertible, minus the bad
-    part.
+    Returns None when the URL doesn't match either accepted scheme
+    or when the HTTPS fetch fails a guard (size, content-type,
+    timeout). Falls back gracefully — an image that fails to fetch
+    drops the part rather than crashing the whole message.
     """
-    if url.startswith("https://"):
-        return {
-            "type": "image",
-            "source": {"type": "url", "url": url},
-        }
     if url.startswith("data:image/") and ";base64," in url:
         prefix, payload = url.split(";base64,", 1)
-        # prefix is ``data:image/<subtype>[;charset=...]``. The subtype
-        # up to the first ``;`` is the media_type sans ``data:`` prefix.
         media_type = prefix[len("data:"):].split(";", 1)[0]
         if not media_type or not payload:
             return None
@@ -301,7 +301,100 @@ def _image_url_to_anthropic_block(url: str) -> dict[str, Any] | None:
                 "data": payload,
             },
         }
+    if url.startswith("https://"):
+        return _fetch_and_encode_image(url)
     return None
+
+
+# Guards on the server-side image fetch. See ``_fetch_and_encode_image``.
+_IMAGE_FETCH_TIMEOUT_SECONDS = 5.0
+_IMAGE_FETCH_MAX_BYTES = 20 * 1024 * 1024  # matches data-URL cap
+_IMAGE_FETCH_ALLOWED_MEDIA_PREFIX = "image/"
+
+
+def _fetch_and_encode_image(url: str) -> dict[str, Any] | None:
+    """Fetch an HTTPS image and return an Anthropic base64 ``image`` block.
+
+    Guards:
+
+    - HTTPS scheme only (caller-enforced upstream; asserted here too).
+    - No HTTP redirects followed — a redirect to an internal host
+      (SSRF via URL that resolves via 302) is refused. Vendor image
+      hosts like picsum.photos don't need redirects for their public
+      URLs; if a legitimate use case surfaces, add an allowlist of
+      redirect targets rather than following blind.
+    - Response Content-Type must start with ``image/`` — refuses
+      HTML pages, JSON API responses, and other non-image content
+      that could confuse the model or waste tokens.
+    - Body capped at ``_IMAGE_FETCH_MAX_BYTES`` (20 MB, same as
+      data-URL cap). Reads incrementally and aborts on cap breach.
+    - Whole request bounded by ``_IMAGE_FETCH_TIMEOUT_SECONDS`` (5s).
+      Anthropic's own request timeout is much longer; capping tightly
+      here means a slow image never eats budget from the LLM call.
+
+    Returns None on any guard failure so the outer converter drops
+    the part instead of failing the whole message. Errors are logged
+    but not raised — the caller can decide whether missing images
+    warrant refusing the request (usually not; a text-only fallback
+    is more useful than a hard error).
+    """
+    import httpx
+    import base64 as _b64
+    import structlog
+
+    _log = structlog.get_logger(__name__)
+
+    if not url.startswith("https://"):
+        return None
+
+    try:
+        with httpx.Client(
+            timeout=_IMAGE_FETCH_TIMEOUT_SECONDS,
+            follow_redirects=False,
+        ) as client:
+            response = client.get(url)
+            if response.status_code >= 400:
+                _log.warning(
+                    "vision.image_fetch.status_error",
+                    url=url,
+                    status=response.status_code,
+                )
+                return None
+            content_type = (response.headers.get("content-type") or "").lower()
+            media_type = content_type.split(";", 1)[0].strip()
+            if not media_type.startswith(_IMAGE_FETCH_ALLOWED_MEDIA_PREFIX):
+                _log.warning(
+                    "vision.image_fetch.bad_content_type",
+                    url=url,
+                    content_type=content_type,
+                )
+                return None
+            body = response.content
+            if len(body) > _IMAGE_FETCH_MAX_BYTES:
+                _log.warning(
+                    "vision.image_fetch.oversize",
+                    url=url,
+                    size=len(body),
+                    cap=_IMAGE_FETCH_MAX_BYTES,
+                )
+                return None
+    except Exception as exc:  # noqa: BLE001 — never let a bad URL crash a request
+        _log.warning(
+            "vision.image_fetch.failed",
+            url=url,
+            err_class=type(exc).__name__,
+            err=str(exc)[:200],
+        )
+        return None
+
+    return {
+        "type": "image",
+        "source": {
+            "type": "base64",
+            "media_type": media_type,
+            "data": _b64.b64encode(body).decode("ascii"),
+        },
+    }
 
 
 def _rewrite_tools(tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
