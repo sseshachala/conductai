@@ -14,12 +14,9 @@ import structlog
 
 from app.core.config import settings
 from app.runtime.llm_client import (
-    AnthropicClient,
     LLMTextBlock,
     LLMToolUseBlock,
     LLMUpstreamError,
-    OpenAIClient,
-    PerplexityClient,
 )
 from app.runtime.model_router import resolve_for_workspace as _router_resolve
 from app.runtime.pricing import freeze_pricing_snapshot, get_model_rates
@@ -334,6 +331,71 @@ def _execute_brain(
             "remote_host": bool((block.get("data", {}).get("config") or {}).get("remote_host")),
         }
 
+    # PR 4 — every brain_block MUST route through a published Gateway
+    # profile pinned on the workflow. Direct-provider clients are gone.
+    # Reviewer P2 #2184: validate BEFORE any resource allocation
+    # (sandbox creation, credential broker fetch) so a rejection
+    # doesn't leak sessions or credentials.
+    if not workflow_id or db is None:
+        raise RuntimeError(
+            "brain_block requires a workflow context — this call was "
+            "invoked without workflow_id or a DB session. Profile-routed "
+            "runtime cannot resolve a Gateway profile without both."
+        )
+    from app.models.workflow import Workflow as _WF
+    from app.models.gateway_profile import (
+        GatewayProfile as _GP,
+        GatewayProfileRevision as _GPR,
+    )
+    _wf_row = db.query(_WF).filter(_WF.id == workflow_id).first()
+    if _wf_row is None or _wf_row.gateway_profile_id is None:
+        raise RuntimeError(
+            f"workflow {workflow_id} has no Gateway profile assigned. "
+            f"Every brain block must pin a published profile in workflow "
+            f"settings (#2170). Direct-provider routing is retired."
+        )
+    _prof_row = db.query(_GP).filter(_GP.id == _wf_row.gateway_profile_id).first()
+    if _prof_row is None:
+        raise RuntimeError(
+            f"workflow {workflow_id} pins Gateway profile "
+            f"{_wf_row.gateway_profile_id} which no longer exists. "
+            f"Fix: select a valid profile in workflow settings."
+        )
+    if not _prof_row.active_revision_id or not _prof_row.cond_code:
+        raise RuntimeError(
+            f"workflow {workflow_id} pins Gateway profile "
+            f"{_prof_row.name!r} which has no published revision. "
+            f"Fix: publish the profile or pick a different one."
+        )
+    _alias = (_prof_row.model_alias or "").strip()
+    _profile_cond_key = (
+        f"cond-{_prof_row.cond_code}-{_alias}"
+        if _alias else f"cond-{_prof_row.cond_code}"
+    )
+    # Reviewer P2 #2183 — streaming is safe only when every target on
+    # the published revision speaks OpenAI Chat shape natively.
+    # Canonical → Anthropic Messages streaming still returns 501 from
+    # the gateway. Default to False on any lookup error — never pick
+    # a mode that could 501 mid-loop.
+    _profile_streaming_safe: bool = False
+    try:
+        _rev = db.query(_GPR).filter(_GPR.id == _prof_row.active_revision_id).first()
+        _snapshot = (_rev.snapshot if _rev else None) or {}
+        _targets = _snapshot.get("targets") or []
+        if _targets:
+            _profile_streaming_safe = all(
+                (t.get("provider") or "").lower() not in {"anthropic"}
+                and (t.get("integration") or "").lower() not in {"anthropic"}
+                for t in _targets
+                if isinstance(t, dict)
+            )
+    except Exception as _rev_exc:
+        log.warning(
+            "brain.gateway_profile.streaming_probe_failed",
+            error=str(_rev_exc), profile_id=str(_prof_row.id),
+        )
+        _profile_streaming_safe = False
+
     artifact = compiled_artifacts.get(block["id"], {})
     system_prompt = artifact.get("system_prompt", block["data"].get("description", ""))
 
@@ -537,125 +599,22 @@ def _execute_brain(
         "Do NOT switch between approaches mid-task."
     )
 
-    # BYO key: fetch per-provider credentials from broker → platform default fallback
-    def _clean(v: str | None) -> str | None:
-        return v.strip() if isinstance(v, str) else v
-
+    # PR 4 — legacy per-provider credential extraction is gone. The
+    # Gateway profile carries every credential (vault refs on each
+    # target) and the shim resolves them per attempt. We still need
+    # ``_env_vars`` for the CONDUCT_RUN_TOKEN / CONDUCT_AGENT_TOKEN
+    # header wiring below.
     _env_vars = _session_creds.get("env_vars") or {}
-    _anthropic_creds = _session_creds.get("anthropic") or {}
-    _openai_creds = _session_creds.get("openai") or {}
-    _perplexity_creds = _session_creds.get("perplexity") or {}
-
-    _anthropic_key = _clean(
-        _anthropic_creds.get("api_key")
-        or _env_vars.get("anthropic_api_key")
-        or _env_vars.get("ANTHROPIC_API_KEY")
-        or settings.anthropic_api_key
-    )
-    _openai_key = _clean(
-        _openai_creds.get("api_key")
-        or _env_vars.get("openai_api_key")
-        or _env_vars.get("OPENAI_API_KEY")
-        or settings.openai_api_key
-    )
-    _perplexity_key = _clean(
-        _perplexity_creds.get("api_key")
-        or _env_vars.get("perplexity_api_key")
-        or _env_vars.get("PERPLEXITY_API_KEY")
-    )
 
     pricing_snapshot = freeze_pricing_snapshot()
 
-    # #2170 PR 2 — profile-first routing. Resolve BEFORE the legacy
-    # provider-key check so a workflow that authenticates entirely
-    # through its pinned Gateway profile does not need a legacy vendor
-    # key on the block. Assigned-but-unavailable profiles fail closed
-    # (missing row, unpublished draft, or lookup error all raise). Only
-    # a truly-unassigned workflow (gateway_profile_id IS NULL) falls
-    # through to the legacy per-provider path.
-    _profile_cond_key: str | None = None
-    _profile_assigned: bool = False
-    # Reviewer P2 #2183 — streaming is safe only when every target on the
-    # published revision speaks OpenAI Chat shape natively. Canonical →
-    # Anthropic Messages streaming still returns 501 from the gateway
-    # (Anthropic converter is non-streaming). Compute per-profile.
-    _profile_streaming_safe: bool = False
-    if workflow_id and db is not None:
-        from app.models.workflow import Workflow as _WF
-        from app.models.gateway_profile import (
-            GatewayProfile as _GP,
-            GatewayProfileRevision as _GPR,
-        )
-        _wf_row = db.query(_WF).filter(_WF.id == workflow_id).first()
-        if _wf_row and _wf_row.gateway_profile_id:
-            _profile_assigned = True
-            _prof_row = db.query(_GP).filter(_GP.id == _wf_row.gateway_profile_id).first()
-            if _prof_row is None:
-                raise RuntimeError(
-                    f"workflow {workflow_id} pins Gateway profile "
-                    f"{_wf_row.gateway_profile_id} which no longer exists. "
-                    f"Fix: select a valid profile in workflow settings."
-                )
-            if not _prof_row.active_revision_id or not _prof_row.cond_code:
-                raise RuntimeError(
-                    f"workflow {workflow_id} pins Gateway profile "
-                    f"{_prof_row.name!r} which has no published revision. "
-                    f"Fix: publish the profile or pick a different one."
-                )
-            _alias = (_prof_row.model_alias or "").strip()
-            _profile_cond_key = (
-                f"cond-{_prof_row.cond_code}-{_alias}"
-                if _alias else f"cond-{_prof_row.cond_code}"
-            )
-            # Inspect the published revision's targets. If ANY target's
-            # provider is anthropic (or the integration is anthropic-backed),
-            # streaming is disabled for this profile — the canonical
-            # /completions shim still 501s canonical→Anthropic streaming.
-            try:
-                _rev = db.query(_GPR).filter(_GPR.id == _prof_row.active_revision_id).first()
-                _snapshot = (_rev.snapshot if _rev else None) or {}
-                _targets = _snapshot.get("targets") or []
-                if _targets:
-                    _profile_streaming_safe = all(
-                        (
-                            (t.get("provider") or "").lower()
-                            not in {"anthropic"}
-                        )
-                        and (t.get("integration") or "").lower() not in {"anthropic"}
-                        for t in _targets
-                        if isinstance(t, dict)
-                    )
-            except Exception as _rev_exc:
-                # If we can't determine capabilities safely, default to
-                # non-streaming — never silently pick a mode that could
-                # 501 mid-loop and burn attempts.
-                log.warning(
-                    "brain.gateway_profile.streaming_probe_failed",
-                    error=str(_rev_exc), profile_id=str(_prof_row.id),
-                )
-                _profile_streaming_safe = False
-
-    from app.runtime.provider_keys import MissingProviderKey
-    _provider_keys = {"anthropic": _anthropic_key, "openai": _openai_key, "perplexity": _perplexity_key}
-    # Provider key only required on the legacy path. Profile-routed
-    # workflows use the profile's own credentials at the gateway.
-    if not _profile_assigned and not _provider_keys[provider]:
-        raise MissingProviderKey(provider, model_id)
+    # Profile resolution + streaming-safety probe ran up-front (before
+    # sandbox creation) — see the block after the dry_run return. From
+    # here on we use ``_profile_cond_key`` and ``_profile_streaming_safe``.
 
     # Guard proxy URL is a platform constant — same for every workspace.
-    # brain_block always routes through it; the proxy handles BYO forwarding internally.
+    # brain_block always routes through it; the profile picks the target.
     _conduct_proxy_url: str = settings.conduct_proxy_url.rstrip("/")
-
-    # When routing through Portkey/Helicone: gateway key goes in x-portkey-api-key header,
-    # vendor key stays in api_key (forwarded to Anthropic by the gateway).
-    _effective_key = _provider_keys[provider]
-
-    # Guard proxy is always first. brain_block never routes to BYO gateway directly.
-    # The proxy reads CONDUCT_LLM_UPSTREAM from proxy_config and handles BYO forwarding.
-    if _conduct_proxy_url:
-        _effective_base_url = f"{_conduct_proxy_url}/{provider}"
-    else:
-        _effective_base_url = None
 
     _extra_headers: dict = {}
 
@@ -682,40 +641,30 @@ def _execute_brain(
         if user_email:
             _extra_headers["x-conductai-user-email"] = user_email
 
-    # Profile-routed client uses the profile's own credentials at the
-    # gateway. Legacy per-provider client uses ``_effective_key``.
-    if _profile_cond_key:
-        from app.runtime.llm_client import GatewayProfileClient as _GPC
-        llm = _GPC(
-            profile_cond_code=_profile_cond_key,
-            base_url=_conduct_proxy_url,
-            default_headers=_extra_headers,
-            # Pricing snapshot lets the adapter compute cost from the
-            # response's ``model`` + ``usage`` so brain_block's
-            # per-block ``max_cost_usd`` cap stays enforced. Without
-            # this the loop would see cost_usd=0.0 and never stop.
-            pricing_snapshot=pricing_snapshot,
-            # #2170 PR 3 — SSE reassembly path when ALL three hold:
-            #   (a) ops flipped guard_brain_streaming_enabled on
-            #   (b) gateway-side guard_gateway_tools_stream_enabled is on
-            #       (enforced at the shim; a false-here 400 caller-side)
-            #   (c) this profile's targets are streaming-safe — i.e. no
-            #       Anthropic target that the canonical shim would 501
-            # (a) and (c) are decided here; (b) is enforced at the shim.
-            stream_enabled=bool(
-                settings.guard_brain_streaming_enabled and _profile_streaming_safe
-            ),
-        )
-    else:
-        client_for = {"anthropic": AnthropicClient, "openai": OpenAIClient, "perplexity": PerplexityClient}
-        _client_kwargs: dict = {
-            "api_key": _effective_key,
-            "pricing_snapshot": pricing_snapshot,
-            "base_url": _effective_base_url,
-        }
-        if _extra_headers:
-            _client_kwargs["default_headers"] = _extra_headers
-        llm = client_for[provider](**_client_kwargs)
+    # PR 4 — sole path. The profile picks the target (provider + model +
+    # credentials + policy); the runtime never touches per-provider
+    # clients directly. Direct adapters stay in the repo for other
+    # callers (tests, future non-workflow surfaces) but brain_block
+    # no longer references them.
+    from app.runtime.llm_client import GatewayProfileClient as _GPC
+    llm = _GPC(
+        profile_cond_code=_profile_cond_key,
+        base_url=_conduct_proxy_url,
+        default_headers=_extra_headers,
+        # Pricing snapshot lets the adapter compute cost from the
+        # response's ``model`` + ``usage`` so brain_block's per-block
+        # ``max_cost_usd`` cap stays enforced.
+        pricing_snapshot=pricing_snapshot,
+        # #2170 PR 3 — SSE reassembly path when ALL three hold:
+        #   (a) ops flipped guard_brain_streaming_enabled on
+        #   (b) gateway-side guard_gateway_tools_stream_enabled is on
+        #       (enforced at the shim; a false-here 400 caller-side)
+        #   (c) this profile's targets are streaming-safe (no Anthropic
+        #       target the canonical shim would 501)
+        stream_enabled=bool(
+            settings.guard_brain_streaming_enabled and _profile_streaming_safe
+        ),
+    )
 
     pricing_rates, pricing_version = get_model_rates(provider, model_id, pricing_snapshot)
 
@@ -903,7 +852,7 @@ def _execute_brain(
                             "render_request_id": _up_err.request_id,
                             "body_snippet": _up_err.body_snippet,
                             "turn": turns,
-                            "base_url": _effective_base_url,
+                            "base_url": _conduct_proxy_url,
                             "is_final": True,
                             "block_attempt": state.get("__block_attempt", 1),
                         })
@@ -917,7 +866,7 @@ def _execute_brain(
                     _cause = getattr(_llm_err, "__cause__", None) or getattr(_llm_err, "__context__", None)
                     log.error("brain.llm_call_failed",
                               error=str(_llm_err), cause=str(_cause),
-                              base_url=_effective_base_url, turn=turns,
+                              base_url=_conduct_proxy_url, turn=turns,
                               run_id=run_id, block_id=block_id)
                     raise
                 _cache_set(run_id, block_id, turns, response.to_cache_dict())
@@ -1010,7 +959,7 @@ def _execute_brain(
                     "routing_reason": routing_reason,
                     "pricing_version": pricing_version,
                     "pricing_rates": pricing_rates,
-                    "upstream_url": _effective_base_url,
+                    "upstream_url": _conduct_proxy_url,
                     "llm_upstream": _env_vars.get("PROXY_CONFIG_LLM_UPSTREAM") or None,
                 }
                 # Extract structured values from brain output so keys like
@@ -1489,7 +1438,7 @@ def _execute_brain(
                         "render_request_id": _up_err.request_id,
                         "body_snippet": _up_err.body_snippet,
                         "turn": 0,
-                        "base_url": _effective_base_url,
+                        "base_url": _conduct_proxy_url,
                         "is_final": True,
                         "block_attempt": state.get("__block_attempt", 1),
                     })
@@ -1530,7 +1479,7 @@ def _execute_brain(
             "routing_reason": routing_reason,
             "pricing_version": pricing_version,
             "pricing_rates": pricing_rates,
-            "upstream_url": _effective_base_url,
+            "upstream_url": _conduct_proxy_url,
             "llm_upstream": _env_vars.get("PROXY_CONFIG_LLM_UPSTREAM") or None,
         }
         _extracted = _extract_last_json_object(result.get("output", ""))
