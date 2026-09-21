@@ -357,14 +357,128 @@ def test_backfill_duplicate_groups_collapse(database):
         assert _one_inbox_row(conn)["occurrences"] == 5
 
 
+def test_backfill_locks_serialize_with_concurrent_trigger_insert(database):
+    """Reviewer P1 (round 2): a live trigger insert firing DURING the
+    backfill's per-group transaction MUST NOT be overwritten.
+
+    Deterministic ordering — no timing barrier:
+
+      1. Seed 3 events. guard_inbox.occurrences = 3.
+      2. Backfill thread opens a session, runs _LOCK_OR_CREATE_SQL.
+         Row lock is now held.
+      3. Main thread starts an insert in a background thread. The
+         trigger's ON CONFLICT DO UPDATE tries to increment
+         occurrences. It BLOCKS on the lock from step 2.
+      4. Main thread polls pg_stat_activity to confirm the insert
+         thread is actually waiting on a lock (proves the lock is
+         doing its job; not just a timing coincidence).
+      5. Backfill thread runs _RECONCILE_APPLY_SQL — sees the
+         snapshot count of 3 (concurrent insert not yet committed),
+         writes 3. Commits — lock released.
+      6. Insert thread's trigger unblocks, applies its ``+ 1``. Final
+         count = 4.
+
+    Failure mode this test protects against: if the lock isn't
+    actually held (as with the previous unreferenced-CTE version), the
+    insert commits BEFORE step 5, occurrences flips to 4, then step 5
+    overwrites it back to 3.
+    """
+    from app.modules.guard.routers.inbox import (
+        _LOCK_OR_CREATE_SQL, _RECONCILE_APPLY_SQL, _DISCOVER_DEDUPS_SQL,
+    )
+    from threading import Event, Thread
+
+    engine, _schema = database
+    # Seed 3 events so an inbox row exists.
+    with engine.begin() as conn:
+        for _ in range(3):
+            _insert_event(conn, decision="warned")
+    with engine.begin() as conn:
+        dedup_key = conn.execute(text(
+            "SELECT dedup_key FROM guard_inbox WHERE workspace_id = :ws"
+        ), {"ws": WS}).one().dedup_key
+
+    conn_bf = engine.connect()
+    insert_done = Event()
+    insert_error: list[Exception] = []
+
+    try:
+        # Step 2 — backfill takes the lock.
+        tx_bf = conn_bf.begin()
+        seed = conn_bf.execute(
+            text(_LOCK_OR_CREATE_SQL),
+            {"ws": WS, "dedup_key": dedup_key},
+        ).one()
+        assert seed.was_insert is False  # lock, not create
+
+        # Step 3 — kick off the trigger-blocking insert in a thread.
+        def do_insert():
+            try:
+                with engine.begin() as conn:
+                    _insert_event(conn, decision="warned")
+            except Exception as exc:
+                insert_error.append(exc)
+            finally:
+                insert_done.set()
+
+        insert_thread = Thread(target=do_insert)
+        insert_thread.start()
+
+        # Step 4 — confirm the insert thread is blocked on a lock.
+        # Poll pg_stat_activity for a waiting-on-lock state up to 5s.
+        # If it completes early, the lock isn't holding and the test
+        # would be a false-positive on the fix.
+        import time
+        deadline = time.time() + 5.0
+        blocked = False
+        while time.time() < deadline:
+            with engine.begin() as probe:
+                waiting = probe.execute(text("""
+                    SELECT count(*) AS n
+                    FROM pg_stat_activity
+                    WHERE wait_event_type = 'Lock'
+                      AND state = 'active'
+                      AND pid <> pg_backend_pid()
+                """)).one().n
+            if waiting >= 1 and not insert_done.is_set():
+                blocked = True
+                break
+            time.sleep(0.05)
+        assert blocked, "trigger insert never blocked — lock is not held"
+
+        # Step 5 — reconcile-under-lock, then commit.
+        conn_bf.execute(
+            text(_RECONCILE_APPLY_SQL),
+            {"ws": WS, "dedup_key": dedup_key},
+        )
+        tx_bf.commit()
+
+        # Step 6 — insert thread now completes.
+        insert_thread.join(timeout=10)
+        assert insert_done.is_set(), "insert thread never completed after unlock"
+        assert not insert_error, f"insert failed: {insert_error[0]}"
+
+        with engine.begin() as conn:
+            row = _one_inbox_row(conn)
+        assert row["occurrences"] == 4, (
+            f"expected occurrences=4 (3 seeded + 1 concurrent); got "
+            f"{row['occurrences']} — concurrent +1 was overwritten"
+        )
+    finally:
+        conn_bf.close()
+
+
+# Kept for scaffolding parity with the review response. The barrier
+# version was flaky — the deterministic version above is the one CI
+# should trust.
 def test_backfill_survives_concurrent_live_insert(database):
-    """Reviewer P1: a live audit-event trigger firing concurrently with
-    a backfill run must not have its ``+1`` lost. The backfill locks
-    the inbox row; the trigger's ON CONFLICT DO UPDATE waits, then
-    increments on top of the reconciled count.
+    """Non-deterministic sibling of the two-transaction test above.
+
+    Uses a Barrier so both operations release at roughly the same time.
+    Doesn't force the failing ordering — kept only as a smoke check on
+    the same guarantee. The deterministic test is authoritative.
     """
     engine, _ = database
-    # Seed 3 events so an inbox row exists.
     with engine.begin() as conn:
         for _ in range(3):
             _insert_event(conn, decision="warned")
@@ -372,9 +486,6 @@ def test_backfill_survives_concurrent_live_insert(database):
     barrier = Barrier(2)
 
     def run_backfill():
-        # Signal ready, then run the reconciliation. Both threads
-        # release from the barrier together so the trigger insert is
-        # racing the FOR UPDATE lock.
         barrier.wait()
         return _run_backfill(engine, WS, days=30)
 
@@ -391,10 +502,6 @@ def test_backfill_survives_concurrent_live_insert(database):
 
     with engine.begin() as conn:
         row = _one_inbox_row(conn)
-    # Whether the trigger's insert happened before or after the
-    # backfill's snapshot, the row must end at exactly 4 (3 seeded + 1
-    # concurrent). If the count is 3 the +1 was lost; if 5 the backfill
-    # double-counted.
     assert row["occurrences"] == 4, (
         f"expected occurrences=4 after concurrent insert; "
         f"got {row['occurrences']} — trigger update was lost"

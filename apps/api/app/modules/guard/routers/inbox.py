@@ -220,189 +220,208 @@ class BackfillOut(BaseModel):
 
 
 # Backfill = "reconcile ``guard_inbox`` against the authoritative
-# ``guard_audit_events`` history for events within the last N days."
+# ``guard_audit_events`` history for groups that had activity in the last
+# N days."
 #
-# Guarantees (reviewer P1 on the original inflate/re-open bug):
+# Reviewer P1 (round 2): the previous single-statement SQL couldn't
+# guarantee serialization with concurrent trigger inserts. Unreferenced
+# CTEs with FOR UPDATE are frequently optimized out by Postgres, and
+# even when they aren't, the ``authoritative`` snapshot ran BEFORE the
+# lock was held — so a trigger's ``+ 1`` between snapshot and UPDATE
+# would be overwritten by the stale count.
 #
-# 1. **Idempotent counts.** ``occurrences`` on each affected group is set
-#    to the exact count of qualifying retained audit events (blocked /
-#    warned / approved with rule_id set) in the reconciliation window.
-#    Re-running the endpoint an arbitrary number of times converges the
-#    row to the same value — no ``+ 1`` drift.
+# New protocol (per group, per transaction):
 #
-# 2. **Concurrent-safe.** ``SELECT ... FOR UPDATE`` on the target inbox
-#    rows serializes the UPDATE with the trigger's ON CONFLICT DO UPDATE
-#    path. A live audit-event insert whose trigger fires while backfill
-#    holds the lock waits, then applies its ``+ 1`` on top of the
-#    reconciled count — so live activity is never overwritten.
+# 1. **Discover** in-window dedup keys with a plain read.
+# 2. For each key, in a single SQLAlchemy transaction:
+#    a. **Lock** the target row via ``INSERT ... ON CONFLICT DO UPDATE``
+#       (the DO UPDATE payload is intentionally a no-op — its only job
+#       is to grab the row-level lock so subsequent trigger
+#       ``ON CONFLICT DO UPDATE``s wait on us).
+#    b. **Snapshot under the lock** — a fresh COUNT / MIN / MAX / severity
+#       read of the audit history, executed AFTER (a) has taken the
+#       lock so any concurrent trigger insert has either committed
+#       before us (visible) or is waiting for our lock (excluded).
+#    c. **Apply** the reconciliation UPDATE.
+#    d. **Commit** — releases the lock. Any waiting trigger now
+#       applies its ``+ 1`` on top of the reconciled count.
 #
-# 3. **Resolution metadata preserved.** ``status`` / ``resolved_reason``
-#    / ``resolved_at`` / ``resolved_by`` / ``resolved_note`` are NEVER
-#    touched on the UPDATE branch. The trigger's re-open behavior stays
-#    the only path that flips a resolved row back to open — and only on
-#    a genuinely-new audit event, not a repair pass over history.
+# Guarantees:
 #
-# 4. **Newer live activity never regresses.** ``first_seen_at`` takes
-#    the ``LEAST``; ``last_seen_at`` takes the ``GREATEST``;
-#    ``latest_event_id`` is only replaced when the backfilled max
-#    timestamp is strictly greater than what's already on the row.
+# - **Idempotent counts.** occurrences = exact count of qualifying
+#   retained audit events. Re-runs converge.
+# - **Concurrent-safe.** Deterministic lock ordering prevents the
+#   overwrite the reviewer flagged.
+# - **New groups included.** Step (a) INSERTs when the row is missing,
+#   still holding the lock, so a brand-new group discovered by backfill
+#   is reconciled the same way as a pre-existing one.
+# - **Resolution metadata preserved.** UPDATE never touches
+#   ``status`` / ``resolved_*``.
+# - **Timestamps never regress.** ``LEAST(first_seen_at)``,
+#   ``GREATEST(last_seen_at)``, ``latest_event_id`` only replaced when
+#   the backfill's max ts strictly exceeds the row's.
+# - **Severity escalates, never downgrades.** Ordinal max across
+#   current row + authoritative history.
 #
-# 5. **Severity escalates, never downgrades.** Ordinal max
-#    (critical > medium > low) across the group's history AND the
-#    current row's value.
-#
-# The ``:days`` window bounds the audit-event scan. Groups touched by
-# the query are reconciled against their FULL history — not just the
-# events within the window — so a wider re-run cannot undo the count of
-# a group that was previously reconciled with a narrower window.
-_BACKFILL_SQL = """
-WITH window_dedups AS (
-    -- All (workspace_id, dedup_key) pairs that have at least one
-    -- qualifying audit event in the requested window. Anything outside
-    -- the window is out of scope — a group with no events in the last
-    -- N days doesn't get its lifetime count "re-verified" today.
-    SELECT DISTINCT
-        ae.workspace_id,
-        encode(
-            digest(
-                ae.workspace_id::text
-                || COALESCE(ae.rule_id, '')
-                || COALESCE(ae.source, '')
-                || LEFT(COALESCE(ae.rule_message, ''), 200),
-                'sha256'
-            ),
-            'hex'
-        ) AS dedup_key
-    FROM guard_audit_events ae
-    WHERE ae.workspace_id = :ws
-      AND ae.decision IN ('blocked', 'warned', 'approved')
-      AND ae.rule_id IS NOT NULL
-      AND ae.ts > NOW() - (:days || ' days')::interval
-),
--- FULL history reconciliation for each in-scope group. Not bounded by
--- :days — see (2) above. If a group's oldest event is a year old and
--- has fired 500 times, occurrences here = 500.
-authoritative AS (
-    SELECT
-        ae.workspace_id,
-        encode(
-            digest(
-                ae.workspace_id::text
-                || COALESCE(ae.rule_id, '')
-                || COALESCE(ae.source, '')
-                || LEFT(COALESCE(ae.rule_message, ''), 200),
-                'sha256'
-            ),
-            'hex'
-        ) AS dedup_key,
-        COALESCE(ae.rule_id, '')     AS rule_id,
-        COALESCE(ae.source, 'unknown') AS source,
-        ae.rule_message AS description,
-        ae.id           AS event_id,
-        ae.ts           AS event_ts,
-        CASE ae.decision
-            WHEN 'blocked'  THEN 3
-            WHEN 'warned'   THEN 2
-            WHEN 'approved' THEN 1
-        END AS sev_ord
-    FROM guard_audit_events ae
-    WHERE ae.workspace_id = :ws
-      AND ae.decision IN ('blocked', 'warned', 'approved')
-      AND ae.rule_id IS NOT NULL
-),
-grouped AS (
-    SELECT
-        a.workspace_id,
-        a.dedup_key,
-        (array_agg(a.rule_id     ORDER BY a.event_ts ASC))[1] AS rule_id,
-        (array_agg(a.source      ORDER BY a.event_ts ASC))[1] AS source,
-        (array_agg(a.description ORDER BY a.event_ts ASC))[1] AS description,
-        MIN(a.event_ts)  AS first_seen_at,
-        MAX(a.event_ts)  AS last_seen_at,
-        (array_agg(a.event_id ORDER BY a.event_ts DESC))[1] AS latest_event_id,
-        COUNT(*)         AS occurrences,
-        MAX(a.sev_ord)   AS max_sev_ord
-    FROM authoritative a
-    JOIN window_dedups w
-      ON w.workspace_id = a.workspace_id
-     AND w.dedup_key    = a.dedup_key
-    GROUP BY a.workspace_id, a.dedup_key
-),
-severity_map AS (
-    SELECT g.*,
-        CASE g.max_sev_ord
-            WHEN 3 THEN 'critical'
-            WHEN 2 THEN 'medium'
-            WHEN 1 THEN 'low'
-            ELSE 'medium'
-        END AS severity
-    FROM grouped g
-),
--- Serialize with the trigger's ON CONFLICT DO UPDATE on any pre-existing
--- inbox row for these groups. Rows we're about to INSERT (new groups)
--- have nothing to lock; the INSERT's own ON CONFLICT below handles the
--- narrow window where a trigger fires for a brand-new group between
--- SELECT and INSERT.
-_locked AS (
-    SELECT gi.id
-    FROM guard_inbox gi
-    JOIN severity_map s
-      ON gi.workspace_id = s.workspace_id
-     AND gi.dedup_key    = s.dedup_key
-    FOR UPDATE
-),
-upserted AS (
-    INSERT INTO guard_inbox (
-        id, workspace_id, dedup_key, rule_id, source, severity,
-        description, occurrences, first_seen_at, last_seen_at, status,
-        latest_event_id
-    )
-    SELECT
-        gen_random_uuid(),
-        s.workspace_id, s.dedup_key, s.rule_id, s.source, s.severity,
-        s.description, s.occurrences, s.first_seen_at, s.last_seen_at,
-        'open', s.latest_event_id
-    FROM severity_map s
-    ON CONFLICT (workspace_id, dedup_key) DO UPDATE
-    SET
-        -- Authoritative count of retained audit events.
-        occurrences     = EXCLUDED.occurrences,
-        -- Never regress timestamps against live activity.
-        first_seen_at   = LEAST(guard_inbox.first_seen_at, EXCLUDED.first_seen_at),
-        last_seen_at    = GREATEST(guard_inbox.last_seen_at, EXCLUDED.last_seen_at),
-        -- Only replace latest_event_id when we actually have a newer event.
-        latest_event_id = CASE
-            WHEN EXCLUDED.last_seen_at > guard_inbox.last_seen_at
-            THEN EXCLUDED.latest_event_id
-            ELSE guard_inbox.latest_event_id
-        END,
-        -- Ordinal max across current row + authoritative history.
-        severity = CASE
-            WHEN (CASE EXCLUDED.severity
-                    WHEN 'critical' THEN 3
-                    WHEN 'medium'   THEN 2
-                    WHEN 'low'      THEN 1
-                    ELSE 0
-                  END)
-              > (CASE guard_inbox.severity
-                    WHEN 'critical' THEN 3
-                    WHEN 'medium'   THEN 2
-                    WHEN 'low'      THEN 1
-                    ELSE 0
-                  END)
-            THEN EXCLUDED.severity
-            ELSE guard_inbox.severity
-        END
-        -- ``status`` / ``resolved_*`` intentionally untouched: only the
-        -- trigger's genuine re-fire path is allowed to reopen a
-        -- resolved finding. A history repair must not do that.
-    RETURNING (xmax = 0) AS was_insert
+# Cost: two round trips per affected group. guard_inbox cardinality is
+# bounded (dedup collapses far more than it fans out), so this scales
+# fine for admin-triggered runs — orders of magnitude cheaper than the
+# audit events they aggregate over.
+
+_DEDUP_HASH_SQL = """
+encode(
+    digest(
+        :ws::text
+        || COALESCE(rule_id, '')
+        || COALESCE(source, '')
+        || LEFT(COALESCE(rule_message, ''), 200),
+        'sha256'
+    ),
+    'hex'
 )
-SELECT
-    COUNT(*) FILTER (WHERE was_insert)     AS inserted,
-    COUNT(*) FILTER (WHERE NOT was_insert) AS reconciled
-FROM upserted
 """
+
+
+_DISCOVER_DEDUPS_SQL = """
+SELECT DISTINCT
+    encode(
+        digest(
+            ae.workspace_id::text
+            || COALESCE(ae.rule_id, '')
+            || COALESCE(ae.source, '')
+            || LEFT(COALESCE(ae.rule_message, ''), 200),
+            'sha256'
+        ),
+        'hex'
+    ) AS dedup_key
+FROM guard_audit_events ae
+WHERE ae.workspace_id = :ws
+  AND ae.decision IN ('blocked', 'warned', 'approved')
+  AND ae.rule_id IS NOT NULL
+  AND ae.ts > NOW() - (:days || ' days')::interval
+"""
+
+
+# Step (a): lock (or create) the guard_inbox row for a single dedup_key.
+# The DO UPDATE payload is a self-assignment — no state change, its
+# only purpose is to take the row lock. RETURNING (xmax = 0) tells us
+# whether we created a fresh row (xmax = 0 → INSERT path) or locked an
+# existing one (xmax != 0 → UPDATE path).
+#
+# For fresh rows we seed with sentinel values — the follow-up UPDATE in
+# step (c) rewrites them from the actual history under the lock.
+_LOCK_OR_CREATE_SQL = """
+INSERT INTO guard_inbox (
+    workspace_id, dedup_key, rule_id, source, severity,
+    description, occurrences, first_seen_at, last_seen_at, status,
+    latest_event_id
+)
+VALUES (
+    :ws, :dedup_key,
+    '', 'unknown', 'medium',
+    NULL, 0, NOW(), NOW(), 'open',
+    NULL
+)
+ON CONFLICT (workspace_id, dedup_key) DO UPDATE
+SET occurrences = guard_inbox.occurrences  -- no-op, just to lock
+RETURNING id, (xmax = 0) AS was_insert
+"""
+
+
+# Step (b) + (c) combined: recompute authoritative snapshot under the
+# lock we hold from step (a), then apply. ``:dedup_key`` is passed so
+# we can filter without recomputing the hash on both sides.
+_RECONCILE_APPLY_SQL = """
+WITH authoritative AS (
+    SELECT
+        (array_agg(ae.rule_id ORDER BY ae.ts ASC))[1] AS rule_id,
+        (array_agg(COALESCE(ae.source, 'unknown') ORDER BY ae.ts ASC))[1] AS source,
+        (array_agg(ae.rule_message ORDER BY ae.ts ASC))[1] AS description,
+        MIN(ae.ts) AS first_seen_at,
+        MAX(ae.ts) AS last_seen_at,
+        (array_agg(ae.id ORDER BY ae.ts DESC))[1] AS latest_event_id,
+        COUNT(*)   AS occurrences,
+        MAX(CASE ae.decision
+                WHEN 'blocked'  THEN 3
+                WHEN 'warned'   THEN 2
+                WHEN 'approved' THEN 1
+            END) AS max_sev_ord
+    FROM guard_audit_events ae
+    WHERE ae.workspace_id = :ws
+      AND ae.decision IN ('blocked', 'warned', 'approved')
+      AND ae.rule_id IS NOT NULL
+      AND encode(
+              digest(
+                  ae.workspace_id::text
+                  || COALESCE(ae.rule_id, '')
+                  || COALESCE(ae.source, '')
+                  || LEFT(COALESCE(ae.rule_message, ''), 200),
+                  'sha256'
+              ),
+              'hex'
+          ) = :dedup_key
+)
+UPDATE guard_inbox gi
+SET
+    -- rule_id / source / description only populated meaningfully for
+    -- freshly-inserted rows where step (a) seeded blanks. For rows
+    -- that already carried real values we keep the existing ones
+    -- (COALESCE(gi.x, a.x)) since the trigger's initial values are
+    -- the ones the UI/API have been reading.
+    rule_id     = COALESCE(NULLIF(gi.rule_id, ''), a.rule_id, ''),
+    source      = COALESCE(NULLIF(gi.source,  ''), a.source, 'unknown'),
+    description = COALESCE(gi.description, a.description),
+    occurrences = COALESCE(a.occurrences, 0),
+    first_seen_at = LEAST(gi.first_seen_at, a.first_seen_at),
+    last_seen_at  = GREATEST(gi.last_seen_at, a.last_seen_at),
+    latest_event_id = CASE
+        WHEN a.last_seen_at IS NOT NULL AND a.last_seen_at > gi.last_seen_at
+        THEN a.latest_event_id
+        ELSE gi.latest_event_id
+    END,
+    severity = CASE
+        WHEN COALESCE(a.max_sev_ord, 0)
+           > (CASE gi.severity
+                WHEN 'critical' THEN 3
+                WHEN 'medium'   THEN 2
+                WHEN 'low'      THEN 1
+                ELSE 0
+              END)
+        THEN (CASE a.max_sev_ord
+                WHEN 3 THEN 'critical'
+                WHEN 2 THEN 'medium'
+                WHEN 1 THEN 'low'
+                ELSE gi.severity
+              END)
+        ELSE gi.severity
+    END
+    -- status / resolved_* intentionally untouched.
+FROM authoritative a
+WHERE gi.workspace_id = :ws
+  AND gi.dedup_key    = :dedup_key
+"""
+
+
+def _reconcile_one(db: Session, ws_uuid: _uuid.UUID, dedup_key: str) -> bool:
+    """Lock, snapshot-under-lock, apply, commit — for a single dedup_key.
+
+    Returns True if the row was newly inserted, False if reconciled.
+    """
+    seed = db.execute(
+        text(_LOCK_OR_CREATE_SQL),
+        {"ws": ws_uuid, "dedup_key": dedup_key},
+    ).one()
+    # Second statement runs in the same session-managed transaction, so
+    # the row lock from _LOCK_OR_CREATE_SQL is still held. Snapshot
+    # inside the UPDATE therefore sees a state where any concurrent
+    # trigger's ON CONFLICT DO UPDATE is BLOCKED — so we never race
+    # against a live ``+ 1`` between snapshot and apply.
+    db.execute(
+        text(_RECONCILE_APPLY_SQL),
+        {"ws": ws_uuid, "dedup_key": dedup_key},
+    )
+    db.commit()  # release the row lock; any waiting trigger now applies.
+    return bool(seed.was_insert)
 
 
 @router.post("/backfill", response_model=BackfillOut)
@@ -414,26 +433,36 @@ def backfill_inbox(
 ) -> BackfillOut:
     """Reconcile guard_inbox against the last N days of audit events.
 
-    Idempotent: re-running with the same (or wider) window converges each
-    affected group to the exact count of its retained audit events. Never
-    inflates counts; never reopens resolved findings; never regresses
-    ``last_seen_at`` / ``latest_event_id``; escalates severity but never
-    downgrades. See ``_BACKFILL_SQL`` module docstring for the full
-    guarantees.
+    Per-group locking + snapshot-under-lock protocol — see
+    ``_LOCK_OR_CREATE_SQL`` / ``_RECONCILE_APPLY_SQL`` module docstring
+    for the full guarantees. Idempotent, concurrent-safe, preserves
+    resolution metadata, escalates severity but never downgrades.
     """
-    row = db.execute(
-        text(_BACKFILL_SQL),
-        {"ws": _uuid.UUID(workspace_id), "days": days},
-    ).one()
+    ws_uuid = _uuid.UUID(workspace_id)
+    rows = db.execute(
+        text(_DISCOVER_DEDUPS_SQL),
+        {"ws": ws_uuid, "days": days},
+    ).fetchall()
+    # Commit the discovery read before we start the per-group loop so
+    # each _reconcile_one() runs in its own tight transaction. Long
+    # transactions holding many row locks would starve concurrent
+    # triggers.
     db.commit()
-    inserted = int(row.inserted or 0)
-    reconciled = int(row.reconciled or 0)
+    inserted = 0
+    reconciled = 0
+    for row in rows:
+        was_insert = _reconcile_one(db, ws_uuid, row.dedup_key)
+        if was_insert:
+            inserted += 1
+        else:
+            reconciled += 1
     log.info(
         "guard_inbox.backfill",
         workspace_id=workspace_id,
         days=days,
         inserted=inserted,
         reconciled=reconciled,
+        groups=len(rows),
     )
     return BackfillOut(days=days, inserted=inserted, reconciled=reconciled)
 

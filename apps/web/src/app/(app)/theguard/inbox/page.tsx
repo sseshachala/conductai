@@ -62,20 +62,23 @@ export default function GuardInboxPage() {
   const [autoCloseSaving, setAutoCloseSaving] = useState(false)
   const [autoCloseMsg, setAutoCloseMsg] = useState<string | null>(null)
 
-  // #2170-follow-up Inbox correctness PR 1 — race protection for polling:
-  //   1. epoch ref bumps on every fetch; late responses (workspace/filter
-  //      changed, or a previous poll cycle still in flight) are dropped
-  //      instead of clobbering current state.
-  //   2. inFlight ref prevents overlapping requests when the interval
-  //      fires while a previous fetch hasn't resolved.
-  //   3. background=true means the spinner stays hidden so polling
-  //      doesn't flash the loading screen.
+  // #2170-follow-up Inbox correctness — race protection for polling.
+  // Reviewer P2 (round 2): the earlier version bailed if a fetch was
+  // in flight, which meant a workspace or filter switch DURING an
+  // in-flight response left the epoch un-advanced — so the stale
+  // response passed the freshness check and populated the newly
+  // selected view. Correct pattern:
+  //
+  //   - ALWAYS advance the epoch on load(). Never early-return.
+  //   - Late responses drop themselves on the OUTPUT side by
+  //     comparing myEpoch to the current epoch after await.
+  //   - Overlapping requests are cheap (network-bound) and correct;
+  //     only the most recent one commits state.
+  //   - A workspace change hard-resets state via the effect below,
+  //     so any in-flight response can't clobber the reset either.
   const epochRef = useRef(0)
-  const inFlightRef = useRef(false)
 
   const load = useCallback(async (opts?: { background?: boolean }) => {
-    if (inFlightRef.current) return
-    inFlightRef.current = true
     const myEpoch = ++epochRef.current
     if (!opts?.background) setLoading(true)
     setError(null)
@@ -93,10 +96,24 @@ export default function GuardInboxPage() {
       if (myEpoch !== epochRef.current) return
       setError(e instanceof Error ? e.message : "load failed")
     } finally {
-      if (!opts?.background) setLoading(false)
-      inFlightRef.current = false
+      // Only clear loading if we're still the most-recent fetch;
+      // otherwise the newer fetch owns the spinner state.
+      if (myEpoch === epochRef.current && !opts?.background) setLoading(false)
     }
   }, [authFetch, statusFilter, severityFilter, sourceFilter])
+
+  // Workspace change: hard-reset workspace-scoped state so a late
+  // response from the previous workspace can't repopulate. The epoch
+  // bump inside load() protects against in-flight-then-commit; this
+  // handles the row/error/expanded state that would otherwise linger.
+  useEffect(() => {
+    epochRef.current += 1   // invalidate any in-flight from previous ws
+    setRows([])
+    setError(null)
+    setExpandedId(null)
+    setEvents({})
+    setLastFetched(null)
+  }, [workspaceId])
 
   useEffect(() => { void load() }, [load])
 
