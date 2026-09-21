@@ -86,16 +86,31 @@ def database():
             # search_path=schema,public in the schema fixture below.
             connection.execute(text("CREATE EXTENSION IF NOT EXISTS pgcrypto"))
             connection.execute(text(_MINIMAL_AUDIT_TABLE))
+            # Migration 0123 does more than create guard_inbox — it also
+            # drops columns and tables from the retired ``code-scan``
+            # module. ``IF EXISTS`` on the column drops doesn't save us:
+            # the parent tables (``projects`` / ``workspaces``) must exist
+            # or PG raises UndefinedTable. Stub them with the exact
+            # column shape 0123's upgrade will drop, so the whole
+            # migration runs end-to-end against the minimal schema.
+            connection.execute(text("""
+                CREATE TABLE projects (
+                    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+                    security_finding_id uuid
+                )
+            """))
+            connection.execute(text("""
+                CREATE TABLE workspaces (
+                    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+                    security_automation_project_id uuid
+                )
+            """))
             # 0123 creates guard_inbox + INSERT trigger + trigger fn.
             # 0133 attaches the UPDATE OF decision trigger.
             # 0147 replaces the trigger fn with severity escalation.
             mig_0123 = _load_migration("0123_drop_security_loop_add_guard_inbox.py")
             mig_0133 = _load_migration("0133_guard_inbox_trg_lifecycle.py")
             mig_0147 = _load_migration("0147_guard_inbox_severity_escalation.py")
-            # 0123's upgrade also DROPs security tables that don't
-            # exist in our minimal schema — the IF EXISTS in that
-            # migration keeps those calls no-op, so the rest of the
-            # migration runs.
             with Operations.context(MigrationContext.configure(connection)):
                 mig_0123.upgrade()
                 mig_0133.upgrade()
