@@ -53,6 +53,11 @@ class LLMResponse:
     usage: LLMUsage
     cost_usd: float = 0.0  # computed by adapter from usage + model pricing; executor sums across turns
     _raw_content: Any = field(default=None, repr=False)  # provider-native content; used by make_assistant_turn
+    # #2170 PR 2 — per-tool_call correlation ids from the Gateway response
+    # (``X-Conduct-Tool-Correlation-Ids``). Empty for the direct-provider
+    # adapters; populated by GatewayProfileClient so brain_block can emit
+    # them into run_events per tool execution.
+    correlation_ids: dict[str, str] = field(default_factory=dict)
 
     def to_cache_dict(self) -> dict:
         def _block_to_dict(b: Any) -> dict:
@@ -69,6 +74,7 @@ class LLMResponse:
             "usage": self.usage.__dict__,
             "cost_usd": self.cost_usd,
             "_raw_content": raw,
+            "correlation_ids": dict(self.correlation_ids),
         }
 
     @classmethod
@@ -84,6 +90,7 @@ class LLMResponse:
             usage=usage,
             cost_usd=d.get("cost_usd", 0.0),
             _raw_content=d.get("_raw_content"),  # plain dicts — accepted by Anthropic/OpenAI APIs
+            correlation_ids=dict(d.get("correlation_ids") or {}),
         )
 
 
@@ -536,3 +543,4 @@ from app.runtime.adapters.anthropic import AnthropicClient as AnthropicClient   
 from app.runtime.adapters.openai import OpenAIClient as OpenAIClient              # noqa: E402, F401
 from app.runtime.adapters.perplexity import PerplexityClient as PerplexityClient  # noqa: E402, F401
 from app.runtime.adapters.together import TogetherClient as TogetherClient        # noqa: E402, F401
+from app.runtime.adapters.gateway_profile import GatewayProfileClient as GatewayProfileClient  # noqa: E402, F401

@@ -566,9 +566,45 @@ def _execute_brain(
 
     pricing_snapshot = freeze_pricing_snapshot()
 
+    # #2170 PR 2 — profile-first routing. Resolve BEFORE the legacy
+    # provider-key check so a workflow that authenticates entirely
+    # through its pinned Gateway profile does not need a legacy vendor
+    # key on the block. Assigned-but-unavailable profiles fail closed
+    # (missing row, unpublished draft, or lookup error all raise). Only
+    # a truly-unassigned workflow (gateway_profile_id IS NULL) falls
+    # through to the legacy per-provider path.
+    _profile_cond_key: str | None = None
+    _profile_assigned: bool = False
+    if workflow_id and db is not None:
+        from app.models.workflow import Workflow as _WF
+        from app.models.gateway_profile import GatewayProfile as _GP
+        _wf_row = db.query(_WF).filter(_WF.id == workflow_id).first()
+        if _wf_row and _wf_row.gateway_profile_id:
+            _profile_assigned = True
+            _prof_row = db.query(_GP).filter(_GP.id == _wf_row.gateway_profile_id).first()
+            if _prof_row is None:
+                raise RuntimeError(
+                    f"workflow {workflow_id} pins Gateway profile "
+                    f"{_wf_row.gateway_profile_id} which no longer exists. "
+                    f"Fix: select a valid profile in workflow settings."
+                )
+            if not _prof_row.active_revision_id or not _prof_row.cond_code:
+                raise RuntimeError(
+                    f"workflow {workflow_id} pins Gateway profile "
+                    f"{_prof_row.name!r} which has no published revision. "
+                    f"Fix: publish the profile or pick a different one."
+                )
+            _alias = (_prof_row.model_alias or "").strip()
+            _profile_cond_key = (
+                f"cond-{_prof_row.cond_code}-{_alias}"
+                if _alias else f"cond-{_prof_row.cond_code}"
+            )
+
     from app.runtime.provider_keys import MissingProviderKey
     _provider_keys = {"anthropic": _anthropic_key, "openai": _openai_key, "perplexity": _perplexity_key}
-    if not _provider_keys[provider]:
+    # Provider key only required on the legacy path. Profile-routed
+    # workflows use the profile's own credentials at the gateway.
+    if not _profile_assigned and not _provider_keys[provider]:
         raise MissingProviderKey(provider, model_id)
 
     # Guard proxy URL is a platform constant — same for every workspace.
@@ -611,15 +647,30 @@ def _execute_brain(
         if user_email:
             _extra_headers["x-conductai-user-email"] = user_email
 
-    client_for = {"anthropic": AnthropicClient, "openai": OpenAIClient, "perplexity": PerplexityClient}
-    _client_kwargs: dict = {
-        "api_key": _effective_key,
-        "pricing_snapshot": pricing_snapshot,
-        "base_url": _effective_base_url,
-    }
-    if _extra_headers:
-        _client_kwargs["default_headers"] = _extra_headers
-    llm = client_for[provider](**_client_kwargs)
+    # Profile-routed client uses the profile's own credentials at the
+    # gateway. Legacy per-provider client uses ``_effective_key``.
+    if _profile_cond_key:
+        from app.runtime.llm_client import GatewayProfileClient as _GPC
+        llm = _GPC(
+            profile_cond_code=_profile_cond_key,
+            base_url=_conduct_proxy_url,
+            default_headers=_extra_headers,
+            # Pricing snapshot lets the adapter compute cost from the
+            # response's ``model`` + ``usage`` so brain_block's
+            # per-block ``max_cost_usd`` cap stays enforced. Without
+            # this the loop would see cost_usd=0.0 and never stop.
+            pricing_snapshot=pricing_snapshot,
+        )
+    else:
+        client_for = {"anthropic": AnthropicClient, "openai": OpenAIClient, "perplexity": PerplexityClient}
+        _client_kwargs: dict = {
+            "api_key": _effective_key,
+            "pricing_snapshot": pricing_snapshot,
+            "base_url": _effective_base_url,
+        }
+        if _extra_headers:
+            _client_kwargs["default_headers"] = _extra_headers
+        llm = client_for[provider](**_client_kwargs)
 
     pricing_rates, pricing_version = get_model_rates(provider, model_id, pricing_snapshot)
 
@@ -1279,11 +1330,18 @@ def _execute_brain(
                                  content=result_content[:8000] if result_content else None,
                                  tool_use_id=tc.id)
                 if db and run_id:
-                    _emit(db, run_id, block_id, "brain_tool_call", {
+                    _tool_call_evt: dict = {
                         "tool": tc.name,
                         "summary": _summarise_tool_call(tc.name, tc.input),
                         "turn": turns,
-                    })
+                    }
+                    # #2170 PR 2 — join key back to the Gateway audit row.
+                    # Populated when the workflow routes through a profile;
+                    # empty for direct-provider paths.
+                    _corr_id = (response.correlation_ids or {}).get(tc.id)
+                    if _corr_id:
+                        _tool_call_evt["tool_call_correlation_id"] = _corr_id
+                    _emit(db, run_id, block_id, "brain_tool_call", _tool_call_evt)
 
             # Append tool results (provider-specific format via adapter)
             messages.extend(llm.make_tool_results_turn(raw_tool_results))
