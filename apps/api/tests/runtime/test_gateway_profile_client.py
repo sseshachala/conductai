@@ -500,9 +500,11 @@ def test_stream_reads_correlation_header_before_body():
     assert resp.correlation_ids == corr
 
 
-def test_stream_sends_include_usage_option():
-    """stream_enabled=True must inject stream_options.include_usage=true.
-    Without it the SSE contract drops the final usage frame and cost cap fails.
+def test_stream_does_not_send_stream_options_client_side():
+    """Reviewer P1 (#2183): the canonical shim rejects ``stream_options``
+    from the client (``extra_forbidden``). The shim itself injects
+    ``stream_options.include_usage: true`` server-side when stream=true,
+    so the outbound payload MUST NOT set it.
     """
     fake = _FakeStreamResp(_sse(
         {"choices": [{"delta": {"content": "x"}, "finish_reason": None}]},
@@ -527,7 +529,10 @@ def test_stream_sends_include_usage_option():
             system="",
         )
     assert seen_body.get("stream") is True
-    assert seen_body.get("stream_options") == {"include_usage": True}
+    assert "stream_options" not in seen_body, (
+        f"stream_options must be injected server-side; found in outbound "
+        f"payload: {seen_body.get('stream_options')!r}"
+    )
 
 
 def test_stream_error_raises_with_status():
@@ -571,3 +576,177 @@ def test_stream_off_by_default_uses_non_streaming_path():
         )
         assert mock_post.call_args.kwargs["json_body"]["stream"] is False
         assert "stream_options" not in mock_post.call_args.kwargs["json_body"]
+
+
+# ─── Reviewer P1 (#2183): terminal-state discipline ────────────────────
+
+
+def test_stream_error_sse_event_raises_terminal():
+    """Reviewer P1: a top-level ``{"error": {...}}`` SSE frame must
+    raise GatewayStreamError, not be treated as a completed turn.
+
+    Reproduced from the review probe: post-inference tool-args validation
+    refusal from the gateway is delivered as an error event followed by
+    [DONE]. Prior code returned end_turn with empty content and marked
+    the paid attempt as successful.
+    """
+    from app.runtime.adapters.gateway_profile import GatewayStreamError
+
+    fake = _FakeStreamResp(_sse(
+        {"choices": [{"delta": {"content": ""}, "finish_reason": None}]},
+        {"error": {
+            "message": "tool_call arguments failed validation",
+            "type": "conduct_gateway_tool_arguments_validation_failed",
+        }},
+    ))
+    with patch("httpx.stream", _patch_httpx_stream(fake)):
+        client = GatewayProfileClient(
+            profile_cond_code="cond-ABC12345",
+            base_url="https://gw.example.com/gateway/v1",
+            stream_enabled=True,
+        )
+        try:
+            client.create(
+                model="ignored",
+                messages=[{"role": "user", "content": "x"}],
+                system="",
+            )
+        except GatewayStreamError as exc:
+            assert "conduct_gateway_tool_arguments_validation_failed" in str(exc)
+            return
+    raise AssertionError("expected GatewayStreamError on SSE error event")
+
+
+def test_stream_incomplete_no_done_no_finish_raises():
+    """Reviewer P1: EOF without [DONE] and no finish_reason → raise.
+
+    Prior code defaulted finish_reason to 'stop' and returned end_turn
+    on partial content, silently masking a truncated stream.
+    """
+    from app.runtime.adapters.gateway_profile import GatewayStreamError
+
+    # No [DONE] terminator, no finish_reason on any choice.
+    fake = _FakeStreamResp([
+        "data: " + json.dumps(
+            {"choices": [{"delta": {"content": "partial "}, "finish_reason": None}]}
+        ),
+        "",
+        "data: " + json.dumps(
+            {"choices": [{"delta": {"content": "text"}, "finish_reason": None}]}
+        ),
+    ])
+    with patch("httpx.stream", _patch_httpx_stream(fake)):
+        client = GatewayProfileClient(
+            profile_cond_code="cond-ABC12345",
+            base_url="https://gw.example.com/gateway/v1",
+            stream_enabled=True,
+        )
+        try:
+            client.create(
+                model="ignored",
+                messages=[{"role": "user", "content": "x"}],
+                system="",
+            )
+        except GatewayStreamError as exc:
+            assert "partial content" in str(exc) or "incomplete" in str(exc).lower() or "unsafe" in str(exc).lower()
+            return
+    raise AssertionError("expected GatewayStreamError on incomplete stream")
+
+
+def test_stream_invalid_tool_call_arguments_raises_before_dispatch():
+    """Reviewer P1: tool_call.arguments that isn't valid JSON at end of
+    stream must raise, not reach the tool executor.
+    """
+    from app.runtime.adapters.gateway_profile import GatewayStreamError
+
+    # id + name arrive; arguments fragments accumulate to malformed JSON.
+    fake = _FakeStreamResp(_sse(
+        {"choices": [{"delta": {"tool_calls": [{
+            "index": 0, "id": "call_x", "type": "function",
+            "function": {"name": "read_file", "arguments": ""},
+        }]}, "finish_reason": None}]},
+        {"choices": [{"delta": {"tool_calls": [{
+            "index": 0, "function": {"arguments": '{"path": '},
+        }]}, "finish_reason": None}]},
+        {"choices": [{"delta": {}, "finish_reason": "tool_calls"}]},
+    ))
+    with patch("httpx.stream", _patch_httpx_stream(fake)):
+        client = GatewayProfileClient(
+            profile_cond_code="cond-ABC12345",
+            base_url="https://gw.example.com/gateway/v1",
+            stream_enabled=True,
+        )
+        try:
+            client.create(
+                model="ignored",
+                messages=[{"role": "user", "content": "x"}],
+                system="",
+            )
+        except GatewayStreamError as exc:
+            assert "non-JSON arguments" in str(exc)
+            return
+    raise AssertionError("expected GatewayStreamError on invalid tool_call args")
+
+
+def test_stream_correlation_ids_via_sse_event():
+    """Reviewer P2: correlation ids arrive inside SSE ``conduct``
+    frames on streaming responses (headers get stripped by some hops).
+    Must be captured onto ``LLMResponse.correlation_ids``.
+    """
+    fake = _FakeStreamResp(_sse(
+        {"choices": [{"delta": {"tool_calls": [{
+            "index": 0, "id": "call_1", "type": "function",
+            "function": {"name": "read_file", "arguments": "{}"},
+        }]}, "finish_reason": None}]},
+        # Gateway emits correlation ids as a conduct meta-frame.
+        {"conduct": {"tool_call_correlation_ids": {"call_1": "tcc_sse_test"}}},
+        {"choices": [{"delta": {}, "finish_reason": "tool_calls"}]},
+    ))
+    with patch("httpx.stream", _patch_httpx_stream(fake)):
+        client = GatewayProfileClient(
+            profile_cond_code="cond-ABC12345",
+            base_url="https://gw.example.com/gateway/v1",
+            stream_enabled=True,
+        )
+        resp = client.create(
+            model="ignored",
+            messages=[{"role": "user", "content": "x"}],
+            system="",
+        )
+    assert resp.correlation_ids == {"call_1": "tcc_sse_test"}
+
+
+def test_stream_correlation_ids_merges_sse_and_header():
+    """Header + SSE both carry correlation ids for different calls; the
+    adapter unions them so the runtime never loses a join key."""
+    from app.modules.guard.tools_validator import encode_correlation_header
+
+    header_val = encode_correlation_header({"call_hdr": "tcc_from_header"})
+    fake = _FakeStreamResp(
+        _sse(
+            {"choices": [{"delta": {"tool_calls": [
+                {"index": 0, "id": "call_hdr", "type": "function",
+                 "function": {"name": "a", "arguments": "{}"}},
+                {"index": 1, "id": "call_sse", "type": "function",
+                 "function": {"name": "b", "arguments": "{}"}},
+            ]}, "finish_reason": None}]},
+            {"conduct": {"tool_call_correlation_ids": {"call_sse": "tcc_from_sse"}}},
+            {"choices": [{"delta": {}, "finish_reason": "tool_calls"}]},
+        ),
+        headers={"X-Conduct-Tool-Correlation-Ids": header_val},
+    )
+    with patch("httpx.stream", _patch_httpx_stream(fake)):
+        client = GatewayProfileClient(
+            profile_cond_code="cond-ABC12345",
+            base_url="https://gw.example.com/gateway/v1",
+            stream_enabled=True,
+        )
+        resp = client.create(
+            model="ignored",
+            messages=[{"role": "user", "content": "x"}],
+            system="",
+        )
+    assert resp.correlation_ids == {
+        "call_hdr": "tcc_from_header",
+        "call_sse": "tcc_from_sse",
+    }
