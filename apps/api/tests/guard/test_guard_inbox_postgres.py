@@ -78,13 +78,19 @@ def database():
     admin = create_engine(url)
     with admin.begin() as connection:
         connection.execute(CreateSchema(schema))
-    engine = create_engine(url, connect_args={"options": f"-csearch_path={schema}"})
+    # search_path includes ``public`` from the start so pgcrypto's
+    # ``digest()`` / ``gen_random_uuid()`` are visible during the
+    # migration's SQL (which qualifies neither). ``CREATE EXTENSION
+    # IF NOT EXISTS pgcrypto`` is database-wide — once installed
+    # anywhere, subsequent calls no-op. Force the SCHEMA clause to
+    # public so it lands there deterministically across CI runs.
+    engine = create_engine(
+        url,
+        connect_args={"options": f"-csearch_path={schema},public"},
+    )
     try:
         with engine.begin() as connection:
-            # pgcrypto is public-schema; make sure the schema search path
-            # sees digest()/gen_random_uuid() by qualifying via
-            # search_path=schema,public in the schema fixture below.
-            connection.execute(text("CREATE EXTENSION IF NOT EXISTS pgcrypto"))
+            connection.execute(text("CREATE EXTENSION IF NOT EXISTS pgcrypto SCHEMA public"))
             connection.execute(text(_MINIMAL_AUDIT_TABLE))
             # Migration 0123 does more than create guard_inbox — it also
             # drops columns and tables from the retired ``code-scan``
@@ -115,11 +121,9 @@ def database():
                 mig_0123.upgrade()
                 mig_0133.upgrade()
                 mig_0147.upgrade()
-        # Reset search_path on each connection so pgcrypto (public) is
-        # visible to the trigger.
-        engine = create_engine(
-            url, connect_args={"options": f"-csearch_path={schema},public"},
-        )
+        # Same engine — search_path already includes ``public`` (set
+        # when the engine was created above), so pgcrypto is visible
+        # to the trigger fn on every test connection.
         yield engine, schema
     finally:
         engine.dispose()
