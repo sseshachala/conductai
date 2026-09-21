@@ -185,6 +185,26 @@ def _finish_reason_for_choice(chunk: dict, target_idx: int) -> str | None:
     return None
 
 
+def _synthesize_correlation_frame(correlation_ids: dict[str, str]) -> bytes:
+    """Emit one synthetic SSE frame carrying tool_call correlation IDs.
+
+    Streaming responses can't set ``X-Conduct-Tool-Correlation-Ids`` as
+    an HTTP header — headers ship before we know the tool_call.ids
+    (they arrive in the stream body). Instead we ride an in-band frame
+    with a ``conduct`` envelope that off-the-shelf OpenAI SDKs safely
+    ignore (they concatenate on ``choices[]``, not on arbitrary top-
+    level keys).
+
+    Callers who care about the correlation IDs read this frame; callers
+    that don't get a normal completion stream.
+
+    Format:
+    ``data: {"conduct": {"tool_call_correlation_ids": {tool_call_id: correlation_id}}}\\n\\n``
+    """
+    payload = {"conduct": {"tool_call_correlation_ids": correlation_ids}}
+    return _SSE_DATA_PREFIX + json.dumps(payload).encode("utf-8") + _SSE_SEP
+
+
 def _synthesize_tool_calls_frame(
     state: _ChoiceState,
     choice_index: int,
@@ -442,3 +462,18 @@ async def _flush_finish_choices(
             continue
 
         yield _synthesize_tool_calls_frame(state, choice_idx)
+
+        # #2158 — emit correlation IDs in an in-band conduct envelope
+        # frame right after the validated tool_calls. Same generation
+        # helper as non-streaming so the two paths land the same shape.
+        from app.modules.guard.tools_validator import (
+            generate_tool_call_correlation_ids as _gen_corr,
+        )
+        gen_calls = [
+            {"id": buf.id, "name": buf.name}
+            for _idx, buf in sorted(state.tool_calls.items())
+            if buf.id
+        ]
+        corr = _gen_corr(gen_calls)
+        if corr:
+            yield _synthesize_correlation_frame(corr)

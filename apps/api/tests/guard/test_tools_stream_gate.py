@@ -130,16 +130,39 @@ class TestToolCallBuffering:
         ]
         out = await _drain(chunks)
 
-        # Only 3 frames leave the wrapper: synthesized tool_calls,
-        # finish frame, [DONE]. None of the 4 fragment frames pass
-        # through — the invariant is "no partial arg bytes reach the
-        # client."
-        assert len(out) == 3
+        # 4 frames leave the wrapper: synthesized tool_calls, #2158
+        # correlation envelope, finish frame, [DONE]. None of the 4
+        # fragment frames pass through — the invariant is "no partial
+        # arg bytes reach the client."
+        assert len(out) == 4
         synth = out[0]
         assert synth["choices"][0]["delta"]["tool_calls"][0]["function"]["name"] == "get_weather"
         assert synth["choices"][0]["delta"]["tool_calls"][0]["function"]["arguments"] == '{"city": "SF"}'
         assert synth["choices"][0]["delta"]["tool_calls"][0]["id"] == "call_abc"
-        assert out[1]["choices"][0]["finish_reason"] == "tool_calls"
+        assert "conduct" in out[1]  # correlation frame
+        assert out[2]["choices"][0]["finish_reason"] == "tool_calls"
+        assert out[-1] == "[DONE]"
+
+    async def test_correlation_frame_emitted_after_tool_calls(self) -> None:
+        # #2158 — streaming responses can't set the correlation header,
+        # so the wrapper rides an in-band ``conduct`` envelope frame
+        # right after the synthesized tool_calls frame.
+        chunks = [
+            _sse({"choices": [{"index": 0, "delta": {
+                "tool_calls": [{"index": 0, "id": "call_xyz", "type": "function",
+                                "function": {"name": "get_x", "arguments": "{}"}}]}}]}),
+            _sse({"choices": [{"index": 0, "delta": {}, "finish_reason": "tool_calls"}]}),
+            _done(),
+        ]
+        out = await _drain(chunks)
+        # Order: tool_calls frame, correlation frame, finish frame, [DONE].
+        assert out[0]["choices"][0]["delta"]["tool_calls"][0]["id"] == "call_xyz"
+        assert "conduct" in out[1]
+        corr = out[1]["conduct"]["tool_call_correlation_ids"]
+        assert "call_xyz" in corr
+        # 16-hex slice per the shared correlation helper.
+        assert len(corr["call_xyz"]) == 16
+        assert out[2]["choices"][0]["finish_reason"] == "tool_calls"
         assert out[-1] == "[DONE]"
 
     async def test_text_before_tool_call_passes_through(self) -> None:
@@ -154,10 +177,11 @@ class TestToolCallBuffering:
             _done(),
         ]
         out = await _drain(chunks)
-        # Text frame first (passthrough), synthesized tool_calls, finish, [DONE]
+        # Text passthrough, synthesized tool_calls, correlation frame, finish, [DONE]
         assert out[0]["choices"][0]["delta"]["content"] == "Checking..."
         assert out[1]["choices"][0]["delta"]["tool_calls"][0]["function"]["name"] == "search"
-        assert out[2]["choices"][0]["finish_reason"] == "tool_calls"
+        assert "conduct" in out[2]
+        assert out[3]["choices"][0]["finish_reason"] == "tool_calls"
         assert out[-1] == "[DONE]"
 
     async def test_multiple_parallel_tool_calls_flushed_together(self) -> None:
@@ -178,7 +202,8 @@ class TestToolCallBuffering:
             _done(),
         ]
         out = await _drain(chunks)
-        assert len(out) == 3
+        # synth tool_calls, correlation, finish, [DONE]
+        assert len(out) == 4
         tcs = out[0]["choices"][0]["delta"]["tool_calls"]
         assert len(tcs) == 2
         # Compare parsed args, not the raw JSON string — the redactor
