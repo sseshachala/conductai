@@ -80,6 +80,7 @@ class GatewayProfileClient:
         default_headers: dict | None = None,
         api_key: str | None = None,
         pricing_snapshot: dict[str, Any] | None = None,
+        stream_enabled: bool = False,
     ) -> None:
         # ``api_key`` accepted for interface parity with the sibling adapters
         # (brain_block builds a single kwargs dict). The gateway itself is
@@ -90,6 +91,13 @@ class GatewayProfileClient:
         self._base_url = base_url.rstrip("/")
         self._default_headers = default_headers or {}
         self._pricing_snapshot = pricing_snapshot
+        # #2170 PR 3 — when True, ``create()`` sends ``stream: true`` +
+        # ``stream_options.include_usage: true`` and reassembles the SSE
+        # stream into an LLMResponse. Gated by ops per rollout because
+        # the canonical shim rejects stream+tools unless
+        # ``GUARD_GATEWAY_TOOLS_STREAM_ENABLED`` is set on the gateway
+        # (see #2155 buffered-delta validation).
+        self._stream_enabled = stream_enabled
         # Sub-identifier used in retry/upstream events so operators can
         # distinguish Gateway-profile failures from direct-provider ones.
         self._provider = "gateway_profile"
@@ -123,8 +131,14 @@ class GatewayProfileClient:
             "profile": self._profile,
             "messages": oai_messages,
             "max_tokens": max_tokens,
-            "stream": False,
+            "stream": bool(self._stream_enabled),
         }
+        # Reviewer P1 (#2183): the canonical shim's ``_CanonicalRequest``
+        # is ``extra="forbid"`` and rejects ``stream_options`` from the
+        # client with 400 (``extra_forbidden``). The shim itself injects
+        # ``stream_options.include_usage: true`` server-side whenever
+        # ``stream=true``, so we get the usage frame for free and must
+        # NOT set the field on the outbound payload.
         if tools:
             # Same BRAIN_TOOLS → OpenAI ``functions`` shape OpenAIClient uses.
             payload["tools"] = [
@@ -156,19 +170,34 @@ class GatewayProfileClient:
         # 5xxs and triples the paid inference cost. Force single-shot here.
         _outer_attempt_hint = outer_attempt  # kept for interface parity
         _ = _outer_attempt_hint
-        r = post_with_retry(
-            url=f"{self._base_url}/completions",
-            headers=headers,
-            json_body=payload,
-            provider=self._provider,
-            max_attempts=1,
-            on_retry=on_retry,
-        )
-        raise_if_guard_proxy_blocked(provider=self._provider, response=r)
-        if r.status_code >= 400:
-            raise Exception(f"gateway_profile {r.status_code}: {r.text[:500]}")
 
-        raw = r.json()
+        if self._stream_enabled:
+            # PR 3 — consume SSE, reassemble text + tool_call deltas into
+            # the same OpenAI chat-shape message the non-streaming branch
+            # would have received. Correlation header comes off the
+            # response before body consumption.
+            reassembled, resp_headers = _stream_and_reassemble(
+                url=f"{self._base_url}/completions",
+                headers={**headers, "Accept": "text/event-stream"},
+                payload=payload,
+                provider=self._provider,
+            )
+            raw = reassembled
+            _resp_headers = resp_headers
+        else:
+            r = post_with_retry(
+                url=f"{self._base_url}/completions",
+                headers=headers,
+                json_body=payload,
+                provider=self._provider,
+                max_attempts=1,
+                on_retry=on_retry,
+            )
+            raise_if_guard_proxy_blocked(provider=self._provider, response=r)
+            if r.status_code >= 400:
+                raise Exception(f"gateway_profile {r.status_code}: {r.text[:500]}")
+            raw = r.json()
+            _resp_headers = dict(r.headers) if hasattr(r, "headers") else {}
         choice = ((raw.get("choices") or [{}])[0])
         message = choice.get("message") or {}
         finish_reason = choice.get("finish_reason") or "stop"
@@ -207,10 +236,13 @@ class GatewayProfileClient:
         stop_reason = stop_reason_map.get(finish_reason, "end_turn")
 
         # #2158 — per-tool_call correlation ids ride back on the response
-        # header. Parse into {call_id: correlation_id} so brain_block can
-        # emit them alongside each tool execution's run_events entry.
+        # header OR (on streaming) inside ``conduct.tool_call_correlation_ids``
+        # SSE frames the reassembler stashes on ``_conduct_correlation_ids``.
+        # Reviewer P2 #2183: streaming responses may have neither header
+        # (some intermediaries strip custom headers on SSE) nor both.
+        # Union the two so the runtime never loses the join key.
         correlation_ids: dict[str, str] = {}
-        corr_header = r.headers.get("X-Conduct-Tool-Correlation-Ids") if hasattr(r, "headers") else None
+        corr_header = _resp_headers.get("X-Conduct-Tool-Correlation-Ids") or _resp_headers.get("x-conduct-tool-correlation-ids")
         if corr_header:
             try:
                 from app.modules.guard.tools_validator import (
@@ -222,6 +254,11 @@ class GatewayProfileClient:
                 # still complete on the gateway side; the runtime just loses
                 # the join key for this call.
                 correlation_ids = {}
+        sse_corr = raw.pop("_conduct_correlation_ids", None) if isinstance(raw, dict) else None
+        if isinstance(sse_corr, dict):
+            for k, v in sse_corr.items():
+                if isinstance(k, str) and isinstance(v, str):
+                    correlation_ids.setdefault(k, v)
 
         # Reviewer P1 (#2182): compute cost client-side from response
         # ``model`` + ``usage`` so brain_block's per-block ``max_cost_usd``
@@ -254,13 +291,15 @@ class GatewayProfileClient:
         system: str,
         max_tokens: int = 4096,
     ) -> Iterator[str]:
-        # ponytail: streaming lands in the follow-up PR. brain_block's
-        # agentic loop doesn't call stream() today, so this is a "raise
-        # if you get here" surface, not a hot path.
+        # brain_block's agentic loop only uses create(); this method is
+        # here for LLMClient Protocol compliance. If a future caller
+        # wants raw text-delta streaming (e.g. a chat surface), set
+        # ``stream_enabled=True`` on the client and use create() — it
+        # reassembles internally. A yielding stream() adds a second
+        # code path with no current consumer.
         raise NotImplementedError(
-            "GatewayProfileClient.stream is not implemented — streaming through "
-            "the canonical /completions shim needs SSE reassembly of "
-            "delta.tool_calls[].function.arguments (see follow-up to #2170)."
+            "GatewayProfileClient.stream (yield-per-delta) is not wired. "
+            "Use create() with stream_enabled=True for reassembled streaming."
         )
 
     def make_assistant_turn(self, response: LLMResponse) -> list[dict]:
@@ -277,3 +316,220 @@ class GatewayProfileClient:
             {"role": "tool", "tool_call_id": tid, "content": content}
             for tid, content in results
         ]
+
+
+# ─── SSE reassembly (PR 3) ─────────────────────────────────────────────
+
+
+class GatewayStreamError(Exception):
+    """Terminal streaming failure — never treat as a completed turn.
+
+    Raised on:
+      - top-level ``{"error": {...}}`` SSE frames (upstream signalled failure)
+      - EOF without ``[DONE]`` and without any ``finish_reason`` (incomplete stream)
+      - a tool_call whose accumulated ``arguments`` isn't valid JSON at end-of-stream
+    """
+
+
+def _stream_and_reassemble(
+    *,
+    url: str,
+    headers: dict,
+    payload: dict,
+    provider: str,
+) -> tuple[dict, dict]:
+    """POST with stream=true, walk the SSE frames, reassemble to a
+    non-streaming OpenAI chat-completion shape. Returns ``(reassembled_json,
+    response_headers_dict)``.
+
+    The output shape matches what the non-streaming branch consumes so the
+    downstream mapping (tool_use blocks, cost, correlation) doesn't
+    branch on transport:
+
+        {
+          "id": "...",
+          "model": "<upstream-model>",
+          "choices": [{
+            "message": {"content": "...", "tool_calls": [...]},
+            "finish_reason": "stop" | "tool_calls" | "length"
+          }],
+          "usage": {"prompt_tokens": N, "completion_tokens": M},
+          "_conduct_correlation_ids": {"call_1": "tcc_..."},
+        }
+
+    Tool-call reassembly: OpenAI's streaming contract sends the
+    ``id``/``name``/``type`` once on the first delta for a given index
+    and then fragments ``function.arguments`` across many deltas.
+    We accumulate by ``index`` and only emit each call once at the end.
+
+    Terminal-state discipline (reviewer P1 #2183): three failure modes
+    that must NOT be silently treated as a completed turn:
+      1. Any SSE frame with a top-level ``error`` field — raise.
+      2. Any tool_call whose accumulated ``arguments`` string is not
+         valid JSON when the stream ends — raise (a downstream executor
+         would fail worse; catch here before any tool runs).
+      3. EOF without ``[DONE]`` and without any ``finish_reason`` on
+         any choice — raise (partial stream = incomplete turn).
+
+    Correlation (reviewer P2 #2183): the gateway emits per-tool_call
+    correlation ids inside SSE frames as ``{"conduct":
+    {"tool_call_correlation_ids": {...}}}`` in addition to the header
+    (which some upstreams strip on streaming). We collect from either
+    surface and return the union in ``_conduct_correlation_ids``.
+    """
+    import httpx as _httpx
+
+    _text_parts: list[str] = []
+    _tool_calls_by_index: dict[int, dict[str, Any]] = {}
+    _finish_reason: str | None = None
+    _usage: dict[str, Any] = {}
+    _model: str = ""
+    _id: str = ""
+    _resp_headers: dict[str, str] = {}
+    _saw_done: bool = False
+    _correlation_sse: dict[str, str] = {}
+
+    with _httpx.stream(
+        "POST", url, headers=headers, json=payload,
+        timeout=_httpx.Timeout(600.0),
+    ) as resp:
+        _resp_headers = {k: v for k, v in resp.headers.items()}
+        if resp.status_code >= 400:
+            body = b""
+            for _chunk in resp.iter_bytes():
+                body += _chunk
+            raise Exception(
+                f"{provider} {resp.status_code}: "
+                f"{body[:500].decode(errors='replace')}"
+            )
+
+        for line in resp.iter_lines():
+            if not line or not line.startswith("data:"):
+                continue
+            data = line[5:].strip()
+            if data == "[DONE]":
+                _saw_done = True
+                break
+            try:
+                obj = json.loads(data)
+            except json.JSONDecodeError:
+                continue
+
+            # Reviewer P1 — top-level ``error`` SSE frame is terminal.
+            # Gateway emits these when a tool-args validation refusal
+            # happens post-inference; without this check the workflow
+            # sees end_turn with empty content and marks the paid
+            # attempt as successful.
+            if isinstance(obj.get("error"), dict):
+                err = obj["error"]
+                msg = err.get("message") or str(err)
+                etype = err.get("type") or "gateway_stream_error"
+                raise GatewayStreamError(f"{etype}: {msg}")
+
+            # Reviewer P2 — correlation ids inside SSE frames.
+            # Gateway emits ``{"conduct": {"tool_call_correlation_ids":
+            # {...}}}`` on streaming responses. Merge with anything the
+            # response header carries.
+            _conduct_meta = obj.get("conduct")
+            if isinstance(_conduct_meta, dict):
+                _corr = _conduct_meta.get("tool_call_correlation_ids")
+                if isinstance(_corr, dict):
+                    for k, v in _corr.items():
+                        if isinstance(k, str) and isinstance(v, str):
+                            _correlation_sse[k] = v
+
+            # Top-level id/model are echoed on every chunk; last one wins
+            # (they're the same in practice, but be robust).
+            if isinstance(obj.get("id"), str):
+                _id = obj["id"]
+            if isinstance(obj.get("model"), str):
+                _model = obj["model"]
+
+            # Final usage chunk (stream_options.include_usage=true).
+            if isinstance(obj.get("usage"), dict):
+                _usage = obj["usage"]
+
+            for choice in obj.get("choices") or []:
+                if choice.get("finish_reason"):
+                    _finish_reason = choice["finish_reason"]
+                delta = choice.get("delta") or {}
+                # Text content — plain accumulation.
+                if isinstance(delta.get("content"), str):
+                    _text_parts.append(delta["content"])
+                # Tool call fragments — merge by index.
+                for tc in delta.get("tool_calls") or []:
+                    if not isinstance(tc, dict):
+                        continue
+                    idx = tc.get("index")
+                    if not isinstance(idx, int):
+                        continue
+                    slot = _tool_calls_by_index.setdefault(idx, {
+                        "id": "", "type": "function",
+                        "function": {"name": "", "arguments": ""},
+                    })
+                    if isinstance(tc.get("id"), str) and tc["id"]:
+                        slot["id"] = tc["id"]
+                    if isinstance(tc.get("type"), str) and tc["type"]:
+                        slot["type"] = tc["type"]
+                    fn_frag = tc.get("function") or {}
+                    if isinstance(fn_frag, dict):
+                        if isinstance(fn_frag.get("name"), str) and fn_frag["name"]:
+                            slot["function"]["name"] = fn_frag["name"]
+                        if isinstance(fn_frag.get("arguments"), str):
+                            # Accumulate — arguments arrive as JSON string
+                            # deltas that concatenate into a valid object.
+                            slot["function"]["arguments"] += fn_frag["arguments"]
+
+    # Reviewer P1 — reject incomplete streams. Neither [DONE] nor any
+    # finish_reason means the SSE stream truncated mid-response. Treating
+    # the partial content as end_turn would let the workflow proceed on
+    # data the upstream never finished producing.
+    if not _saw_done and _finish_reason is None:
+        raise GatewayStreamError(
+            "stream ended without [DONE] and no choice carried a "
+            "finish_reason — treating partial content as a completed "
+            "turn is unsafe. This is a Gateway or upstream failure."
+        )
+
+    # Reviewer P1 — tool_call arguments must parse as JSON at end of
+    # stream. Missing or malformed arguments here would fail worse in
+    # the tool executor and leak the paid attempt as a spurious
+    # "completed" turn.
+    for _idx, _slot in _tool_calls_by_index.items():
+        _args = _slot["function"].get("arguments") or ""
+        # Empty is acceptable — the tool may take no args. Only fail
+        # on non-empty strings that don't parse.
+        if _args.strip():
+            try:
+                json.loads(_args)
+            except json.JSONDecodeError as exc:
+                raise GatewayStreamError(
+                    f"tool_call at index {_idx} arrived with "
+                    f"non-JSON arguments after reassembly ({exc}). "
+                    f"Refusing to dispatch — treating as a failed turn."
+                ) from exc
+
+    message: dict[str, Any] = {"content": "".join(_text_parts) or None}
+    if _tool_calls_by_index:
+        # Emit in index order so the downstream normaliser sees a stable
+        # sequence matching the upstream contract.
+        message["tool_calls"] = [
+            _tool_calls_by_index[k] for k in sorted(_tool_calls_by_index.keys())
+        ]
+
+    reassembled = {
+        "id": _id,
+        "model": _model,
+        "choices": [{
+            "message": message,
+            "finish_reason": _finish_reason or "stop",
+        }],
+        "usage": _usage,
+    }
+    if _correlation_sse:
+        # Stash SSE-side correlation ids on the reassembled body so the
+        # caller can merge them with anything the response header
+        # carried. Kept under an underscore-prefixed key so it never
+        # collides with an OpenAI-shape field.
+        reassembled["_conduct_correlation_ids"] = _correlation_sse
+    return (reassembled, _resp_headers)

@@ -33,15 +33,26 @@ def _profile_row(*, id=None, cond_code="ABC12345", model_alias="default", active
     return row
 
 
-def _dispatch_db(*, wf_row, prof_row):
+def _dispatch_db(*, wf_row, prof_row, revision_snapshot: dict | None = None):
     """Return a MagicMock db whose ``query`` dispatches by ORM model."""
     from app.models.workflow import Workflow as _WF
-    from app.models.gateway_profile import GatewayProfile as _GP
+    from app.models.gateway_profile import (
+        GatewayProfile as _GP,
+        GatewayProfileRevision as _GPR,
+    )
 
     wf_q = MagicMock()
     wf_q.filter.return_value.first.return_value = wf_row
     prof_q = MagicMock()
     prof_q.filter.return_value.first.return_value = prof_row
+
+    # #2170 PR 3 — brain_block queries the revision snapshot to decide
+    # per-profile streaming safety. Provide a minimal snapshot so those
+    # code paths don't get MagicMock objects.
+    rev_row = MagicMock()
+    rev_row.snapshot = revision_snapshot or {"targets": []}
+    rev_q = MagicMock()
+    rev_q.filter.return_value.first.return_value = rev_row
 
     db = MagicMock()
 
@@ -50,6 +61,8 @@ def _dispatch_db(*, wf_row, prof_row):
             return wf_q
         if model is _GP:
             return prof_q
+        if model is _GPR:
+            return rev_q
         return MagicMock()
 
     db.query.side_effect = _q
@@ -163,3 +176,104 @@ def test_profile_routed_workflow_skips_legacy_provider_key_check():
             # Any other exception — including our stub RuntimeError —
             # confirms execution progressed past the provider-key check.
             pass
+
+
+# ─── Reviewer P2 (#2183): per-profile streaming safety ────────────────
+
+
+def _client_kwargs_capture():
+    """Patch GatewayProfileClient to record the kwargs it was built with."""
+    captured: dict = {}
+
+    class _Recorder:
+        def __init__(self, **kw):
+            captured.update(kw)
+
+        def create(self, **_):
+            raise RuntimeError("stubbed — client constructed, no need to run")
+
+    return captured, _Recorder
+
+
+def test_anthropic_target_profile_disables_streaming_even_when_flag_on():
+    """Reviewer P2: global guard_brain_streaming_enabled=True must NOT
+    enable streaming for a profile whose only target is Anthropic —
+    canonical→Anthropic streaming still 501s at the gateway.
+    """
+    from app.core.config import settings
+    from app.runtime.blocks.brain_block import _execute_brain
+
+    wf_id = uuid.uuid4()
+    prof = _profile_row(active=True)
+    db = _dispatch_db(
+        wf_row=_wf_row(prof.id),
+        prof_row=prof,
+        revision_snapshot={
+            "targets": [{"transport": "native_http", "provider": "anthropic",
+                         "model": "claude-3-5-sonnet-20240620"}],
+        },
+    )
+    block, state = _min_block_and_state()
+
+    captured, Recorder = _client_kwargs_capture()
+    _saved = settings.guard_brain_streaming_enabled
+    settings.guard_brain_streaming_enabled = True
+    try:
+        with patch("app.runtime.llm_client.GatewayProfileClient", Recorder):
+            try:
+                _execute_brain(
+                    block, state, {}, credentials=None, db=db,
+                    run_id=str(uuid.uuid4()), block_id="brain-1",
+                    workspace_id=str(uuid.uuid4()),
+                    workflow_id=str(wf_id),
+                )
+            except Exception:
+                pass
+    finally:
+        settings.guard_brain_streaming_enabled = _saved
+
+    assert captured.get("stream_enabled") is False, (
+        f"streaming must be disabled for Anthropic-target profiles even "
+        f"when the global flag is on; got stream_enabled="
+        f"{captured.get('stream_enabled')!r}"
+    )
+
+
+def test_openai_only_profile_streams_when_flag_on():
+    """Symmetric: an OpenAI-only profile with the flag on should stream."""
+    from app.core.config import settings
+    from app.runtime.blocks.brain_block import _execute_brain
+
+    wf_id = uuid.uuid4()
+    prof = _profile_row(active=True)
+    db = _dispatch_db(
+        wf_row=_wf_row(prof.id),
+        prof_row=prof,
+        revision_snapshot={
+            "targets": [{"transport": "native_http", "provider": "openai",
+                         "model": "gpt-4o-mini"}],
+        },
+    )
+    block, state = _min_block_and_state()
+
+    captured, Recorder = _client_kwargs_capture()
+    _saved = settings.guard_brain_streaming_enabled
+    settings.guard_brain_streaming_enabled = True
+    try:
+        with patch("app.runtime.llm_client.GatewayProfileClient", Recorder):
+            try:
+                _execute_brain(
+                    block, state, {}, credentials=None, db=db,
+                    run_id=str(uuid.uuid4()), block_id="brain-1",
+                    workspace_id=str(uuid.uuid4()),
+                    workflow_id=str(wf_id),
+                )
+            except Exception:
+                pass
+    finally:
+        settings.guard_brain_streaming_enabled = _saved
+
+    assert captured.get("stream_enabled") is True, (
+        f"OpenAI-only profile should stream when global flag is on; "
+        f"got stream_enabled={captured.get('stream_enabled')!r}"
+    )

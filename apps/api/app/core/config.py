@@ -157,6 +157,14 @@ class Settings(BaseSettings):
     # prod until this is verified end-to-end.
     guard_gateway_tools_stream_enabled: bool = False
 
+    # #2170 PR 3 — brain_block sends stream=true through the canonical
+    # /completions shim when this is set (uses SSE reassembly on the
+    # adapter side to reconstruct tool_calls). Depends on
+    # ``guard_gateway_tools_stream_enabled`` being on at the gateway too
+    # — the shim rejects stream+tools without it. Default OFF so the
+    # non-streaming path stays live until ops flips both flags.
+    guard_brain_streaming_enabled: bool = False
+
     # #2166 — Vision (image_url content parts). When on, the shim
     # accepts multimodal messages with image_url parts (``https://``
     # and ``data:image/*`` URLs only), enforces per-message image

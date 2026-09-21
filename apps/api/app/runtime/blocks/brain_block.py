@@ -575,9 +575,17 @@ def _execute_brain(
     # through to the legacy per-provider path.
     _profile_cond_key: str | None = None
     _profile_assigned: bool = False
+    # Reviewer P2 #2183 — streaming is safe only when every target on the
+    # published revision speaks OpenAI Chat shape natively. Canonical →
+    # Anthropic Messages streaming still returns 501 from the gateway
+    # (Anthropic converter is non-streaming). Compute per-profile.
+    _profile_streaming_safe: bool = False
     if workflow_id and db is not None:
         from app.models.workflow import Workflow as _WF
-        from app.models.gateway_profile import GatewayProfile as _GP
+        from app.models.gateway_profile import (
+            GatewayProfile as _GP,
+            GatewayProfileRevision as _GPR,
+        )
         _wf_row = db.query(_WF).filter(_WF.id == workflow_id).first()
         if _wf_row and _wf_row.gateway_profile_id:
             _profile_assigned = True
@@ -599,6 +607,33 @@ def _execute_brain(
                 f"cond-{_prof_row.cond_code}-{_alias}"
                 if _alias else f"cond-{_prof_row.cond_code}"
             )
+            # Inspect the published revision's targets. If ANY target's
+            # provider is anthropic (or the integration is anthropic-backed),
+            # streaming is disabled for this profile — the canonical
+            # /completions shim still 501s canonical→Anthropic streaming.
+            try:
+                _rev = db.query(_GPR).filter(_GPR.id == _prof_row.active_revision_id).first()
+                _snapshot = (_rev.snapshot if _rev else None) or {}
+                _targets = _snapshot.get("targets") or []
+                if _targets:
+                    _profile_streaming_safe = all(
+                        (
+                            (t.get("provider") or "").lower()
+                            not in {"anthropic"}
+                        )
+                        and (t.get("integration") or "").lower() not in {"anthropic"}
+                        for t in _targets
+                        if isinstance(t, dict)
+                    )
+            except Exception as _rev_exc:
+                # If we can't determine capabilities safely, default to
+                # non-streaming — never silently pick a mode that could
+                # 501 mid-loop and burn attempts.
+                log.warning(
+                    "brain.gateway_profile.streaming_probe_failed",
+                    error=str(_rev_exc), profile_id=str(_prof_row.id),
+                )
+                _profile_streaming_safe = False
 
     from app.runtime.provider_keys import MissingProviderKey
     _provider_keys = {"anthropic": _anthropic_key, "openai": _openai_key, "perplexity": _perplexity_key}
@@ -660,6 +695,16 @@ def _execute_brain(
             # per-block ``max_cost_usd`` cap stays enforced. Without
             # this the loop would see cost_usd=0.0 and never stop.
             pricing_snapshot=pricing_snapshot,
+            # #2170 PR 3 — SSE reassembly path when ALL three hold:
+            #   (a) ops flipped guard_brain_streaming_enabled on
+            #   (b) gateway-side guard_gateway_tools_stream_enabled is on
+            #       (enforced at the shim; a false-here 400 caller-side)
+            #   (c) this profile's targets are streaming-safe — i.e. no
+            #       Anthropic target that the canonical shim would 501
+            # (a) and (c) are decided here; (b) is enforced at the shim.
+            stream_enabled=bool(
+                settings.guard_brain_streaming_enabled and _profile_streaming_safe
+            ),
         )
     else:
         client_for = {"anthropic": AnthropicClient, "openai": OpenAIClient, "perplexity": PerplexityClient}
