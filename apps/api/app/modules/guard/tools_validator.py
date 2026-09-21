@@ -232,10 +232,28 @@ def validate_messages(messages: list[dict[str, Any]]) -> None:
         role = msg.get("role")
         if role in ("user", "system"):
             content = msg.get("content")
-            if not isinstance(content, str) or content == "":
+            # #2166 PR 1 — accept list content (multimodal parts) in
+            # addition to plain strings. Deep validation of parts
+            # (URL scheme allowlist, size caps, image count) lives in
+            # ``vision_validator.validate_content_parts`` so this
+            # module doesn't have to know about image_url shape.
+            if isinstance(content, str):
+                if content == "":
+                    raise ValidationFailure(
+                        f"messages[{i}].content",
+                        f"``role: {role}`` messages require a non-empty string content",
+                    )
+            elif isinstance(content, list):
+                if not content:
+                    raise ValidationFailure(
+                        f"messages[{i}].content",
+                        f"``role: {role}`` messages require at least one content part",
+                    )
+            else:
                 raise ValidationFailure(
                     f"messages[{i}].content",
-                    f"``role: {role}`` messages require a non-empty string content",
+                    f"``role: {role}`` messages require string or list content, "
+                    f"got {type(content).__name__}",
                 )
         elif role == "tool":
             tcid = msg.get("tool_call_id")

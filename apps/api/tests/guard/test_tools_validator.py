@@ -147,6 +147,35 @@ class TestValidateMessages:
             {"role": "assistant", "content": "hello"},
         ])
 
+    def test_user_list_content_accepted(self) -> None:
+        # #2166 PR 1 — vision widening. Deep part validation lives in
+        # vision_validator; here we only care that a list content is
+        # not rejected up front, which was blocking image-carrying
+        # messages before they reached the vision block.
+        validate_messages([
+            {"role": "user", "content": [
+                {"type": "text", "text": "what's in this?"},
+                {"type": "image_url", "image_url": {"url": "https://x/img.png"}},
+            ]},
+        ])
+
+    def test_system_list_content_accepted(self) -> None:
+        validate_messages([
+            {"role": "system", "content": [{"type": "text", "text": "you are helpful"}]},
+        ])
+
+    def test_user_empty_list_rejected(self) -> None:
+        with pytest.raises(ValidationFailure) as e:
+            validate_messages([{"role": "user", "content": []}])
+        assert e.value.field == "messages[0].content"
+        assert "at least one" in e.value.reason
+
+    def test_user_non_string_non_list_rejected(self) -> None:
+        with pytest.raises(ValidationFailure) as e:
+            validate_messages([{"role": "user", "content": 42}])
+        assert e.value.field == "messages[0].content"
+        assert "string or list" in e.value.reason
+
     def test_tool_role_requires_tool_call_id(self) -> None:
         with pytest.raises(ValidationFailure) as e:
             validate_messages([
