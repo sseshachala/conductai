@@ -578,6 +578,24 @@ def update_workflow(
     if body.runtime_persona is not None:
         workflow.runtime_persona = (body.runtime_persona or None)  # empty string → NULL (inherit)
 
+    # #2170 — pin a published Gateway profile. Reject unpublished drafts
+    # (active_revision_id IS NULL) and cross-workspace ids at the boundary
+    # so brain_block never has to reason about either at runtime.
+    if "gateway_profile_id" in body.model_fields_set:
+        if body.gateway_profile_id is None:
+            workflow.gateway_profile_id = None
+        else:
+            from app.models.gateway_profile import GatewayProfile as _GP
+            prof = db.query(_GP).filter(
+                _GP.id == body.gateway_profile_id,
+                _GP.workspace_id == workspace_id,
+            ).first()
+            if not prof:
+                raise HTTPException(status_code=404, detail="Gateway profile not found in this workspace")
+            if prof.active_revision_id is None:
+                raise HTTPException(status_code=400, detail="Gateway profile has no published revision")
+            workflow.gateway_profile_id = prof.id
+
     if body.graph is not None:
         graph_dict = body.graph.model_dump()
         version = WorkflowVersion(workflow_id=workflow.id, graph=graph_dict)
@@ -616,9 +634,14 @@ def update_workflow(
 
     db.commit()
     db.refresh(workflow)
-    audit(db, workspace_id, "workflow.created",
+    # WorkflowUpdate has no ``template`` field — reading it here was a
+    # long-standing 500 on every settings-only save (reviewer flagged
+    # against #2181). This endpoint is UPDATE, not create; log the
+    # settings-changed audit instead of the template-carrying create
+    # audit that never made sense here.
+    audit(db, workspace_id, "workflow.settings.updated",
           resource_type="workflow", resource_id=str(workflow.id),
-          metadata={"name": workflow.name, "template": body.template})
+          metadata={"name": workflow.name})
     _stamp(workflow)
     return workflow
 

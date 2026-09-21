@@ -28,6 +28,9 @@ class WorkflowUpdate(BaseModel):
     guard_enabled:   Optional[bool] = None
     agent_identity_required: Optional[bool] = None
     runtime_persona: Optional[str]  = None  # 'conservative' | 'standard' | 'developer' | None to inherit
+    # #2170 — pinned Gateway profile. Router validates it belongs to the
+    # workspace and has a published revision before persisting.
+    gateway_profile_id: Optional[UUID] = None
 
 
 class WorkflowVersionOut(BaseModel):
@@ -59,6 +62,7 @@ class WorkflowOut(BaseModel):
     project_name: Optional[str] = None
     guard_enabled: bool = True
     agent_identity_required: bool = True
+    gateway_profile_id: Optional[UUID] = None
 
     class Config:
         from_attributes = True
