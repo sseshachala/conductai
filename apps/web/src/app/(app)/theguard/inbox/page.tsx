@@ -14,6 +14,7 @@ import {
 import { useAuthFetch } from "@/hooks/useAuthFetch"
 import { AgentAvatar } from "@/components/guard/AgentAvatar"
 import { guard, guardInbox } from "@/lib/api"
+import { API } from "@/lib/api/client"
 import type {
   InboxRow,
   InboxEvent,
@@ -22,6 +23,27 @@ import type {
   InboxSource,
   ResolvedReason,
 } from "@/lib/api"
+
+// ── Awaiting Approval — pending HITL requests from guard_approval_requests
+// Reuses the existing /guard/approvals API (perm: platform.approvals.decide,
+// enforced server-side — inbox resolve perms are NOT reused). Each row is
+// individually actionable; no dedup / alert merge (per reviewer P2).
+interface PendingApproval {
+  id: string
+  rule_id: string
+  rule_pack: string | null
+  rule_message: string | null
+  tool_name: string | null
+  requester_email: string | null
+  source_run_id: string | null
+  created_at: string
+  timeout_at: string
+  approval_type: string
+}
+interface ApprovalListOut {
+  workspace_id: string
+  items: PendingApproval[]
+}
 
 const REASON_LABEL: Record<ResolvedReason, string> = {
   expected:         "Expected — working as intended",
@@ -63,19 +85,113 @@ export default function GuardInboxPage() {
   const [autoCloseMsg, setAutoCloseMsg] = useState<string | null>(null)
 
   // #2170-follow-up Inbox correctness — race protection for polling.
-  // Reviewer P2 (round 2): the earlier version bailed if a fetch was
-  // in flight, which meant a workspace or filter switch DURING an
-  // in-flight response left the epoch un-advanced — so the stale
-  // response passed the freshness check and populated the newly
-  // selected view. Correct pattern:
+  // Reviewer P2 (round 2): earlier version bailed early if a fetch was
+  // in flight, so a workspace/filter switch DURING an in-flight
+  // response left the epoch un-advanced and the stale response
+  // clobbered the new view. Same trap applied to approvals.
   //
+  // Correct pattern (both fetches):
   //   - ALWAYS advance the epoch on load(). Never early-return.
   //   - Late responses drop themselves on the OUTPUT side by
   //     comparing myEpoch to the current epoch after await.
-  //   - Overlapping requests are cheap (network-bound) and correct;
-  //     only the most recent one commits state.
-  //   - A workspace change hard-resets state via the effect below,
-  //     so any in-flight response can't clobber the reset either.
+  //   - Overlapping requests are cheap; only the most recent one
+  //     commits state.
+  //   - Workspace change hard-resets workspace-scoped state via the
+  //     effect below; any in-flight response can't repopulate.
+
+  // ── Awaiting Approval fetch + decide (PR 2, race protection round 2) ──
+  const [approvals, setApprovals] = useState<PendingApproval[]>([])
+  const [approvalsError, setApprovalsError] = useState<string | null>(null)
+  const [decidingId, setDecidingId] = useState<string | null>(null)
+  // Per-row rejection reason input. Reviewer P1 (round 2): the API
+  // requires a non-empty reason on reject; the previous "send
+  // undefined" always 400'd. Keep the input inline, one row's worth
+  // of state at a time.
+  const [rejectingId, setRejectingId] = useState<string | null>(null)
+  const [rejectReason, setRejectReason] = useState<string>("")
+  const approvalsEpochRef = useRef(0)
+
+  const loadApprovals = useCallback(async (opts?: { background?: boolean }) => {
+    const myEpoch = ++approvalsEpochRef.current
+    if (!opts?.background) setApprovalsError(null)
+    try {
+      const res = await authFetch(`${API}/guard/approvals?status=pending&limit=50`)
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        throw new Error(body?.detail || `HTTP ${res.status}`)
+      }
+      const data: ApprovalListOut = await res.json()
+      if (myEpoch !== approvalsEpochRef.current) return
+      // Reviewer P2 (round 2): the list endpoint sweeps pending rows to
+      // timed_out and RETURNS them. Filter here so we don't render
+      // Approve/Reject buttons for something the backend will 409 on.
+      // Empty status defaults to "pending" (backend contract) so
+      // rows without a status shouldn't happen, but be defensive.
+      const stillActionable = (data.items || []).filter(a =>
+        !("status" in a) || (a as { status?: string }).status === "pending",
+      )
+      setApprovals(stillActionable)
+    } catch (e) {
+      if (myEpoch !== approvalsEpochRef.current) return
+      setApprovalsError(e instanceof Error ? e.message : "approvals load failed")
+    }
+  }, [authFetch])
+
+  const submitDecision = useCallback(async (
+    id: string,
+    decision: "approved" | "rejected",
+    reason?: string,
+  ) => {
+    setDecidingId(id)
+    setApprovalsError(null)
+    try {
+      const res = await authFetch(`${API}/guard/approvals/${id}/decide`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ decision, reason }),
+      })
+      if (res.status === 409) {
+        const body = await res.json().catch(() => ({}))
+        setApprovalsError(body?.detail || "Another approver already decided this request.")
+      } else if (!res.ok) {
+        const body = await res.json().catch(() => ({ detail: `HTTP ${res.status}` }))
+        throw new Error(body?.detail || `HTTP ${res.status}`)
+      }
+      // Refresh from the server so approved/rejected rows disappear
+      // and any concurrent expiries show up.
+      await loadApprovals({ background: true })
+      // Reset any open reject-reason input.
+      setRejectingId(null)
+      setRejectReason("")
+    } catch (e) {
+      setApprovalsError(e instanceof Error ? e.message : "decide failed")
+    } finally {
+      setDecidingId(null)
+    }
+  }, [authFetch, loadApprovals])
+
+  const beginReject = useCallback((id: string) => {
+    // First click on Reject expands the reason input. Second click
+    // (Submit) hits the server with a required non-empty reason.
+    setRejectingId(id)
+    setRejectReason("")
+  }, [])
+
+  const confirmReject = useCallback(async (id: string) => {
+    const reason = rejectReason.trim()
+    if (!reason) {
+      setApprovalsError("A reason is required when rejecting an approval.")
+      return
+    }
+    await submitDecision(id, "rejected", reason)
+  }, [rejectReason, submitDecision])
+
+  const cancelReject = useCallback(() => {
+    setRejectingId(null)
+    setRejectReason("")
+  }, [])
+
+  // ── Inbox findings fetch ──
   const epochRef = useRef(0)
 
   const load = useCallback(async (opts?: { background?: boolean }) => {
@@ -103,29 +219,40 @@ export default function GuardInboxPage() {
   }, [authFetch, statusFilter, severityFilter, sourceFilter])
 
   // Workspace change: hard-reset workspace-scoped state so a late
-  // response from the previous workspace can't repopulate. The epoch
-  // bump inside load() protects against in-flight-then-commit; this
-  // handles the row/error/expanded state that would otherwise linger.
+  // response from the previous workspace can't repopulate either the
+  // findings list or the approvals section. Both epoch refs bump so
+  // any in-flight fetch fails its freshness check on return.
   useEffect(() => {
-    epochRef.current += 1   // invalidate any in-flight from previous ws
+    epochRef.current += 1
+    approvalsEpochRef.current += 1
     setRows([])
     setError(null)
     setExpandedId(null)
     setEvents({})
     setLastFetched(null)
+    setApprovals([])
+    setApprovalsError(null)
+    setRejectingId(null)
+    setRejectReason("")
   }, [workspaceId])
 
   useEffect(() => { void load() }, [load])
+  useEffect(() => { void loadApprovals() }, [loadApprovals])
 
   // 15s polling while the tab is visible. Pauses while hidden; refreshes
   // immediately on becoming visible again. Cleans up on unmount and on
-  // dep-change (filter switch cancels the previous interval).
+  // dep-change (filter switch cancels the previous interval). Ticks
+  // BOTH inbox findings and pending approvals on the same cadence.
   useEffect(() => {
     let intervalId: ReturnType<typeof setInterval> | null = null
 
+    const tick = () => {
+      void load({ background: true })
+      void loadApprovals({ background: true })
+    }
     const start = () => {
       if (intervalId !== null) return
-      intervalId = setInterval(() => { void load({ background: true }) }, 15_000)
+      intervalId = setInterval(tick, 15_000)
     }
     const stop = () => {
       if (intervalId !== null) {
@@ -135,7 +262,7 @@ export default function GuardInboxPage() {
     }
     const onVis = () => {
       if (document.visibilityState === "visible") {
-        void load({ background: true })  // instant refresh on return
+        tick()  // instant refresh on return
         start()
       } else {
         stop()
@@ -148,7 +275,7 @@ export default function GuardInboxPage() {
       document.removeEventListener("visibilitychange", onVis)
       stop()
     }
-  }, [load])
+  }, [load, loadApprovals])
 
   // Load auto-close config once we have a workspace.
   useEffect(() => {
@@ -339,6 +466,222 @@ export default function GuardInboxPage() {
             {autoCloseMsg && !autoCloseSaving && (
               <span style={{ marginLeft: "auto", fontStyle: "italic" }}>{autoCloseMsg}</span>
             )}
+          </div>
+        )}
+
+        {/* Awaiting Approval — pending HITL requests. Section stays
+            visible while any pending approval exists; hides when the
+            list drains. Each row is individually actionable; buttons
+            call /guard/approvals/{id}/decide and refresh the list.
+            Server-side auth via platform.approvals.decide — the inbox
+            resolve permission is NOT reused. */}
+        {(approvals.length > 0 || approvalsError) && (
+          <div style={{ marginBottom: 20 }}>
+            <GuardSectionHeader title="Awaiting approval" subtitle={`${approvals.length} pending`} />
+            {approvalsError && (
+              <div style={{
+                padding: "10px 12px",
+                marginTop: 8,
+                borderRadius: 6,
+                background: "var(--err-bg)",
+                color: "var(--err)",
+                fontSize: 12,
+              }}>
+                {approvalsError}
+              </div>
+            )}
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8 }}>
+              {approvals.map(a => {
+                const busy = decidingId === a.id
+                const timeoutIn = (() => {
+                  const t = new Date(a.timeout_at).getTime() - Date.now()
+                  if (Number.isNaN(t)) return null
+                  const mins = Math.max(0, Math.round(t / 60000))
+                  return mins < 60
+                    ? `${mins}m left`
+                    : `${Math.round(mins / 60)}h left`
+                })()
+                const rejecting = rejectingId === a.id
+                return (
+                  <div
+                    key={a.id}
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 8,
+                      padding: "10px 12px",
+                      border: "1px solid var(--border)",
+                      borderRadius: 8,
+                      background: "var(--surface)",
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <div style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 12 }}>
+                          <span style={{
+                            fontFamily: "var(--font-mono, monospace)",
+                            color: "var(--text)",
+                          }}>{a.rule_id}</span>
+                          {a.rule_pack && (
+                            <span style={{ color: "var(--text-muted)" }}>({a.rule_pack})</span>
+                          )}
+                          {a.approval_type === "peer" && (
+                            <span style={{
+                              fontSize: 10,
+                              padding: "1px 5px",
+                              background: "var(--info-bg)",
+                              color: "var(--info)",
+                              borderRadius: 3,
+                              fontWeight: 700,
+                            }}>PEER</span>
+                          )}
+                          {timeoutIn && (
+                            <span style={{ color: "var(--text-muted)", marginLeft: "auto" }}>
+                              {timeoutIn}
+                            </span>
+                          )}
+                        </div>
+                        <div style={{
+                          fontSize: 13,
+                          color: "var(--text)",
+                          marginTop: 3,
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}>
+                          {a.rule_message || "Guard rule requires approval."}
+                        </div>
+                        <div style={{
+                          fontSize: 11,
+                          color: "var(--text-muted)",
+                          marginTop: 3,
+                        }}>
+                          {a.requester_email || "unknown"}
+                          {a.tool_name ? ` · ${a.tool_name}` : ""}
+                          {" · "}{timeAgo(new Date(a.created_at))}
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                        <button
+                          onClick={() => void submitDecision(a.id, "approved")}
+                          disabled={busy || rejecting}
+                          style={{
+                            padding: "6px 12px",
+                            fontSize: 12,
+                            fontWeight: 600,
+                            border: "1px solid var(--ok-bd, #16a34a)",
+                            borderRadius: 6,
+                            background: "var(--ok-bg, #dcfce7)",
+                            color: "var(--ok, #15803d)",
+                            cursor: busy ? "wait" : "pointer",
+                            opacity: (busy || rejecting) ? 0.5 : 1,
+                          }}
+                        >
+                          Approve
+                        </button>
+                        {!rejecting && (
+                          <button
+                            onClick={() => beginReject(a.id)}
+                            disabled={busy}
+                            style={{
+                              padding: "6px 12px",
+                              fontSize: 12,
+                              fontWeight: 600,
+                              border: "1px solid var(--err-bd, #dc2626)",
+                              borderRadius: 6,
+                              background: "var(--err-bg, #fee2e2)",
+                              color: "var(--err, #b91c1c)",
+                              cursor: busy ? "wait" : "pointer",
+                              opacity: busy ? 0.6 : 1,
+                            }}
+                          >
+                            Reject
+                          </button>
+                        )}
+                        {a.source_run_id && (
+                          <a
+                            href={`/runs/${a.source_run_id}`}
+                            style={{
+                              padding: "6px 10px",
+                              fontSize: 12,
+                              color: "var(--text-muted)",
+                              textDecoration: "none",
+                              alignSelf: "center",
+                            }}
+                          >
+                            Run ↗
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                    {rejecting && (
+                      // Reviewer P1 (round 2): API requires a non-empty
+                      // reason on reject. Inline input; Submit hits the
+                      // server, Cancel dismisses without a request.
+                      <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                        <input
+                          type="text"
+                          autoFocus
+                          value={rejectReason}
+                          onChange={(e) => setRejectReason(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" && rejectReason.trim()) {
+                              void confirmReject(a.id)
+                            } else if (e.key === "Escape") {
+                              cancelReject()
+                            }
+                          }}
+                          placeholder="Why are you rejecting? (required)"
+                          disabled={busy}
+                          style={{
+                            flex: 1,
+                            padding: "6px 10px",
+                            fontSize: 12,
+                            border: "1px solid var(--err-bd, #dc2626)",
+                            borderRadius: 6,
+                            background: "var(--surface)",
+                            color: "var(--text)",
+                            outline: "none",
+                          }}
+                        />
+                        <button
+                          onClick={() => void confirmReject(a.id)}
+                          disabled={busy || !rejectReason.trim()}
+                          style={{
+                            padding: "6px 12px",
+                            fontSize: 12,
+                            fontWeight: 600,
+                            border: "1px solid var(--err-bd, #dc2626)",
+                            borderRadius: 6,
+                            background: "var(--err, #dc2626)",
+                            color: "#fff",
+                            cursor: (busy || !rejectReason.trim()) ? "not-allowed" : "pointer",
+                            opacity: (busy || !rejectReason.trim()) ? 0.5 : 1,
+                          }}
+                        >
+                          Submit reject
+                        </button>
+                        <button
+                          onClick={cancelReject}
+                          disabled={busy}
+                          style={{
+                            padding: "6px 10px",
+                            fontSize: 12,
+                            color: "var(--text-muted)",
+                            background: "transparent",
+                            border: "1px solid var(--border)",
+                            borderRadius: 6,
+                            cursor: busy ? "wait" : "pointer",
+                          }}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
           </div>
         )}
 

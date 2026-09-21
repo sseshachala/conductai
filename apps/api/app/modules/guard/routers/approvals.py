@@ -324,11 +324,19 @@ def list_approvals(
     rows = q.order_by(GuardApprovalRequest.created_at.desc()).limit(limit).all()
 
     # Lazy timeout sweep so the inbox never shows a stale "pending" row.
+    # Reviewer P2 (round 2): the sweep MUTATES status in-place. If the
+    # client filtered for status='pending', the swept rows now carry
+    # status='timed_out' but were still in the returned list — so any
+    # UI that trusts the requested filter would render Approve/Reject
+    # buttons on a row the backend will 409 on. Re-filter after the
+    # sweep to match what the client asked for.
     if status in ("pending", "all"):
         now = datetime.now(timezone.utc)
         for r in rows:
             if r.status == "pending" and r.timeout_at <= now:
                 sweep_if_timed_out(db, r, now=now)
+    if status != "all":
+        rows = [r for r in rows if r.status == status]
 
     # Workspace-wide status counts for the filter pills. One GROUP BY
     # query independent of the client's status filter — otherwise the
