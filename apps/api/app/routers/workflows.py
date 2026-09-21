@@ -634,9 +634,14 @@ def update_workflow(
 
     db.commit()
     db.refresh(workflow)
-    audit(db, workspace_id, "workflow.created",
+    # WorkflowUpdate has no ``template`` field — reading it here was a
+    # long-standing 500 on every settings-only save (reviewer flagged
+    # against #2181). This endpoint is UPDATE, not create; log the
+    # settings-changed audit instead of the template-carrying create
+    # audit that never made sense here.
+    audit(db, workspace_id, "workflow.settings.updated",
           resource_type="workflow", resource_id=str(workflow.id),
-          metadata={"name": workflow.name, "template": body.template})
+          metadata={"name": workflow.name})
     _stamp(workflow)
     return workflow
 

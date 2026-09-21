@@ -354,11 +354,11 @@ def test_get_workflow_wrong_workspace_404(mock_rls):
 @patch("app.core.workspace_context.set_workspace_rls")
 @patch("app.routers.workflows.audit")
 def test_update_workflow_name(mock_audit, mock_rls):
-    """Name-only update: sets wf.name and commits.
+    """Name-only update: sets wf.name, commits, returns 200.
 
-    Note: the router reads body.template on the non-graph audit call (line 617),
-    but WorkflowUpdate has no template field — that's a pre-existing router bug.
-    We verify the mutation and commit happen before that line is reached.
+    Previously blocked on a router bug that read ``body.template`` on a
+    field WorkflowUpdate never had — fixed alongside #2170 PR 1's Gateway
+    profile add, so this now asserts the HTTP 200 the settings UI needs.
     """
     db = MagicMock()
     wf = _make_workflow("Old Name")
@@ -367,8 +367,8 @@ def test_update_workflow_name(mock_audit, mock_rls):
 
     client = _make_client(db)
     try:
-        client.put(f"/workflows/{wf.id}", json={"name": "New Name"})
-        # The name assignment happens before the buggy audit line — verify it was set
+        resp = client.put(f"/workflows/{wf.id}", json={"name": "New Name"})
+        assert resp.status_code == 200, resp.text
         assert wf.name == "New Name"
         db.commit.assert_called()
     finally:
@@ -447,14 +447,7 @@ def _profile_query_mock(db_mock, prof):
 @patch("app.core.workspace_context.set_workspace_rls")
 @patch("app.routers.workflows.audit")
 def test_update_workflow_gateway_profile_published_accepted(mock_audit, mock_rls):
-    """Published profile in this workspace is accepted and pinned on the row.
-
-    The non-graph path in update_workflow ends with a `body.template`
-    read that WorkflowUpdate does not define — a pre-existing router
-    bug (see test_update_workflow_name for the same workaround). We
-    verify the mutation happened before that line is reached, same as
-    that test does.
-    """
+    """Published profile in this workspace pins on the row and returns 200."""
     db = MagicMock()
     wf = _make_workflow("With Profile")
     db._wf = wf
@@ -466,7 +459,8 @@ def test_update_workflow_gateway_profile_published_accepted(mock_audit, mock_rls
 
     client = _make_client(db)
     try:
-        client.put(f"/workflows/{wf.id}", json={"gateway_profile_id": str(prof.id)})
+        resp = client.put(f"/workflows/{wf.id}", json={"gateway_profile_id": str(prof.id)})
+        assert resp.status_code == 200, resp.text
         assert wf.gateway_profile_id == prof.id
     finally:
         _teardown()
@@ -515,7 +509,7 @@ def test_update_workflow_gateway_profile_cross_workspace_404(mock_audit, mock_rl
 @patch("app.core.workspace_context.set_workspace_rls")
 @patch("app.routers.workflows.audit")
 def test_update_workflow_gateway_profile_clear(mock_audit, mock_rls):
-    """Explicit null clears the pin without a profile lookup (same audit-bug workaround)."""
+    """Explicit null clears the pin without a profile lookup and returns 200."""
     db = MagicMock()
     wf = _make_workflow("Clear")
     wf.gateway_profile_id = uuid.uuid4()
@@ -523,7 +517,8 @@ def test_update_workflow_gateway_profile_clear(mock_audit, mock_rls):
 
     client = _make_client(db)
     try:
-        client.put(f"/workflows/{wf.id}", json={"gateway_profile_id": None})
+        resp = client.put(f"/workflows/{wf.id}", json={"gateway_profile_id": None})
+        assert resp.status_code == 200, resp.text
         assert wf.gateway_profile_id is None
     finally:
         _teardown()
