@@ -47,14 +47,18 @@ _ENDPOINTS: dict[str, tuple[str, str, bool, dict[str, str]]] = {
         "https://api.anthropic.com",
         "x-api-key",
         False,
-        # 2024-10-22 = Anthropic's most recent documented stable
-        # version; needed for features added since 2023-06-01
-        # (URL-source images, computer-use, etc.). Backward
-        # compatible with all body shapes that worked on 2023-06-01
-        # so existing text/tools traffic is unaffected. Callers can
-        # override by sending their own anthropic-version header
-        # (X7 pattern preserved).
-        {"anthropic-version": "2024-10-22"},
+        # Anthropic's stable version header. DO NOT invent a "newer"
+        # date — Anthropic returns 400 "invalid version" on anything
+        # that isn't in their published list, and they add features
+        # BACKWARD-COMPATIBLY under 2023-06-01 (URL images, computer-
+        # use, prompt caching, extended thinking all landed under
+        # this same version header). If a caller needs a specific
+        # beta they can send their own ``anthropic-version`` or
+        # ``anthropic-beta`` header — X7 preserves both.
+        #
+        # History note (2026-09-21): a speculative bump to
+        # 2024-10-22 broke every Anthropic request in prod. Reverted.
+        {"anthropic-version": "2023-06-01"},
     ),
     "openai": (
         "https://api.openai.com",
