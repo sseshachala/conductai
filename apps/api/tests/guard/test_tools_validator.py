@@ -587,6 +587,7 @@ class TestResponseGateReason:
 from app.modules.guard.tools_validator import (
     encode_correlation_header,
     generate_tool_call_correlation_ids,
+    parse_correlation_header,
 )
 
 
@@ -643,3 +644,31 @@ class TestEncodeCorrelationHeader:
         })
         parts = set(out.split(","))
         assert parts == {"call_1=corr_a", "call_2=corr_b"}
+
+
+class TestParseCorrelationHeader:
+    def test_missing_returns_empty(self) -> None:
+        assert parse_correlation_header(None) == {}
+        assert parse_correlation_header("") == {}
+
+    def test_round_trip(self) -> None:
+        original = {"call_1": "corr_a", "call_2": "corr_b"}
+        header = encode_correlation_header(original)
+        assert parse_correlation_header(header) == original
+
+    def test_ignores_malformed_pairs(self) -> None:
+        # Best-effort — drop noise, keep good pairs.
+        assert parse_correlation_header("call_1=corr_a,garbage,=only_value,call_2=corr_b") == {
+            "call_1": "corr_a",
+            "call_2": "corr_b",
+        }
+
+    def test_drops_unsafe_tool_call_ids(self) -> None:
+        # Symmetric with encode side — model-controlled ids that would
+        # never be emitted are also refused on parse.
+        assert parse_correlation_header("call\x00bad=corr_a,call_ok=corr_b") == {
+            "call_ok": "corr_b",
+        }
+
+    def test_first_occurrence_wins(self) -> None:
+        assert parse_correlation_header("call_1=first,call_1=second") == {"call_1": "first"}

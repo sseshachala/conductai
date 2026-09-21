@@ -685,6 +685,34 @@ def encode_correlation_header(correlation_ids: dict[str, str]) -> str:
     return ",".join(safe)
 
 
+def parse_correlation_header(header_value: str | None) -> dict[str, str]:
+    """Inverse of ``encode_correlation_header`` — parses the wire format.
+
+    Callers (conduct-cli, litellm-guard shim, brain_block routing) read
+    ``response.headers["X-Conduct-Tool-Correlation-Ids"]`` and pass it
+    here to get back a ``{tool_call_id: correlation_id}`` mapping they
+    can attach to their own execution log / Flight Recorder entry.
+
+    Malformed pairs are dropped silently — the header is best-effort
+    metadata, never load-bearing. Missing header, empty string, and
+    ``None`` all return an empty dict.
+    """
+    if not header_value:
+        return {}
+    out: dict[str, str] = {}
+    for pair in header_value.split(","):
+        if "=" not in pair:
+            continue
+        k, v = pair.split("=", 1)
+        k, v = k.strip(), v.strip()
+        if not k or not v:
+            continue
+        if not _is_header_safe_tool_call_id(k):
+            continue
+        out.setdefault(k, v)
+    return out
+
+
 def extract_tools_offered(request_body: dict) -> list[str]:
     """Names from ``request.tools[].function.name`` for audit.
 
@@ -799,6 +827,7 @@ __all__ = [
     "extract_tool_names_supplied",
     "generate_tool_call_correlation_ids",
     "encode_correlation_header",
+    "parse_correlation_header",
     "ResponseGateReason",
     "ScanResult",
 ]
