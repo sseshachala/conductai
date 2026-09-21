@@ -307,3 +307,238 @@ class TestFrameSplitting:
         assert any(isinstance(f, str) and f.startswith(":") for f in out)
         assert any(isinstance(f, dict) and f.get("choices", [{}])[0].get("delta", {}).get("content") == "hi" for f in out)
         assert out[-1] == "[DONE]"
+
+
+# ─── #2173 regression coverage ─────────────────────────────────────
+
+
+from app.modules.guard.tools_stream_gate import (
+    StreamGateOutcome,
+    StreamGateStatus,
+    _strip_data_prefix,
+    _strip_tool_calls_from_frame,
+)
+
+
+class TestParseAcceptsBothDataForms:
+    """P1 — SSE parser must accept ``data:`` and ``data: `` (spec-legal)."""
+
+    def test_data_prefix_helper(self) -> None:
+        assert _strip_data_prefix(b"data:{\"x\":1}") == b'{"x":1}'
+        assert _strip_data_prefix(b"data: {\"x\":1}") == b'{"x":1}'
+        assert _strip_data_prefix(b"data:  {\"x\":1}") == b'{"x":1}'
+        assert _strip_data_prefix(b": keepalive") is None
+        assert _strip_data_prefix(b"event: foo") is None
+
+
+@pytest.mark.anyio('asyncio')
+class TestNoSpaceDataFramesGoThroughGate:
+    """P1 — ``data:{...}`` (no space) must not bypass argument scanning."""
+
+    async def test_no_space_frame_still_parsed_and_gated(self) -> None:
+        # Same content the earlier failure-path test uses, but with
+        # no space after ``data:``. Without the parser fix, this frame
+        # was treated as unparseable and passed through raw — malformed
+        # arguments reached the client.
+        no_space = (
+            b'data:' + json.dumps({
+                "choices": [{"index": 0, "delta": {"tool_calls": [{
+                    "index": 0, "id": "call_1", "type": "function",
+                    "function": {"name": "x", "arguments": "not-json {{{"},
+                }]}}],
+            }).encode("utf-8") + b"\n\n"
+        )
+        finish = _sse({"choices": [{"index": 0, "delta": {}, "finish_reason": "tool_calls"}]})
+        out = await _drain([no_space, finish, _done()])
+        # First frame is the synthesized error (parser DID see the arg
+        # fragment and buffered it, then the finish trigger validated
+        # + refused).
+        assert "error" in out[0]
+        # The raw malformed frame must NOT be in the output.
+        assert not any(
+            isinstance(f, dict)
+            and (f.get("choices") or [{}])[0].get("delta", {}).get("tool_calls")
+            for f in out
+        )
+
+
+@pytest.mark.anyio('asyncio')
+class TestMixedFramePreservesOtherFields:
+    """P2 — a frame with tool_calls AND text/finish/usage must keep the rest."""
+
+    async def test_text_and_tool_call_in_same_frame(self) -> None:
+        mixed = _sse({"choices": [{"index": 0, "delta": {
+            "content": "checking...",
+            "tool_calls": [{
+                "index": 0, "id": "call_a", "type": "function",
+                "function": {"name": "search", "arguments": "{}"},
+            }],
+        }}]})
+        finish = _sse({"choices": [{"index": 0, "delta": {}, "finish_reason": "tool_calls"}]})
+        out = await _drain([mixed, finish, _done()])
+        # The mixed frame must be rewritten so the text content still
+        # reaches the client, even though the tool_calls fragment got
+        # held for buffering.
+        text_frames = [
+            f for f in out
+            if isinstance(f, dict)
+            and (f.get("choices") or [{}])[0].get("delta", {}).get("content") == "checking..."
+        ]
+        assert text_frames, f"text content dropped from mixed frame; out={out}"
+
+    async def test_usage_field_survives_tool_call_frame(self) -> None:
+        # Chunk carries both tool_call deltas AND top-level usage
+        # (some providers stream usage on a mid-body chunk).
+        mixed = _sse({
+            "choices": [{"index": 0, "delta": {"tool_calls": [{
+                "index": 0, "id": "call_a", "type": "function",
+                "function": {"name": "x", "arguments": "{}"},
+            }]}}],
+            "usage": {"prompt_tokens": 5, "completion_tokens": 3},
+        })
+        finish = _sse({"choices": [{"index": 0, "delta": {}, "finish_reason": "tool_calls"}]})
+        out = await _drain([mixed, finish, _done()])
+        assert any(
+            isinstance(f, dict) and f.get("usage") == {"prompt_tokens": 5, "completion_tokens": 3}
+            for f in out
+        ), f"usage dropped from mixed frame; out={out}"
+
+    def test_strip_helper_returns_none_when_only_tool_calls(self) -> None:
+        # A choice whose delta was ONLY tool_calls has nothing to yield.
+        chunk = {"choices": [{"index": 0, "delta": {"tool_calls": [{"index": 0}]}}]}
+        assert _strip_tool_calls_from_frame(chunk) is None
+
+    def test_strip_helper_preserves_finish_reason(self) -> None:
+        chunk = {"choices": [{
+            "index": 0,
+            "delta": {"tool_calls": [{"index": 0}]},
+            "finish_reason": "tool_calls",
+        }]}
+        out = _strip_tool_calls_from_frame(chunk)
+        assert out is not None
+        assert out["choices"][0]["finish_reason"] == "tool_calls"
+        assert "tool_calls" not in out["choices"][0]["delta"]
+
+
+@pytest.mark.anyio('asyncio')
+class TestOutcomeState:
+    """P1 — audit finalize needs to know the terminal stream-gate verdict."""
+
+    async def test_validation_failure_marks_outcome(self) -> None:
+        outcome = StreamGateOutcome()
+        chunks = [
+            _sse({"choices": [{"index": 0, "delta": {"tool_calls": [{
+                "index": 0, "id": "call_1", "type": "function",
+                "function": {"name": "x", "arguments": "not-json"},
+            }]}}]}),
+            _sse({"choices": [{"index": 0, "delta": {}, "finish_reason": "tool_calls"}]}),
+            _done(),
+        ]
+        combined = bytearray()
+        async for chunk in wrap_tool_stream(_iter(chunks), outcome=outcome):
+            combined.extend(chunk)
+        assert outcome.status == StreamGateStatus.VALIDATION_FAILED
+        assert outcome.reason  # non-empty
+
+    async def test_ok_stream_marks_correlations(self) -> None:
+        outcome = StreamGateOutcome()
+        chunks = [
+            _sse({"choices": [{"index": 0, "delta": {"tool_calls": [{
+                "index": 0, "id": "call_ok", "type": "function",
+                "function": {"name": "x", "arguments": "{}"},
+            }]}}]}),
+            _sse({"choices": [{"index": 0, "delta": {}, "finish_reason": "tool_calls"}]}),
+            _done(),
+        ]
+        combined = bytearray()
+        async for chunk in wrap_tool_stream(_iter(chunks), outcome=outcome):
+            combined.extend(chunk)
+        assert outcome.status == StreamGateStatus.OK
+        assert "call_ok" in outcome.correlation_ids
+        assert len(outcome.correlation_ids["call_ok"]) == 16
+
+    async def test_premature_finish_marks_outcome(self) -> None:
+        outcome = StreamGateOutcome()
+        chunks = [
+            _sse({"choices": [{"index": 0, "delta": {"tool_calls": [{
+                "index": 0, "id": "c", "type": "function",
+                "function": {"name": "x", "arguments": "{}"},
+            }]}}]}),
+            _sse({"choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]}),
+            _done(),
+        ]
+        async for _ in wrap_tool_stream(_iter(chunks), outcome=outcome):
+            pass
+        assert outcome.status == StreamGateStatus.PREMATURE_FINISH
+
+
+@pytest.mark.anyio('asyncio')
+class TestPolicyCheckCallback:
+    """P1 — composed engine must run on assembled tool_calls before emission."""
+
+    async def test_policy_block_replaces_tool_calls_with_error(self) -> None:
+        outcome = StreamGateOutcome()
+
+        async def _block(_tool_calls: list[dict]) -> tuple[bool, str | None]:
+            return False, "bank_transfer forbidden"
+
+        chunks = [
+            _sse({"choices": [{"index": 0, "delta": {"tool_calls": [{
+                "index": 0, "id": "call_1", "type": "function",
+                "function": {"name": "bank_transfer", "arguments": "{}"},
+            }]}}]}),
+            _sse({"choices": [{"index": 0, "delta": {}, "finish_reason": "tool_calls"}]}),
+            _done(),
+        ]
+        combined = bytearray()
+        async for chunk in wrap_tool_stream(
+            _iter(chunks), outcome=outcome, policy_check=_block,
+        ):
+            combined.extend(chunk)
+        assert outcome.status == StreamGateStatus.POLICY_BLOCK
+        assert "forbidden" in (outcome.reason or "")
+        # No synthesized tool_calls should have leaked to the client.
+        assert b"bank_transfer" not in bytes(combined) or b"error" in bytes(combined)
+
+    async def test_policy_allow_lets_tool_calls_through(self) -> None:
+        outcome = StreamGateOutcome()
+
+        async def _allow(_tool_calls: list[dict]) -> tuple[bool, str | None]:
+            return True, None
+
+        chunks = [
+            _sse({"choices": [{"index": 0, "delta": {"tool_calls": [{
+                "index": 0, "id": "call_ok", "type": "function",
+                "function": {"name": "get_x", "arguments": "{}"},
+            }]}}]}),
+            _sse({"choices": [{"index": 0, "delta": {}, "finish_reason": "tool_calls"}]}),
+            _done(),
+        ]
+        combined = bytearray()
+        async for chunk in wrap_tool_stream(
+            _iter(chunks), outcome=outcome, policy_check=_allow,
+        ):
+            combined.extend(chunk)
+        assert outcome.status == StreamGateStatus.OK
+        assert b"get_x" in bytes(combined)
+
+    async def test_policy_check_exception_fails_closed(self) -> None:
+        outcome = StreamGateOutcome()
+
+        async def _boom(_tool_calls: list[dict]) -> tuple[bool, str | None]:
+            raise RuntimeError("db exploded")
+
+        chunks = [
+            _sse({"choices": [{"index": 0, "delta": {"tool_calls": [{
+                "index": 0, "id": "c", "type": "function",
+                "function": {"name": "x", "arguments": "{}"},
+            }]}}]}),
+            _sse({"choices": [{"index": 0, "delta": {}, "finish_reason": "tool_calls"}]}),
+            _done(),
+        ]
+        async for _ in wrap_tool_stream(
+            _iter(chunks), outcome=outcome, policy_check=_boom,
+        ):
+            pass
+        assert outcome.status == StreamGateStatus.POLICY_BLOCK
+        assert "policy_check_failed" in (outcome.reason or "")
