@@ -131,45 +131,58 @@ _KNOWN_CONDUCT_ERROR_MARKERS = (
 )
 
 
-def _sse_scan_tool_signals(body: bytes) -> tuple[bool, bool]:
-    """Scan a streamed SSE response for tool_call + correlation signals.
+def _sse_scan_tool_signals(body: bytes) -> tuple[bool, bool, bool]:
+    """Scan a streamed SSE response for tool_call + correlation + error signals.
 
-    Returns ``(saw_tool_call, saw_correlation_frame)``. Used by the
-    streaming report path (#2155 PR 1) so ``tool_call_yield`` and
-    ``correlation_header_present`` counters mean the same thing across
-    streaming and non-streaming runs.
+    Returns ``(saw_tool_call, saw_correlation_frame, saw_error_frame)``.
 
-    We don't need to assemble the tool_call — we only need to know
-    whether the response actually generated one. A single
-    ``choices[].delta.tool_calls`` occurrence is enough; the wrapper
-    guarantees a full synthesized frame arrives before ``[DONE]``.
+    - ``saw_tool_call``: at least one ``choices[].delta.tool_calls`` or a
+      synthesized ``choices[].delta.tool_calls`` from the wrapper.
+    - ``saw_correlation_frame``: the in-band
+      ``{"conduct": {"tool_call_correlation_ids": ...}}`` envelope from
+      #2158.
+    - ``saw_error_frame``: a terminal
+      ``{"error": {"type": "conduct_gateway_tool_arguments_validation_failed",
+      ...}}`` from the stream-gate. Callers must count these as admitted
+      failures — otherwise a run where every tool_call gets refused by
+      the response gate reports as 100% "success" (green load, red
+      users). #2173 fix.
+
+    Accepts ``data:`` with or without a following space per SSE spec.
+    Earlier code required the space, which meant a valid provider frame
+    of the form ``data:{...}`` would bypass the scanner silently.
     """
     saw_tc = False
     saw_corr = False
+    saw_err = False
     for line in body.split(b"\n"):
         line = line.strip()
-        if not line.startswith(b"data: "):
+        if not line.startswith(b"data:"):
             continue
-        payload = line[len(b"data: "):]
+        # Accept both ``data:`` and ``data: `` payloads.
+        payload = line[len(b"data:"):].lstrip(b" ")
         if payload == b"[DONE]":
             continue
         try:
             _obj = json.loads(payload.decode("utf-8"))
         except (json.JSONDecodeError, UnicodeDecodeError):
             continue
-        if isinstance(_obj, dict):
-            if "conduct" in _obj and isinstance(_obj["conduct"], dict):
-                if _obj["conduct"].get("tool_call_correlation_ids"):
-                    saw_corr = True
-            for choice in _obj.get("choices") or []:
-                if not isinstance(choice, dict):
-                    continue
-                delta = choice.get("delta") or {}
-                if isinstance(delta, dict) and delta.get("tool_calls"):
-                    saw_tc = True
-        if saw_tc and saw_corr:
+        if not isinstance(_obj, dict):
+            continue
+        if "error" in _obj and isinstance(_obj["error"], dict):
+            saw_err = True
+        if "conduct" in _obj and isinstance(_obj["conduct"], dict):
+            if _obj["conduct"].get("tool_call_correlation_ids"):
+                saw_corr = True
+        for choice in _obj.get("choices") or []:
+            if not isinstance(choice, dict):
+                continue
+            delta = choice.get("delta") or {}
+            if isinstance(delta, dict) and delta.get("tool_calls"):
+                saw_tc = True
+        if saw_tc and saw_corr and saw_err:
             break
-    return saw_tc, saw_corr
+    return saw_tc, saw_corr, saw_err
 
 
 def _classify_error(status: int, body: bytes) -> tuple[str, bool]:
@@ -408,11 +421,22 @@ async def _run_async(url, token, profile, total, concurrency, max_tokens,
             if status == 200 and tools_body:
                 try:
                     if stream:
-                        _saw_tc, _saw_corr = _sse_scan_tool_signals(resp)
+                        _saw_tc, _saw_corr, _saw_err = _sse_scan_tool_signals(resp)
                         if _saw_tc:
                             tool_call_yield += 1
                         if _saw_corr:
                             correlation_header_present += 1
+                        if _saw_err:
+                            # #2173 — a streamed 200 that carries a
+                            # terminal validation-failed frame is an
+                            # admitted failure from the caller's POV,
+                            # not a success. Re-classify it under the
+                            # same bucket the non-streaming 502 uses.
+                            categories["conduct_tool_args_validation_failed"] = (
+                                categories.get(
+                                    "conduct_tool_args_validation_failed", 0
+                                ) + 1
+                            )
                     else:
                         _body = json.loads(resp)
                         _choices = _body.get("choices") or []

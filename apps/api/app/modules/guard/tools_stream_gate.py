@@ -26,15 +26,86 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from typing import AsyncIterator
+from enum import Enum
+from typing import AsyncIterator, Awaitable, Callable, Union
 
 # SSE frame boundary — spec allows LF or CRLF; upstream OpenAI uses \n\n.
 # Callers on other providers pass their bytes through litellm_sdk which
 # normalises to the OpenAI shape before this wrapper sees anything, so
 # ``\n\n`` is the only separator we need to split on.
+class StreamGateStatus(str, Enum):
+    """Terminal outcome of the streaming tool_call gate.
+
+    Mirrors the non-streaming taxonomy on ``apply_tool_call_gate`` +
+    ``_apply_response_gate`` so the durable-audit writer records the
+    same shape whether the request was streaming or not.
+
+    - ``OK``                — tool_calls validated + emitted normally.
+    - ``VALIDATION_FAILED`` — arguments failed redactor/validator
+                               (maps to 502 non-streaming).
+    - ``POLICY_BLOCK``      — composed-engine BLOCK on
+                               generated-tool-name or arg-pattern rule
+                               (maps to 451 non-streaming).
+    - ``PREMATURE_FINISH``  — upstream closed with a non-``tool_calls``
+                               finish_reason while a tool_call buffer
+                               was open (contract violation).
+    - ``STREAM_INTERRUPT``  — stream ended before any finish_reason
+                               while a buffer was open.
+    """
+
+    OK = "ok"
+    VALIDATION_FAILED = "validation_failed"
+    POLICY_BLOCK = "policy_block"
+    PREMATURE_FINISH = "premature_finish"
+    STREAM_INTERRUPT = "stream_interrupt"
+
+
+@dataclass
+class StreamGateOutcome:
+    """Mutable state the wrapper writes as it processes the stream.
+
+    Passed in by the caller so downstream wrappers (audit finalize,
+    routing_meta enrichment) can read the terminal outcome after the
+    stream drains. This is the mechanism that fixes the audit lie
+    where a synthetic error frame emitted mid-stream still landed on
+    a ``decision=allowed / execution_status=ok`` audit row (#2173).
+    """
+
+    status: StreamGateStatus = StreamGateStatus.OK
+    reason: str | None = None
+    correlation_ids: dict[str, str] = field(default_factory=dict)
+
+
+# Callback the wire-in supplies so the composed policy engine (which
+# needs DB + workspace context) can run inside the async iterator
+# without polluting this pure module with FastAPI / SQLAlchemy imports.
+# Returns ``(allow, block_reason)``. On ``allow=False`` the wrapper
+# emits an error frame instead of the synthesized tool_calls.
+PolicyCheckFn = Callable[[list[dict]], Awaitable[tuple[bool, Union[str, None]]]]
+
+
 _SSE_SEP = b"\n\n"
-_SSE_DATA_PREFIX = b"data: "
+# ``data:`` field marker. Per HTML5 SSE spec, one optional space may
+# follow the colon (server SHOULD emit "data: " but "data:" is legal
+# and some providers omit the space). We parse both and always
+# EMIT with the trailing space for maximum SDK compatibility. Never
+# tighten this to require the space — a valid frame like
+# ``data:{"choices":...}`` MUST NOT bypass the argument scanner.
+_SSE_DATA_FIELD = b"data:"
+_SSE_DATA_PREFIX = b"data: "  # emission form
 _SSE_DONE = b"[DONE]"
+
+
+def _strip_data_prefix(line: bytes) -> bytes | None:
+    """Return the payload bytes after a ``data:`` field marker, or None.
+
+    Accepts ``data:PAYLOAD`` and ``data: PAYLOAD`` (spec-legal variants).
+    Returns None when the line isn't a ``data:`` field so callers can
+    distinguish it from a comment / other SSE field.
+    """
+    if not line.startswith(_SSE_DATA_FIELD):
+        return None
+    return line[len(_SSE_DATA_FIELD):].lstrip(b" ")
 
 
 @dataclass
@@ -96,8 +167,9 @@ def _parse_sse_frame(frame: bytes) -> dict | None:
         line = line.rstrip(b"\r")
         if not line or line.startswith(b":"):
             continue
-        if line.startswith(_SSE_DATA_PREFIX):
-            payload_lines.append(line[len(_SSE_DATA_PREFIX):])
+        stripped = _strip_data_prefix(line)
+        if stripped is not None:
+            payload_lines.append(stripped)
         # ignore other SSE fields (event:, id:, retry:) — completion
         # streams don't use them.
     if not payload_lines:
@@ -119,10 +191,9 @@ def is_done_frame(frame: bytes) -> bool:
     """
     for line in frame.split(b"\n"):
         line = line.strip().rstrip(b"\r")
-        if line.startswith(_SSE_DATA_PREFIX):
-            payload = line[len(_SSE_DATA_PREFIX):].strip()
-            if payload == _SSE_DONE:
-                return True
+        stripped = _strip_data_prefix(line)
+        if stripped is not None and stripped.strip() == _SSE_DONE:
+            return True
     return False
 
 
@@ -145,6 +216,61 @@ def _extract_tool_deltas(chunk: dict) -> list[tuple[int, list[dict]]]:
         if isinstance(tcs, list) and tcs:
             out.append((idx, tcs))
     return out
+
+
+def _strip_tool_calls_from_frame(chunk: dict) -> dict | None:
+    """Return a copy of ``chunk`` with ``delta.tool_calls`` removed per choice.
+
+    Preserves everything else — text ``delta.content``, ``finish_reason``,
+    ``usage``, envelope fields (``id``, ``created``, ``model``). This lets
+    a mixed frame that carries both tool_call fragments AND text/finish/
+    usage reach the client for the non-tool bits while the tool bits get
+    buffered separately.
+
+    Returns None when the rewritten chunk carries no meaningful signal
+    (all choices had ONLY tool_calls in their delta, no finish_reason,
+    no usage). In that case the frame is fully absorbed and there is
+    nothing to yield yet.
+
+    Never mutates ``chunk``.
+    """
+    if not isinstance(chunk, dict):
+        return None
+    choices_in = chunk.get("choices") or []
+    new_choices: list[dict] = []
+    kept_any_signal = False
+    for choice in choices_in:
+        if not isinstance(choice, dict):
+            new_choices.append(choice)
+            continue
+        new_choice = dict(choice)
+        delta = choice.get("delta")
+        if isinstance(delta, dict) and "tool_calls" in delta:
+            new_delta = {k: v for k, v in delta.items() if k != "tool_calls"}
+            new_choice["delta"] = new_delta
+            # A choice keeps meaningful signal if it still has a
+            # non-empty delta (text content, role, etc.), a
+            # finish_reason, or usage — anything a downstream SDK
+            # would concatenate onto the response.
+            if new_delta or choice.get("finish_reason") is not None:
+                kept_any_signal = True
+        else:
+            # Choice without tool_calls in this frame — passthrough
+            # signal (text, finish_reason, ...) unchanged.
+            kept_any_signal = True
+        new_choices.append(new_choice)
+
+    # Non-choices envelope-level signal (e.g. top-level ``usage``) also
+    # counts. OpenAI puts usage in a final chunk with empty choices.
+    if chunk.get("usage") is not None:
+        kept_any_signal = True
+
+    if not kept_any_signal:
+        return None
+    out = dict(chunk)
+    out["choices"] = new_choices
+    return out
+
 
 
 def _apply_tool_delta(buf: _ToolCallBuf, delta: dict) -> None:
@@ -304,6 +430,9 @@ def _validate_buffered_tool_calls(
 
 async def wrap_tool_stream(
     upstream: AsyncIterator[bytes],
+    *,
+    outcome: StreamGateOutcome | None = None,
+    policy_check: PolicyCheckFn | None = None,
 ) -> AsyncIterator[bytes]:
     """Wrap an OpenAI-shape SSE stream that MAY carry tool_calls.
 
@@ -330,6 +459,10 @@ async def wrap_tool_stream(
     them straight to a ``StreamingResponse`` body_iterator without
     re-framing.
     """
+    # Callers may not care about the outcome; give them a sinkhole so
+    # the flush helpers can always write without a None check.
+    if outcome is None:
+        outcome = StreamGateOutcome()
     buffer = b""
     # One state per choice index. Almost always {0: ...} but handles n>1.
     choices: dict[int, _ChoiceState] = {}
@@ -346,7 +479,7 @@ async def wrap_tool_stream(
         # frame we pass through keeps its exact wire form.
         while _SSE_SEP in buffer:
             frame, buffer = buffer.split(_SSE_SEP, 1)
-            async for out in _handle_frame(frame, choices):
+            async for out in _handle_frame(frame, choices, outcome, policy_check):
                 yield out
 
     # End-of-stream: flush any leftover buffered frame (rare — most
@@ -359,8 +492,10 @@ async def wrap_tool_stream(
     for choice_index, state in choices.items():
         if state.finished or not state.tool_calls:
             continue
+        outcome.status = StreamGateStatus.STREAM_INTERRUPT
+        outcome.reason = "stream ended before finish_reason for tool_calls"
         yield _synthesize_error_frame(
-            "stream ended before finish_reason for tool_calls",
+            outcome.reason,
             "response-stream",
         )
         break
@@ -370,6 +505,8 @@ async def wrap_tool_stream(
 async def _handle_frame(
     frame: bytes,
     choices: dict[int, _ChoiceState],
+    outcome: StreamGateOutcome,
+    policy_check: PolicyCheckFn | None,
 ) -> AsyncIterator[bytes]:
     """Route one parsed SSE frame — passthrough, buffer, or flush.
 
@@ -399,12 +536,17 @@ async def _handle_frame(
         # Still check for finish_reason on any choice — a stream can end
         # with a bare finish frame (no delta). Flush the buffer before
         # emitting the finish so tool_calls land in order.
-        async for out in _flush_finish_choices(parsed, choices):
+        async for out in _flush_finish_choices(parsed, choices, outcome, policy_check):
             yield out
         yield frame + _SSE_SEP
         return
 
-    # ── tool_calls delta: buffer, do NOT yield the raw frame ─────────
+    # ── tool_calls delta: buffer + rewrite frame ─────────────────────
+    # Buffer the tool_calls fragments AND rewrite the frame with
+    # ``delta.tool_calls`` stripped so any other fields in the same
+    # frame (``delta.content`` text, ``finish_reason``, ``usage``,
+    # envelope fields) are preserved for the client instead of silently
+    # dropped.
     for choice_idx, tool_deltas in deltas:
         state = choices.setdefault(choice_idx, _ChoiceState())
         for tc_delta in tool_deltas:
@@ -416,16 +558,22 @@ async def _handle_frame(
             buf = state.tool_calls.setdefault(tc_index, _ToolCallBuf(index=tc_index))
             _apply_tool_delta(buf, tc_delta)
 
+    rewritten = _strip_tool_calls_from_frame(parsed)
+    if rewritten is not None:
+        yield _SSE_DATA_PREFIX + json.dumps(rewritten).encode("utf-8") + _SSE_SEP
+
     # A single chunk can carry BOTH tool_call deltas AND a finish frame
     # (rare but valid). Handle the finish after buffering so the flushed
     # tool_calls include the fragments that arrived in the same chunk.
-    async for out in _flush_finish_choices(parsed, choices):
+    async for out in _flush_finish_choices(parsed, choices, outcome, policy_check):
         yield out
 
 
 async def _flush_finish_choices(
     parsed: dict,
     choices: dict[int, _ChoiceState],
+    outcome: StreamGateOutcome,
+    policy_check: PolicyCheckFn | None,
 ) -> AsyncIterator[bytes]:
     """Emit flush frames for any choice hitting a finish_reason in this chunk.
 
@@ -450,22 +598,61 @@ async def _flush_finish_choices(
             continue
 
         if fr != "tool_calls":
-            yield _synthesize_error_frame(
-                f"finish_reason={fr!r} while tool_call buffer was open",
-                "response-stream",
-            )
+            reason = f"finish_reason={fr!r} while tool_call buffer was open"
+            outcome.status = StreamGateStatus.PREMATURE_FINISH
+            outcome.reason = reason
+            yield _synthesize_error_frame(reason, "response-stream")
             continue
 
-        ok, reason, source = _validate_buffered_tool_calls(state)
+        ok, val_reason, source = _validate_buffered_tool_calls(state)
         if not ok:
-            yield _synthesize_error_frame(reason or "unknown", source or "response-stream")
+            outcome.status = StreamGateStatus.VALIDATION_FAILED
+            outcome.reason = val_reason
+            yield _synthesize_error_frame(val_reason or "unknown", source or "response-stream")
             continue
+
+        # Build the assembled tool_calls list once so both the policy
+        # check and the correlation-id emitter see the same view.
+        assembled: list[dict] = []
+        for _idx, buf in sorted(state.tool_calls.items()):
+            assembled.append({
+                "index": _idx,
+                "id": buf.id,
+                "type": buf.type,
+                "function": {
+                    "name": buf.name,
+                    "arguments": buf.assembled_arguments(),
+                },
+            })
+
+        # #2173 P1 — composed-engine response policy on generated
+        # tool_calls. Non-streaming runs this via _apply_response_gate
+        # (composed engine with tool_names_generated + arg patterns).
+        # Streaming used to skip it entirely — now we call the wire-in's
+        # policy_check callback which owns DB + PolicyContext.
+        if policy_check is not None:
+            try:
+                allow, block_reason = await policy_check(assembled)
+            except Exception as exc:  # noqa: BLE001
+                # Fail closed on callback error — a bug in the policy
+                # closure MUST NOT silently allow tool_calls through.
+                outcome.status = StreamGateStatus.POLICY_BLOCK
+                outcome.reason = f"policy_check_failed: {type(exc).__name__}"
+                yield _synthesize_error_frame(outcome.reason, "response-stream-policy")
+                continue
+            if not allow:
+                outcome.status = StreamGateStatus.POLICY_BLOCK
+                outcome.reason = block_reason or "response_policy_block"
+                yield _synthesize_error_frame(outcome.reason, "response-stream-policy")
+                continue
 
         yield _synthesize_tool_calls_frame(state, choice_idx)
 
         # #2158 — emit correlation IDs in an in-band conduct envelope
         # frame right after the validated tool_calls. Same generation
         # helper as non-streaming so the two paths land the same shape.
+        # Also stash on outcome so the finalize wrapper can merge them
+        # into routing_meta (previously lost on stream path).
         from app.modules.guard.tools_validator import (
             generate_tool_call_correlation_ids as _gen_corr,
         )
@@ -476,4 +663,14 @@ async def _flush_finish_choices(
         ]
         corr = _gen_corr(gen_calls)
         if corr:
+            outcome.correlation_ids.update(corr)
             yield _synthesize_correlation_frame(corr)
+
+
+__all__ = [
+    "wrap_tool_stream",
+    "is_done_frame",
+    "StreamGateOutcome",
+    "StreamGateStatus",
+    "PolicyCheckFn",
+]

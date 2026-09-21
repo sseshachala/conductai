@@ -870,6 +870,7 @@ async def handle_gateway_request(
         # X4 — set before the try/finally so ``finally: _close_durable``
         # can read it even if an early raise skips the wrap.
         _v2_stream_wrapped = False
+        _tool_stream_outcome = None  # set inside the streaming tool-gate branch
         try:
             if _v2_plan is not None:
                 # #2004 Phase 1 — v2 executes the coordinator + LiteLLM SDK
@@ -1025,13 +1026,40 @@ async def handle_gateway_request(
             ):
                 from app.modules.guard.tools_stream_gate import (
                     wrap_tool_stream as _wrap_tool_stream_gate,
+                    StreamGateOutcome as _StreamGateOutcome,
+                )
+                # #2173 P1 — shared outcome + composed-engine policy check.
+                # Outcome mutates as the stream drains; _wrap_v2_stream_finalize
+                # reads it below to set decision + execution_status and to
+                # merge correlation_ids into routing_meta.
+                _tool_stream_outcome = _StreamGateOutcome()
+                _stream_policy_check = _build_stream_tool_policy_check(
+                    workspace_id=workspace_id,
+                    clerk_user_id=clerk_user_id,
+                    agent_identity_id=(
+                        str(_agent_identity_id) if _agent_identity_id else None
+                    ),
+                    agent_risk_tier=_agent_risk_tier,
+                    ai_tool=ai_tool,
+                    provider=provider,
+                    model=model,
+                    body=body,
+                    routing_meta=_routing_meta,
                 )
                 _response = StreamingResponse(
-                    _wrap_tool_stream_gate(_response.body_iterator),
+                    _wrap_tool_stream_gate(
+                        _response.body_iterator,
+                        outcome=_tool_stream_outcome,
+                        policy_check=_stream_policy_check,
+                    ),
                     media_type=_response.media_type,
                     headers=dict(_response.headers),
                     status_code=_response.status_code,
                 )
+                # `_tool_stream_outcome` stays in scope and gets passed
+                # to `_wrap_v2_stream_finalize` below so the audit row's
+                # decision / execution_status reflect the stream-gate
+                # verdict instead of a false-positive "allowed / ok".
 
             # #1733 PR 4: response gate (non-streaming). Only runs when
             # the tool-call scanner above didn't already 502.
@@ -1146,6 +1174,7 @@ async def handle_gateway_request(
                             _v2_plan.resolved.profile.timeout_seconds
                             if _v2_plan and _v2_plan.resolved else None
                         ),
+                        tool_stream_outcome=_tool_stream_outcome,
                     )
                     _v2_stream_wrapped = True
                 else:
@@ -2006,6 +2035,110 @@ def _build_v2_stream_response(upstream) -> StreamingResponse:
     )
 
 
+def _build_stream_tool_policy_check(
+    *,
+    workspace_id: str,
+    clerk_user_id: str | None,
+    agent_identity_id: str | None,
+    agent_risk_tier: str | None,
+    ai_tool: str | None,
+    provider: str,
+    model: str,
+    body: dict,
+    routing_meta: dict | None,
+):
+    """#2173 P1 — closure invoked by ``tools_stream_gate`` on assembled tool_calls.
+
+    Runs the same composed-engine gate that ``_apply_response_gate``
+    runs on the non-streaming path — the callback signature keeps this
+    module out of ``tools_stream_gate.py`` (which stays pure). Returns
+    ``(allow, block_reason)`` — the wrapper emits an in-band error
+    frame + marks the outcome as ``POLICY_BLOCK`` when ``allow=False``.
+
+    Called once per choice at flush time (finish_reason=tool_calls),
+    after the argument redactor has run. Sees the redacted tool_calls
+    only — same view as the client would have seen.
+    """
+    from fastapi.concurrency import run_in_threadpool
+    from app.core.database import SessionLocal as _SL
+    from app.core.workspace_context import set_workspace_rls
+    from app.guard.audit import _estimate_input_tokens
+    from app.guard.policy import evaluate_composed as _eval_composed
+    from app.guard.policy_types import PolicyAction as _PA, PolicyContext as _PolicyContext
+
+    _tool_names_offered_snapshot = (routing_meta or {}).get("tools_offered") or None
+    _tool_names_supplied_snapshot = (
+        (routing_meta or {}).get("tool_names_supplied")
+        or (routing_meta or {}).get("tool_results_supplied")
+        or None
+    )
+
+    async def _check(assembled_calls: list[dict]) -> tuple[bool, str | None]:
+        # Names of tools the model actually generated in THIS response.
+        # Feeds match_tool_name_generated selectors.
+        gen_names = [
+            (tc.get("function") or {}).get("name", "")
+            for tc in assembled_calls
+            if isinstance(tc, dict)
+        ]
+        gen_names = [n for n in gen_names if n] or None
+
+        # Synthesize a response body shape so composed rules that read
+        # response-side context (choices[].message.tool_calls[]) can
+        # match. Kept minimal — we don't fake usage.
+        synthetic_response_body = {
+            "choices": [{
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "content": None,
+                    "tool_calls": assembled_calls,
+                },
+            }],
+        }
+
+        def _eval_owned() -> tuple[bool, str | None]:
+            _db_local = _SL()
+            try:
+                set_workspace_rls(_db_local, workspace_id)
+                _ctx = _PolicyContext(
+                    workspace_id=workspace_id,
+                    clerk_user_id=clerk_user_id,
+                    agent_identity_id=agent_identity_id,
+                    provider=provider,
+                    model=model,
+                    body=body,
+                    input_tokens=_estimate_input_tokens(body),
+                    db=_db_local,
+                    gate="response",
+                    risk_tier=agent_risk_tier,
+                    ai_tool=ai_tool or None,
+                    tool_names_offered=_tool_names_offered_snapshot,
+                    tool_names_generated=gen_names,
+                    tool_names_supplied=_tool_names_supplied_snapshot,
+                    response_body=synthetic_response_body,
+                )
+                pd = _eval_composed(_ctx)
+            finally:
+                _db_local.close()
+            if pd.action == _PA.BLOCK:
+                return False, pd.reason or pd.rule_id or "response_policy_block"
+            return True, None
+
+        try:
+            return await run_in_threadpool(_eval_owned)
+        except Exception as exc:  # noqa: BLE001
+            log.warning(
+                "guard.gateway.stream_tool_policy_check_failed",
+                workspace_id=workspace_id, provider=provider, model=model,
+                err=str(exc),
+            )
+            # Fail closed on eval error — same posture as non-streaming.
+            return False, f"policy_eval_error: {type(exc).__name__}"
+
+    return _check
+
+
 def _wrap_v2_stream_finalize(
     response: StreamingResponse,
     *,
@@ -2029,6 +2162,10 @@ def _wrap_v2_stream_finalize(
     # calls settle_reservations on stream close / cancel / timeout.
     reservations: list | None = None,
     _routing_meta: dict | None = None,
+    # #2173 P1 — stream-gate outcome. Wrapper reads this after the
+    # stream drains to decide the audit decision + execution_status.
+    # None = tool-gate was not applied; finalize uses upstream signals only.
+    tool_stream_outcome=None,
 ) -> StreamingResponse:
     """Fire durable-audit finalize when the streaming response closes.
 
@@ -2146,6 +2283,61 @@ def _wrap_v2_stream_finalize(
                     )
                 )
             )
+            # #2173 P1 — stream-gate outcome takes precedence over the
+            # "no exception raised = ok" default. A synthetic error
+            # frame from tools_stream_gate does NOT raise (the stream
+            # completed normally from the ASGI side), so without this
+            # override the audit row landed as decision=allowed
+            # execution_status=ok despite the client seeing an error.
+            _final_routing_meta = routing_meta
+            _final_rule_id = ingress_rule_id
+            _final_result_summary = _result_summary
+            if stream_exc is None and tool_stream_outcome is not None:
+                try:
+                    from app.modules.guard.tools_stream_gate import (
+                        StreamGateStatus as _SGS,
+                    )
+                    from app.modules.guard.tools_validator import (
+                        ResponseGateReason as _RGR,
+                    )
+                    _st = tool_stream_outcome.status
+                    if _st != _SGS.OK:
+                        # Any non-OK stream-gate verdict → blocked row.
+                        _decision = "blocked"
+                        _execution_status = "error"
+                        _final_result_summary = (
+                            tool_stream_outcome.reason or _st.value
+                        )
+                        # Map to the same response_gate_reason taxonomy
+                        # as non-streaming so audit UI can label alike.
+                        if _st == _SGS.POLICY_BLOCK:
+                            _reason_val = _RGR.POLICY_BLOCK
+                            _final_rule_id = (
+                                tool_stream_outcome.reason
+                                or "guard.stream.policy_block"
+                            )
+                        else:
+                            _reason_val = _RGR.VALIDATION_FAILURE
+                            _final_rule_id = (
+                                f"guard.stream.{_st.value}"
+                            )
+                        _final_routing_meta = {
+                            **(routing_meta or {}),
+                            "response_gate_reason": _reason_val,
+                            "stream_gate_status": _st.value,
+                        }
+                    if tool_stream_outcome.correlation_ids:
+                        _final_routing_meta = {
+                            **(_final_routing_meta or {}),
+                            "tool_call_correlation_ids": (
+                                tool_stream_outcome.correlation_ids
+                            ),
+                        }
+                except Exception:
+                    log.exception(
+                        "guard.gateway.stream_outcome_merge_failed",
+                        row_id=row_id,
+                    )
             try:
                 await _finalize_durable_row(
                     row_id=row_id,
@@ -2156,10 +2348,10 @@ def _wrap_v2_stream_finalize(
                     body=body,
                     response_bytes=bytes(collected) or None,
                     duration_ms=int((time.monotonic() - started_monotonic) * 1000),
-                    rule_id=ingress_rule_id,
-                    routing_meta=routing_meta,
+                    rule_id=_final_rule_id,
+                    routing_meta=_final_routing_meta,
                     execution_status=_execution_status,
-                    result_summary=_result_summary,
+                    result_summary=_final_result_summary,
                     clerk_user_id=clerk_user_id,
                     ai_tool=ai_tool,
                     user_email=user_email,
