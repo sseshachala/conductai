@@ -37,8 +37,48 @@ from app.runtime.blocks.brain_block import _cache_key, _LLM_CACHE_TTL  # noqa: E
 
 # ── Shared fixtures ────────────────────────────────────────────────────────────
 
+import uuid as _uuid
+
+
+def _profile_routed_db() -> MagicMock:
+    """#2170 PR 4 — brain_block hard-requires a workflow+profile.
+    Return a mock db whose ``.query()`` dispatches by ORM model to
+    a workflow row with a pinned published Gateway profile.
+    """
+    from app.models.workflow import Workflow as _WF
+    from app.models.gateway_profile import (
+        GatewayProfile as _GP,
+        GatewayProfileRevision as _GPR,
+    )
+
+    wf_row = MagicMock()
+    wf_row.gateway_profile_id = _uuid.uuid4()
+    prof_row = MagicMock()
+    prof_row.id = wf_row.gateway_profile_id
+    prof_row.cond_code = "ABC12345"
+    prof_row.model_alias = "default"
+    prof_row.active_revision_id = _uuid.uuid4()
+    prof_row.name = "test-profile"
+    rev_row = MagicMock()
+    rev_row.snapshot = {"targets": []}
+
+    wf_q = MagicMock(); wf_q.filter.return_value.first.return_value = wf_row
+    prof_q = MagicMock(); prof_q.filter.return_value.first.return_value = prof_row
+    rev_q = MagicMock(); rev_q.filter.return_value.first.return_value = rev_row
+
+    db = MagicMock()
+    def _dispatch(model):
+        if model is _WF: return wf_q
+        if model is _GP: return prof_q
+        if model is _GPR: return rev_q
+        return MagicMock()
+    db.query.side_effect = _dispatch
+    return db
+
+
 RUN_ID   = "run-test-001"
 BLOCK_ID = "brain-1"
+WORKFLOW_ID = str(_uuid.uuid4())
 
 _BLOCK = {
     "id": BLOCK_ID,
@@ -84,7 +124,7 @@ def test_cache_hit_skips_llm_create():
     mock_llm = MagicMock()
 
     with (
-        patch("app.runtime.blocks.brain_block.AnthropicClient", return_value=mock_llm),
+        patch("app.runtime.llm_client.GatewayProfileClient", return_value=mock_llm),
         patch("app.runtime.blocks.brain_block._get_redis", return_value=redis_instance),
     ):
         from app.runtime.blocks.brain_block import _execute_brain
@@ -94,6 +134,8 @@ def test_cache_hit_skips_llm_create():
             compiled_artifacts=_ARTIFACTS,
             run_id=RUN_ID,
             block_id=BLOCK_ID,
+            db=_profile_routed_db(),
+            workflow_id=WORKFLOW_ID,
         )
 
     mock_llm.create.assert_not_called()
@@ -110,7 +152,7 @@ def test_cache_miss_calls_llm_and_writes_cache():
     mock_llm.create.return_value = fresh
 
     with (
-        patch("app.runtime.blocks.brain_block.AnthropicClient", return_value=mock_llm),
+        patch("app.runtime.llm_client.GatewayProfileClient", return_value=mock_llm),
         patch("app.runtime.blocks.brain_block._get_redis", return_value=redis_instance),
     ):
         from app.runtime.blocks.brain_block import _execute_brain
@@ -120,6 +162,8 @@ def test_cache_miss_calls_llm_and_writes_cache():
             compiled_artifacts=_ARTIFACTS,
             run_id=RUN_ID,
             block_id=BLOCK_ID,
+            db=_profile_routed_db(),
+            workflow_id=WORKFLOW_ID,
         )
 
     mock_llm.create.assert_called_once()

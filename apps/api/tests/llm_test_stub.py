@@ -70,10 +70,13 @@ def install_llm_stub(response_text: str = DEFAULT_TEXT) -> Iterator[list[dict]]:
         "app.runtime.adapters.anthropic.AnthropicClient",
         "app.runtime.adapters.openai.OpenAIClient",
         "app.runtime.adapters.perplexity.PerplexityClient",
-        # brain_block imports these by short name — patch there too.
-        "app.runtime.blocks.brain_block.AnthropicClient",
-        "app.runtime.blocks.brain_block.OpenAIClient",
-        "app.runtime.blocks.brain_block.PerplexityClient",
+        # #2170 PR 4 — brain_block retired its direct-provider imports.
+        # The only entry point brain_block instantiates now is
+        # ``GatewayProfileClient`` (via ``from app.runtime.llm_client
+        # import GatewayProfileClient as _GPC`` inside the function).
+        # Patch at the llm_client re-export so the stub covers every
+        # brain_block LLM call.
+        "app.runtime.llm_client.GatewayProfileClient",
     ]
     patchers = [patch(t, _factory) for t in targets]
     for p in patchers:

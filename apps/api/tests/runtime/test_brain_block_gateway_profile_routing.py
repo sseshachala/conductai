@@ -1,13 +1,14 @@
-"""#2170 PR 2 reviewer fixes — brain_block ↔ Gateway profile routing.
+"""#2170 brain_block ↔ Gateway profile routing.
 
-Covers three reviewer P1 findings against #2182:
+PR 2 reviewer fixes + PR 4 hard-require:
 
 1. Assigned-but-unavailable profile fails closed (raises), not silently
-   falling back to the legacy per-provider path.
-2. Profile-routed workflows do not require a legacy vendor API key —
-   MissingProviderKey must not fire before profile resolution.
-3. The profile lookup runs before the provider-key check so both above
-   hold together.
+   falling back to the legacy per-provider path (PR 2).
+2. Profile-routed workflows do not require a legacy vendor API key
+   (PR 2).
+3. Profile lookup runs before any provider-key check (PR 2).
+4. PR 4 — a workflow without ``gateway_profile_id`` refuses to run
+   with a structured error; missing workflow_id or db also refuses.
 
 Environment bootstrap (DATABASE_URL etc) is handled by tests/conftest.py.
 """
@@ -276,4 +277,111 @@ def test_openai_only_profile_streams_when_flag_on():
     assert captured.get("stream_enabled") is True, (
         f"OpenAI-only profile should stream when global flag is on; "
         f"got stream_enabled={captured.get('stream_enabled')!r}"
+    )
+
+
+# ─── PR 4 — hard-require gateway_profile_id ────────────────────────────
+
+
+def test_unassigned_workflow_refuses_to_run():
+    """PR 4: NULL gateway_profile_id at run-start → RuntimeError with a
+    clear operator message. Direct-provider fallback is gone."""
+    from app.runtime.blocks.brain_block import _execute_brain
+
+    wf_id = uuid.uuid4()
+    db = _dispatch_db(
+        wf_row=_wf_row(None),  # workflow exists but no profile assigned
+        prof_row=None,
+    )
+    block, state = _min_block_and_state()
+
+    try:
+        _execute_brain(
+            block, state, {}, credentials=None, db=db,
+            run_id=str(uuid.uuid4()), block_id="brain-1",
+            workspace_id=str(uuid.uuid4()),
+            workflow_id=str(wf_id),
+        )
+    except RuntimeError as exc:
+        msg = str(exc)
+        assert "no Gateway profile assigned" in msg
+        assert "pin a published profile" in msg.lower() or "pin a published profile" in msg
+        return
+    raise AssertionError("expected RuntimeError on unassigned workflow")
+
+
+def test_missing_workflow_id_refuses_to_run():
+    """PR 4: no workflow_id (ad-hoc invocation) → RuntimeError."""
+    from app.runtime.blocks.brain_block import _execute_brain
+
+    db = _dispatch_db(wf_row=None, prof_row=None)
+    block, state = _min_block_and_state()
+
+    try:
+        _execute_brain(
+            block, state, {}, credentials=None, db=db,
+            run_id=str(uuid.uuid4()), block_id="brain-1",
+            workspace_id=str(uuid.uuid4()),
+            workflow_id=None,
+        )
+    except RuntimeError as exc:
+        assert "workflow context" in str(exc).lower()
+        return
+    raise AssertionError("expected RuntimeError without workflow_id")
+
+
+def test_no_db_session_refuses_to_run():
+    """PR 4: db=None → RuntimeError (can't resolve profile)."""
+    from app.runtime.blocks.brain_block import _execute_brain
+
+    block, state = _min_block_and_state()
+    try:
+        _execute_brain(
+            block, state, {}, credentials=None, db=None,
+            run_id=str(uuid.uuid4()), block_id="brain-1",
+            workspace_id=str(uuid.uuid4()),
+            workflow_id=str(uuid.uuid4()),
+        )
+    except RuntimeError as exc:
+        assert "workflow context" in str(exc).lower()
+        return
+    raise AssertionError("expected RuntimeError without db")
+
+
+def test_profile_check_runs_before_sandbox_creation():
+    """Reviewer P2 (#2184): sandbox must NOT be allocated when the
+    profile check will refuse. Prior code called create_session() at
+    line ~383, then validated the profile at ~546 — a rejection leaked
+    the sandbox because close() was never called.
+    """
+    from app.runtime.blocks.brain_block import _execute_brain
+
+    wf_id = uuid.uuid4()
+    db = _dispatch_db(
+        wf_row=_wf_row(None),  # unassigned → will reject
+        prof_row=None,
+    )
+    block, state = _min_block_and_state()
+
+    # Track calls to create_session so we can prove it was never invoked.
+    calls = {"n": 0}
+
+    def _spy_create_session(*_a, **_kw):
+        calls["n"] += 1
+        return MagicMock()
+
+    with patch("app.runtime.sandbox_session.create_session", _spy_create_session):
+        try:
+            _execute_brain(
+                block, state, {}, credentials=None, db=db,
+                run_id=str(uuid.uuid4()), block_id="brain-1",
+                workspace_id=str(uuid.uuid4()),
+                workflow_id=str(wf_id),
+            )
+        except RuntimeError:
+            pass  # expected — profile is unassigned
+
+    assert calls["n"] == 0, (
+        f"create_session was called {calls['n']} times before profile "
+        f"rejection — sandbox leaked. Profile check must run first."
     )

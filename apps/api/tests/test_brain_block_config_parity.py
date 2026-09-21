@@ -37,7 +37,17 @@ def _fake_response(text: str = "ok") -> LLMResponse:
 
 
 def _run_with_capture(block: dict, state: dict) -> str:
-    """Execute a single-turn brain block and return the user_message sent to the LLM."""
+    """Execute a single-turn brain block and return the user_message sent to the LLM.
+
+    PR 4 retired the direct-provider path — brain_block now hard-requires
+    a workflow with a pinned published Gateway profile. Provide a mock
+    workflow + profile so the pre-flight check passes, and patch the
+    Gateway profile client the runtime imports inside the function.
+    """
+    import uuid as _uuid
+    from app.models.workflow import Workflow as _WF
+    from app.models.gateway_profile import GatewayProfile as _GP
+
     captured: list = []
     mock_llm = MagicMock()
 
@@ -52,13 +62,35 @@ def _run_with_capture(block: dict, state: dict) -> str:
 
     artifacts = {BLOCK_ID: {"system_prompt": block["data"].get("description", ""), "is_agentic": False}}
 
+    workflow_id = str(_uuid.uuid4())
+    wf_row = MagicMock(); wf_row.gateway_profile_id = _uuid.uuid4()
+    prof_row = MagicMock()
+    prof_row.id = wf_row.gateway_profile_id
+    prof_row.cond_code = "ABC12345"
+    prof_row.model_alias = "default"
+    prof_row.active_revision_id = _uuid.uuid4()
+    prof_row.name = "test-profile"
+
+    wf_q = MagicMock(); wf_q.filter.return_value.first.return_value = wf_row
+    prof_q = MagicMock(); prof_q.filter.return_value.first.return_value = prof_row
+
+    db = MagicMock()
+    def _dispatch(model):
+        if model is _WF:
+            return wf_q
+        if model is _GP:
+            return prof_q
+        return MagicMock()
+    db.query.side_effect = _dispatch
+
     with (
-        patch("app.runtime.blocks.brain_block.AnthropicClient", return_value=mock_llm),
+        patch("app.runtime.llm_client.GatewayProfileClient", return_value=mock_llm),
         patch("app.runtime.blocks.brain_block._get_redis", return_value=redis_mock),
     ):
         _execute_brain(
             block=block, state=state, compiled_artifacts=artifacts,
             run_id=RUN_ID, block_id=BLOCK_ID,
+            db=db, workflow_id=workflow_id,
         )
 
     assert captured, "LLM was never called — brain_block returned before create()"

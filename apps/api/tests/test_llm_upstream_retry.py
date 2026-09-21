@@ -7,6 +7,7 @@ Covers the failure class documented in project_session_july28_upstream_hardening
 """
 from __future__ import annotations
 
+import uuid as _uuid
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -22,6 +23,44 @@ from app.runtime.llm_client import (
     post_with_retry,
     raise_if_guard_proxy_blocked,
 )
+
+
+# #2170 PR 4 — brain_block hard-requires a workflow with a pinned
+# published Gateway profile. Provide a mock db + workflow_id so tests
+# that reach ``_execute_brain`` don't fail the run-start check.
+_TEST_WORKFLOW_ID = str(_uuid.uuid4())
+
+
+def _profile_routed_db() -> MagicMock:
+    from app.models.workflow import Workflow as _WF
+    from app.models.gateway_profile import (
+        GatewayProfile as _GP,
+        GatewayProfileRevision as _GPR,
+    )
+
+    wf_row = MagicMock()
+    wf_row.gateway_profile_id = _uuid.uuid4()
+    prof_row = MagicMock()
+    prof_row.id = wf_row.gateway_profile_id
+    prof_row.cond_code = "ABC12345"
+    prof_row.model_alias = "default"
+    prof_row.active_revision_id = _uuid.uuid4()
+    prof_row.name = "test-profile"
+    rev_row = MagicMock()
+    rev_row.snapshot = {"targets": []}
+
+    wf_q = MagicMock(); wf_q.filter.return_value.first.return_value = wf_row
+    prof_q = MagicMock(); prof_q.filter.return_value.first.return_value = prof_row
+    rev_q = MagicMock(); rev_q.filter.return_value.first.return_value = rev_row
+
+    db = MagicMock()
+    def _dispatch(model):
+        if model is _WF: return wf_q
+        if model is _GP: return prof_q
+        if model is _GPR: return rev_q
+        return MagicMock()
+    db.query.side_effect = _dispatch
+    return db
 
 
 # ── _should_retry decision table ──────────────────────────────────────────────
@@ -245,8 +284,7 @@ def _capture_events_and_run_brain(block_data, mock_side_effect):
         emitted.append({"kind": kind, "payload": payload})
 
     with (
-        patch("app.runtime.blocks.brain_block.AnthropicClient", return_value=mock_llm),
-        patch("app.runtime.blocks.brain_block.OpenAIClient", return_value=mock_llm),
+        patch("app.runtime.llm_client.GatewayProfileClient", return_value=mock_llm),
         patch("app.runtime.blocks.brain_block._get_redis", return_value=redis_mock),
         patch("app.runtime.runtime._emit", side_effect=_capture_emit),
     ):
@@ -255,7 +293,8 @@ def _capture_events_and_run_brain(block_data, mock_side_effect):
         try:
             _execute_brain(
                 block=block, state={}, compiled_artifacts=artifacts,
-                run_id="run-x", block_id="brain-1", db=MagicMock(),
+                run_id="run-x", block_id="brain-1",
+                db=_profile_routed_db(), workflow_id=_TEST_WORKFLOW_ID,
             )
         except Exception as e:
             raised = e
@@ -355,12 +394,13 @@ def _run_agentic_and_capture_key(state: dict) -> str | None:
     artifacts = {"brain-1": {"system_prompt": "sys", "is_agentic": True}}
 
     with (
-        patch("app.runtime.blocks.brain_block.AnthropicClient", return_value=mock_llm),
+        patch("app.runtime.llm_client.GatewayProfileClient", return_value=mock_llm),
         patch("app.runtime.blocks.brain_block._get_redis", return_value=redis_mock),
     ):
         from app.runtime.blocks.brain_block import _execute_brain
         _execute_brain(block=block, state=state, compiled_artifacts=artifacts,
-                       run_id="run-1", block_id="brain-1")
+                       run_id="run-1", block_id="brain-1",
+                       db=_profile_routed_db(), workflow_id=_TEST_WORKFLOW_ID)
     return captured.get("idempotency_key")
 
 
@@ -609,7 +649,7 @@ def test_state_block_attempt_forwards_to_outer_attempt():
     redis_mock = MagicMock(); redis_mock.get.return_value = None
 
     with (
-        patch("app.runtime.blocks.brain_block.AnthropicClient", return_value=mock_llm),
+        patch("app.runtime.llm_client.GatewayProfileClient", return_value=mock_llm),
         patch("app.runtime.blocks.brain_block._get_redis", return_value=redis_mock),
     ):
         from app.runtime.blocks.brain_block import _execute_brain
@@ -617,6 +657,7 @@ def test_state_block_attempt_forwards_to_outer_attempt():
             block=block, state={"__block_attempt": 2},
             compiled_artifacts=artifacts,
             run_id="run-1", block_id="brain-1",
+            db=_profile_routed_db(), workflow_id=_TEST_WORKFLOW_ID,
         )
     assert captured["outer_attempt"] == 2
 
