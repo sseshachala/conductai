@@ -47,7 +47,14 @@ _ENDPOINTS: dict[str, tuple[str, str, bool, dict[str, str]]] = {
         "https://api.anthropic.com",
         "x-api-key",
         False,
-        {"anthropic-version": "2023-06-01"},
+        # 2024-10-22 = Anthropic's most recent documented stable
+        # version; needed for features added since 2023-06-01
+        # (URL-source images, computer-use, etc.). Backward
+        # compatible with all body shapes that worked on 2023-06-01
+        # so existing text/tools traffic is unaffected. Callers can
+        # override by sending their own anthropic-version header
+        # (X7 pattern preserved).
+        {"anthropic-version": "2024-10-22"},
     ),
     "openai": (
         "https://api.openai.com",
