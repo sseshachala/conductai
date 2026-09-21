@@ -1002,6 +1002,37 @@ async def handle_gateway_request(
                     workspace_id=workspace_id, provider=provider, model=model,
                 )
 
+            # #2155 — streaming tool_call gate. Same invariant as
+            # non-streaming (no raw unsafe tool_call arguments reach the
+            # client) but buffered across SSE deltas. Wraps the upstream
+            # body_iterator so tool_call arg fragments are held until
+            # ``finish_reason: "tool_calls"``, run through the same
+            # validator + redactor as ``apply_tool_call_gate``, and
+            # re-emitted as one synthetic frame. Text ``delta.content``
+            # keeps streaming chunk-by-chunk unchanged.
+            #
+            # Runs BEFORE the buffered-text response gate wrap below so
+            # that gate scans what the client will actually see (post-
+            # rewriting). Gate is a no-op when body has no ``tools`` or
+            # the flag is off — the shim'''s 400 rejection is the fallback.
+            if (
+                operation == "inference"
+                and is_stream
+                and isinstance(_response, StreamingResponse)
+                and _response.status_code < 400
+                and body.get("tools")
+                and settings.guard_gateway_tools_stream_enabled
+            ):
+                from app.modules.guard.tools_stream_gate import (
+                    wrap_tool_stream as _wrap_tool_stream_gate,
+                )
+                _response = StreamingResponse(
+                    _wrap_tool_stream_gate(_response.body_iterator),
+                    media_type=_response.media_type,
+                    headers=dict(_response.headers),
+                    status_code=_response.status_code,
+                )
+
             # #1733 PR 4: response gate (non-streaming). Only runs when
             # the tool-call scanner above didn't already 502.
             if (

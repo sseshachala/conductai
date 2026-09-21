@@ -258,14 +258,15 @@ async def gateway_completions_impl(
     except ValidationError as exc:
         return _reject(400, _format_validation_error(exc))
 
-    # #2159 PR 1 — tools + stream=true rejected at the shim.
-    # OpenAI streams ``delta.tool_calls[].function.arguments`` in
-    # fragments across many SSE chunks; a secret can span deltas. Real
-    # prevention requires per-tool-call buffering until the arguments
-    # complete (tracked as follow-up #2155). Until that lands, refuse
-    # the combination — detection-only would be worse than an honest
-    # 400 because callers might think their args are being scanned.
-    if canonical.stream and canonical.tools:
+    # #2159 PR 1 — tools + stream=true rejected at the shim UNLESS
+    # #2155's buffered-delta validation is enabled. Without the wrapper
+    # in place, OpenAI's fragmented ``delta.tool_calls[].function.arguments``
+    # would let a secret span deltas and reach the client before the
+    # response gate ever runs. When the flag is on, the streaming
+    # response is wrapped by ``tools_stream_gate.wrap_tool_stream`` and
+    # the same validator + redactor as non-streaming enforces the
+    # invariant "no raw unsafe bytes reach the client."
+    if canonical.stream and canonical.tools and not settings.guard_gateway_tools_stream_enabled:
         return _reject(
             400,
             "stream=true combined with tools is not supported yet — "

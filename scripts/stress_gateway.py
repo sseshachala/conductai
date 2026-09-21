@@ -131,6 +131,47 @@ _KNOWN_CONDUCT_ERROR_MARKERS = (
 )
 
 
+def _sse_scan_tool_signals(body: bytes) -> tuple[bool, bool]:
+    """Scan a streamed SSE response for tool_call + correlation signals.
+
+    Returns ``(saw_tool_call, saw_correlation_frame)``. Used by the
+    streaming report path (#2155 PR 1) so ``tool_call_yield`` and
+    ``correlation_header_present`` counters mean the same thing across
+    streaming and non-streaming runs.
+
+    We don't need to assemble the tool_call — we only need to know
+    whether the response actually generated one. A single
+    ``choices[].delta.tool_calls`` occurrence is enough; the wrapper
+    guarantees a full synthesized frame arrives before ``[DONE]``.
+    """
+    saw_tc = False
+    saw_corr = False
+    for line in body.split(b"\n"):
+        line = line.strip()
+        if not line.startswith(b"data: "):
+            continue
+        payload = line[len(b"data: "):]
+        if payload == b"[DONE]":
+            continue
+        try:
+            _obj = json.loads(payload.decode("utf-8"))
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            continue
+        if isinstance(_obj, dict):
+            if "conduct" in _obj and isinstance(_obj["conduct"], dict):
+                if _obj["conduct"].get("tool_call_correlation_ids"):
+                    saw_corr = True
+            for choice in _obj.get("choices") or []:
+                if not isinstance(choice, dict):
+                    continue
+                delta = choice.get("delta") or {}
+                if isinstance(delta, dict) and delta.get("tool_calls"):
+                    saw_tc = True
+        if saw_tc and saw_corr:
+            break
+    return saw_tc, saw_corr
+
+
 def _classify_error(status: int, body: bytes) -> tuple[str, bool]:
     """Return ``(category, rejected_before_dispatch)``.
 
@@ -361,22 +402,30 @@ async def _run_async(url, token, profile, total, concurrency, max_tokens,
             latencies.append(lat)
             statuses[status] += 1
             # #2159 PR 2 — tool-call yield accounting on non-streaming
-            # 200s. Stream path returns bytes we'd have to SSE-parse to
-            # detect tool_calls; skip for now to keep the counter simple.
-            if status == 200 and not stream and tools_body:
+            # 200s. #2155 PR 1 extends the same accounting to the
+            # streaming path by SSE-parsing the response body for
+            # tool_calls and the synthetic ``conduct`` correlation frame.
+            if status == 200 and tools_body:
                 try:
-                    _body = json.loads(resp)
-                    _choices = _body.get("choices") or []
-                    if _choices and _choices[0].get("message", {}).get("tool_calls"):
-                        tool_call_yield += 1
-                        # Header check for correlation emission. Case-
-                        # insensitive header lookup: aiohttp lower-cases
-                        # them by default, but be robust.
-                        for _h in ("x-conduct-tool-correlation-ids",
-                                   "X-Conduct-Tool-Correlation-Ids"):
-                            if _resp_headers is not None and _h in _resp_headers:
-                                correlation_header_present += 1
-                                break
+                    if stream:
+                        _saw_tc, _saw_corr = _sse_scan_tool_signals(resp)
+                        if _saw_tc:
+                            tool_call_yield += 1
+                        if _saw_corr:
+                            correlation_header_present += 1
+                    else:
+                        _body = json.loads(resp)
+                        _choices = _body.get("choices") or []
+                        if _choices and _choices[0].get("message", {}).get("tool_calls"):
+                            tool_call_yield += 1
+                            # Header check for correlation emission. Case-
+                            # insensitive header lookup: aiohttp lower-cases
+                            # them by default, but be robust.
+                            for _h in ("x-conduct-tool-correlation-ids",
+                                       "X-Conduct-Tool-Correlation-Ids"):
+                                if _resp_headers is not None and _h in _resp_headers:
+                                    correlation_header_present += 1
+                                    break
                 except Exception:
                     pass
             category, is_rejection = _classify_error(status, resp)
