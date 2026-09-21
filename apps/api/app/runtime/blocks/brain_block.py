@@ -566,9 +566,45 @@ def _execute_brain(
 
     pricing_snapshot = freeze_pricing_snapshot()
 
+    # #2170 PR 2 — profile-first routing. Resolve BEFORE the legacy
+    # provider-key check so a workflow that authenticates entirely
+    # through its pinned Gateway profile does not need a legacy vendor
+    # key on the block. Assigned-but-unavailable profiles fail closed
+    # (missing row, unpublished draft, or lookup error all raise). Only
+    # a truly-unassigned workflow (gateway_profile_id IS NULL) falls
+    # through to the legacy per-provider path.
+    _profile_cond_key: str | None = None
+    _profile_assigned: bool = False
+    if workflow_id and db is not None:
+        from app.models.workflow import Workflow as _WF
+        from app.models.gateway_profile import GatewayProfile as _GP
+        _wf_row = db.query(_WF).filter(_WF.id == workflow_id).first()
+        if _wf_row and _wf_row.gateway_profile_id:
+            _profile_assigned = True
+            _prof_row = db.query(_GP).filter(_GP.id == _wf_row.gateway_profile_id).first()
+            if _prof_row is None:
+                raise RuntimeError(
+                    f"workflow {workflow_id} pins Gateway profile "
+                    f"{_wf_row.gateway_profile_id} which no longer exists. "
+                    f"Fix: select a valid profile in workflow settings."
+                )
+            if not _prof_row.active_revision_id or not _prof_row.cond_code:
+                raise RuntimeError(
+                    f"workflow {workflow_id} pins Gateway profile "
+                    f"{_prof_row.name!r} which has no published revision. "
+                    f"Fix: publish the profile or pick a different one."
+                )
+            _alias = (_prof_row.model_alias or "").strip()
+            _profile_cond_key = (
+                f"cond-{_prof_row.cond_code}-{_alias}"
+                if _alias else f"cond-{_prof_row.cond_code}"
+            )
+
     from app.runtime.provider_keys import MissingProviderKey
     _provider_keys = {"anthropic": _anthropic_key, "openai": _openai_key, "perplexity": _perplexity_key}
-    if not _provider_keys[provider]:
+    # Provider key only required on the legacy path. Profile-routed
+    # workflows use the profile's own credentials at the gateway.
+    if not _profile_assigned and not _provider_keys[provider]:
         raise MissingProviderKey(provider, model_id)
 
     # Guard proxy URL is a platform constant — same for every workspace.
@@ -611,39 +647,19 @@ def _execute_brain(
         if user_email:
             _extra_headers["x-conductai-user-email"] = user_email
 
-    # #2170 PR 2 — if the workflow pins a published Gateway profile, take
-    # over the whole inference call: same conduct_proxy_url host, canonical
-    # /completions endpoint, ``profile: cond-<code>-<alias>`` instead of a
-    # provider-shaped body. The profile picks the real provider/model at
-    # the gateway. Direct-provider clients stay as the not-yet-cut-over
-    # path; PR 3 of the epic hard-requires a profile.
-    _profile_cond_key: str | None = None
-    if workflow_id and db is not None:
-        try:
-            from app.models.workflow import Workflow as _WF
-            from app.models.gateway_profile import GatewayProfile as _GP
-            _wf_row = db.query(_WF).filter(_WF.id == workflow_id).first()
-            if _wf_row and _wf_row.gateway_profile_id:
-                _prof_row = db.query(_GP).filter(_GP.id == _wf_row.gateway_profile_id).first()
-                if _prof_row and _prof_row.active_revision_id and _prof_row.cond_code:
-                    # Public routing key — same shape the /completions shim
-                    # parses. Alias is optional on the wire; when the profile
-                    # has one, include it so audit rows carry the caller's
-                    # friendly name.
-                    _alias = (_prof_row.model_alias or "").strip()
-                    _profile_cond_key = (
-                        f"cond-{_prof_row.cond_code}-{_alias}"
-                        if _alias else f"cond-{_prof_row.cond_code}"
-                    )
-        except Exception as _prof_exc:
-            log.warning("brain.gateway_profile.lookup_failed", error=str(_prof_exc))
-
+    # Profile-routed client uses the profile's own credentials at the
+    # gateway. Legacy per-provider client uses ``_effective_key``.
     if _profile_cond_key:
         from app.runtime.llm_client import GatewayProfileClient as _GPC
         llm = _GPC(
             profile_cond_code=_profile_cond_key,
             base_url=_conduct_proxy_url,
             default_headers=_extra_headers,
+            # Pricing snapshot lets the adapter compute cost from the
+            # response's ``model`` + ``usage`` so brain_block's
+            # per-block ``max_cost_usd`` cap stays enforced. Without
+            # this the loop would see cost_usd=0.0 and never stop.
+            pricing_snapshot=pricing_snapshot,
         )
     else:
         client_for = {"anthropic": AnthropicClient, "openai": OpenAIClient, "perplexity": PerplexityClient}

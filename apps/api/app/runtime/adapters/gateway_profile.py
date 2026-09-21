@@ -26,13 +26,31 @@ from app.runtime.llm_client import (
     post_with_retry,
     raise_if_guard_proxy_blocked,
 )
+from app.runtime.pricing import get_model_rates
 
 
-# The canonical shim identifies routes to the profile via a client-facing
-# ``cond-<8chars>-<alias>`` code. The full string comes from the profile row
-# and is stored on ``workflows.gateway_profile_id`` (looked up by brain_block).
-# Kept as a plain string on this client so tests can construct one without
-# reaching into the profile catalog.
+def _infer_provider_from_model(model: str) -> str | None:
+    """Best-effort provider guess from the OpenAI-shape response ``model`` field.
+
+    Canonical responses always echo the upstream model. Cost tables key on
+    (provider, model), so we need a provider slug. Prefix heuristics cover
+    every model in the shipped pricing table; unknown prefixes return
+    ``None`` and the caller records 0 cost rather than misattributing.
+    A follow-up can replace this with an explicit ``X-Conduct-Attempt-Cost-Usd``
+    header from the gateway if a future model prefix escapes the map.
+    """
+    m = (model or "").lower().strip()
+    if not m:
+        return None
+    if m.startswith("claude"):
+        return "anthropic"
+    if m.startswith(("gpt", "chatgpt", "o1", "o3", "o4", "text-embedding", "text-davinci")):
+        return "openai"
+    if m.startswith("sonar") or m.startswith("perplexity"):
+        return "perplexity"
+    if m.startswith(("meta-llama", "mistral", "mixtral", "together")):
+        return "together"
+    return None
 
 
 class GatewayProfileClient:
@@ -44,10 +62,14 @@ class GatewayProfileClient:
     ``model`` and the URL path is ``/completions`` instead of
     ``/{provider}/v1/chat/completions``.
 
-    Cost is not computed here — the Gateway audit row already carries the
-    settled cost from the underlying attempt, and brain_block reads
-    ``cost_usd=0.0`` back as "settled elsewhere" the same way it does for
-    cache-restored responses.
+    Cost is computed client-side from the response's ``model`` + ``usage``
+    so brain_block's per-block ``max_cost_usd`` cap keeps stopping the loop.
+    The Gateway audit row also carries an authoritative settled cost per
+    attempt; the two are reconciled at ledger time. When the model prefix
+    isn't in ``_infer_provider_from_model``'s map the client records 0
+    (safer than misattributing) and the cap effectively falls back to
+    turn/token caps until the map or a gateway-side header covers the new
+    prefix.
     """
 
     def __init__(
@@ -57,6 +79,7 @@ class GatewayProfileClient:
         base_url: str,
         default_headers: dict | None = None,
         api_key: str | None = None,
+        pricing_snapshot: dict[str, Any] | None = None,
     ) -> None:
         # ``api_key`` accepted for interface parity with the sibling adapters
         # (brain_block builds a single kwargs dict). The gateway itself is
@@ -66,6 +89,7 @@ class GatewayProfileClient:
         self._profile = profile_cond_code
         self._base_url = base_url.rstrip("/")
         self._default_headers = default_headers or {}
+        self._pricing_snapshot = pricing_snapshot
         # Sub-identifier used in retry/upstream events so operators can
         # distinguish Gateway-profile failures from direct-provider ones.
         self._provider = "gateway_profile"
@@ -124,13 +148,20 @@ class GatewayProfileClient:
         if idempotency_key:
             headers["Idempotency-Key"] = idempotency_key
 
-        _max_attempts = 1 if outer_attempt > 1 else 3
+        # Reviewer P1 (#2182): a canonical response is always an already-paid
+        # attempt on the gateway. Its own retry policy (max_attempts on the
+        # profile) governs upstream retries. Stacking adapter-level retries
+        # on top means a terminal ``conduct_gateway_tool_arguments_validation_failed``
+        # 502 (post-inference tool-args refusal) reads as three transient
+        # 5xxs and triples the paid inference cost. Force single-shot here.
+        _outer_attempt_hint = outer_attempt  # kept for interface parity
+        _ = _outer_attempt_hint
         r = post_with_retry(
             url=f"{self._base_url}/completions",
             headers=headers,
             json_body=payload,
             provider=self._provider,
-            max_attempts=_max_attempts,
+            max_attempts=1,
             on_retry=on_retry,
         )
         raise_if_guard_proxy_blocked(provider=self._provider, response=r)
@@ -192,14 +223,25 @@ class GatewayProfileClient:
                 # the join key for this call.
                 correlation_ids = {}
 
+        # Reviewer P1 (#2182): compute cost client-side from response
+        # ``model`` + ``usage`` so brain_block's per-block ``max_cost_usd``
+        # cap keeps stopping the loop. Zero here would silently disable
+        # the cap for profile-routed workflows.
+        upstream_model = raw.get("model") or ""
+        provider_hint = _infer_provider_from_model(upstream_model)
+        cost_usd = 0.0
+        if provider_hint and self._pricing_snapshot is not None:
+            rates, _ = get_model_rates(provider_hint, upstream_model, self._pricing_snapshot)
+            cost_usd = round((
+                usage.input_tokens * float(rates.get("input", 0) or 0)
+                + usage.output_tokens * float(rates.get("output", 0) or 0)
+            ) / 1_000_000, 6)
+
         return LLMResponse(
             content=content,
             stop_reason=stop_reason,
             usage=usage,
-            # Cost is settled on the Gateway audit row for this attempt.
-            # Leaving 0.0 here matches how brain_block reads cache-restored
-            # responses — sum-across-turns already excludes zero.
-            cost_usd=0.0,
+            cost_usd=cost_usd,
             _raw_content=message,
             correlation_ids=correlation_ids,
         )

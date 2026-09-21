@@ -237,3 +237,117 @@ def test_make_tool_results_turn_mirrors_openai_shape():
         {"role": "tool", "tool_call_id": "call_1", "content": "42"},
         {"role": "tool", "tool_call_id": "call_2", "content": "hello"},
     ]
+
+
+# ─── Reviewer P1 fixes (#2182) ─────────────────────────────────────────
+
+
+@patch("app.runtime.adapters.gateway_profile.post_with_retry")
+def test_create_forces_single_attempt(mock_post):
+    """Reviewer P1: adapter must not retry — gateway owns retry policy.
+
+    A terminal ``conduct_gateway_tool_arguments_validation_failed`` 502
+    is an already-paid attempt; retrying triples inference cost. Verify
+    the adapter passes ``max_attempts=1`` regardless of ``outer_attempt``.
+    """
+    mock_post.return_value = _mock_response({
+        "choices": [{"message": {"content": "ok"}, "finish_reason": "stop"}],
+        "usage": {},
+    })
+    client = GatewayProfileClient(
+        profile_cond_code="cond-ABC12345",
+        base_url="https://gw.example.com/gateway/v1",
+    )
+    client.create(
+        model="ignored",
+        messages=[{"role": "user", "content": "x"}],
+        system="",
+        outer_attempt=1,
+    )
+    assert mock_post.call_args.kwargs["max_attempts"] == 1
+
+    mock_post.reset_mock()
+    mock_post.return_value = _mock_response({
+        "choices": [{"message": {"content": "ok"}, "finish_reason": "stop"}],
+        "usage": {},
+    })
+    client.create(
+        model="ignored",
+        messages=[{"role": "user", "content": "x"}],
+        system="",
+        outer_attempt=3,
+    )
+    assert mock_post.call_args.kwargs["max_attempts"] == 1
+
+
+@patch("app.runtime.adapters.gateway_profile.post_with_retry")
+def test_create_computes_cost_for_known_provider_prefix(mock_post):
+    """Reviewer P1: response ``model`` + ``usage`` produces non-zero cost.
+
+    brain_block's per-block ``max_cost_usd`` cap sums ``cost_usd`` across
+    turns. Returning 0.0 (as the initial PR did) silently disables the
+    cap. Verify a Claude model with real token usage produces positive
+    cost through the pricing snapshot.
+    """
+    from app.runtime.pricing import freeze_pricing_snapshot
+    snap = freeze_pricing_snapshot()
+
+    mock_post.return_value = _mock_response({
+        "model": "claude-3-5-sonnet-20240620",
+        "choices": [{"message": {"content": "ok"}, "finish_reason": "stop"}],
+        "usage": {"prompt_tokens": 1_000_000, "completion_tokens": 500_000},
+    })
+    client = GatewayProfileClient(
+        profile_cond_code="cond-ABC12345",
+        base_url="https://gw.example.com/gateway/v1",
+        pricing_snapshot=snap,
+    )
+    resp = client.create(
+        model="ignored",
+        messages=[{"role": "user", "content": "x"}],
+        system="",
+    )
+    assert resp.cost_usd > 0.0, (
+        f"expected positive cost from 1M+500K tokens on claude-3-5-sonnet, "
+        f"got {resp.cost_usd}"
+    )
+
+
+@patch("app.runtime.adapters.gateway_profile.post_with_retry")
+def test_create_zero_cost_for_unknown_model_prefix(mock_post):
+    """Unknown model prefix → 0 cost, no crash.
+
+    Prefix heuristic can't cover every future model. Recording 0 is
+    safer than misattributing; the gateway audit row has authoritative
+    cost regardless.
+    """
+    from app.runtime.pricing import freeze_pricing_snapshot
+    snap = freeze_pricing_snapshot()
+
+    mock_post.return_value = _mock_response({
+        "model": "some-future-model-nobody-knows",
+        "choices": [{"message": {"content": "ok"}, "finish_reason": "stop"}],
+        "usage": {"prompt_tokens": 100, "completion_tokens": 50},
+    })
+    client = GatewayProfileClient(
+        profile_cond_code="cond-ABC12345",
+        base_url="https://gw.example.com/gateway/v1",
+        pricing_snapshot=snap,
+    )
+    resp = client.create(
+        model="ignored",
+        messages=[{"role": "user", "content": "x"}],
+        system="",
+    )
+    assert resp.cost_usd == 0.0
+
+
+def test_infer_provider_from_model_covers_shipped_prefixes():
+    from app.runtime.adapters.gateway_profile import _infer_provider_from_model
+    assert _infer_provider_from_model("claude-3-5-sonnet-20240620") == "anthropic"
+    assert _infer_provider_from_model("gpt-4o-2024-05-13") == "openai"
+    assert _infer_provider_from_model("o1-preview") == "openai"
+    assert _infer_provider_from_model("sonar-pro") == "perplexity"
+    assert _infer_provider_from_model("meta-llama/llama-3.1-70b") == "together"
+    assert _infer_provider_from_model("") is None
+    assert _infer_provider_from_model("no-such-prefix-xyz") is None
