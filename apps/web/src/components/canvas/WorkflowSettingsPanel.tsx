@@ -264,18 +264,18 @@ async function saveGuard(enabled = guardEnabled) {
             <div className="card" style={{ padding: "16px 20px" }}>
               <p className="eyebrow" style={{ marginBottom: 4 }}>Gateway profile</p>
               <p style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 12 }}>
-                Pin a published Gateway profile. Brain blocks in this workflow will route every
-                LLM call through the profile — provider, model, credentials, and policy live
-                there, not on the block. Only published profiles are listed.
+                Required. Every brain block in this workflow routes every LLM call
+                through the pinned profile — provider, model, credentials, and policy
+                live there, not on the block. Only published profiles are listed.
               </p>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                 <select
                   value={gatewayProfileId}
                   onChange={(e) => saveGatewayProfile(e.target.value)}
-                  disabled={profileSaving}
+                  disabled={profileSaving || profileOptions.length === 0}
                   style={{
                     flex: 1,
-                    border: "1px solid var(--border)",
+                    border: `1px solid ${gatewayProfileId ? "var(--border)" : "var(--err-bd, #f43f5e)"}`,
                     borderRadius: 8,
                     padding: "8px 12px",
                     fontSize: 13,
@@ -284,7 +284,9 @@ async function saveGuard(enabled = guardEnabled) {
                     outline: "none",
                   }}
                 >
-                  <option value="">— None (legacy per-provider routing) —</option>
+                  {!gatewayProfileId && (
+                    <option value="" disabled>— Select a profile —</option>
+                  )}
                   {profileOptions.map((p) => (
                     <option key={p.id} value={p.id}>
                       {p.name} ({p.cond_code}{p.model_alias ? `-${p.model_alias}` : ""})
@@ -293,9 +295,14 @@ async function saveGuard(enabled = guardEnabled) {
                 </select>
                 {profileSaving && <span style={{ fontSize: 12, color: "var(--text-3)" }}>Saving…</span>}
               </div>
+              {!gatewayProfileId && profileOptions.length > 0 && (
+                <p style={{ fontSize: 11, color: "var(--err, #b91c1c)", marginTop: 8 }}>
+                  This workflow will refuse to run until a Gateway profile is assigned.
+                </p>
+              )}
               {profileOptions.length === 0 && (
-                <p style={{ fontSize: 11, color: "var(--text-3)", marginTop: 8 }}>
-                  No published profiles yet. Create one in
+                <p style={{ fontSize: 11, color: "var(--err, #b91c1c)", marginTop: 8 }}>
+                  No published profiles yet — this workflow cannot run. Create one in
                   {" "}
                   <a href="/proxy/gateway-profiles" style={{ color: "var(--accent, #6d28d9)" }}>Gateway profiles</a>.
                 </p>
