@@ -334,7 +334,8 @@ async def _run_async(url, token, profile, total, concurrency, max_tokens,
                      max_admitted_error_rate, max_rejection_rate,
                      kill_min_samples, stream: bool = False,
                      tools_body: dict | None = None,
-                     tool_choice: str | dict | None = None):
+                     tool_choice: str | dict | None = None,
+                     image_url: str | None = None):
     """Run the load. Returns a dict of measurements.
 
     Reviewer P1s addressed:
@@ -386,6 +387,18 @@ async def _run_async(url, token, profile, total, concurrency, max_tokens,
         body_template["tools"] = tools_body
         if tool_choice is not None:
             body_template["tool_choice"] = tool_choice
+    if image_url:
+        # #2166 — vision smoke: replace the plain-string user content
+        # with a multimodal list carrying the prompt text + one image
+        # part. Same URL on every request so the model's caption
+        # variance is the noise floor, not the input.
+        for _msg in body_template.get("messages", []):
+            if _msg.get("role") == "user" and isinstance(_msg.get("content"), str):
+                _msg["content"] = [
+                    {"type": "text", "text": _msg["content"]},
+                    {"type": "image_url", "image_url": {"url": image_url}},
+                ]
+                break
 
     headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 
@@ -796,6 +809,17 @@ def main() -> int:
                          "and ops enables the flag). Report adds tool_call_yield, "
                          "correlation-header-present, and the "
                          "conduct_tool_args_validation_failed category.")
+    ap.add_argument("--images", metavar="URL", default=None,
+                    help="Include one image_url content part in every user "
+                         "message (multimodal / vision smoke). Value is the "
+                         "image URL — https:// or data:image/*;base64,... "
+                         "per the shim contract. PREREQUISITE: target "
+                         "gateway must have GUARD_GATEWAY_VISION_ENABLED=true "
+                         "(default on since #2166 PR 2). Target profile must "
+                         "route to a vision-capable model (gpt-4o, "
+                         "claude-3.5-sonnet, etc.) — otherwise the provider "
+                         "returns 400 that stress reports as an admitted "
+                         "error.")
     ap.add_argument("--tool-choice", default=None,
                     help="Value for the ``tool_choice`` field. One of: "
                          "``auto`` | ``none`` | ``required`` | a JSON object "
@@ -852,6 +876,7 @@ def main() -> int:
             return 1
 
     tools_body = _TOOLS_STRESS_DEF if args.tools else None
+    image_url_arg = args.images
     tool_choice = None
     if args.tool_choice:
         if not args.tools:
@@ -893,6 +918,7 @@ def main() -> int:
             kill_min_samples=args.kill_min_samples,
             stream=args.stream,
             tools_body=tools_body,
+        image_url=image_url_arg,
             tool_choice=tool_choice,
         ))
     except KeyboardInterrupt:

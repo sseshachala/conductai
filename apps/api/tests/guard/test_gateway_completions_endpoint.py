@@ -322,9 +322,10 @@ def test_unknown_or_forbidden_top_level_fields_are_rejected(
 @pytest.mark.parametrize(
     "bad_content",
     [
-        [{"type": "text", "text": "hi"}],  # multimodal-style list
-        [{"type": "image_url", "image_url": {"url": "https://x/y.png"}}],
-        {"type": "text", "text": "hi"},    # single dict block
+        # #2166 PR 2 — list content is now accepted (multimodal vision).
+        # Deep validation of parts lives in vision_validator. Only truly
+        # invalid shapes stay in this rejection parametrize.
+        {"type": "text", "text": "hi"},    # single dict block (not wrapped in list)
         123,
         None,
     ],

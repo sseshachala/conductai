@@ -452,3 +452,99 @@ class TestRoundTrip:
         assert user_turns[-1]["content"][0]["type"] == "tool_result"
         assert user_turns[-1]["content"][0]["tool_use_id"] == "tu_1"
         assert user_turns[-1]["content"][0]["content"] == "72F, sunny"
+
+
+# ─── #2166 PR 2 — vision content conversion ────────────────────────
+
+
+class TestVisionConversion:
+    """Anthropic-target ``image_url`` → ``image`` block conversion."""
+
+    def test_https_url_becomes_url_source(self) -> None:
+        req = {
+            "model": "cond-x-claude",
+            "max_tokens": 128,
+            "messages": [{
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "what's this?"},
+                    {"type": "image_url", "image_url": {
+                        "url": "https://example.com/pic.png",
+                    }},
+                ],
+            }],
+        }
+        out = canonical_to_anthropic(req)
+        content = out["messages"][0]["content"]
+        assert content[0] == {"type": "text", "text": "what's this?"}
+        assert content[1]["type"] == "image"
+        assert content[1]["source"] == {
+            "type": "url", "url": "https://example.com/pic.png",
+        }
+
+    def test_data_url_becomes_base64_source(self) -> None:
+        req = {
+            "model": "cond-x-claude",
+            "max_tokens": 128,
+            "messages": [{
+                "role": "user",
+                "content": [{"type": "image_url", "image_url": {
+                    "url": "data:image/jpeg;base64,QUFBQQ==",
+                }}],
+            }],
+        }
+        out = canonical_to_anthropic(req)
+        block = out["messages"][0]["content"][0]
+        assert block["type"] == "image"
+        assert block["source"] == {
+            "type": "base64",
+            "media_type": "image/jpeg",
+            "data": "QUFBQQ==",
+        }
+
+    def test_data_url_with_charset_media_type_stripped(self) -> None:
+        # data:image/png;charset=utf-8;base64,... — only the media
+        # type up to the first ``;`` counts; charset extras are dropped.
+        req = {
+            "model": "cond-x-claude",
+            "max_tokens": 128,
+            "messages": [{
+                "role": "user",
+                "content": [{"type": "image_url", "image_url": {
+                    "url": "data:image/png;charset=utf-8;base64,QUFBQQ==",
+                }}],
+            }],
+        }
+        out = canonical_to_anthropic(req)
+        block = out["messages"][0]["content"][0]
+        assert block["source"]["media_type"] == "image/png"
+
+    def test_mixed_text_and_multiple_images_preserved_in_order(self) -> None:
+        req = {
+            "model": "cond-x-claude",
+            "max_tokens": 128,
+            "messages": [{
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "compare"},
+                    {"type": "image_url", "image_url": {"url": "https://a/1.png"}},
+                    {"type": "image_url", "image_url": {"url": "https://b/2.png"}},
+                    {"type": "text", "text": "and describe"},
+                ],
+            }],
+        }
+        out = canonical_to_anthropic(req)
+        content = out["messages"][0]["content"]
+        assert [p["type"] for p in content] == ["text", "image", "image", "text"]
+        assert content[1]["source"]["url"] == "https://a/1.png"
+        assert content[2]["source"]["url"] == "https://b/2.png"
+
+    def test_string_content_still_passes_through(self) -> None:
+        # Baseline — non-multimodal content still works unchanged.
+        req = {
+            "model": "cond-x-claude",
+            "max_tokens": 128,
+            "messages": [{"role": "user", "content": "plain text"}],
+        }
+        out = canonical_to_anthropic(req)
+        assert out["messages"][0] == {"role": "user", "content": "plain text"}
