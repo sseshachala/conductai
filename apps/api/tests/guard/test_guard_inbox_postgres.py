@@ -180,11 +180,32 @@ def _one_inbox_row(conn, workspace_id: uuid.UUID = WS) -> dict:
 
 
 def _run_backfill(engine, workspace_id: uuid.UUID, days: int = 30):
-    from app.modules.guard.routers.inbox import _BACKFILL_SQL
-    with engine.begin() as conn:
-        result = conn.execute(text(_BACKFILL_SQL), {"ws": workspace_id, "days": days})
-        row = result.one()
-    return {"inserted": int(row.inserted or 0), "reconciled": int(row.reconciled or 0)}
+    """Drive the same per-group locking protocol the router uses.
+
+    Rewritten (round-2 review): single-statement ``_BACKFILL_SQL`` is
+    gone; backfill is now discover → per-group lock+snapshot+apply.
+    Drive it directly with a SQLAlchemy session so tests share the
+    protocol under test.
+    """
+    from sqlalchemy.orm import Session
+    from app.modules.guard.routers.inbox import (
+        _DISCOVER_DEDUPS_SQL, _reconcile_one,
+    )
+    inserted = 0
+    reconciled = 0
+    with Session(engine) as session:
+        rows = session.execute(
+            text(_DISCOVER_DEDUPS_SQL),
+            {"ws": workspace_id, "days": days},
+        ).fetchall()
+        session.commit()
+        for row in rows:
+            was_insert = _reconcile_one(session, workspace_id, row.dedup_key)
+            if was_insert:
+                inserted += 1
+            else:
+                reconciled += 1
+    return {"inserted": inserted, "reconciled": reconciled}
 
 
 # ── Trigger: severity escalation (#2170-follow-up) ────────────────────────
