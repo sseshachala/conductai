@@ -350,9 +350,29 @@ def _fetch_and_encode_image(url: str) -> dict[str, Any] | None:
     try:
         with httpx.Client(
             timeout=_IMAGE_FETCH_TIMEOUT_SECONDS,
-            follow_redirects=False,
+            # Follow redirects up to 3 hops. Many public image hosts
+            # (picsum.photos, Unsplash, etc.) 302 to a CDN URL — refusing
+            # redirects turned every one of those into a dropped image.
+            # SSRF via redirect is mitigated by:
+            #   - HTTPS-only enforcement below (redirected target must
+            #     also be HTTPS)
+            #   - Content-Type + size guards on the FINAL response
+            #   - 5s total-request timeout still bounds all hops together
+            follow_redirects=True,
+            max_redirects=3,
         ) as client:
             response = client.get(url)
+            # After redirects — enforce HTTPS on the final URL too so a
+            # 302 to http:// or file:// can't slip past the caller's
+            # scheme check.
+            final_url = str(response.url)
+            if not final_url.startswith("https://"):
+                _log.warning(
+                    "vision.image_fetch.redirect_scheme",
+                    url=url,
+                    final_url=final_url,
+                )
+                return None
             if response.status_code >= 400:
                 _log.warning(
                     "vision.image_fetch.status_error",

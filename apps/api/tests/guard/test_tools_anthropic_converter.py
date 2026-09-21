@@ -612,12 +612,18 @@ class TestFetchGuards:
         finally:
             httpx.Client = orig_client
 
-    def _mock_resp(self, status: int, content_type: str, body: bytes):
+    def _mock_resp(self, status: int, content_type: str, body: bytes,
+                   final_url: str = "https://example.com/img"):
         class R:
             def __init__(self):
                 self.status_code = status
                 self.headers = {"content-type": content_type}
                 self.content = body
+                # The fetch code now reads ``response.url`` for the
+                # post-redirect scheme check. Default to an https URL so
+                # tests that don't care about redirects don't have to
+                # pass one explicitly.
+                self.url = final_url
         return R()
 
     def test_happy_path(self) -> None:
@@ -683,3 +689,40 @@ class TestFetchGuards:
             raises=ValueError("garbage"),
         )
         assert out is None
+
+    def _mock_resp_with_url(self, status, content_type, body, final_url):
+        class R:
+            def __init__(self):
+                self.status_code = status
+                self.headers = {"content-type": content_type}
+                self.content = body
+                self.url = final_url
+        return R()
+
+    def test_followed_redirect_to_https_ok(self) -> None:
+        # picsum.photos 302 → their CDN. httpx.Client(follow_redirects=True)
+        # returns the FINAL response. Verify we accept it as long as
+        # the final URL is still https and content-type is image/*.
+        out = self._run_fetch(
+            "https://picsum.photos/512",
+            mock_response=self._mock_resp_with_url(
+                200, "image/jpeg", b"jpegbytes",
+                final_url="https://fastly.picsum.photos/id/1/512/512.jpg",
+            ),
+        )
+        assert out is not None
+        assert out["source"]["media_type"] == "image/jpeg"
+
+    def test_final_url_downgraded_to_http_rejected(self) -> None:
+        # A redirect chain that ends on http:// (not https://) is
+        # refused post-redirect even though the initial URL was
+        # https. Defense against redirect-based scheme downgrade.
+        out = self._run_fetch(
+            "https://example.com/img",
+            mock_response=self._mock_resp_with_url(
+                200, "image/png", b"px",
+                final_url="http://internal.example.com/leak.png",
+            ),
+        )
+        assert out is None
+
