@@ -46,6 +46,7 @@ export interface InboxPatch {
 export interface BackfillResult {
   days: number
   inserted: number
+  reconciled: number
 }
 
 export interface InboxListFilters {
