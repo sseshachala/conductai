@@ -25,7 +25,7 @@ pyyaml==6.0.3
 jsonschema~=4.23
 jinja2~=3.1
 structlog==24.4.0
-sentry-sdk[fastapi]==2.69.1
+sentry-sdk[fastapi]==2.69.2
 mcp>=2.2.0,<3  # v2 requires client rewrite — see #1169 for the migration plan
 pgvector==0.5.0
 prometheus-client==0.26.0
