@@ -248,3 +248,70 @@ class TestCountImages:
     def test_zero_for_text_only_multimodal(self) -> None:
         content = [_text("a"), _text("b")]
         assert count_images(content) == 0
+
+
+# ─── #2166 PR 2 — token estimator ─────────────────────────────────
+
+
+from app.modules.guard.vision_validator import estimate_vision_tokens
+
+
+class TestEstimateVisionTokens:
+    def test_no_images_zero(self) -> None:
+        assert estimate_vision_tokens({"messages": [
+            {"role": "user", "content": "plain"},
+        ]}) == 0
+
+    def test_missing_messages_zero(self) -> None:
+        assert estimate_vision_tokens({}) == 0
+
+    def test_one_image_bills_constant(self) -> None:
+        body = {"messages": [{
+            "role": "user",
+            "content": [{"type": "image_url", "image_url": {"url": "https://x/y.png"}}],
+        }]}
+        n = estimate_vision_tokens(body)
+        assert n > 0
+        assert n == 1000  # per-image constant lands here
+
+    def test_multiple_images_across_messages_summed(self) -> None:
+        body = {"messages": [
+            {"role": "user", "content": [
+                {"type": "image_url", "image_url": {"url": "https://x/1.png"}},
+                {"type": "image_url", "image_url": {"url": "https://x/2.png"}},
+            ]},
+            {"role": "user", "content": [
+                {"type": "image_url", "image_url": {"url": "https://x/3.png"}},
+            ]},
+        ]}
+        # 3 images total * 1000 tokens
+        assert estimate_vision_tokens(body) == 3000
+
+    def test_malformed_body_returns_zero(self) -> None:
+        # Defense-in-depth: an unexpected shape must not throw.
+        assert estimate_vision_tokens({"messages": "not a list"}) == 0  # type: ignore[arg-type]
+        assert estimate_vision_tokens({"messages": [None, "junk", 42]}) == 0  # type: ignore[list-item]
+
+
+class TestVisionTokensInInputEstimator:
+    """Regression: _estimate_input_tokens must now include vision tokens."""
+
+    def test_input_estimator_includes_vision(self) -> None:
+        from app.guard.audit import _estimate_input_tokens
+
+        # Use text long enough that the ``max(1, ...)`` floor on the
+        # baseline doesn't confuse the delta comparison.
+        text = "hello world " * 20  # ~240 chars → ~60 tokens
+        body_text_only = {"messages": [{"role": "user", "content": text}]}
+        body_with_image = {"messages": [{
+            "role": "user",
+            "content": [
+                {"type": "text", "text": text},
+                {"type": "image_url", "image_url": {"url": "https://x/y.png"}},
+            ],
+        }]}
+        text_tokens = _estimate_input_tokens(body_text_only)
+        multi_tokens = _estimate_input_tokens(body_with_image)
+        # Adding one image adds ~1000 tokens to the estimate on top of
+        # the same text baseline.
+        assert multi_tokens - text_tokens == 1000

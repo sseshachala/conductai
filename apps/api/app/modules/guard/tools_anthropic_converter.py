@@ -149,10 +149,17 @@ def _rewrite_messages(messages: list[dict[str, Any]]) -> tuple[list[dict[str, An
             if isinstance(content, str):
                 out.append({"role": "user", "content": content})
             elif isinstance(content, list):
-                # Preserve multimodal-style blocks unchanged; only text
-                # matters for this converter and the shim rejects
-                # multimodal content in PR 1.
-                out.append({"role": "user", "content": content})
+                # #2166 PR 2 — convert OpenAI-shape multimodal parts
+                # to Anthropic shape. ``text`` parts pass through
+                # unchanged; ``image_url`` parts become Anthropic
+                # ``image`` blocks with either a ``base64`` source
+                # (parsed from a ``data:image/*`` URL) or a ``url``
+                # source (for ``https://`` URLs — Anthropic supports
+                # URL image references since 2024).
+                out.append({
+                    "role": "user",
+                    "content": _canonical_parts_to_anthropic(content),
+                })
             continue
 
         if role == "assistant":
@@ -208,6 +215,93 @@ def _rewrite_messages(messages: list[dict[str, Any]]) -> tuple[list[dict[str, An
             })
 
     return out, "\n".join(system_parts)
+
+
+def _canonical_parts_to_anthropic(parts: list[Any]) -> list[dict[str, Any]]:
+    """Convert an OpenAI-shape multimodal content list to Anthropic blocks.
+
+    Vision (#2166 PR 2). Input parts are validated by
+    ``vision_validator.validate_content_parts`` upstream; here we only
+    need to handle the two accepted shapes:
+
+    - ``{"type":"text","text": s}`` → passes through unchanged (both
+      APIs use the same shape).
+    - ``{"type":"image_url","image_url": {"url": u, "detail"?: d}}``
+      →
+        - For ``data:image/<subtype>;base64,<payload>`` URLs: emit
+          ``{"type":"image","source":{"type":"base64","media_type":
+          "image/<subtype>","data":"<payload>"}}``. Media type comes
+          from the URL prefix — no re-parsing.
+        - For ``https://`` URLs: emit ``{"type":"image","source":{"type":
+          "url","url": u}}``. Anthropic accepts URL image sources
+          natively; we do NOT server-side fetch (that'd add SSRF + latency
+          + a bytes-through-our-heap channel we don't want).
+
+    Any part that doesn't match either shape is silently dropped —
+    the upstream validator would have refused it, so seeing one here
+    means a caller who bypassed the validator (e.g. brain_block
+    routing later), and we prefer a partial-but-safe rewrite over
+    passing an OpenAI shape to Anthropic and hitting a provider 400
+    with a less helpful message.
+    """
+    out: list[dict[str, Any]] = []
+    for part in parts:
+        if not isinstance(part, dict):
+            continue
+        ptype = part.get("type")
+        if ptype == "text":
+            text = part.get("text")
+            if isinstance(text, str) and text:
+                out.append({"type": "text", "text": text})
+            continue
+        if ptype == "image_url":
+            image_url = part.get("image_url") or {}
+            if not isinstance(image_url, dict):
+                continue
+            url = image_url.get("url")
+            if not isinstance(url, str) or not url:
+                continue
+            block = _image_url_to_anthropic_block(url)
+            if block is not None:
+                out.append(block)
+            continue
+        # Unknown part type — drop it; the shim's validator would
+        # already have refused, so this is defense-in-depth.
+    return out
+
+
+def _image_url_to_anthropic_block(url: str) -> dict[str, Any] | None:
+    """Turn one ``image_url.url`` string into an Anthropic ``image`` block.
+
+    Returns None when the URL doesn't match either accepted scheme
+    (``data:image/*;base64,`` or ``https://``). The upstream validator
+    already rejects anything else, so None here is a defensive drop.
+
+    Never raises — a malformed data URL that snuck past validation
+    yields None so the outer message stays convertible, minus the bad
+    part.
+    """
+    if url.startswith("https://"):
+        return {
+            "type": "image",
+            "source": {"type": "url", "url": url},
+        }
+    if url.startswith("data:image/") and ";base64," in url:
+        prefix, payload = url.split(";base64,", 1)
+        # prefix is ``data:image/<subtype>[;charset=...]``. The subtype
+        # up to the first ``;`` is the media_type sans ``data:`` prefix.
+        media_type = prefix[len("data:"):].split(";", 1)[0]
+        if not media_type or not payload:
+            return None
+        return {
+            "type": "image",
+            "source": {
+                "type": "base64",
+                "media_type": media_type,
+                "data": payload,
+            },
+        }
+    return None
 
 
 def _rewrite_tools(tools: list[dict[str, Any]]) -> list[dict[str, Any]]:

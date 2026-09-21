@@ -162,9 +162,10 @@ class Settings(BaseSettings):
     # and ``data:image/*`` URLs only), enforces per-message image
     # count + per-URL size caps, and hands text parts to the existing
     # redaction path. Anthropic-target conversion + per-image token
-    # estimation land in PR 2. Default OFF so today's multimodal
-    # rejection stays live until PR 2 lands the estimator.
-    guard_gateway_vision_enabled: bool = False
+    # estimation shipped in PR 2 — default now ON. Ops can flip OFF
+    # per-env if a workspace hits provider-side vision limits before
+    # our own caps do (should be rare — ours are strictly tighter).
+    guard_gateway_vision_enabled: bool = True
 
     # #2001 commit 4 — LiteLLM in-process transport switch. When true,
     # v2 profiles whose targets carry transport=litellm_sdk execute

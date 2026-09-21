@@ -78,7 +78,17 @@ def _estimate_input_tokens(body: dict) -> int:
             tools_tokens = estimate_tools_tokens(tools)
         except Exception:
             tools_tokens = 0
-    return max(1, text_tokens + tools_tokens)
+    # #2166 PR 2 — vision content contributes real input tokens too.
+    # Under-reserving silently under-bills a workspace whose traffic
+    # is image-heavy. Conservative constant-per-image estimate; final
+    # settlement uses real ``usage`` from the provider at finalize.
+    vision_tokens = 0
+    try:
+        from app.modules.guard.vision_validator import estimate_vision_tokens
+        vision_tokens = estimate_vision_tokens(body if isinstance(body, dict) else {})
+    except Exception:
+        vision_tokens = 0
+    return max(1, text_tokens + tools_tokens + vision_tokens)
 
 
 def _extract_token_counts(body: dict, response_bytes: bytes | None) -> tuple[int | None, int | None]:

@@ -230,9 +230,9 @@ def _validate_data_url(url: str, message_index: int, part_index: int) -> None:
 def count_images(content: Any) -> int:
     """Return the number of image_url parts in a multimodal message.
 
-    Used by the token estimator (PR 2) to add per-image token budget
-    to the pre-dispatch reservation. Returns 0 for plain string
-    content or lists with no images.
+    Used by the token estimator to add per-image token budget to the
+    pre-dispatch reservation. Returns 0 for plain string content or
+    lists with no images.
     """
     if not isinstance(content, list):
         return 0
@@ -243,10 +243,50 @@ def count_images(content: Any) -> int:
     )
 
 
+# #2166 PR 2 — conservative per-image token estimate.
+#
+# OpenAI's own docs put image cost between ~85 tokens (``detail=low``)
+# and ~765 tokens (``detail=high``, tiled 512x512 patches). Anthropic
+# lands in a similar range. We conservatively bill 1000 tokens/image
+# so the pre-dispatch budget reservation over-counts rather than
+# under-bills. Final settlement happens post-response using real
+# ``usage`` from the provider (same path as tools_tokens), so this
+# only affects the reservation cap check, never the final invoice.
+#
+# Rationale for a single constant vs per-detail-level math: the
+# ``detail`` field is optional and the provider may re-detail images
+# without telling us, so the reservation stays conservative. Ops can
+# tune this if a workspace routinely runs into cap denials on
+# vision-heavy traffic (mostly rare — text tokens dominate cost).
+_TOKENS_PER_IMAGE = 1000
+
+
+def estimate_vision_tokens(body: dict) -> int:
+    """Return a conservative total-image-token estimate for a request body.
+
+    Walks ``body["messages"][].content`` (list-shaped only), counts
+    image_url parts, multiplies by ``_TOKENS_PER_IMAGE``. Returns 0
+    for a request with no images. Never raises — an unexpected shape
+    falls back to 0 so the pre-dispatch reservation never blows up
+    on a malformed body (the shim's validator refuses those anyway,
+    this is defense-in-depth).
+    """
+    try:
+        total_images = 0
+        for msg in body.get("messages") or []:
+            if not isinstance(msg, dict):
+                continue
+            total_images += count_images(msg.get("content"))
+        return total_images * _TOKENS_PER_IMAGE
+    except Exception:
+        return 0
+
+
 __all__ = [
     "VisionValidationFailure",
     "validate_content_parts",
     "count_images",
+    "estimate_vision_tokens",
     "MAX_IMAGES_PER_MESSAGE",
     "MAX_DATA_URL_DECODED_BYTES",
 ]
