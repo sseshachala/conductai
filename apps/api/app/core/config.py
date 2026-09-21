@@ -146,6 +146,17 @@ class Settings(BaseSettings):
     # Flip on per-workspace via env var after PR 2 lands.
     guard_gateway_tools_enabled: bool = False
 
+    # #2155 — Streaming + tools with buffered-delta validation. When on,
+    # ``stream=true`` combined with ``tools`` is accepted; the streaming
+    # response is wrapped so each tool_call's ``arguments`` fragments
+    # are buffered across SSE deltas, run through the response-gate
+    # validator + redactor once assembled, and emitted only if
+    # validation passes. On failure, a synthetic SSE error frame
+    # replaces the tool_call — no raw unsafe bytes reach the client.
+    # Default OFF so the shim's current 400 rejection stays live in
+    # prod until this is verified end-to-end.
+    guard_gateway_tools_stream_enabled: bool = False
+
     # #2001 commit 4 — LiteLLM in-process transport switch. When true,
     # v2 profiles whose targets carry transport=litellm_sdk execute
     # through the embedded LiteLLM SDK (anthropic_messages,
