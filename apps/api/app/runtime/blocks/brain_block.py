@@ -611,15 +611,50 @@ def _execute_brain(
         if user_email:
             _extra_headers["x-conductai-user-email"] = user_email
 
-    client_for = {"anthropic": AnthropicClient, "openai": OpenAIClient, "perplexity": PerplexityClient}
-    _client_kwargs: dict = {
-        "api_key": _effective_key,
-        "pricing_snapshot": pricing_snapshot,
-        "base_url": _effective_base_url,
-    }
-    if _extra_headers:
-        _client_kwargs["default_headers"] = _extra_headers
-    llm = client_for[provider](**_client_kwargs)
+    # #2170 PR 2 — if the workflow pins a published Gateway profile, take
+    # over the whole inference call: same conduct_proxy_url host, canonical
+    # /completions endpoint, ``profile: cond-<code>-<alias>`` instead of a
+    # provider-shaped body. The profile picks the real provider/model at
+    # the gateway. Direct-provider clients stay as the not-yet-cut-over
+    # path; PR 3 of the epic hard-requires a profile.
+    _profile_cond_key: str | None = None
+    if workflow_id and db is not None:
+        try:
+            from app.models.workflow import Workflow as _WF
+            from app.models.gateway_profile import GatewayProfile as _GP
+            _wf_row = db.query(_WF).filter(_WF.id == workflow_id).first()
+            if _wf_row and _wf_row.gateway_profile_id:
+                _prof_row = db.query(_GP).filter(_GP.id == _wf_row.gateway_profile_id).first()
+                if _prof_row and _prof_row.active_revision_id and _prof_row.cond_code:
+                    # Public routing key — same shape the /completions shim
+                    # parses. Alias is optional on the wire; when the profile
+                    # has one, include it so audit rows carry the caller's
+                    # friendly name.
+                    _alias = (_prof_row.model_alias or "").strip()
+                    _profile_cond_key = (
+                        f"cond-{_prof_row.cond_code}-{_alias}"
+                        if _alias else f"cond-{_prof_row.cond_code}"
+                    )
+        except Exception as _prof_exc:
+            log.warning("brain.gateway_profile.lookup_failed", error=str(_prof_exc))
+
+    if _profile_cond_key:
+        from app.runtime.llm_client import GatewayProfileClient as _GPC
+        llm = _GPC(
+            profile_cond_code=_profile_cond_key,
+            base_url=_conduct_proxy_url,
+            default_headers=_extra_headers,
+        )
+    else:
+        client_for = {"anthropic": AnthropicClient, "openai": OpenAIClient, "perplexity": PerplexityClient}
+        _client_kwargs: dict = {
+            "api_key": _effective_key,
+            "pricing_snapshot": pricing_snapshot,
+            "base_url": _effective_base_url,
+        }
+        if _extra_headers:
+            _client_kwargs["default_headers"] = _extra_headers
+        llm = client_for[provider](**_client_kwargs)
 
     pricing_rates, pricing_version = get_model_rates(provider, model_id, pricing_snapshot)
 
@@ -1279,11 +1314,18 @@ def _execute_brain(
                                  content=result_content[:8000] if result_content else None,
                                  tool_use_id=tc.id)
                 if db and run_id:
-                    _emit(db, run_id, block_id, "brain_tool_call", {
+                    _tool_call_evt: dict = {
                         "tool": tc.name,
                         "summary": _summarise_tool_call(tc.name, tc.input),
                         "turn": turns,
-                    })
+                    }
+                    # #2170 PR 2 — join key back to the Gateway audit row.
+                    # Populated when the workflow routes through a profile;
+                    # empty for direct-provider paths.
+                    _corr_id = (response.correlation_ids or {}).get(tc.id)
+                    if _corr_id:
+                        _tool_call_evt["tool_call_correlation_id"] = _corr_id
+                    _emit(db, run_id, block_id, "brain_tool_call", _tool_call_evt)
 
             # Append tool results (provider-specific format via adapter)
             messages.extend(llm.make_tool_results_turn(raw_tool_results))
