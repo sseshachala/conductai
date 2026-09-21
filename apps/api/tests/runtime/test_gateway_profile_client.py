@@ -351,3 +351,223 @@ def test_infer_provider_from_model_covers_shipped_prefixes():
     assert _infer_provider_from_model("meta-llama/llama-3.1-70b") == "together"
     assert _infer_provider_from_model("") is None
     assert _infer_provider_from_model("no-such-prefix-xyz") is None
+
+
+# ─── PR 3 — streaming path ─────────────────────────────────────────────
+
+
+class _FakeStreamResp:
+    """Context-manager stand-in for httpx.stream(...)."""
+
+    def __init__(self, lines: list[str], headers: dict | None = None, status: int = 200):
+        self._lines = lines
+        self.headers = headers or {}
+        self.status_code = status
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_a):
+        return False
+
+    def iter_lines(self):
+        for ln in self._lines:
+            yield ln
+
+    def iter_bytes(self):
+        # Only called on error paths; assemble the payload bytewise.
+        yield ("\n".join(self._lines)).encode()
+
+
+def _sse(*frames: dict) -> list[str]:
+    """Format each dict as a ``data:`` SSE frame, terminated by [DONE]."""
+    out: list[str] = []
+    for f in frames:
+        out.append("data: " + json.dumps(f))
+        out.append("")  # blank separator between events
+    out.append("data: [DONE]")
+    return out
+
+
+@patch("app.runtime.adapters.gateway_profile._httpx_stream_hook", None, create=True)
+def _install_stream(monkeypatched):
+    """Helper for readable @patch below — no-op used only to document intent."""
+    return monkeypatched
+
+
+def _patch_httpx_stream(fake: _FakeStreamResp):
+    """Return a mock replacement for ``httpx.stream``."""
+    def _fake_stream(_method, _url, **_kw):
+        return fake
+    return _fake_stream
+
+
+def test_stream_reassembles_text_only():
+    fake = _FakeStreamResp(_sse(
+        {"id": "chatcmpl-1", "model": "gpt-4o-2024-05-13",
+         "choices": [{"delta": {"content": "hel"}, "finish_reason": None}]},
+        {"id": "chatcmpl-1",
+         "choices": [{"delta": {"content": "lo"}, "finish_reason": None}]},
+        {"id": "chatcmpl-1",
+         "choices": [{"delta": {}, "finish_reason": "stop"}]},
+        {"id": "chatcmpl-1", "choices": [],
+         "usage": {"prompt_tokens": 4, "completion_tokens": 2}},
+    ))
+    with patch("app.runtime.adapters.gateway_profile._httpx", create=True), \
+         patch("httpx.stream", _patch_httpx_stream(fake)):
+        client = GatewayProfileClient(
+            profile_cond_code="cond-ABC12345",
+            base_url="https://gw.example.com/gateway/v1",
+            stream_enabled=True,
+        )
+        resp = client.create(
+            model="ignored",
+            messages=[{"role": "user", "content": "hi"}],
+            system="",
+        )
+    assert resp.stop_reason == "end_turn"
+    assert isinstance(resp.content[0], LLMTextBlock)
+    assert resp.content[0].text == "hello"
+    assert resp.usage.input_tokens == 4
+    assert resp.usage.output_tokens == 2
+
+
+def test_stream_reassembles_tool_call_arguments_across_deltas():
+    """OpenAI streams tool_calls with id/name on first delta and JSON
+    arguments as fragments — must reassemble by index."""
+    fake = _FakeStreamResp(_sse(
+        {"id": "chatcmpl-2", "model": "gpt-4o",
+         "choices": [{"delta": {"tool_calls": [{
+            "index": 0, "id": "call_abc", "type": "function",
+            "function": {"name": "read_file", "arguments": ""},
+         }]}, "finish_reason": None}]},
+        {"choices": [{"delta": {"tool_calls": [{
+            "index": 0, "function": {"arguments": '{"pa'},
+        }]}, "finish_reason": None}]},
+        {"choices": [{"delta": {"tool_calls": [{
+            "index": 0, "function": {"arguments": 'th":"/a"}'},
+        }]}, "finish_reason": None}]},
+        {"choices": [{"delta": {}, "finish_reason": "tool_calls"}]},
+        {"choices": [], "usage": {"prompt_tokens": 10, "completion_tokens": 3}},
+    ))
+    with patch("httpx.stream", _patch_httpx_stream(fake)):
+        client = GatewayProfileClient(
+            profile_cond_code="cond-ABC12345",
+            base_url="https://gw.example.com/gateway/v1",
+            stream_enabled=True,
+        )
+        resp = client.create(
+            model="ignored",
+            messages=[{"role": "user", "content": "read a"}],
+            system="",
+        )
+    assert resp.stop_reason == "tool_use"
+    tool_blocks = [b for b in resp.content if isinstance(b, LLMToolUseBlock)]
+    assert len(tool_blocks) == 1
+    tb = tool_blocks[0]
+    assert tb.id == "call_abc"
+    assert tb.name == "read_file"
+    assert tb.input == {"path": "/a"}
+
+
+def test_stream_reads_correlation_header_before_body():
+    """Correlation header must be captured off the streaming response
+    headers, not the reassembled body."""
+    from app.modules.guard.tools_validator import encode_correlation_header
+    corr = {"call_abc": "tcc_streamtest"}
+    header_val = encode_correlation_header(corr)
+    fake = _FakeStreamResp(
+        _sse(
+            {"choices": [{"delta": {"tool_calls": [{
+                "index": 0, "id": "call_abc", "type": "function",
+                "function": {"name": "read_file", "arguments": "{}"},
+            }]}, "finish_reason": None}]},
+            {"choices": [{"delta": {}, "finish_reason": "tool_calls"}]},
+        ),
+        headers={"X-Conduct-Tool-Correlation-Ids": header_val},
+    )
+    with patch("httpx.stream", _patch_httpx_stream(fake)):
+        client = GatewayProfileClient(
+            profile_cond_code="cond-ABC12345",
+            base_url="https://gw.example.com/gateway/v1",
+            stream_enabled=True,
+        )
+        resp = client.create(
+            model="ignored",
+            messages=[{"role": "user", "content": "x"}],
+            system="",
+        )
+    assert resp.correlation_ids == corr
+
+
+def test_stream_sends_include_usage_option():
+    """stream_enabled=True must inject stream_options.include_usage=true.
+    Without it the SSE contract drops the final usage frame and cost cap fails.
+    """
+    fake = _FakeStreamResp(_sse(
+        {"choices": [{"delta": {"content": "x"}, "finish_reason": None}]},
+        {"choices": [{"delta": {}, "finish_reason": "stop"}]},
+        {"choices": [], "usage": {"prompt_tokens": 1, "completion_tokens": 1}},
+    ))
+    seen_body: dict = {}
+
+    def _capture(_method, _url, **kw):
+        seen_body.update(kw.get("json") or {})
+        return fake
+
+    with patch("httpx.stream", _capture):
+        client = GatewayProfileClient(
+            profile_cond_code="cond-ABC12345",
+            base_url="https://gw.example.com/gateway/v1",
+            stream_enabled=True,
+        )
+        client.create(
+            model="ignored",
+            messages=[{"role": "user", "content": "x"}],
+            system="",
+        )
+    assert seen_body.get("stream") is True
+    assert seen_body.get("stream_options") == {"include_usage": True}
+
+
+def test_stream_error_raises_with_status():
+    fake = _FakeStreamResp(
+        ['{"error": {"message": "no such profile"}}'],
+        status=404,
+    )
+    with patch("httpx.stream", _patch_httpx_stream(fake)):
+        client = GatewayProfileClient(
+            profile_cond_code="cond-UNKNOWN0",
+            base_url="https://gw.example.com/gateway/v1",
+            stream_enabled=True,
+        )
+        try:
+            client.create(
+                model="ignored",
+                messages=[{"role": "user", "content": "x"}],
+                system="",
+            )
+        except Exception as exc:
+            assert "404" in str(exc)
+            return
+    raise AssertionError("expected exception on 4xx stream error")
+
+
+def test_stream_off_by_default_uses_non_streaming_path():
+    """stream_enabled=False (default) keeps the existing non-streaming path."""
+    with patch("app.runtime.adapters.gateway_profile.post_with_retry") as mock_post:
+        mock_post.return_value = _mock_response({
+            "choices": [{"message": {"content": "ok"}, "finish_reason": "stop"}],
+            "usage": {},
+        })
+        client = GatewayProfileClient(
+            profile_cond_code="cond-ABC12345",
+            base_url="https://gw.example.com/gateway/v1",
+        )
+        client.create(
+            model="ignored",
+            messages=[{"role": "user", "content": "x"}],
+            system="",
+        )
+        assert mock_post.call_args.kwargs["json_body"]["stream"] is False
+        assert "stream_options" not in mock_post.call_args.kwargs["json_body"]

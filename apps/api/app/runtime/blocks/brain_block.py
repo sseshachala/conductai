@@ -660,6 +660,11 @@ def _execute_brain(
             # per-block ``max_cost_usd`` cap stays enforced. Without
             # this the loop would see cost_usd=0.0 and never stop.
             pricing_snapshot=pricing_snapshot,
+            # #2170 PR 3 — SSE reassembly path when both flags on.
+            # Gateway side (guard_gateway_tools_stream_enabled) still
+            # rejects stream+tools without its own flag, so setting
+            # this without the gateway flag would 400 every call.
+            stream_enabled=bool(settings.guard_brain_streaming_enabled),
         )
     else:
         client_for = {"anthropic": AnthropicClient, "openai": OpenAIClient, "perplexity": PerplexityClient}
