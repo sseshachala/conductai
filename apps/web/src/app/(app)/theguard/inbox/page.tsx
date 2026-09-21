@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import AppShell from "@/components/AppShell"
 import { GuardShell } from "@/components/guard/GuardShell"
 import {
@@ -62,8 +62,22 @@ export default function GuardInboxPage() {
   const [autoCloseSaving, setAutoCloseSaving] = useState(false)
   const [autoCloseMsg, setAutoCloseMsg] = useState<string | null>(null)
 
-  const load = useCallback(async () => {
-    setLoading(true)
+  // #2170-follow-up Inbox correctness PR 1 — race protection for polling:
+  //   1. epoch ref bumps on every fetch; late responses (workspace/filter
+  //      changed, or a previous poll cycle still in flight) are dropped
+  //      instead of clobbering current state.
+  //   2. inFlight ref prevents overlapping requests when the interval
+  //      fires while a previous fetch hasn't resolved.
+  //   3. background=true means the spinner stays hidden so polling
+  //      doesn't flash the loading screen.
+  const epochRef = useRef(0)
+  const inFlightRef = useRef(false)
+
+  const load = useCallback(async (opts?: { background?: boolean }) => {
+    if (inFlightRef.current) return
+    inFlightRef.current = true
+    const myEpoch = ++epochRef.current
+    if (!opts?.background) setLoading(true)
     setError(null)
     try {
       const data = await guardInbox.list(authFetch, {
@@ -72,16 +86,52 @@ export default function GuardInboxPage() {
         source: sourceFilter === "all" ? undefined : sourceFilter,
         limit: 200,
       })
+      if (myEpoch !== epochRef.current) return  // stale — a newer fetch already ran
       setRows(data)
       setLastFetched(new Date())
     } catch (e) {
+      if (myEpoch !== epochRef.current) return
       setError(e instanceof Error ? e.message : "load failed")
     } finally {
-      setLoading(false)
+      if (!opts?.background) setLoading(false)
+      inFlightRef.current = false
     }
   }, [authFetch, statusFilter, severityFilter, sourceFilter])
 
   useEffect(() => { void load() }, [load])
+
+  // 15s polling while the tab is visible. Pauses while hidden; refreshes
+  // immediately on becoming visible again. Cleans up on unmount and on
+  // dep-change (filter switch cancels the previous interval).
+  useEffect(() => {
+    let intervalId: ReturnType<typeof setInterval> | null = null
+
+    const start = () => {
+      if (intervalId !== null) return
+      intervalId = setInterval(() => { void load({ background: true }) }, 15_000)
+    }
+    const stop = () => {
+      if (intervalId !== null) {
+        clearInterval(intervalId)
+        intervalId = null
+      }
+    }
+    const onVis = () => {
+      if (document.visibilityState === "visible") {
+        void load({ background: true })  // instant refresh on return
+        start()
+      } else {
+        stop()
+      }
+    }
+
+    if (document.visibilityState === "visible") start()
+    document.addEventListener("visibilitychange", onVis)
+    return () => {
+      document.removeEventListener("visibilitychange", onVis)
+      stop()
+    }
+  }, [load])
 
   // Load auto-close config once we have a workspace.
   useEffect(() => {

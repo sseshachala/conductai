@@ -227,18 +227,28 @@ def test_detail_400_on_bad_uuid():
 # verify the days-window plumbing and the workspace scoping.
 
 
+def _mock_backfill_row(inserted: int, reconciled: int):
+    """Backfill SQL now RETURNS one row with (inserted, reconciled) so
+    the router calls ``.one()`` — not ``.rowcount``. Give the mock a
+    Row-shaped object whose attributes match."""
+    row = MagicMock()
+    row.inserted = inserted
+    row.reconciled = reconciled
+    result = MagicMock()
+    result.one.return_value = row
+    return result
+
+
 def test_backfill_default_30_days_and_scopes_to_workspace():
     db = MagicMock()
-    result = MagicMock()
-    result.rowcount = 42
-    db.execute.return_value = result
+    db.execute.return_value = _mock_backfill_row(inserted=42, reconciled=7)
 
     client = _make_client(db)
     try:
         res = client.post("/guard/inbox/backfill")
         assert res.status_code == 200, res.text
         body = res.json()
-        assert body == {"days": 30, "inserted": 42}
+        assert body == {"days": 30, "inserted": 42, "reconciled": 7}
         # SQL executed with workspace-scoped param + 30-day window
         args, _ = db.execute.call_args
         params = args[1]
@@ -252,9 +262,7 @@ def test_backfill_default_30_days_and_scopes_to_workspace():
 def test_backfill_accepts_90_day_ceiling():
     """90 is the documented max — anything higher should 422."""
     db = MagicMock()
-    result = MagicMock()
-    result.rowcount = 0
-    db.execute.return_value = result
+    db.execute.return_value = _mock_backfill_row(inserted=0, reconciled=0)
 
     client = _make_client(db)
     try:
