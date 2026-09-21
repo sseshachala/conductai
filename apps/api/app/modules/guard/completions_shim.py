@@ -67,6 +67,10 @@ from app.modules.guard.gateway_handler import (
     _extract_cond_code,
     handle_gateway_request,
 )
+from app.modules.guard.vision_validator import (
+    VisionValidationFailure as _VisionValidationFailure,
+    validate_content_parts as _validate_content_parts,
+)
 from app.modules.guard.tools_validator import (
     RedactionFailure,
     ValidationFailure as ToolValidationFailure,
@@ -117,7 +121,14 @@ class _CanonicalMessage(BaseModel):
     role: Literal["system", "user", "assistant", "tool"]
     # Nullable to allow assistant messages that carry only tool_calls.
     # ``validate_messages`` enforces "null only when tool_calls present".
-    content: str | None = Field(default=None, max_length=1_000_000)
+    #
+    # #2166 PR 1 — content also accepts a list of content parts for
+    # multimodal (vision) messages: ``{"type":"text","text":...}`` or
+    # ``{"type":"image_url","image_url":{"url":..., "detail"?:...}}``.
+    # Pydantic can't express the URL-scheme allowlist or size caps in
+    # a type; ``vision_validator.validate_content_parts`` enforces
+    # those rules in one place so shim + response gate share it.
+    content: str | list[dict[str, Any]] | None = Field(default=None)
     # Present on ``role: "tool"`` messages; validator enforces non-empty
     # string. Absent on all other roles (Pydantic allows None default).
     tool_call_id: str | None = Field(default=None, max_length=256)
@@ -295,6 +306,27 @@ async def gateway_completions_impl(
         _validate_tool_messages([msg.model_dump(exclude_none=True) for msg in canonical.messages])
     except ToolValidationFailure as exc:
         return _reject(400, f"{exc.field}: {exc.reason}")
+
+    # #2166 PR 1 — vision content parts. Any message.content that is
+    # a list is treated as multimodal; we validate the URL scheme
+    # allowlist, per-URL size cap, and image-count cap in one place.
+    # When the flag is off, list-shaped content is refused with a
+    # targeted error so callers see the gate explicitly rather than
+    # a passthrough Pydantic error.
+    for _mi, _msg in enumerate(canonical.messages):
+        if not isinstance(_msg.content, list):
+            continue
+        if not settings.guard_gateway_vision_enabled:
+            return _reject(
+                400,
+                f"messages[{_mi}].content: multimodal (list-shaped) "
+                "content is not supported yet — enable "
+                "GUARD_GATEWAY_VISION_ENABLED (tracked as #2166).",
+            )
+        try:
+            _validate_content_parts(_msg.content, message_index=_mi)
+        except _VisionValidationFailure as exc:
+            return _reject(400, f"{exc.field}: {exc.reason}")
 
     # #2159 PR 1 — redaction is terminal on failure. Reviewer guidance:
     # scrubbing to a placeholder can change an action's meaning, so

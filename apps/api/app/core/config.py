@@ -157,6 +157,15 @@ class Settings(BaseSettings):
     # prod until this is verified end-to-end.
     guard_gateway_tools_stream_enabled: bool = False
 
+    # #2166 — Vision (image_url content parts). When on, the shim
+    # accepts multimodal messages with image_url parts (``https://``
+    # and ``data:image/*`` URLs only), enforces per-message image
+    # count + per-URL size caps, and hands text parts to the existing
+    # redaction path. Anthropic-target conversion + per-image token
+    # estimation land in PR 2. Default OFF so today's multimodal
+    # rejection stays live until PR 2 lands the estimator.
+    guard_gateway_vision_enabled: bool = False
+
     # #2001 commit 4 — LiteLLM in-process transport switch. When true,
     # v2 profiles whose targets carry transport=litellm_sdk execute
     # through the embedded LiteLLM SDK (anthropic_messages,
