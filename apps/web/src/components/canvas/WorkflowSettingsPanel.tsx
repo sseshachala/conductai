@@ -10,6 +10,15 @@ interface WorkflowDetail {
   name: string
   default_max_turns: number | null
   agent_identity_required: boolean
+  gateway_profile_id?: string | null
+}
+
+interface ProfileOption {
+  id: string
+  name: string
+  model_alias: string | null
+  cond_code: string
+  active_revision_id: string | null
 }
 
 
@@ -30,6 +39,9 @@ export default function WorkflowSettingsPanel({ workflowId, getToken, onDelete }
   const [persona, setPersona] = useState<string>("")
   const [guardSaving, setGuardSaving] = useState(false)
   const [workspaceRuntimePersona, setWorkspaceRuntimePersona] = useState<string>("conservative")
+  const [gatewayProfileId, setGatewayProfileId] = useState<string>("")
+  const [profileOptions, setProfileOptions] = useState<ProfileOption[]>([])
+  const [profileSaving, setProfileSaving] = useState(false)
   const [turnsSaving, setTurnsSaving] = useState(false)
   const [turnsSaved, setTurnsSaved] = useState(false)
   const [deleteConfirmValue, setDeleteConfirmValue] = useState("")
@@ -59,11 +71,19 @@ export default function WorkflowSettingsPanel({ workflowId, getToken, onDelete }
         setGuardEnabled(wf.guard_enabled !== false)
         setAgentIdentityRequired(wf.agent_identity_required !== false)
         setPersona(wf.runtime_persona || "")
+        setGatewayProfileId(wf.gateway_profile_id || "")
         // Resolve what "Inherit from workspace" currently means.
         try {
           const pData = await guard.config.persona(authFetch)
           if (pData?.workspace_runtime_persona) setWorkspaceRuntimePersona(pData.workspace_runtime_persona)
         } catch { /* non-fatal — fall back to 'conservative' */ }
+        // Published-only Gateway profiles for this workspace.
+        if (activeWorkspace?.id) {
+          try {
+            const profiles = await guard.gatewayProfilesV2.list(authFetch, activeWorkspace.id)
+            setProfileOptions(profiles.filter((p) => p.active_revision_id != null))
+          } catch { /* non-fatal — dropdown just stays empty */ }
+        }
       } finally {
         setLoading(false)
       }
@@ -95,6 +115,26 @@ async function saveGuard(enabled = guardEnabled) {
       setError(e instanceof Error ? e.message : "Failed to save Agent Identity setting")
     } finally {
       setAgentIdentitySaving(false)
+    }
+  }
+
+  async function saveGatewayProfile(nextId: string) {
+    setProfileSaving(true)
+    setError(null)
+    try {
+      const authFetch = makeAuthFetch()
+      const res = await workflows.update(authFetch, workflowId, {
+        gateway_profile_id: nextId || null,
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        throw new Error(body.detail ?? "Failed to save Gateway profile")
+      }
+      setGatewayProfileId(nextId)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to save Gateway profile")
+    } finally {
+      setProfileSaving(false)
     }
   }
 
@@ -218,6 +258,48 @@ async function saveGuard(enabled = guardEnabled) {
                 </button>
                 <span style={{ fontSize: 13, color: "var(--text-muted)" }}>Short-lived token per run</span>
               </div>
+            </div>
+
+            {/* Gateway profile (#2170) */}
+            <div className="card" style={{ padding: "16px 20px" }}>
+              <p className="eyebrow" style={{ marginBottom: 4 }}>Gateway profile</p>
+              <p style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 12 }}>
+                Pin a published Gateway profile. Brain blocks in this workflow will route every
+                LLM call through the profile — provider, model, credentials, and policy live
+                there, not on the block. Only published profiles are listed.
+              </p>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <select
+                  value={gatewayProfileId}
+                  onChange={(e) => saveGatewayProfile(e.target.value)}
+                  disabled={profileSaving}
+                  style={{
+                    flex: 1,
+                    border: "1px solid var(--border)",
+                    borderRadius: 8,
+                    padding: "8px 12px",
+                    fontSize: 13,
+                    background: "var(--surface)",
+                    color: "var(--text)",
+                    outline: "none",
+                  }}
+                >
+                  <option value="">— None (legacy per-provider routing) —</option>
+                  {profileOptions.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name} ({p.cond_code}{p.model_alias ? `-${p.model_alias}` : ""})
+                    </option>
+                  ))}
+                </select>
+                {profileSaving && <span style={{ fontSize: 12, color: "var(--text-3)" }}>Saving…</span>}
+              </div>
+              {profileOptions.length === 0 && (
+                <p style={{ fontSize: 11, color: "var(--text-3)", marginTop: 8 }}>
+                  No published profiles yet. Create one in
+                  {" "}
+                  <a href="/proxy/gateway-profiles" style={{ color: "var(--accent, #6d28d9)" }}>Gateway profiles</a>.
+                </p>
+              )}
             </div>
 
             {/* Turn budget */}

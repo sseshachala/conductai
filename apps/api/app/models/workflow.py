@@ -40,6 +40,18 @@ class Workflow(Base):
     guard_enabled   = Column(Boolean, nullable=False, default=True, server_default="true")
     agent_identity_required = Column(Boolean, nullable=False, default=True, server_default="true")
     runtime_persona = Column(String(20), nullable=True)  # NULL = inherit workspace runtime_persona
+    # #2170 — pinned published Gateway profile. brain_block routes through
+    # this profile at runtime (later PR of the epic). NULL means "not yet
+    # assigned" during the rollout; enforcement lands with the cut-over.
+    gateway_profile_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey(
+            "gateway_profiles.id",
+            ondelete="SET NULL",
+            name="fk_workflows_gateway_profile_id",
+        ),
+        nullable=True,
+    )
 
 
     created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
@@ -62,6 +74,7 @@ class Workflow(Base):
             postgresql_where=sa.text("github_hook_label IS NOT NULL"),
         ),
         Index("ix_workflows_archived_at", "archived_at"),
+        Index("ix_workflows_gateway_profile_id", "gateway_profile_id"),
         Index(
             "workflows_project_playbook_uniq",
             "project_id", "playbook_slug",
