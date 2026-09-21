@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import AppShell from "@/components/AppShell"
 import { GuardShell } from "@/components/guard/GuardShell"
 import {
@@ -62,8 +62,25 @@ export default function GuardInboxPage() {
   const [autoCloseSaving, setAutoCloseSaving] = useState(false)
   const [autoCloseMsg, setAutoCloseMsg] = useState<string | null>(null)
 
-  const load = useCallback(async () => {
-    setLoading(true)
+  // #2170-follow-up Inbox correctness — race protection for polling.
+  // Reviewer P2 (round 2): the earlier version bailed if a fetch was
+  // in flight, which meant a workspace or filter switch DURING an
+  // in-flight response left the epoch un-advanced — so the stale
+  // response passed the freshness check and populated the newly
+  // selected view. Correct pattern:
+  //
+  //   - ALWAYS advance the epoch on load(). Never early-return.
+  //   - Late responses drop themselves on the OUTPUT side by
+  //     comparing myEpoch to the current epoch after await.
+  //   - Overlapping requests are cheap (network-bound) and correct;
+  //     only the most recent one commits state.
+  //   - A workspace change hard-resets state via the effect below,
+  //     so any in-flight response can't clobber the reset either.
+  const epochRef = useRef(0)
+
+  const load = useCallback(async (opts?: { background?: boolean }) => {
+    const myEpoch = ++epochRef.current
+    if (!opts?.background) setLoading(true)
     setError(null)
     try {
       const data = await guardInbox.list(authFetch, {
@@ -72,16 +89,66 @@ export default function GuardInboxPage() {
         source: sourceFilter === "all" ? undefined : sourceFilter,
         limit: 200,
       })
+      if (myEpoch !== epochRef.current) return  // stale — a newer fetch already ran
       setRows(data)
       setLastFetched(new Date())
     } catch (e) {
+      if (myEpoch !== epochRef.current) return
       setError(e instanceof Error ? e.message : "load failed")
     } finally {
-      setLoading(false)
+      // Only clear loading if we're still the most-recent fetch;
+      // otherwise the newer fetch owns the spinner state.
+      if (myEpoch === epochRef.current && !opts?.background) setLoading(false)
     }
   }, [authFetch, statusFilter, severityFilter, sourceFilter])
 
+  // Workspace change: hard-reset workspace-scoped state so a late
+  // response from the previous workspace can't repopulate. The epoch
+  // bump inside load() protects against in-flight-then-commit; this
+  // handles the row/error/expanded state that would otherwise linger.
+  useEffect(() => {
+    epochRef.current += 1   // invalidate any in-flight from previous ws
+    setRows([])
+    setError(null)
+    setExpandedId(null)
+    setEvents({})
+    setLastFetched(null)
+  }, [workspaceId])
+
   useEffect(() => { void load() }, [load])
+
+  // 15s polling while the tab is visible. Pauses while hidden; refreshes
+  // immediately on becoming visible again. Cleans up on unmount and on
+  // dep-change (filter switch cancels the previous interval).
+  useEffect(() => {
+    let intervalId: ReturnType<typeof setInterval> | null = null
+
+    const start = () => {
+      if (intervalId !== null) return
+      intervalId = setInterval(() => { void load({ background: true }) }, 15_000)
+    }
+    const stop = () => {
+      if (intervalId !== null) {
+        clearInterval(intervalId)
+        intervalId = null
+      }
+    }
+    const onVis = () => {
+      if (document.visibilityState === "visible") {
+        void load({ background: true })  // instant refresh on return
+        start()
+      } else {
+        stop()
+      }
+    }
+
+    if (document.visibilityState === "visible") start()
+    document.addEventListener("visibilitychange", onVis)
+    return () => {
+      document.removeEventListener("visibilitychange", onVis)
+      stop()
+    }
+  }, [load])
 
   // Load auto-close config once we have a workspace.
   useEffect(() => {

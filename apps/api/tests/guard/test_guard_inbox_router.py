@@ -227,42 +227,75 @@ def test_detail_400_on_bad_uuid():
 # verify the days-window plumbing and the workspace scoping.
 
 
-def test_backfill_default_30_days_and_scopes_to_workspace():
+def _mock_backfill_db(dedup_keys: list[str], insert_flags: list[bool]):
+    """Backfill now runs two statements per dedup group:
+
+      1. ``_DISCOVER_DEDUPS_SQL`` — SELECT that returns (dedup_key,) rows.
+      2. Per-group loop, two executes each:
+           a. ``_LOCK_OR_CREATE_SQL`` — INSERT-or-lock, RETURNING was_insert.
+           b. ``_RECONCILE_APPLY_SQL`` — UPDATE, no RETURNING.
+
+    Give the mock a chained ``execute`` side-effect so it hands back
+    the discovery rows first, then alternates lock-result / update-none
+    for each group.
+    """
+    discover_result = MagicMock()
+    dedup_rows = [MagicMock(dedup_key=k) for k in dedup_keys]
+    discover_result.fetchall.return_value = dedup_rows
+
+    per_group_results = []
+    for was_insert in insert_flags:
+        lock_result = MagicMock()
+        lock_row = MagicMock()
+        lock_row.was_insert = was_insert
+        lock_result.one.return_value = lock_row
+        update_result = MagicMock()
+        per_group_results.append(lock_result)
+        per_group_results.append(update_result)
+
     db = MagicMock()
-    result = MagicMock()
-    result.rowcount = 42
-    db.execute.return_value = result
+    db.execute.side_effect = [discover_result, *per_group_results]
+    return db
+
+
+def test_backfill_default_30_days_and_scopes_to_workspace():
+    """Discovery run + one reconciliation per dedup group. Response counts
+    inserted vs reconciled based on each lock-row's ``was_insert`` flag."""
+    db = _mock_backfill_db(
+        dedup_keys=["dedup-a", "dedup-b", "dedup-c"],
+        insert_flags=[True, False, False],  # 1 fresh insert, 2 repairs
+    )
 
     client = _make_client(db)
     try:
         res = client.post("/guard/inbox/backfill")
         assert res.status_code == 200, res.text
         body = res.json()
-        assert body == {"days": 30, "inserted": 42}
-        # SQL executed with workspace-scoped param + 30-day window
-        args, _ = db.execute.call_args
-        params = args[1]
+        assert body == {"days": 30, "inserted": 1, "reconciled": 2}
+        # First execute = discovery, with workspace-scoped + 30-day args.
+        discover_call = db.execute.call_args_list[0]
+        params = discover_call[0][1]
         assert params["days"] == 30
         assert str(params["ws"]) == WS_ID
-        assert db.commit.called
+        # Per-group commits — one for discovery, one per group.
+        assert db.commit.call_count == 1 + 3
     finally:
         _teardown()
 
 
 def test_backfill_accepts_90_day_ceiling():
     """90 is the documented max — anything higher should 422."""
-    db = MagicMock()
-    result = MagicMock()
-    result.rowcount = 0
-    db.execute.return_value = result
-
-    client = _make_client(db)
+    client = _make_client(_mock_backfill_db(dedup_keys=[], insert_flags=[]))
     try:
         res_ok = client.post("/guard/inbox/backfill?days=90")
         assert res_ok.status_code == 200, res_ok.text
         assert res_ok.json()["days"] == 90
+    finally:
+        _teardown()
 
-        res_over = client.post("/guard/inbox/backfill?days=91")
+    client2 = _make_client(_mock_backfill_db(dedup_keys=[], insert_flags=[]))
+    try:
+        res_over = client2.post("/guard/inbox/backfill?days=91")
         assert res_over.status_code == 422
     finally:
         _teardown()

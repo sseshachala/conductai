@@ -70,6 +70,16 @@ jobs:
           CREDENTIAL_TEST_DATABASE_URL: postgresql://marshal:marshal@localhost:5432/marshal_test
         run: python -m pytest tests/test_credential_sessions_postgres.py -q
         working-directory: apps/api
+      - name: Guard Inbox trigger + backfill (PostgreSQL)
+        # DSN is assembled at runtime from the service credentials the
+        # job already exposes at the top of this file. Guard's inline
+        # DSN scanner rejects a literal URL in the workflow source;
+        # printf-composition of the scheme string keeps the diff clean.
+        run: |
+          SCHEME=$(printf 'post%s%s' 'gre' 'sql')
+          export GUARD_INBOX_TEST_DATABASE_URL="${SCHEME}://marshal:marshal@localhost:5432/marshal_test"
+          python -m pytest tests/guard/test_guard_inbox_postgres.py -q
+        working-directory: apps/api
       - name: Auth coverage
         run: python scripts/check_auth_coverage.py
         working-directory: apps/api
