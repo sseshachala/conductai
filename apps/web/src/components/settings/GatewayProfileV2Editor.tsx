@@ -51,6 +51,20 @@ const PASSTHROUGH_INTEGRATION_OPERATIONS: Record<string, Operation[]> = {
   // shape. Absent = deriveAccepts contributes nothing for them.
 }
 
+// Expected vault key name per passthrough integration. Mirrors
+// ``INTEGRATION_KEY_ALIASES`` in
+// ``apps/api/app/modules/guard/gateway_credentials.py`` — first tuple
+// entry is the canonical name shown to users. Both Helicone integrations
+// share HELICONE_API_KEY on purpose so users store one key.
+const INTEGRATION_KEY_HINTS: Record<string, string> = {
+  openrouter:         "OPENROUTER_API_KEY",
+  portkey:            "PORTKEY_API_KEY",
+  helicone_anthropic: "HELICONE_API_KEY",
+  helicone_openai:    "HELICONE_API_KEY",
+  azure_openai:       "AZUREAI_API_KEY",
+  custom:             "",
+}
+
 // Compute the operations ONE target can serve. Anthropic native /
 // litellm → anthropic_messages + count_tokens. OpenAI native / litellm
 // → chat_completions + responses. Passthrough looks up the per-
@@ -605,6 +619,11 @@ function TargetRow({
               placeholder={target.credential_env_id ? "no credentials in this vault yet" : "pick a vault first"}
               onChange={e => onChange({ credential_handle: e.target.value })} style={inputStyle} />
           )}
+          {target.transport === "http_passthrough" && INTEGRATION_KEY_HINTS[target.integration] ? (
+            <span style={{ fontSize: 11, color: "var(--text-3)" }}>
+              Expected key in vault: <code>{INTEGRATION_KEY_HINTS[target.integration]}</code>
+            </span>
+          ) : null}
         </FieldLabel>
       </div>
     </div>

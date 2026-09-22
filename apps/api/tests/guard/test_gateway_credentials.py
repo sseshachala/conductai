@@ -57,3 +57,47 @@ def test_missing_vault_reference_does_not_search_credentials(monkeypatch):
     )
 
     assert resolve_gateway_key(SimpleNamespace(), "workspace-1", None, "openai", None) is None
+
+
+def test_integration_alias_covers_shared_helicone_key(monkeypatch):
+    # helicone_anthropic + helicone_openai both use HELICONE_API_KEY.
+    # The bridge passes integration name as ``provider``, so the alias
+    # map must be tried before the generic HELICONE_ANTHROPIC_API_KEY
+    # fallback (which the user is intentionally NOT expected to set).
+    monkeypatch.setattr(
+        "app.modules.guard.gateway_credentials.get_vault_credential",
+        lambda db, ws, env, sel: {"HELICONE_API_KEY": "hkey"},
+    )
+
+    for integration in ("helicone_anthropic", "helicone_openai"):
+        key = resolve_gateway_key(
+            SimpleNamespace(),
+            "workspace-1",
+            f"vault://{VAULT_ID}/helicone",
+            integration,
+            None,
+        )
+        assert key == "hkey", integration
+
+
+def test_integration_alias_precedes_generic_provider_key(monkeypatch):
+    # If both AZUREAI_API_KEY (alias) and AZURE_OPENAI_API_KEY (generic
+    # upper-case fallback) are present, the alias wins so operator
+    # intent stays consistent with the UI hint.
+    monkeypatch.setattr(
+        "app.modules.guard.gateway_credentials.get_vault_credential",
+        lambda db, ws, env, sel: {
+            "AZUREAI_API_KEY": "alias-key",
+            "AZURE_OPENAI_API_KEY": "generic-key",
+        },
+    )
+
+    key = resolve_gateway_key(
+        SimpleNamespace(),
+        "workspace-1",
+        f"vault://{VAULT_ID}/azure",
+        "azure_openai",
+        None,
+    )
+
+    assert key == "alias-key"
