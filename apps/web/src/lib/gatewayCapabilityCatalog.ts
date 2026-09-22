@@ -5,7 +5,7 @@
 // operation is not certified" before the round-trip. Stale mirror =
 // less-helpful UI, never a bad profile in the DB.
 
-export const CATALOG_VERSION = "2026.09.16.v2-openrouter-passthrough"
+export const CATALOG_VERSION = "2026.09.22.v2-helicone-passthrough"
 
 export type Operation =
   | "anthropic_messages"
@@ -51,8 +51,8 @@ const _LITELLM_SDK: Record<string, Operation[]> = {
 const _HTTP_PASSTHROUGH: Record<Integration, Operation[]> = {
   portkey: [],
   openrouter: ["openai_chat_completions"],
-  helicone_anthropic: [],
-  helicone_openai: [],
+  helicone_anthropic: ["anthropic_messages"],
+  helicone_openai: ["openai_chat_completions"],
   azure_openai: [],
   custom: [],
 }

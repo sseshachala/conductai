@@ -75,10 +75,17 @@ _LITELLM_SDK_CERTIFIED: dict[tuple[str, Operation], list[str] | None] = {
 # OpenRouter reference implementation deliberately punts on.
 _HTTP_PASSTHROUGH_CERTIFIED: dict[tuple[Integration, Operation], bool] = {
     ("openrouter", "openai_chat_completions"): True,
+    # PR 5 — Helicone observability proxy. Two-key auth
+    # (Helicone-Auth + upstream vendor auth) is handled in
+    # ``_INTEGRATION_ENDPOINTS`` via ``vendor_auth_header``. Each
+    # integration certifies exactly the operation surface the
+    # underlying vendor exposes on Helicone's mirror URL.
+    ("helicone_openai",    "openai_chat_completions"): True,
+    ("helicone_anthropic", "anthropic_messages"):      True,
 }
 
 
-CATALOG_VERSION = "2026.09.16.v2-openrouter-passthrough"
+CATALOG_VERSION = "2026.09.22.v2-helicone-passthrough"
 
 
 class CapabilityMismatch(Exception):

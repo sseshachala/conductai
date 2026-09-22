@@ -276,13 +276,12 @@ def test_catalog_certifies_openrouter_for_openai_chat_completions():
 
 
 def test_catalog_still_rejects_other_passthrough_integrations():
-    """Portkey / Helicone / Azure OpenAI stay uncertified until each
-    ships its per-integration auth-header semantics (follow-up PRs).
-    Publish rejects them all — the loud rejection is what stops an
-    admin from believing a Portkey target is live before its executor
-    ships."""
-    for integration in ("portkey", "helicone_anthropic",
-                        "helicone_openai", "azure_openai"):
+    """Portkey (PR 4) + Azure OpenAI (PR 6) stay uncertified on this
+    branch. Helicone_openai + helicone_anthropic landed in PR 5 with
+    two-key auth. Publish rejects the still-uncertified set — the loud
+    rejection is what stops an admin from believing a live target is
+    up before its executor ships."""
+    for integration in ("portkey", "azure_openai"):
         target = HTTPPassthroughTarget(
             id=f"t-{integration}", transport="http_passthrough",
             integration=integration, model="some-model",
@@ -292,6 +291,28 @@ def test_catalog_still_rejects_other_passthrough_integrations():
             validate_targets_against_accepts(
                 accepts=["openai_chat_completions"], targets=[target],
             )
+
+
+def test_catalog_certifies_helicone_openai_for_chat_completions():
+    target = HTTPPassthroughTarget(
+        id="t-helicone-openai", transport="http_passthrough",
+        integration="helicone_openai", model="gpt-4o",
+        credential_ref=CRED_PORTKEY,
+    )
+    validate_targets_against_accepts(
+        accepts=["openai_chat_completions"], targets=[target],
+    )
+
+
+def test_catalog_certifies_helicone_anthropic_for_messages():
+    target = HTTPPassthroughTarget(
+        id="t-helicone-anthropic", transport="http_passthrough",
+        integration="helicone_anthropic", model="claude-sonnet-4-6",
+        credential_ref=CRED_PORTKEY,
+    )
+    validate_targets_against_accepts(
+        accepts=["anthropic_messages"], targets=[target],
+    )
 
 
 def test_catalog_still_rejects_openrouter_for_uncertified_operation():

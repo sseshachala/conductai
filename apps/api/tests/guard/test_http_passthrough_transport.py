@@ -46,6 +46,30 @@ def _openrouter_target(**overrides) -> HTTPPassthroughTarget:
     return HTTPPassthroughTarget(**defaults)
 
 
+def _helicone_openai_target(**overrides) -> HTTPPassthroughTarget:
+    defaults = dict(
+        id="helicone-openai-primary",
+        transport="http_passthrough",
+        integration="helicone_openai",
+        model="gpt-4o",
+        credential_ref=f"vault://{ENV}/helicone",
+    )
+    defaults.update(overrides)
+    return HTTPPassthroughTarget(**defaults)
+
+
+def _helicone_anthropic_target(**overrides) -> HTTPPassthroughTarget:
+    defaults = dict(
+        id="helicone-anthropic-primary",
+        transport="http_passthrough",
+        integration="helicone_anthropic",
+        model="claude-sonnet-4-6",
+        credential_ref=f"vault://{ENV}/helicone",
+    )
+    defaults.update(overrides)
+    return HTTPPassthroughTarget(**defaults)
+
+
 class _FakeResponse:
     def __init__(self, status_code=200, json_body=None):
         self.status_code = status_code
@@ -93,6 +117,104 @@ async def test_openrouter_chat_completions_hits_correct_url_with_bearer(monkeypa
     # Attribution headers reach the wire.
     assert captured["headers"]["HTTP-Referer"] == "https://conductai.ai"
     assert captured["headers"]["X-Title"] == "Conduct AI Gateway"
+
+
+@pytest.mark.anyio("asyncio")
+async def test_helicone_openai_uses_two_key_auth(monkeypatch):
+    """Helicone-OpenAI: Helicone-Auth carries the observability key,
+    Authorization carries the upstream OpenAI key. URL rewrites to
+    Helicone's mirror, but the vendor still sees a normal OpenAI-shape
+    chat completion body. Model swap happens as usual."""
+    captured: dict = {}
+
+    async def _fake_post(url, headers, content):
+        captured.update(url=url, headers=headers, content=content)
+        return _FakeResponse(200, {"id": "chatcmpl-hel"})
+
+    transport = HTTPPassthroughTransport()
+    fake_client = MagicMock()
+    fake_client.post = _fake_post
+    monkeypatch.setattr(transport, "_get_client", AsyncMock(return_value=fake_client))
+
+    result = await transport.execute(
+        target=_helicone_openai_target(),
+        operation="openai_chat_completions",
+        payload={"model": "cond-alias", "messages": [{"role": "user", "content": "hi"}]},
+        credential_resolver=lambda ref: "sk-hel-live",
+        vendor_credential_resolver=lambda ref: "sk-openai-live",
+    )
+
+    assert result == {"id": "chatcmpl-hel"}
+    assert captured["url"] == "https://oai.helicone.ai/v1/chat/completions"
+    # BOTH auth headers on the same request.
+    assert captured["headers"]["Helicone-Auth"] == "Bearer sk-hel-live"
+    assert captured["headers"]["authorization"] == "Bearer sk-openai-live"
+    # Target model wins in the forwarded body.
+    import json as _json
+    assert _json.loads(captured["content"])["model"] == "gpt-4o"
+
+
+@pytest.mark.anyio("asyncio")
+async def test_helicone_anthropic_uses_x_api_key_and_version_header(monkeypatch):
+    """Helicone-Anthropic: Helicone-Auth: Bearer + x-api-key (NO Bearer)
+    for the Anthropic upstream + the mandatory anthropic-version static
+    header. URL rewrites to Helicone's Anthropic mirror at /messages."""
+    captured: dict = {}
+
+    async def _fake_post(url, headers, content):
+        captured.update(url=url, headers=headers, content=content)
+        return _FakeResponse(200, {"id": "msg_hel"})
+
+    transport = HTTPPassthroughTransport()
+    fake_client = MagicMock()
+    fake_client.post = _fake_post
+    monkeypatch.setattr(transport, "_get_client", AsyncMock(return_value=fake_client))
+
+    result = await transport.execute(
+        target=_helicone_anthropic_target(),
+        operation="anthropic_messages",
+        payload={"messages": [{"role": "user", "content": "hi"}]},
+        credential_resolver=lambda ref: "sk-hel-live",
+        vendor_credential_resolver=lambda ref: "sk-ant-live",
+    )
+
+    assert result == {"id": "msg_hel"}
+    assert captured["url"] == "https://anthropic.helicone.ai/v1/messages"
+    assert captured["headers"]["Helicone-Auth"] == "Bearer sk-hel-live"
+    # Anthropic uses raw x-api-key (no Bearer).
+    assert captured["headers"]["x-api-key"] == "sk-ant-live"
+    # Anthropic REST requires an explicit version pin — Helicone forwards it.
+    assert captured["headers"]["anthropic-version"] == "2023-06-01"
+    # No stray Authorization header (would confuse Anthropic).
+    assert "authorization" not in {k.lower() for k in captured["headers"]}
+
+
+@pytest.mark.anyio("asyncio")
+async def test_helicone_missing_vendor_key_fails_closed():
+    """Fail-closed if the bridge didn't supply a vendor resolver, or
+    the vendor resolver returns empty. Two-key integrations require
+    both keys — degrading to a Helicone-only call would 401 anyway,
+    but the specific config-error message beats a mystery 401."""
+    transport = HTTPPassthroughTransport()
+
+    # Case 1: no vendor resolver passed at all.
+    with pytest.raises(ValueError, match=r"vendor_credential_resolver"):
+        await transport.execute(
+            target=_helicone_openai_target(),
+            operation="openai_chat_completions",
+            payload={"messages": []},
+            credential_resolver=lambda ref: "sk-hel",
+        )
+
+    # Case 2: vendor resolver returns empty (vault entry missing key).
+    with pytest.raises(ValueError, match=r"empty"):
+        await transport.execute(
+            target=_helicone_openai_target(),
+            operation="openai_chat_completions",
+            payload={"messages": []},
+            credential_resolver=lambda ref: "sk-hel",
+            vendor_credential_resolver=lambda ref: "",
+        )
 
 
 @pytest.mark.anyio("asyncio")
@@ -237,4 +359,10 @@ def test_integration_certifies_operation_helper():
     check the runtime matrix. Guards against catalog-vs-runtime drift."""
     assert integration_certifies_operation("openrouter", "openai_chat_completions") is True
     assert integration_certifies_operation("openrouter", "anthropic_messages") is False
+    assert integration_certifies_operation("helicone_openai", "openai_chat_completions") is True
+    assert integration_certifies_operation("helicone_openai", "anthropic_messages") is False
+    assert integration_certifies_operation("helicone_anthropic", "anthropic_messages") is True
+    assert integration_certifies_operation("helicone_anthropic", "openai_chat_completions") is False
+    # Portkey (PR 4) + Azure (PR 6) still uncertified on this branch.
     assert integration_certifies_operation("portkey", "openai_chat_completions") is False
+    assert integration_certifies_operation("azure_openai", "openai_chat_completions") is False
