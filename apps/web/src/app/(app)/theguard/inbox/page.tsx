@@ -356,7 +356,15 @@ export default function GuardInboxPage() {
     setBackfillMsg(null)
     try {
       const r = await guardInbox.backfill(authFetch, backfillDays)
-      setBackfillMsg(`Synced last ${r.days} days — ${r.inserted} events touched.`)
+      // Backfill response is {days, inserted, reconciled} — inserted =
+      // brand-new inbox rows created for dedup groups that didn't
+      // exist yet; reconciled = existing rows whose occurrences /
+      // severity / timestamps were repaired against the authoritative
+      // audit history. Show both so operators can tell what actually
+      // changed on a re-run vs an initial sync.
+      setBackfillMsg(
+        `Synced last ${r.days} days — ${r.inserted} new, ${r.reconciled} reconciled.`,
+      )
       await load()
     } catch (e) {
       setBackfillMsg(e instanceof Error ? e.message : "backfill failed")
