@@ -1,9 +1,9 @@
 import { CtaLink } from "@/components/marketing/CtaLink"
 
 export const metadata = {
-  title: "One policy in front of 400+ models — Guard on OpenRouter | Conduct",
+  title: "One policy in front of 400+ models. Guard on OpenRouter | Conduct",
   description:
-    "Point Conduct Guard at OpenRouter and every model you route through it — Claude, GPT, Gemini, Llama, Mistral, DeepSeek — enforces the same policy before the request leaves your network.",
+    "Point Conduct Guard at OpenRouter and every model you route through it (Claude, GPT, Gemini, Llama, Mistral, DeepSeek) enforces the same policy before the request leaves your network.",
 }
 
 export default function BlogPost() {
@@ -21,7 +21,7 @@ export default function BlogPost() {
         </h1>
         <p className="text-lg text-stone-500 leading-relaxed">
           Point Conduct Guard at OpenRouter and every model you route
-          through it — Claude, GPT, Gemini, Llama, Mistral, DeepSeek —
+          through it (Claude, GPT, Gemini, Llama, Mistral, DeepSeek)
           enforces the same policy before the request leaves your
           network.
         </p>
@@ -32,7 +32,7 @@ export default function BlogPost() {
         <p className="text-stone-700 leading-relaxed mb-4">
           OpenRouter gives you one API and one bill for 400+ models
           across every major provider. Cost, fallback, and provider
-          diversity — one place. That is the surface a policy engine
+          diversity in one place. That is the surface a policy engine
           should sit on.
         </p>
 
@@ -98,7 +98,7 @@ LLM Upstream API Key:  sk-or-...`}
             <strong>Human-in-the-loop approvals.</strong> Any rule with{" "}
             <code>action: approval</code> pauses the request, posts to
             Slack with Approve and Reject buttons, and resumes on
-            decision — even on the higher-cost model route where you
+            decision, even on the higher-cost model route where you
             most want a checkpoint.
           </li>
         </ul>
@@ -115,8 +115,8 @@ LLM Upstream API Key:  sk-or-...`}
           </li>
         </ol>
         <p className="text-stone-700 leading-relaxed mb-6">
-          Verify in the console at <code>/theguard/activity</code> —
-          every request lands as an audit row within seconds, tagged
+          Verify in the console at <code>/theguard/activity</code>.
+          Every request lands as an audit row within seconds, tagged
           with the OpenRouter target model.
         </p>
 
@@ -125,7 +125,7 @@ LLM Upstream API Key:  sk-or-...`}
           Guard supports Portkey, OpenRouter, Helicone, LiteLLM, and
           Azure OpenAI as upstreams, plus a generic OpenAI-compatible
           fallback. Pick the one you already run. The Guard policy
-          layer is the same either way — one ruleset, every surface.
+          layer is the same either way. One ruleset, every surface.
         </p>
 
         <div className="not-prose flex flex-wrap gap-3 mt-12 mb-8">
