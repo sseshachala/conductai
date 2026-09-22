@@ -35,7 +35,7 @@ export default function BlogIndex() {
     {
       slug: "openrouter-one-policy-every-model",
       title: "One policy in front of 400+ models.",
-      excerpt: "Point Guard at OpenRouter and every model you route through it — Claude, GPT, Gemini, Llama, Mistral, DeepSeek — enforces the same policy before the request leaves your network.",
+      excerpt: "Point Guard at OpenRouter and every model you route through it (Claude, GPT, Gemini, Llama, Mistral, DeepSeek) enforces the same policy before the request leaves your network.",
       date: "August 24, 2026",
       tag: "Integrations",
       tagColor: "text-orange-700 bg-orange-50 border-orange-200",
