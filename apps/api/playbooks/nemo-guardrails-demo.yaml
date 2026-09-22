@@ -12,7 +12,7 @@
 # enabled.
 # ──────────────────────────────────────────────────────────────────────────────
 name: NeMo Guardrails × Conduct — DETECT & ENFORCE demo
-version: 3
+version: 4
 description: >
   5-beat live demo showing Conduct as the DETECT & ENFORCE layer at L4
   AI RUNTIME TRUST. A NeMo-style input rail hits guard_check, Conduct
@@ -47,12 +47,10 @@ blocks:
     max_turns: 1
     next: call_guard_check
     system: |
-      You output demo framing markdown verbatim. Do not add commentary,
-      do not summarize, do not restructure. Output exactly the markdown
-      block in the prompt, then stop.
+      You are the narrator for a live product demo. Reply with the demo
+      copy in the user message as your response — no preamble, no meta
+      commentary, and never wrap the copy in a code fence.
     prompt: |
-      Output this markdown exactly as-is:
-
       **L4 · AI RUNTIME TRUST.** The DETECT & ENFORCE box in the AI TRiSM
       reference architecture. Three legs: **Guardrails · Gateway · Observability**.
       NeMo Guardrails is the rails engine. LiteLLM is the gateway engine.
@@ -61,28 +59,29 @@ blocks:
       _PREVENT (DSPM) is upstream. RECOVER (backup / DR) is downstream.
       This demo lives in the middle box._
 
-      _Sending a prompt-injection payload to Conduct's guard_check for evaluation._
+      _Next: routing a test input through Conduct's guard_check for evaluation._
 
   # ── 2a. Guardrails leg — real Conduct verdict (Beat 2) ────────────────────
   call_guard_check:
     type: mcp
     label: Guardrails leg — guard_check
-    description: NeMo Colang input-rail framing → guard_check against the conduct-prompt-injection pack. Real verdict, real rule ID, real hash-chained audit row.
+    description: NeMo Colang input-rail framing → guard_check evaluates the payload against every rule installed in the workspace policy. Real verdict, real rule ID, real hash-chained audit row.
     config:
       server_name: "Conduct AI Guard"
       tool_name: guard_check
       inputs:
-        # ponytail: tool_name is llm_call, not write. write trips the always-on
-        # conduct-base rule surface-chat-no-file-write BEFORE the caller's
-        # pack: gets evaluated, so the demo would show the wrong rule id.
-        # llm_call is the correct action family for a prompt being sent to
-        # a model — nothing in conduct-base short-circuits it, so the
-        # conduct-prompt-injection pack rule fires cleanly on the payload.
+        # ponytail: tool_name is llm_call — the action family for a prompt
+        # being sent to a model. conduct-prompt-injection v1.0.2 lists
+        # llm_call in match_tool so its patterns evaluate this call.
+        # The demo requires that pack to be enabled in the workspace policy;
+        # without it, guard_check returns "ok" and the beat degrades to
+        # "Allowed" rather than "Blocked".
+        # The legacy `pack:` argument was retired in #1753 and is silently
+        # ignored — scoping to a pack now happens via workspace install.
         tool_name: "llm_call"
         tool_input:
           model: "claude-sonnet-4-5"
           prompt: "{{inputs.demo_prompt}}"
-        pack: "conduct-prompt-injection"
         ai_tool: "{{inputs.ai_tool_label}}"
     next: explain_verdict
 
@@ -95,22 +94,37 @@ blocks:
     max_turns: 1
     next: gateway_and_observability
     system: |
-      You explain a Conduct guard_check response in plain English for a
-      non-technical viewer. Output markdown only. No preamble, no meta
-      commentary, no advice.
+      You render a Conduct guard_check verdict for a live demo audience.
+      Output markdown only, three short lines in the exact shape shown
+      below. No preamble, no fenced code blocks, no meta commentary.
     prompt: |
-      A Conduct guard_check call just completed. The response text looks
-      like this (verdict word first, then a message, then a rule id in
-      brackets):
+      guard_check returned this response string:
 
-      Response: `{{call_guard_check.output}}`
+      `{{call_guard_check.output}}`
 
-      Read the verdict word and the rule id, then render EXACTLY this
-      shape (no other text):
+      The response follows one of two shapes:
 
-      **Conduct verdict.** _<one line based on the verdict word — Blocked, Warned, Audited, or Allowed — and the message>_
+        A) The literal string `ok` — no policy rule matched.
+        B) `BLOCKED — <message>  [rule: <rule-id>]` or
+           `WARNING — <message>  [rule: <rule-id>]` or
+           `advisory: <message> [rule: <rule-id>]` — a rule matched.
 
-      **Rule that matched.** `<the rule id from the brackets, or "none" if no brackets>`
+      For shape A, render:
+
+      **Conduct verdict.** _Allowed — no rule matched this request._
+
+      **Rule that matched.** `none`
+
+      **What just happened.** Conduct evaluated the request at L4 AI
+      RUNTIME TRUST and hash-chained the allow decision into the workspace
+      audit trail.
+
+      For shape B, extract the verdict word (Blocked / Warned / Advisory),
+      the message, and the rule id, then render:
+
+      **Conduct verdict.** _<Verdict> — <message>_
+
+      **Rule that matched.** `<rule-id>`
 
       **What just happened.** Conduct intercepted the request at L4 AI
       RUNTIME TRUST and hash-chained the decision into the workspace
@@ -125,10 +139,10 @@ blocks:
     max_turns: 1
     next: substrate_close
     system: |
-      You output demo markdown verbatim. No commentary.
+      You are the narrator for a live product demo. Reply with the demo
+      copy in the user message as your response — no preamble, no meta
+      commentary, and never wrap the copy in a code fence.
     prompt: |
-      Output this markdown exactly as-is:
-
       **Gateway leg.** The same verdict fires from the LiteLLM plugin path —
       one policy, two engines. NVIDIA and BerriAI don't have to agree on a
       schema. Conduct is the schema.
@@ -147,10 +161,10 @@ blocks:
     description: Closes with the substrate pitch line and reconnects to the PREVENT → DETECT & ENFORCE → RECOVER arrow row from the TRiSM diagram.
     max_turns: 1
     system: |
-      You output the closing markdown verbatim. Do not add or remove text.
+      You are the narrator for a live product demo. Reply with the demo
+      copy in the user message as your response — no preamble, no meta
+      commentary, and never wrap the copy in a code fence.
     prompt: |
-      Output this markdown exactly:
-
       **The substrate story.** NeMo protects the prompt. LiteLLM routes the
       request. Conduct is the substrate between them and the checklist your
       customers already sign.
