@@ -75,10 +75,14 @@ _LITELLM_SDK_CERTIFIED: dict[tuple[str, Operation], list[str] | None] = {
 # OpenRouter reference implementation deliberately punts on.
 _HTTP_PASSTHROUGH_CERTIFIED: dict[tuple[Integration, Operation], bool] = {
     ("openrouter", "openai_chat_completions"): True,
+    # PR 4 — Portkey certified for OpenAI-compat chat completions.
+    # Auth = raw ``x-portkey-api-key`` (see ``_INTEGRATION_ENDPOINTS``);
+    # virtual-key config on the Portkey side selects the upstream.
+    ("portkey", "openai_chat_completions"): True,
 }
 
 
-CATALOG_VERSION = "2026.09.16.v2-openrouter-passthrough"
+CATALOG_VERSION = "2026.09.22.v2-portkey-passthrough"
 
 
 class CapabilityMismatch(Exception):

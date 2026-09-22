@@ -96,6 +96,19 @@ _INTEGRATION_ENDPOINTS: dict[Integration, IntegrationConfig] = {
             "X-Title": "Conduct AI Gateway",
         },
     ),
+    # Portkey is OpenAI-compatible on ``/v1/chat/completions``. Auth
+    # uses a raw key in ``x-portkey-api-key`` (NOT ``Authorization:
+    # Bearer``) — Portkey pairs the gateway key with a "virtual key"
+    # that already carries the upstream provider config, so a single
+    # key value is the whole auth story. Model id lives in the body.
+    "portkey": IntegrationConfig(
+        base_url="https://api.portkey.ai/v1",
+        auth_header="x-portkey-api-key",
+        bearer_prefix=False,
+        operation_paths={
+            "openai_chat_completions": "/chat/completions",
+        },
+    ),
 }
 
 

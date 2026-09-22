@@ -46,9 +46,10 @@ const MODELS_BY_PROVIDER: Record<string, Array<{ id: string; label: string }>> =
 // an empty operation list that fails validation server-side).
 const PASSTHROUGH_INTEGRATION_OPERATIONS: Record<string, Operation[]> = {
   openrouter: ["openai_chat_completions"],
-  // portkey / helicone_anthropic / helicone_openai / azure_openai
-  // stay uncertified until each ships its per-integration auth
-  // shape. Absent = deriveAccepts contributes nothing for them.
+  portkey:    ["openai_chat_completions"],
+  // helicone_anthropic / helicone_openai / azure_openai stay
+  // uncertified until each ships its per-integration auth shape.
+  // Absent = deriveAccepts contributes nothing for them.
 }
 
 // Compute the operations ONE target can serve. Anthropic native /
@@ -530,13 +531,13 @@ function TargetRow({
       {target.transport === "http_passthrough" ? (
         <FieldLabel
           label="Integration"
-          hint="External gateway routing traffic on our behalf. OpenRouter is certified for openai_chat_completions in PR 5; other integrations stay uncertified until each ships its per-integration auth shape."
+          hint="External gateway routing traffic on our behalf. OpenRouter and Portkey are certified for openai_chat_completions; Helicone, Azure OpenAI, and Custom stay uncertified until each ships its per-integration auth shape."
         >
           <select value={target.integration} disabled={!isAdmin}
             onChange={e => onChange({ integration: e.target.value })}
             style={inputStyle}>
             <option value="openrouter">openrouter (certified)</option>
-            <option value="portkey" disabled>portkey (not yet certified)</option>
+            <option value="portkey">portkey (certified)</option>
             <option value="helicone_anthropic" disabled>helicone_anthropic (not yet certified)</option>
             <option value="helicone_openai" disabled>helicone_openai (not yet certified)</option>
             <option value="azure_openai" disabled>azure_openai (not yet certified)</option>
@@ -560,10 +561,10 @@ function TargetRow({
         </FieldLabel>
       )}
 
-      <FieldLabel label="Model" hint={target.transport === "http_passthrough" ? "OpenRouter model id (e.g. anthropic/claude-3.5-sonnet)." : "Real upstream model ID the request goes to."}>
+      <FieldLabel label="Model" hint={target.transport === "http_passthrough" ? "Upstream model id in the integration's format (OpenRouter: `anthropic/claude-3.5-sonnet`, Portkey: `gpt-4o` or vendor-prefixed via virtual key)." : "Real upstream model ID the request goes to."}>
         {target.transport === "http_passthrough" ? (
           <input value={target.model} disabled={!isAdmin}
-            placeholder="anthropic/claude-3.5-sonnet"
+            placeholder={target.integration === "portkey" ? "gpt-4o" : "anthropic/claude-3.5-sonnet"}
             onChange={e => onChange({ model: e.target.value })}
             style={inputStyle} />
         ) : (
