@@ -5,7 +5,7 @@
 // operation is not certified" before the round-trip. Stale mirror =
 // less-helpful UI, never a bad profile in the DB.
 
-export const CATALOG_VERSION = "2026.09.15.v2-launch-litellm-only"
+export const CATALOG_VERSION = "2026.09.16.v2-openrouter-passthrough"
 
 export type Operation =
   | "anthropic_messages"
@@ -43,11 +43,18 @@ const _LITELLM_SDK: Record<string, Operation[]> = {
   openai: ["openai_chat_completions", "openai_responses"],
 }
 
-// HTTP passthrough is empty in the launch set — coordinator raises
-// UnsupportedTransport until #2005 lands the executor.
+// HTTP passthrough certified per integration. Keep in sync with
+// _HTTP_PASSTHROUGH_CERTIFIED in apps/api/app/modules/guard/capability_catalog.py —
+// the Python module is the source of truth and the server enforces at
+// publish time. This mirror lets the draft editor flag uncertified
+// (integration, operation) tuples before the round-trip.
 const _HTTP_PASSTHROUGH: Record<Integration, Operation[]> = {
-  portkey: [], openrouter: [], helicone_anthropic: [],
-  helicone_openai: [], azure_openai: [], custom: [],
+  portkey: [],
+  openrouter: ["openai_chat_completions"],
+  helicone_anthropic: [],
+  helicone_openai: [],
+  azure_openai: [],
+  custom: [],
 }
 
 export type TargetShape =
@@ -91,7 +98,7 @@ export function validateTargetsAgainstAccepts(args: {
         ? `transport=http_passthrough, integration=${target.integration}`
         : `transport=${target.transport}, provider=${target.provider}`
     const hint = target.transport === "http_passthrough"
-      ? "HTTP passthrough targets aren't certified until #2005 lands the executor."
+      ? "Pick an integration + operation combo that ships in the current capability catalog."
       : "Remove the operation from accepts, or drop this target."
     errors.push({ target_index: i, target_id: target.id, missing, where, hint })
   })
