@@ -220,7 +220,7 @@ This evidence matrix is generated from the versioned `enforcement` contract in `
 | `pci_pan_guard` | not_supported | conditional | conditional | not_supported | Blocks the matching action only on surfaces marked hard or conditional when their listed dependencies are satisfied. Requires: A supported pre-tool hook is installed, synced, and invoked before the action; The agent invokes MCP guard_check with accurate tool_name and tool_input before acting. Limitations: Hook enforcement depends on the AI tool emitting supported structured hook events; MCP cannot enforce actions the agent does not submit to guard_check; Workflow runtime skips rules restricted to non-workflow tool families. |
 | `pci_weak_tls` | not_supported | conditional | conditional | not_supported | Blocks the matching action only on surfaces marked hard or conditional when their listed dependencies are satisfied. Requires: A supported pre-tool hook is installed, synced, and invoked before the action; The agent invokes MCP guard_check with accurate tool_name and tool_input before acting. Limitations: Hook enforcement depends on the AI tool emitting supported structured hook events; MCP cannot enforce actions the agent does not submit to guard_check; Workflow runtime skips rules restricted to non-workflow tool families. |
 
-## Conduct Prompt Injection Defense (`conduct-prompt-injection` 1.0.1)
+## Conduct Prompt Injection Defense (`conduct-prompt-injection` 1.0.2)
 
 | Rule | Proxy | Hook | MCP | Runtime | Guarantee |
 |---|---|---|---|---|---|
