@@ -66,7 +66,30 @@ jobs:
       - name: Audit apps/api requirements.txt
         # PYSEC-2026-2858 (paramiko 4.0.0): no upstream fix version yet — allowlisted
         # until a fixed release ships. Revisit weekly; remove flag once paramiko cuts a patch.
-        run: pip-audit --requirement apps/api/requirements.txt --vulnerability-service osv --strict --ignore-vuln PYSEC-2026-2858
+        #
+        # ponytail: retry on transient OSV.dev 5xx. pip-audit surfaces those as
+        # ServiceError with exit 1 (same exit as real CVE findings), so we
+        # retry any failure up to 3 times with 15/30s backoff. Worst-case
+        # real-CVE latency: ~45s extra — acceptable, pack is warn-only anyway
+        # (continue-on-error above). Upgrade path: pip-audit --retries once it
+        # ships a native flag for transient-only retry.
+        run: |
+          set -e
+          delay=15
+          for attempt in 1 2 3; do
+            if pip-audit --requirement apps/api/requirements.txt \
+                         --vulnerability-service osv \
+                         --strict \
+                         --ignore-vuln PYSEC-2026-2858; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              echo "pip-audit attempt $attempt/3 failed — sleeping ${delay}s before retry"
+              sleep "$delay"
+              delay=$((delay * 2))
+            fi
+          done
+          exit 1
 
   npm-audit:
     name: npm audit (JS CVEs)
