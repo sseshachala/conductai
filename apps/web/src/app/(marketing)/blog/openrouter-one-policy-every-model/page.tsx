@@ -37,32 +37,40 @@ export default function BlogPost() {
         </p>
 
         <p className="text-stone-700 leading-relaxed mb-6">
-          Guard treats OpenRouter as a first-class upstream. Set it
-          once in your workspace proxy config; every LLM call your
-          tools make routes through Guard first, then out to OpenRouter,
-          then on to whichever model the request named. Same rules
-          apply whether the call ends up at Claude Opus or DeepSeek V3.
+          Guard treats OpenRouter as a first-class upstream. Publish
+          one Gateway Profile with OpenRouter as the integration; every
+          LLM call your tools make routes through Guard first, then out
+          to OpenRouter, then on to whichever model the request named.
+          Same rules apply whether the call ends up at Claude Opus or
+          DeepSeek V3.
         </p>
 
         <h2 className="text-2xl font-bold text-stone-900 mt-12 mb-4">The whole configuration</h2>
         <p className="text-stone-700 leading-relaxed mb-4">
-          Open <code>/settings/proxy</code> in the Conduct console.
-          Paste OpenRouter as your upstream, drop in your OpenRouter
-          key, save, push to an environment.
+          Open <code>/proxy/gateway-profiles</code> in the Conduct
+          console and create a Gateway Profile. Three fields per target
+          row make the whole thing wire up:
         </p>
         <pre className="bg-stone-950 text-stone-100 p-6 rounded-2xl overflow-x-auto text-sm font-mono leading-relaxed mb-6">
-{`LLM Upstream:          https://openrouter.ai/api/v1
-LLM Upstream API Key:  sk-or-...`}
+{`Transport:          HTTPS Passthrough
+Integration:        OpenRouter
+Credential handle:  OPENROUTER_API_KEY  (from your Vault)`}
         </pre>
         <p className="text-stone-700 leading-relaxed mb-4">
-          Point your tools at the Conduct Proxy URL as{" "}
-          <code>ANTHROPIC_BASE_URL</code> or <code>OPENAI_BASE_URL</code>.
-          Guard detects the OpenRouter host, rewrites the model ID to
-          OpenRouter's <code>provider/model</code> convention (e.g.{" "}
+          The credential handle is a lookup key into your workspace
+          Vault, not the key itself. Store <code>sk-or-...</code> in
+          the Vault once; every profile that references
+          {" "}<code>OPENROUTER_API_KEY</code> gets it at request time.
+          Rotate in the Vault, no profile edits, no redeploy.
+        </p>
+        <p className="text-stone-700 leading-relaxed mb-4">
+          Point your tools at the Conduct Gateway URL as{" "}
+          <code>OPENAI_BASE_URL</code>. Guard forwards to OpenRouter
+          using its <code>provider/model</code> convention (e.g.{" "}
           <code>anthropic/claude-3-5-haiku</code>), attaches attribution
-          headers, and forwards. Verdicts come back as Allow, Audit,
-          Warn, Block, or Pending human-in-the-loop approval. On block,
-          the upstream call never fires.{" "}
+          headers, and returns a verdict: Allow, Audit, Warn, Block, or
+          Pending human-in-the-loop approval. On block, the upstream
+          call never fires.{" "}
           <strong>Zero OpenRouter credits spent on policy-violating
           traffic.</strong>
         </p>
@@ -105,13 +113,23 @@ LLM Upstream API Key:  sk-or-...`}
 
         <h2 className="text-2xl font-bold text-stone-900 mt-12 mb-4">Try it in five minutes</h2>
         <ol className="text-stone-700 leading-relaxed mb-6 list-decimal pl-6 space-y-2">
-          <li>Open <code>/settings/proxy</code> in the Conduct console.</li>
-          <li>Set <strong>LLM Upstream</strong> to <code>https://openrouter.ai/api/v1</code>.</li>
-          <li>Paste your OpenRouter key into <strong>LLM Upstream API Key</strong>. Save.</li>
-          <li>Push to your environment.</li>
           <li>
-            Export the Conduct Proxy URL as <code>ANTHROPIC_BASE_URL</code> /{" "}
-            <code>OPENAI_BASE_URL</code> in the tool you want to route.
+            Add your OpenRouter key to the workspace Vault as{" "}
+            <code>OPENROUTER_API_KEY</code>.
+          </li>
+          <li>Open <code>/proxy/gateway-profiles</code> and create a new profile.</li>
+          <li>
+            On the target row, set <strong>Transport</strong> to{" "}
+            <em>HTTPS Passthrough</em> and <strong>Integration</strong>{" "}
+            to <em>OpenRouter</em>.
+          </li>
+          <li>
+            Set <strong>Credential handle</strong> to{" "}
+            <code>OPENROUTER_API_KEY</code>. Save and publish.
+          </li>
+          <li>
+            Export the Conduct Gateway URL as <code>OPENAI_BASE_URL</code> in
+            the tool you want to route.
           </li>
         </ol>
         <p className="text-stone-700 leading-relaxed mb-6">
@@ -121,11 +139,18 @@ LLM Upstream API Key:  sk-or-...`}
         </p>
 
         <h2 className="text-2xl font-bold text-stone-900 mt-12 mb-4">Which gateway is right</h2>
+        <p className="text-stone-700 leading-relaxed mb-4">
+          OpenRouter is certified on HTTPS Passthrough today. Portkey,
+          Helicone (Anthropic + OpenAI), Azure OpenAI, and a Custom
+          integration are landing in follow-ups (see epic{" "}
+          <a href="https://github.com/sseshachala/conductai/issues/2201" className="text-indigo-600 hover:underline">#2201</a>).
+          For Anthropic and OpenAI direct, the Native HTTPS and LiteLLM
+          SDK transports have been generally available since v2 launch.
+        </p>
         <p className="text-stone-700 leading-relaxed mb-8">
-          Guard supports Portkey, OpenRouter, Helicone, LiteLLM, and
-          Azure OpenAI as upstreams, plus a generic OpenAI-compatible
-          fallback. Pick the one you already run. The Guard policy
-          layer is the same either way. One ruleset, every surface.
+          Pick the transport that matches the stack you already run.
+          The Guard policy layer is the same either way. One ruleset,
+          every surface.
         </p>
 
         <div className="not-prose flex flex-wrap gap-3 mt-12 mb-8">
@@ -136,10 +161,10 @@ LLM Upstream API Key:  sk-or-...`}
             Router landing
           </a>
           <a
-            href="/settings/proxy"
+            href="/proxy/gateway-profiles"
             className="inline-flex items-center gap-2 rounded-lg border border-stone-200 bg-white text-stone-700 px-5 py-3 text-sm font-semibold hover:border-stone-300 hover:shadow-sm transition-all"
           >
-            Open proxy settings
+            Open Gateway Profiles
           </a>
         </div>
 

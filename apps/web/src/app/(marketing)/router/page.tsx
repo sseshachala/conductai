@@ -275,6 +275,18 @@ const msg = await client.messages.create({
         <code className="text-stone-700">/gateway/v1/openai/v1/chat/completions</code>,{" "}
         <code className="text-stone-700">/gateway/v1/perplexity/chat/completions</code>
       </p>
+      <p className="text-xs text-stone-500 text-center mt-2">
+        HTTPS Passthrough: OpenRouter certified today. Portkey, Helicone (Anthropic + OpenAI),
+        Azure OpenAI, and Custom coming (see{" "}
+        <a
+          href="https://github.com/sseshachala/conductai/issues/2201"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-indigo-600 hover:underline"
+        >
+          epic #2201
+        </a>).
+      </p>
     </section>
   )
 }
