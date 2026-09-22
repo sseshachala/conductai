@@ -516,14 +516,14 @@ function TargetRow({
 
       <FieldLabel
         label="Transport"
-        hint="native_http = direct to vendor (Anthropic / OpenAI, preferred). litellm_sdk = LiteLLM translates operations across providers. http_passthrough = external gateway (OpenRouter is the reference; Portkey / Helicone / Azure / Custom ship in follow-ups)."
+        hint="Native HTTPS = direct to vendor (Anthropic / OpenAI, preferred). LiteLLM SDK = LiteLLM translates operations across providers. HTTPS Passthrough = external gateway (OpenRouter today; Portkey / Helicone / Azure / Custom ship in follow-ups)."
       >
         <select value={target.transport} disabled={!isAdmin}
           onChange={e => onChange({ transport: e.target.value as Transport })}
           style={inputStyle}>
-          <option value="native_http">native_http (recommended)</option>
-          <option value="litellm_sdk">litellm_sdk</option>
-          <option value="http_passthrough">http_passthrough (OpenRouter)</option>
+          <option value="native_http">Native HTTPS (recommended)</option>
+          <option value="litellm_sdk">LiteLLM SDK</option>
+          <option value="http_passthrough">HTTPS Passthrough</option>
         </select>
       </FieldLabel>
 
