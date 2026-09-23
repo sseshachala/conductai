@@ -204,7 +204,8 @@ export interface GuardPolicy {
   enabled: boolean
   builtin: boolean
   pack_id: string | null
-  persona: "agent" | "proxy"
+  // Legacy value ``proxy`` stays accepted on read; new writes use ``gateway``.
+  persona: "agent" | "proxy" | "gateway"
   non_overridable: boolean
   persona_affinity: string[]
   gates?: string[]  // #1733/#1750 Phase B — locked enum [action, prompt, response]

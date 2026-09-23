@@ -626,7 +626,8 @@ interface AddRuleFormData {
   inject_guidance: boolean
   guidance: string
   message: string
-  persona: "agent" | "proxy"
+  // Legacy value ``proxy`` stays accepted on read; new writes use ``gateway``.
+  persona: "agent" | "proxy" | "gateway"
 }
 
 const EMPTY_FORM: AddRuleFormData = {
@@ -1274,8 +1275,9 @@ function PoliciesContent() {
   const securityRules = policies.filter(p => p.tag === "security_policy")
   const policyTabs = [
     { id: "security", label: "Security", count: securityRules.length },
-    { id: "agent",  label: "Agent",  count: policies.filter(p => p.builtin && (!p.persona || p.persona === "agent")).length },
-    { id: "proxy",  label: "Proxy",  count: policies.filter(p => p.builtin && p.persona === "proxy").length },
+    { id: "agent",   label: "Agent",   count: policies.filter(p => p.builtin && (!p.persona || p.persona === "agent")).length },
+    // Legacy ``proxy`` persona counted here — same rules, new label.
+    { id: "gateway", label: "Gateway", count: policies.filter(p => p.builtin && (p.persona === "gateway" || p.persona === "proxy")).length },
     { id: "custom", label: "Custom", count: customRules.length },
     ...installedPackIds.map(id => ({
       id,
@@ -1287,8 +1289,8 @@ function PoliciesContent() {
     ? securityRules
     : policyTab === "agent"
     ? policies.filter(p => p.builtin && (!p.persona || p.persona === "agent"))
-    : policyTab === "proxy"
-    ? policies.filter(p => p.builtin && p.persona === "proxy")
+    : policyTab === "gateway"
+    ? policies.filter(p => p.builtin && (p.persona === "gateway" || p.persona === "proxy"))
     : policyTab === "custom"
     ? customRules
     : policies.filter(p => p.pack_id === policyTab)

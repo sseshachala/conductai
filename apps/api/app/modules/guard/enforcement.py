@@ -33,15 +33,30 @@ def is_hook_applicable_rule(rule: dict[str, Any]) -> bool:
 
 
 def rule_personas(rule: dict[str, Any]) -> set[str]:
-    """Normalize legacy persona/persona_affinity fields."""
+    """Normalize persona / persona_affinity fields.
+
+    Rename note (2026-09-22): the legacy value ``"proxy"`` was renamed to
+    ``"gateway"`` — same gate mapping (fires on the LLM prompt path via
+    Gateway V2). ``"proxy"`` continues to be accepted on read for
+    backward compatibility with rows + skill packs written before the
+    rename; both values collapse to ``"gateway"`` in the returned set."""
     value = rule.get("persona")
     if value is None:
-        value = rule.get("persona_affinity", ["agent", "proxy"])
+        value = rule.get("persona_affinity", ["agent", "gateway"])
+    raw: set[str] = set()
     if isinstance(value, str):
-        return {value}
-    if isinstance(value, list) and all(isinstance(item, str) for item in value):
-        return set(value)
-    return set()
+        raw = {value}
+    elif isinstance(value, list) and all(isinstance(item, str) for item in value):
+        raw = set(value)
+    else:
+        return set()
+    # Alias-collapse: proxy → gateway. Legacy rows keep working, but the
+    # returned set uses the current name so downstream gate derivation
+    # doesn't need to know about the old spelling.
+    if "proxy" in raw:
+        raw.discard("proxy")
+        raw.add("gateway")
+    return raw
 
 
 # #1733 / #1750 Phase A — locked enum, three gates, from day one. New signal
@@ -55,7 +70,9 @@ def derive_gates(rule: dict[str, Any]) -> list[str]:
 
     Precedence:
       1. Rule explicitly declares ``gates: [...]`` — use it (dropping unknown values).
-      2. Otherwise derive from persona: agent→action, proxy→prompt, both→both.
+      2. Otherwise derive from persona: agent→action, gateway→prompt, both→both.
+         (Legacy ``proxy`` persona is aliased to ``gateway`` in
+         ``rule_personas`` before this runs.)
       3. Fallback: ``['action']`` (the safest default — matches existing MCP behavior).
 
     Preserves order: action first, then prompt, then response.
@@ -69,7 +86,7 @@ def derive_gates(rule: dict[str, Any]) -> list[str]:
     gates: list[str] = []
     if "agent" in personas:
         gates.append("action")
-    if "proxy" in personas:
+    if "gateway" in personas:
         gates.append("prompt")
     return gates or ["action"]
 

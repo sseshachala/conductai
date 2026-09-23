@@ -854,7 +854,9 @@ def create_policy(
         "match_path_pattern": body.match_path_pattern,
         "action": body.action,
         "message": body.message,
-        "persona_affinity": body.persona_affinity or ["agent", "proxy"],
+        # ``proxy`` renamed to ``gateway`` (2026-09-22) — both names still
+        # accepted on read, but new writes default to the current name.
+        "persona_affinity": body.persona_affinity or ["agent", "gateway"],
         "recommendation": body.recommendation,
         "frameworks": body.frameworks or [],
         "severity": body.severity or "medium",

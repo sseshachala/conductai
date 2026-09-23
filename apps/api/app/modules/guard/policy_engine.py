@@ -32,7 +32,8 @@ from app.modules.guard.models import (
 )
 from app.modules.guard.enforcement import derive_gates, rule_personas
 
-PERSONAS = ["agent", "proxy"]
+#: ``"proxy"`` kept for backward compat; new writes should use ``"gateway"``.
+PERSONAS = ["agent", "proxy", "gateway"]
 
 ACTION_RESTRICTIVENESS = {
     "allow": 0,
