@@ -12,6 +12,7 @@ import { useAuthFetch } from "@/hooks/useAuthFetch"
 import { useGuardRole } from "@/hooks/useGuardRole"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 import { environments, guard } from "@/lib/api"
+import { API } from "@/lib/api/client"
 import type { GatewayProfileV2Out } from "@/lib/api/guard"
 
 // #2007 — Gateway Profiles v2 admin surface.
@@ -727,8 +728,247 @@ function HowToUse({ profile }: { profile: GatewayProfileV2Out }) {
         SDK → ``/gateway/v1/anthropic``, OpenAI SDK → ``/gateway/v1/openai``)
         and set <code className="mono">model:</code> to the profile identifier.
       </p>
+      <TestPanel identifier={identifier} urls={urls} />
     </div>
   )
+}
+
+// #2026 — smoke-test a published profile end-to-end without leaving the page.
+// Mints a fresh Agent Identity token named ``test-gateway-token`` on first
+// Send, reuses it for subsequent sends in the same open-close cycle, and
+// revokes it on unmount so we don't accumulate rows in the identities list.
+function TestPanel({ identifier, urls }: { identifier: string; urls: string[] }) {
+  const [open, setOpen] = useState(false)
+  const [selectedUrl, setSelectedUrl] = useState(urls[0])
+  const [prompt, setPrompt] = useState(CANNED_PROMPTS[0].value)
+  const [status, setStatus] = useState<"idle" | "sending" | "ok" | "error">("idle")
+  const [output, setOutput] = useState<string>("")
+  const { authFetch } = useAuthFetch()
+  const { activeWorkspace } = useWorkspace()
+  const workspaceId = activeWorkspace?.id ?? ""
+  // Held across sends inside a single open session so we don't mint a new
+  // token per click. Cleared + revoked on close / unmount.
+  const [minted, setMinted] = useState<{ id: string; token: string } | null>(null)
+
+  const revokeMinted = useCallback(async () => {
+    if (!minted || !workspaceId) return
+    try {
+      await authFetch(
+        `${API}/workspaces/${workspaceId}/agent-identities/${minted.id}?workspace_id=${workspaceId}`,
+        { method: "DELETE" },
+      )
+    } catch {
+      // Revoke is best-effort — a leftover row is inspectable + deletable
+      // from the Agent Identities page. Don't surface a fresh error on top
+      // of whatever the user was doing.
+    }
+  }, [authFetch, workspaceId, minted])
+
+  useEffect(() => {
+    return () => { void revokeMinted() }
+  }, [revokeMinted])
+
+  const closePanel = useCallback(async () => {
+    await revokeMinted()
+    setMinted(null)
+    setStatus("idle")
+    setOutput("")
+    setOpen(false)
+  }, [revokeMinted])
+
+  const send = useCallback(async () => {
+    if (!prompt.trim() || !workspaceId) return
+    setStatus("sending")
+    setOutput("")
+    try {
+      let token = minted?.token
+      if (!token) {
+        const mintRes = await authFetch(
+          `${API}/workspaces/${workspaceId}/agent-identities?workspace_id=${workspaceId}`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name: "test-gateway-token" }),
+          },
+        )
+        if (!mintRes.ok) {
+          const text = await mintRes.text()
+          setStatus("error")
+          setOutput(`Couldn't mint test token: ${text || mintRes.statusText}`)
+          return
+        }
+        const created = await mintRes.json() as { id: string; token: string }
+        token = created.token
+        setMinted({ id: created.id, token: created.token })
+      }
+
+      const isAnthropic = selectedUrl.endsWith("/anthropic")
+      const url = isAnthropic
+        ? `${selectedUrl}/v1/messages`
+        : `${selectedUrl}/chat/completions`
+      const body = isAnthropic
+        ? { model: identifier, max_tokens: 512, messages: [{ role: "user", content: prompt }] }
+        : { model: identifier, messages: [{ role: "user", content: prompt }], stream: false }
+
+      const res = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+          ...(isAnthropic ? { "anthropic-version": "2023-06-01" } : {}),
+        },
+        body: JSON.stringify(body),
+      })
+
+      const raw = await res.text()
+      if (!res.ok) {
+        setStatus("error")
+        setOutput(friendlyError(res.status, raw))
+        return
+      }
+      try {
+        const parsed = JSON.parse(raw)
+        setOutput(extractContent(parsed) || raw)
+      } catch {
+        setOutput(raw)
+      }
+      setStatus("ok")
+    } catch (err) {
+      setStatus("error")
+      setOutput(String(err))
+    }
+  }, [authFetch, workspaceId, selectedUrl, identifier, prompt, minted])
+
+  if (!open) {
+    return (
+      <div style={{ marginTop: 12 }}>
+        <button
+          className="btn btn-ghost btn-sm"
+          onClick={() => setOpen(true)}
+          style={{ height: 26, fontSize: 11.5 }}
+        >Test</button>
+      </div>
+    )
+  }
+
+  return (
+    <div style={{
+      marginTop: 12, padding: 12, borderRadius: 6,
+      background: "var(--surface-1)", border: "1px solid var(--border)",
+      display: "flex", flexDirection: "column", gap: 10,
+    }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <span style={{ fontSize: 12, color: "var(--text-2)", fontWeight: 600 }}>
+          Test this profile
+        </span>
+        <button
+          className="btn btn-ghost btn-sm"
+          onClick={() => void closePanel()}
+          style={{ height: 22, fontSize: 11 }}
+        >Close</button>
+      </div>
+
+      {urls.length > 1 && (
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          {urls.map(u => {
+            const label = u.endsWith("/anthropic") ? "Anthropic" : u.endsWith("/openai") ? "OpenAI" : u
+            const selected = u === selectedUrl
+            return (
+              <button
+                key={u}
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={() => setSelectedUrl(u)}
+                style={{
+                  height: 22, fontSize: 11,
+                  background: selected ? "var(--surface-3)" : "transparent",
+                  fontWeight: selected ? 600 : 500,
+                }}
+              >{label}</button>
+            )
+          })}
+        </div>
+      )}
+
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        {CANNED_PROMPTS.map(c => (
+          <button
+            key={c.label}
+            type="button"
+            className="btn btn-ghost btn-sm"
+            onClick={() => setPrompt(c.value)}
+            style={{ height: 22, fontSize: 11 }}
+          >{c.label}</button>
+        ))}
+      </div>
+
+      <textarea
+        value={prompt}
+        onChange={(e) => setPrompt(e.target.value)}
+        rows={3}
+        style={{
+          fontSize: 12.5, fontFamily: "inherit", padding: 8, borderRadius: 4,
+          border: "1px solid var(--border)", background: "var(--surface-2)",
+          color: "var(--text)", resize: "vertical",
+        }}
+      />
+
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <span style={{ fontSize: 11, color: "var(--text-3)" }}>
+          Mints a fresh <code className="mono">test-gateway-token</code>; revoked on close.
+        </span>
+        <button
+          className="btn btn-primary btn-sm"
+          onClick={() => void send()}
+          disabled={status === "sending" || !prompt.trim()}
+          style={{ height: 26, fontSize: 11.5 }}
+        >{status === "sending" ? "Sending…" : "Send"}</button>
+      </div>
+
+      {output && (
+        <pre style={{
+          margin: 0, padding: 10, borderRadius: 4, fontSize: 12,
+          background: status === "error" ? "var(--surface-danger, #fee)" : "var(--surface-2)",
+          color: status === "error" ? "var(--text-danger, #900)" : "var(--text)",
+          border: "1px solid var(--border)",
+          whiteSpace: "pre-wrap", wordBreak: "break-word", maxHeight: 320, overflow: "auto",
+        }}>{output}</pre>
+      )}
+    </div>
+  )
+}
+
+const CANNED_PROMPTS: Array<{ label: string; value: string }> = [
+  { label: "Say hi", value: "Say hi in one short sentence." },
+  { label: "Summarise", value: "Summarise in two sentences: The mitochondrion is the powerhouse of the cell." },
+  { label: "Return JSON", value: 'Return only this JSON, no prose: {"ok": true, "provider": "?"}' },
+]
+
+function friendlyError(status: number, raw: string): string {
+  if (status === 401 || status === 403) return "Auth token was rejected by the gateway."
+  if (status === 404) return "Profile not routable — check that it's published and the URL matches."
+  if (status === 424 || /vault|credential/i.test(raw)) {
+    return `Vault credential missing or unreachable.\n\n${raw}`
+  }
+  return raw || `HTTP ${status}`
+}
+
+function extractContent(payload: unknown): string {
+  if (!payload || typeof payload !== "object") return ""
+  const p = payload as {
+    content?: Array<{ type?: string; text?: string }>            // Anthropic
+    choices?: Array<{ message?: { content?: string } }>          // OpenAI
+    error?: { message?: string }
+  }
+  if (Array.isArray(p.content)) {
+    const parts = p.content.filter(c => c?.type === "text" && c.text).map(c => c.text ?? "")
+    if (parts.length) return parts.join("\n")
+  }
+  if (Array.isArray(p.choices) && p.choices[0]?.message?.content) {
+    return p.choices[0].message.content
+  }
+  if (p.error?.message) return p.error.message
+  return ""
 }
 
 
