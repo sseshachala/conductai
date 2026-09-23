@@ -285,15 +285,29 @@ New scope columns on `llm_attempt_receipts` (migration `0149`):
 partial. Lets aggregations answer "cost per workflow run" and "cost per
 Lens session" from a single JOIN-free scan.
 
-### Deferred to a followup task
+### Session 5 workflow hook — resolved in Session 6b
 
-**Workflow runtime direct-adapter hook** (brain_block) is NOT wired in
-Session 5. brain_block routes through multiple adapter types
-(`gateway_profile` = HTTP hop through Gateway, which Session 4 already
-covers; native adapters = direct provider call, no Gateway hop). Adding a
-shadow hook naively risks double-counting when the workflow goes through
-Gateway. Filed as followup — will resolve after Session 6 canary shows the
-actual traffic mix.
+The workflow direct-adapter hook (brain_block) was deferred in Session 5
+because brain_block routes through both `gateway_profile` (HTTP → Gateway
+→ Session 4 hook fires) and direct-provider adapters (no Gateway hop).
+Naive hook = double-count for Gateway-routed workflow calls.
+
+**Resolved by an adapter-marker pattern:**
+
+- `GatewayProfileClient.routes_through_gateway = True` class attribute.
+- Direct-provider adapters (Anthropic, OpenAI, Perplexity, Together)
+  leave it unset — `getattr(llm, "routes_through_gateway", False)`
+  returns False.
+- `brain_block` reads the marker at the LLM call site: if True, skip its
+  own `shadow_write` (Gateway already wrote the receipt); if False, fire.
+- Direct-adapter receipts carry `source="workflow_runtime"` +
+  `workflow_run_id` (parsed as UUID if possible) + `client_tool=block_id`.
+  Provider-aware synthetic usage blob (Anthropic vs OpenAI shape) so the
+  normalizer picks up cache tokens correctly.
+
+No new schema (uses the Session 5 `workflow_run_id` column). Adapter
+marker is a class attribute, so a future adapter that routes through
+Gateway just adds `routes_through_gateway = True` — one-line opt-in.
 
 ## Session 6 — canary rollout + delta metrics + Session 7 gate criteria
 

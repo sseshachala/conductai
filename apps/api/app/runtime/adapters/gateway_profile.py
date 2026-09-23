@@ -72,6 +72,15 @@ class GatewayProfileClient:
     prefix.
     """
 
+    # #2209 Session 6b — accounting shadow writer marker. brain_block
+    # reads this to decide whether to fire its own shadow_write. Because
+    # GatewayProfileClient calls go THROUGH Gateway, gateway_handler's
+    # Session 4 hook already wrote the receipt; firing again from
+    # brain_block would create two shadow rows for one actual upstream
+    # attempt. Direct-adapter clients (Anthropic/OpenAI/etc.) leave this
+    # unset (getattr default False).
+    routes_through_gateway = True
+
     def __init__(
         self,
         *,
