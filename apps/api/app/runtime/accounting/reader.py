@@ -134,23 +134,39 @@ class SpendAggregate:
 
 
 @dataclass(frozen=True)
-class CacheSavings:
-    """Cache-savings derivation for one aggregate.
+class CacheReadSavings:
+    """Gross cache-READ savings for one (model, pricing_version) slice.
 
-    The Lens epic asks 'how much did caching save?'. That answer is a
-    counterfactual (what would have been paid without cache), so it
-    depends on both the receipt totals AND the rate card the receipts
-    were priced under. This helper does the math so Lens's LLM never
-    invents it.
+    Reviewer #6 (#2221 review at 1219d734) narrowed the scope: the
+    previous ``CacheSavings`` dataclass mixed one rate pair against an
+    aggregate that could span multiple models. It also hardcoded
+    ``cache_write_tokens=0`` and ignored its ``cache_write_rate``
+    argument, producing an answer that looked authoritative but wasn't.
+
+    What this IS:
+      Gross cache-read savings — how much less the cache_read tokens
+      cost vs. if the same bytes had been billed at the uncached input
+      rate. Only meaningful for one (model, pricing_version) slice.
+
+    What this is NOT:
+      - A net "cache saved you $X" figure. Cache writes usually cost
+        MORE than uncached input to pay for later reads; that premium
+        is a separate arithmetic and lives in
+        ``compute_cache_write_premium_for_receipt``.
+      - A workspace-wide savings summary. Aggregating across models
+        with different rate cards requires per-receipt calculation;
+        use ``sum_cache_read_savings_over_receipts``.
     """
 
     cache_read_tokens: int
     uncached_input_tokens: int
-    cache_write_tokens: int
-    # (uncached_rate - cache_read_rate) × cache_read_tokens, in microdollars.
     savings_microdollars: int
-    # If cache_read was priced at uncached_rate, this is what it would have cost.
-    counterfactual_cost_microdollars: int
+    counterfactual_read_cost_microdollars: int
+
+
+# Kept as an alias for one release so external importers do not break.
+# Session 7 removal deletes it.
+CacheSavings = CacheReadSavings
 
 
 class AccountingReader:
@@ -317,49 +333,88 @@ class AccountingReader:
         )
 
 
-def compute_cache_savings(
-    aggregate: SpendAggregate,
+def compute_cache_read_savings_for_receipt(
+    receipt: LlmAttemptReceipt,
     *,
     uncached_rate_per_1m_usd: Decimal,
     cache_read_rate_per_1m_usd: Decimal,
-    cache_write_rate_per_1m_usd: Decimal = Decimal(0),
-) -> CacheSavings:
-    """Compute how much caching saved for one aggregate slice.
+) -> CacheReadSavings:
+    """Gross cache-read savings for ONE receipt.
 
-    Session 6E — Lens must not invent this arithmetic. Formula:
+    Preferred entry point — callers should look up the rate card that
+    matches ``receipt.pricing_version`` and ``receipt.model`` via
+    ``PricingService.get_rate_card()``. That keeps the answer honest
+    when a workspace's rate card changes mid-period or spans models.
 
-        savings = (uncached_rate - cache_read_rate) × cache_read_tokens
-
-    ``counterfactual_cost`` is what the input side would have cost if
-    every cache read had been billed at the uncached rate. Comparing
-    that against ``aggregate.total_cost_microdollars`` gives Lens the
-    "you saved $X" answer honestly.
-
-    Rates are per-1M tokens as ``Decimal``, matching ``RateCard``.
-    Callers pass them in explicitly so Lens's UI can also render the
-    pricing version + snapshot that produced the number.
+    Formula: ``savings = (uncached_rate - cache_read_rate) × cache_read_tokens``.
     """
+    read_tokens = int(receipt.cache_read_tokens or 0)
+    uncached_tokens = int(receipt.uncached_input_tokens or 0)
+    if read_tokens <= 0:
+        return CacheReadSavings(
+            cache_read_tokens=0,
+            uncached_input_tokens=uncached_tokens,
+            savings_microdollars=0,
+            counterfactual_read_cost_microdollars=0,
+        )
+    delta_per_1m = uncached_rate_per_1m_usd - cache_read_rate_per_1m_usd
+    savings_usd = Decimal(read_tokens) * delta_per_1m / Decimal(1_000_000)
+    counterfactual_usd = (
+        Decimal(read_tokens) * uncached_rate_per_1m_usd / Decimal(1_000_000)
+    )
+    return CacheReadSavings(
+        cache_read_tokens=read_tokens,
+        uncached_input_tokens=uncached_tokens,
+        savings_microdollars=int((savings_usd * Decimal(1_000_000)).to_integral_value()),
+        counterfactual_read_cost_microdollars=int(
+            (counterfactual_usd * Decimal(1_000_000)).to_integral_value()
+        ),
+    )
+
+
+def compute_cache_read_savings(
+    total_cache_read_tokens: int,
+    total_uncached_input_tokens: int,
+    *,
+    uncached_rate_per_1m_usd: Decimal,
+    cache_read_rate_per_1m_usd: Decimal,
+) -> CacheReadSavings:
+    """Single-rate-pair helper for callers that already hold a
+    single-model aggregate.
+
+    Reviewer #6: caller MUST guarantee the token counts belong to one
+    (model, pricing_version) slice. Aggregating across rate cards makes
+    the answer nonsense. For multi-model queries, iterate receipts and
+    sum ``compute_cache_read_savings_for_receipt`` results instead.
+    """
+    if total_cache_read_tokens <= 0:
+        return CacheReadSavings(
+            cache_read_tokens=0,
+            uncached_input_tokens=int(total_uncached_input_tokens),
+            savings_microdollars=0,
+            counterfactual_read_cost_microdollars=0,
+        )
     delta_per_1m = uncached_rate_per_1m_usd - cache_read_rate_per_1m_usd
     savings_usd = (
-        Decimal(aggregate.total_cache_read_tokens) * delta_per_1m
-    ) / Decimal(1_000_000)
-    counterfactual_input_usd = (
-        Decimal(aggregate.total_cache_read_tokens + aggregate.total_uncached_input_tokens)
-        * uncached_rate_per_1m_usd
-    ) / Decimal(1_000_000)
-    savings_micros = int(
-        (savings_usd * Decimal(1_000_000)).to_integral_value()
+        Decimal(total_cache_read_tokens) * delta_per_1m / Decimal(1_000_000)
     )
-    counterfactual_micros = int(
-        (counterfactual_input_usd * Decimal(1_000_000)).to_integral_value()
+    counterfactual_usd = (
+        Decimal(total_cache_read_tokens) * uncached_rate_per_1m_usd / Decimal(1_000_000)
     )
-    return CacheSavings(
-        cache_read_tokens=aggregate.total_cache_read_tokens,
-        uncached_input_tokens=aggregate.total_uncached_input_tokens,
-        cache_write_tokens=0,  # aggregate doesn't split writes by tier today
-        savings_microdollars=savings_micros,
-        counterfactual_cost_microdollars=counterfactual_micros,
+    return CacheReadSavings(
+        cache_read_tokens=int(total_cache_read_tokens),
+        uncached_input_tokens=int(total_uncached_input_tokens),
+        savings_microdollars=int(
+            (savings_usd * Decimal(1_000_000)).to_integral_value()
+        ),
+        counterfactual_read_cost_microdollars=int(
+            (counterfactual_usd * Decimal(1_000_000)).to_integral_value()
+        ),
     )
+
+
+# Back-compat alias. Session 6E docs pointed at this name.
+compute_cache_savings = compute_cache_read_savings
 
 
 def aggregate_from_rows(

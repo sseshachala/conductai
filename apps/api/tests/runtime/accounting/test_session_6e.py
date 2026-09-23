@@ -14,10 +14,10 @@ import pytest
 
 from app.runtime.accounting import (
     AggregateScope,
-    CacheSavings,
+    CacheReadSavings,
     SpendAggregate,
     aggregate_from_rows,
-    compute_cache_savings,
+    compute_cache_read_savings,
 )
 from app.runtime.accounting.contracts import (
     PricingCompleteness,
@@ -154,48 +154,50 @@ def _agg(**overrides) -> SpendAggregate:
     return SpendAggregate(**base)
 
 
-def test_cache_savings_zero_when_no_cache_reads():
-    agg = _agg(total_cache_read_tokens=0, total_uncached_input_tokens=1000)
-    r = compute_cache_savings(
-        agg,
+def test_cache_read_savings_zero_when_no_cache_reads():
+    r = compute_cache_read_savings(
+        total_cache_read_tokens=0,
+        total_uncached_input_tokens=1000,
         uncached_rate_per_1m_usd=Decimal("3.00"),
         cache_read_rate_per_1m_usd=Decimal("0.30"),
     )
     assert r.savings_microdollars == 0
 
 
-def test_cache_savings_computes_delta_correctly():
+def test_cache_read_savings_computes_delta_correctly():
     """8000 cache reads at Claude Sonnet rates: uncached_rate=$3/1M,
     cache_read_rate=$0.30/1M. Savings = 8000 × (3.00 - 0.30) / 1M = $0.0216
     = 21_600 microdollars."""
-    agg = _agg(total_cache_read_tokens=8000, total_uncached_input_tokens=2000)
-    r = compute_cache_savings(
-        agg,
+    r = compute_cache_read_savings(
+        total_cache_read_tokens=8000,
+        total_uncached_input_tokens=2000,
         uncached_rate_per_1m_usd=Decimal("3.00"),
         cache_read_rate_per_1m_usd=Decimal("0.30"),
     )
     assert r.savings_microdollars == 21_600
 
 
-def test_cache_savings_counterfactual_totals_all_input_at_uncached_rate():
-    """counterfactual = (cache_read + uncached) × uncached_rate / 1M.
-    2000 uncached + 8000 cache_read = 10_000 tokens × $3/1M = $0.030 =
-    30_000 μUSD."""
-    agg = _agg(total_cache_read_tokens=8000, total_uncached_input_tokens=2000)
-    r = compute_cache_savings(
-        agg,
+def test_cache_read_savings_counterfactual_is_read_tokens_only():
+    """Reviewer #6 (#2221): the counterfactual is READ tokens at the
+    uncached rate — no longer conflated with uncached+read totals.
+    Callers wanting a full 'what if no cache' figure must combine with
+    the receipt's uncached_input × uncached_rate on their side."""
+    r = compute_cache_read_savings(
+        total_cache_read_tokens=8000,
+        total_uncached_input_tokens=2000,
         uncached_rate_per_1m_usd=Decimal("3.00"),
         cache_read_rate_per_1m_usd=Decimal("0.30"),
     )
-    assert r.counterfactual_cost_microdollars == 30_000
+    # 8000 × $3/1M = $0.024 = 24_000 μUSD (was 30_000 in old aggregate math).
+    assert r.counterfactual_read_cost_microdollars == 24_000
 
 
 def test_cache_savings_frozen():
     from dataclasses import FrozenInstanceError
 
-    agg = _agg()
-    r = compute_cache_savings(
-        agg,
+    r = compute_cache_read_savings(
+        total_cache_read_tokens=100,
+        total_uncached_input_tokens=100,
         uncached_rate_per_1m_usd=Decimal("3.00"),
         cache_read_rate_per_1m_usd=Decimal("0.30"),
     )

@@ -62,9 +62,12 @@ from app.runtime.accounting.reconciler import (
 from app.runtime.accounting.reader import (
     AccountingReader,
     AggregateScope,
+    CacheReadSavings,
     CacheSavings,
     SpendAggregate,
     aggregate_from_rows,
+    compute_cache_read_savings,
+    compute_cache_read_savings_for_receipt,
     compute_cache_savings,
 )
 
@@ -104,9 +107,12 @@ __all__ = [
     "normalize_sse",
     "AccountingReader",
     "AggregateScope",
+    "CacheReadSavings",
     "CacheSavings",
     "SpendAggregate",
     "aggregate_from_rows",
+    "compute_cache_read_savings",
+    "compute_cache_read_savings_for_receipt",
     "compute_cache_savings",
     "DeltaBucket",
     "ShadowDeltaReport",

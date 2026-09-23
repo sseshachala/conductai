@@ -348,6 +348,33 @@ def _shadow_write_impl(**kw: Any) -> uuid.UUID:
 
     db = SessionLocal()
     try:
+        # #2209 Session 6F reviewer #4 (#2221 review at 1219d734):
+        # placeholder promotion. If a reconciler-sourced placeholder
+        # already exists at (request_id, attempt_ordinal), delete it in
+        # the same transaction so the real receipt can take its slot.
+        # Skip when we ARE the reconciler (a second reconciler pass
+        # should be a no-op via the unique constraint, not a cascade).
+        if kw.get("source") != "reconciler":
+            try:
+                from sqlalchemy import text as _sa_text
+                db.execute(
+                    _sa_text(
+                        "DELETE FROM llm_attempt_receipts "
+                        "WHERE request_id = :rid "
+                        "AND attempt_ordinal = :ord "
+                        "AND source = 'reconciler'"
+                    ),
+                    {
+                        "rid": kw["request_id"],
+                        "ord": int(kw.get("attempt_ordinal") or 0),
+                    },
+                )
+            except Exception:
+                # If the promotion delete fails, fall through — the
+                # INSERT will just collide on the unique constraint and
+                # the outer wrapper will swallow the IntegrityError. We
+                # never want promotion to fail the request path.
+                pass
         db.add(row)
         db.commit()
     finally:
@@ -398,10 +425,13 @@ def write_receipts_for_attempts(
     receipts: list[uuid.UUID] = []
     attempts = attempts_meta or []
 
+    # NOTE: ``model`` deliberately excluded from ``common`` — reviewer #3
+    # (#2221 review at 1219d734) called out that every attempt received
+    # the same request-level model, mispricing mixed-target profiles.
+    # The per-attempt branch below reads ``attempt.get("model")`` first.
     common = dict(
         workspace_id=workspace_id,
         request_id=request_id,
-        model=model,
         operation=operation,
         dispatched=dispatched,
         reserved_microdollars=reserved_microdollars,
@@ -421,6 +451,7 @@ def write_receipts_for_attempts(
         rid = shadow_write(
             **common,
             provider=provider,
+            model=model,
             transport=transport,
             response_bytes=response_bytes,
             legacy_input_tokens=legacy_input_tokens,
@@ -436,6 +467,10 @@ def write_receipts_for_attempts(
     for idx, attempt in enumerate(attempts):
         succeeded = bool(attempt.get("succeeded"))
         attempt_provider = attempt.get("provider_or_integration") or provider
+        # Reviewer #3 (#2221 review at 1219d734): per-attempt model.
+        # Falls back to request-level ``model`` only if the coordinator
+        # didn't record one for this attempt (legacy pre-Session-6F path).
+        attempt_model = attempt.get("model") or model
         attempt_transport = attempt.get("transport") or transport
         outcome = (
             ExecutionOutcome.SUCCEEDED.value
@@ -460,6 +495,7 @@ def write_receipts_for_attempts(
         rid = shadow_write(
             **common,
             provider=attempt_provider,
+            model=attempt_model,
             transport=attempt_transport,
             response_bytes=attempt_bytes,
             legacy_input_tokens=legacy_input_tokens if succeeded else None,

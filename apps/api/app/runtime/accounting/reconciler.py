@@ -87,6 +87,16 @@ def reconcile_missing_receipts(
         # Pull unmatched audit rows. Same LEFT JOIN as the Session 6
         # ``settled_requests_missing_shadow_count`` metric, but selecting
         # the fields we need to synthesize the receipt.
+        #
+        # #2209 reviewer #1 (#2221 review at 1219d734): the column in
+        # ``guard_audit_events`` is ``ts``, not ``timestamp``. Prior code
+        # queried the wrong name; the metric caught the resulting SQL
+        # error and returned zero, hiding the failure. Fixed here + in
+        # metrics._count_settled_missing_shadow.
+        #
+        # Reviewer #4: also filter out reconciled placeholders so a
+        # real receipt written later can supersede them (see
+        # write_receipts_for_attempts placeholder-promotion logic).
         rows = _db.execute(
             text(
                 """
@@ -99,13 +109,14 @@ def reconcile_missing_receipts(
                     gae.ai_tool,
                     gae.tokens_after,
                     gae.cost_usd_after,
-                    gae.timestamp
+                    gae.ts AS audit_ts
                 FROM guard_audit_events gae
                 LEFT JOIN llm_attempt_receipts r
                   ON r.request_id = gae.request_id
+                 AND r.source IS DISTINCT FROM 'reconciler'
                 WHERE gae.workspace_id = :workspace_id
-                  AND gae.timestamp >= :period_start
-                  AND gae.timestamp <  :period_end
+                  AND gae.ts >= :period_start
+                  AND gae.ts <  :period_end
                   AND gae.request_id IS NOT NULL
                   AND r.id IS NULL
                 LIMIT :limit
@@ -174,7 +185,7 @@ def reconcile_missing_receipts(
                 calculation_provenance={
                     "reconciled_from": "guard_audit_events",
                     "audit_timestamp": (
-                        row.timestamp.isoformat() if row.timestamp else None
+                        row.audit_ts.isoformat() if row.audit_ts else None
                     ),
                 },
                 finalized_at=datetime.now(timezone.utc),

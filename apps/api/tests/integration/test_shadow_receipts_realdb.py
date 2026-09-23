@@ -196,7 +196,7 @@ def test_reconciler_backfills_missing_receipt(monkeypatch, workspace_id):
             text(
                 "INSERT INTO guard_audit_events "
                 "(id, workspace_id, request_id, provider, model, decision, "
-                "ai_tool, clerk_user_id, timestamp, tokens_after, cost_usd_after) "
+                "ai_tool, clerk_user_id, ts, tokens_after, cost_usd_after) "
                 "VALUES (gen_random_uuid(), CAST(:ws AS uuid), CAST(:rid AS uuid), "
                 ":prov, :model, 'allowed', 'test', 'user_x', :ts, 25, 0.001)"
             ),
@@ -205,7 +205,7 @@ def test_reconciler_backfills_missing_receipt(monkeypatch, workspace_id):
                 "rid": str(req_id),
                 "prov": "anthropic",
                 "model": "claude-sonnet-4-6",
-                "ts": now,
+                "ts": now,  # bound to :ts placeholder (column also 'ts')
             },
         )
         db.commit()
@@ -246,7 +246,7 @@ def test_reconciler_idempotent_on_repeat(monkeypatch, workspace_id):
             text(
                 "INSERT INTO guard_audit_events "
                 "(id, workspace_id, request_id, provider, model, decision, "
-                "ai_tool, clerk_user_id, timestamp, tokens_after, cost_usd_after) "
+                "ai_tool, clerk_user_id, ts, tokens_after, cost_usd_after) "
                 "VALUES (gen_random_uuid(), CAST(:ws AS uuid), CAST(:rid AS uuid), "
                 ":prov, :model, 'allowed', 'test', 'user_x', :ts, 10, 0.0005)"
             ),
@@ -255,7 +255,7 @@ def test_reconciler_idempotent_on_repeat(monkeypatch, workspace_id):
                 "rid": str(req_id),
                 "prov": "openai",
                 "model": "gpt-4.1",
-                "ts": now,
+                "ts": now,  # bound to :ts placeholder (column also 'ts')
             },
         )
         db.commit()

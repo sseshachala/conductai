@@ -593,18 +593,89 @@ def guarded_client_stream(
             payload={},
         )
 
+    # #2209 Session 6F reviewer #5 (#2221 review at 1219d734): the
+    # shadow-write MUST happen in a finally block. An upstream exception
+    # mid-stream would otherwise drop the receipt even when
+    # ``client.last_usage`` already holds real billable usage from
+    # message_start / partial delta frames. Capture PARTIAL usage on
+    # failure so provider-side billing is still visible on the row.
     parts: list[str] = []
-    for delta in client.stream(
-        model=model, messages=messages, system=system, max_tokens=max_tokens
-    ):
-        if not delta:
-            continue
-        parts.append(delta)
-        if on_token is not None:
+    _stream_completed_normally = False
+    _stream_exc: BaseException | None = None
+    try:
+        for delta in client.stream(
+            model=model, messages=messages, system=system, max_tokens=max_tokens
+        ):
+            if not delta:
+                continue
+            parts.append(delta)
+            if on_token is not None:
+                try:
+                    on_token(delta)
+                except Exception as e:
+                    log.warning(
+                        "guarded_client_stream.on_token_failed", err=str(e)
+                    )
+        _stream_completed_normally = True
+    except BaseException as _exc:  # noqa: BLE001
+        _stream_exc = _exc
+        raise
+    finally:
+        _last_usage = getattr(client, "last_usage", None)
+        _shadow_bytes = None
+        _legacy_in = None
+        _legacy_out = None
+        if isinstance(_last_usage, dict):
             try:
-                on_token(delta)
-            except Exception as e:
-                log.warning("guarded_client_stream.on_token_failed", err=str(e))
+                import json as _json_shadow
+                _shadow_bytes = _json_shadow.dumps(
+                    {"usage": _last_usage}
+                ).encode()
+            except Exception:
+                _shadow_bytes = None
+            _legacy_in = _last_usage.get("input_tokens") or _last_usage.get(
+                "prompt_tokens"
+            )
+            _legacy_out = _last_usage.get("output_tokens") or _last_usage.get(
+                "completion_tokens"
+            )
+        try:
+            import uuid as _uuid_shadow
+            from app.runtime.accounting.shadow_writer import (
+                shadow_write as _shadow_write,
+            )
+            from app.runtime.accounting.contracts import ExecutionOutcome
+            _shadow_write(
+                workspace_id=workspace_id,
+                request_id=_uuid_shadow.uuid4(),
+                provider=provider,
+                model=model,
+                operation="chat.completions",
+                dispatched=True,
+                response_bytes=_shadow_bytes,
+                legacy_input_tokens=_legacy_in,
+                legacy_output_tokens=_legacy_out,
+                legacy_cost_usd=None,
+                developer_external_id=clerk_user_id,
+                agent_identity_id=agent_identity_id,
+                hook_session_id=hook_session_id,
+                source="lens",
+                client_tool=ai_tool,
+                # Reviewer #5: pass explicit outcome + succeeded so a
+                # normal completion is COMPLETE while an interrupted
+                # stream lands as DISCONNECTED without conflating usage
+                # completeness with execution status.
+                succeeded=_stream_completed_normally,
+                execution_outcome=(
+                    ExecutionOutcome.SUCCEEDED.value
+                    if _stream_completed_normally
+                    else ExecutionOutcome.DISCONNECTED.value
+                ),
+            )
+        except Exception:
+            # Shadow write is best-effort; never re-raise from finally.
+            pass
+
     text = "".join(parts)
 
     try:
@@ -620,50 +691,6 @@ def guarded_client_stream(
         )
     except Exception as e:
         log.warning("guarded_client_stream.audit_allow_failed", err=str(e))
-
-    # #2209 Session 6E — Lens streaming shadow accounting now captures
-    # real usage. The OpenAI adapter opts into stream_options.include_usage
-    # and stashes the terminal usage frame on ``client.last_usage``; the
-    # Anthropic adapter tracks message_start + message_delta events into
-    # the same field. Synthesize a normalizer-friendly JSON envelope so
-    # the shadow_write path can extract tokens the same way it would for
-    # a non-streaming response.
-    _last_usage = getattr(client, "last_usage", None)
-    _shadow_bytes = None
-    _legacy_in = None
-    _legacy_out = None
-    if isinstance(_last_usage, dict):
-        try:
-            import json as _json_shadow
-            _shadow_bytes = _json_shadow.dumps({"usage": _last_usage}).encode()
-        except Exception:
-            _shadow_bytes = None
-        # Legacy tokens for shadow comparison — mirror the audit path.
-        _legacy_in = _last_usage.get("input_tokens") or _last_usage.get("prompt_tokens")
-        _legacy_out = _last_usage.get("output_tokens") or _last_usage.get("completion_tokens")
-    try:
-        import uuid as _uuid_shadow
-        from app.runtime.accounting.shadow_writer import shadow_write as _shadow_write
-        _shadow_write(
-            workspace_id=workspace_id,
-            request_id=_uuid_shadow.uuid4(),
-            provider=provider,
-            model=model,
-            operation="chat.completions",
-            dispatched=True,
-            response_bytes=_shadow_bytes,
-            legacy_input_tokens=_legacy_in,
-            legacy_output_tokens=_legacy_out,
-            legacy_cost_usd=None,
-            developer_external_id=clerk_user_id,
-            agent_identity_id=agent_identity_id,
-            hook_session_id=hook_session_id,
-            source="lens",
-            client_tool=ai_tool,
-            succeeded=True,
-        )
-    except Exception:
-        pass
 
     return text
 

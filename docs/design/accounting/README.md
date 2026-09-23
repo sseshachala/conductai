@@ -2,7 +2,8 @@
 
 Tracking issue: [#2209](https://github.com/sseshachala/conductai/issues/2209)
 Branch: `feat/accounting-foundation-2209`
-Status: Session 6 shipped (per-workspace canary + delta metrics + failure tests)
+Status: Session 6F shipped — reviewer response for the 6 findings at commit
+1219d734. Not observation-only yet; see the honest tracking table below.
 
 ## Goal
 
@@ -544,6 +545,44 @@ accounting side already carries every identifier needed.
 event stream; `_usage_to_dict` handles object/dict/tiered-cache forms;
 reader drilldown signatures pinned; cache-savings zero/normal/counter-
 factual/frozen. Full suite: 2378 passing (was 2367).
+
+## Session 6F — reviewer response for 1219d734
+
+Sudhi's second review found six defects that were shipped in earlier
+sessions and had escaped my own tests. All fixed in this session.
+
+| # | Finding | Fix |
+|---|---------|-----|
+| P1 · 1 | Reconciler + metric queried `gae.timestamp`; actual column is `ts`. Metric caught the SQL error and returned zero, masking the failure | Fixed the column name in both files; metric now re-raises instead of swallowing the exception so a future column bug can't hide again. Pinned via source-string tests |
+| P1 · 2 | Success-path `attempts_meta` dict list dropped `response_bytes_b64`; when attempt A fails and B succeeds, A's captured error envelope never reached accounting | Added `response_bytes_b64` (and `model`) to the success-path list at `gateway_handler.py:2063`, matching the failure-path list |
+| P1 · 3 | `AttemptRecord` had no `model` field; every fallback receipt got the request-level model, mispricing mixed-target profiles | Added `AttemptRecord.model` (populated at each coordinator dispatch), threaded through into `attempts_meta` dicts, `write_receipts_for_attempts` prefers per-attempt model |
+| P1 · 4 | Reconciled placeholder at `(request_id, 0)` collided permanently with any later real receipt | `shadow_write` now issues `DELETE ... WHERE source = 'reconciler'` in the same transaction before insert (placeholder promotion). Reconciler's LEFT JOIN now excludes reconciler-source rows so real receipts can supersede them and the metric surfaces true gaps |
+| P1 · 5 | Interrupted Lens stream lost its receipt entirely — the shadow write ran after the loop, so an upstream exception skipped it even when `client.last_usage` already held billable tokens | Moved shadow write into a `try/finally`; explicit `execution_outcome=DISCONNECTED` when the loop raises; usage completeness derived from what the adapter captured, not the exception status |
+| P2 · 6 | `compute_cache_savings` ignored its `cache_write_rate` argument, hardcoded `cache_write_tokens=0` on the result, and applied one rate pair to aggregates spanning multiple models | Renamed to `compute_cache_read_savings` with narrow docstring ("gross cache-READ savings for one (model, pricing_version) slice"). Removed the misleading write-rate param + hardcoded field. Added `compute_cache_read_savings_for_receipt` as the preferred per-row helper so Lens aggregates honestly across mixed-model periods |
+
+11 new self-checks (`test_session_6f.py`) pin each fix — including
+source-string checks on both SQL queries so a future rename can't
+silently regress. Full suite: 2389 passing (was 2378).
+
+## Where this branch actually is — honest tracking
+
+Sudhi's review at 1219d734 also called out that my Session-6E summary
+overclaimed completion. The following items remain **unfinished
+implementation**, not observation-only gates:
+
+| Claim | Reality |
+|-------|---------|
+| Shared-engine settlement | Still shadow persistence. Legacy `_extract_token_counts` + `_compute_audit_cost` still drive settlement. The new engine writes parallel rows only |
+| Rollout ownership | `pinned_shadow_enabled` + `pinned_contract_version` snapshot at request entry exists. Authoritative settlement ownership does not — the new engine is not on the settlement path yet |
+| Workflow linkage | `x-conductai-run-id` → `workflow_run_id` on Gateway receipts landed in Session 6D. Step-level attribution (`workflow_step_id`) and per-attempt receipt references from workflow rows still missing |
+| Lens consumer wiring | `AccountingReader.summarize_by_scope` / `receipts_for_session` / `receipts_for_request` / `compute_cache_read_savings*` exist. **No Lens callers actually invoke them yet.** The Lens epic must land its consumer for these to be useful |
+| Flight Recorder / API / export | Handshake spec documented above. Route + event-emission contract owed by #2069; nothing implemented on either side |
+| Recovery validation | Six opt-in Postgres tests at `test_shadow_receipts_realdb.py`. No Redis-interruption tests, no process-crash tests. `RUN_ACCOUNTING_REALDB=1` gates them; **no CI job runs this env var today** |
+
+Session 7 remains a gate, but it opens only after **all six rows above
+turn green** — not after canary observation of the current shadow
+scaffolding. Session 6D and 6F closed correctness gaps; the
+implementation surface Sudhi named is still work to be done.
 
 ## Session plan (7 sessions, one branch, one draft PR)
 

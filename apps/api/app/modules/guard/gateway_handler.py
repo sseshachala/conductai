@@ -2032,6 +2032,8 @@ async def _execute_v2(
                     # normalize + price it. Absent on success; the winner's
                     # bytes live in the handler-owned upstream snapshot.
                     "response_bytes_b64": a.response_bytes_b64,
+                    # Session 6F reviewer #3 — per-attempt model attribution.
+                    "model": getattr(a, "model", None),
                 }
                 for a in exc.attempts
             ],
@@ -2070,6 +2072,17 @@ async def _execute_v2(
                 "provider_or_integration": a.provider_or_integration,
                 "succeeded": a.succeeded,
                 "error_class": a.error_class,
+                # #2209 Session 6F reviewer #2 (#2221 review at 1219d734):
+                # the failure list already carries response_bytes_b64 for
+                # AllAttemptsFailed; the success list must too. When
+                # attempt A fails and B succeeds, A's captured error
+                # envelope is real usage that per-attempt accounting
+                # needs to price. Prior code dropped it here.
+                "response_bytes_b64": a.response_bytes_b64,
+                # Session 6F reviewer #3: per-attempt model attribution.
+                # AttemptRecord gains ``model`` so a mixed-target profile
+                # can price each receipt against its actual model rates.
+                "model": getattr(a, "model", None),
             }
             for a in result.attempts
         ],

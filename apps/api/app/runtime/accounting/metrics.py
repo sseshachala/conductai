@@ -255,15 +255,21 @@ def _count_settled_missing_shadow(
     """
     from sqlalchemy import text
 
+    # #2209 reviewer #1 (#2221 review at 1219d734): the column is ``ts``,
+    # not ``timestamp``. Prior code silently swallowed the resulting SQL
+    # error and returned zero, falsely reporting healthy reconciler
+    # coverage. Also excludes reconciler-source placeholders so the
+    # metric surfaces real gaps rather than being masked by placeholders.
     sql = text(
         """
         SELECT COUNT(*)
         FROM guard_audit_events gae
         LEFT JOIN llm_attempt_receipts r
           ON r.request_id = gae.request_id
+         AND r.source IS DISTINCT FROM 'reconciler'
         WHERE gae.workspace_id = :workspace_id
-          AND gae.timestamp >= :period_start
-          AND gae.timestamp <  :period_end
+          AND gae.ts >= :period_start
+          AND gae.ts <  :period_end
           AND gae.request_id IS NOT NULL
           AND r.id IS NULL
         """
@@ -280,10 +286,17 @@ def _count_settled_missing_shadow(
             ).scalar_one()
         )
     except Exception:
-        # Reconciliation query is best-effort — if audit table differs
-        # (schema drift, table renamed), return 0 rather than break the
-        # whole report.
-        return 0
+        # Do NOT swallow silently — a broken query here previously hid
+        # the ts-vs-timestamp bug for a whole review cycle. Re-raise
+        # after logging so callers see the failure explicitly and
+        # ShadowDeltaReport surfaces it as a report error rather than a
+        # false-clean count.
+        import structlog as _structlog
+        _structlog.get_logger(__name__).exception(
+            "accounting.metrics.settled_missing_shadow_query_failed",
+            workspace_id=str(workspace_id),
+        )
+        raise
 
 
 def compute_deltas_from_rows(rows) -> Mapping[str, int]:

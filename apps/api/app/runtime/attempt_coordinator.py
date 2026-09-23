@@ -166,6 +166,12 @@ class AttemptRecord:
     error_class: str | None
     error_summary: str | None
     response_bytes_b64: str | None = None
+    # #2209 Session 6F reviewer #3 (#2221 review at 1219d734): every
+    # attempt's actual model, not the request-level default. Mixed-target
+    # profiles (e.g. anthropic sonnet primary, openai gpt-5 fallback)
+    # produced receipts with the wrong model on every non-primary
+    # attempt, which mispriced or unpriced them.
+    model: str | None = None
 
 
 @dataclass(frozen=True)
@@ -296,6 +302,7 @@ class AttemptCoordinator:
                         error_summary=(
                             f"rule_id={block.rule_id}: {block.message}"
                         )[:200],
+                        model=getattr(target, "model", None),
                     ))
                     log.info(
                         "gateway.v2.attempt_policy_block",
@@ -329,6 +336,7 @@ class AttemptCoordinator:
                     succeeded=False,
                     error_class="TimeoutError",
                     error_summary=str(exc)[:200] or "attempt timed out",
+                    model=getattr(target, "model", None),
                 ))
                 log.info(
                     "gateway.v2.attempt_timeout",
@@ -361,6 +369,7 @@ class AttemptCoordinator:
                     error_class=type(exc).__name__,
                     error_summary=str(exc)[:200],
                     response_bytes_b64=_failed_bytes_b64,
+                    model=getattr(target, "model", None),
                 ))
                 # #2001 review fix — retry classification. Fall through
                 # to the next target ONLY on transient failure classes
@@ -393,6 +402,7 @@ class AttemptCoordinator:
                 succeeded=True,
                 error_class=None,
                 error_summary=None,
+                model=getattr(target, "model", None),
             ))
             return CoordinatorResult(
                 response=response,
@@ -459,6 +469,7 @@ def _deadline_record(target, now: float) -> AttemptRecord:
         succeeded=False,
         error_class="DeadlineExceeded",
         error_summary="profile timeout_seconds exhausted before attempt could start",
+        model=getattr(target, "model", None),
     )
 
 
