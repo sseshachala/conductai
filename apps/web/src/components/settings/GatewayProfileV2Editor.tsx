@@ -71,7 +71,12 @@ const INTEGRATION_KEY_HINTS: Record<string, string> = {
   helicone_anthropic: "HELICONE_API_KEY",
   helicone_openai:    "HELICONE_API_KEY",
   azure_openai:       "AZUREAI_API_KEY",
-  custom:             "",
+  // Custom has no preset. The transport falls back to the generic
+  // ladder in ``resolve_gateway_key``: LLM_UPSTREAM_API_KEY → api_key
+  // → CUSTOM_API_KEY. First name is the recommended one because it's
+  // integration-agnostic (users often reuse the same handle for
+  // multiple proxy targets).
+  custom:             "LLM_UPSTREAM_API_KEY",
 }
 
 // Compute the operations ONE target can serve. Anthropic native /
@@ -647,6 +652,9 @@ function TargetRow({
           {target.transport === "http_passthrough" && INTEGRATION_KEY_HINTS[target.integration] ? (
             <span style={{ fontSize: 11, color: "var(--text-3)" }}>
               Expected key in vault: <code>{INTEGRATION_KEY_HINTS[target.integration]}</code>
+              {target.integration === "custom" ? (
+                <> (or <code>api_key</code> / <code>CUSTOM_API_KEY</code>)</>
+              ) : null}
             </span>
           ) : null}
         </FieldLabel>
