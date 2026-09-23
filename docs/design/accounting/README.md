@@ -580,11 +580,70 @@ Three defects the Session 6F fixes introduced or missed.
 tests in `test_shadow_receipts_realdb.py` (nightly-only via
 `RUN_ACCOUNTING_REALDB=1`). Full suite: 2400 passing (was 2389).
 
-Attempt-level reconciliation (per Sudhi's #3 second bullet) remains
-open — audit rows carry request_id only, not per-attempt identity, so
-the reconciler cannot detect "attempt 1 missing but attempt 0
-present". That requires a coordinator-side durable attempt log which
-is separate work (open as follow-up to Session 6D per-attempt capture).
+## Session 6H — attempt-level reconciliation from routing_meta
+
+The Session 6G note said attempt-level reconciliation needed a
+coordinator-side durable attempt log. Wrong. `guard_audit_events.routing_meta.attempts[]`
+already carries the per-attempt identity (target, provider, model,
+succeeded, response_bytes_b64) we need. Session 6H reads it and does
+gap detection at the `(request_id, attempt_ordinal)` grain.
+
+### What changed in the reconciler
+
+- `_fetch_audit_rows` no longer LEFT JOINs against receipts (that was
+  request-grain filtering). It fetches every audit row in the window
+  along with `routing_meta`, then does per-attempt gap detection in
+  Python.
+- `_fetch_existing_ordinals` runs one batched query
+  (`WHERE request_id = ANY(:ids)`) to build
+  `{request_id: {ordinal, ...}}`. Includes both real and placeholder
+  receipts — a placeholder counts as "present" so it isn't
+  re-inserted on the next pass.
+- Expected ordinal set comes from `_extract_attempts_from_meta`
+  parsing `routing_meta.attempts[]` (handles dict, string, missing,
+  and malformed forms). Empty/missing → default `{0}` for legacy v1
+  audit rows.
+- `_write_placeholder` calls `shadow_write(source="reconciler",
+  pinned_shadow_enabled=True)` per missing ordinal so normalization +
+  pricing + the Session 6G atomic upsert path all fire. Failed attempts
+  with `response_bytes_b64` get their bytes decoded into the placeholder
+  for real usage extraction.
+
+### Per-attempt attribution
+
+- Provider + model come from `attempt.provider_or_integration` /
+  `attempt.model` (Session 6F) — placeholders for a mixed-target
+  fallback profile record the actual provider that fired that attempt.
+- Winning attempt's placeholder gets `audit.tokens_after` /
+  `audit.cost_usd_after` as legacy values for shadow comparison. Failed
+  attempts get `None` on those fields (audit numbers reflect the winner).
+- Successful attempts get `execution_outcome=RECONCILED_LATE` so
+  Session 7 activation review can identify rows that came from backfill.
+  Failed attempts keep `FAILED` — the fact they failed is more useful
+  than the fact we reconciled them.
+
+### ReconciliationResult adds attempts_expected
+
+Sums expected ordinals across all scanned audit rows. Ops can now
+watch two ratios trend toward zero:
+
+- `receipts_written / attempts_expected` per reconciliation pass —
+  should trend down as backfill catches up
+- `settled_requests_placeholder_only_count` (Session 6G) — separate
+  view for placeholders that never got promoted to real receipts
+
+### Tests
+
+15 new self-checks in `test_session_6h.py` covering the helper
+functions, per-attempt attribution rules, the batched-lookup shape,
+and a whole-flow test with a 2-attempt audit row that both ordinals
+present. One Postgres integration test at
+`test_reconciler_backfills_missing_fallback_ordinal` that seeds an
+audit row with 3 attempts, real receipts at 0 and 2, and verifies
+the reconciler fills the missing ordinal 1 with the failed attempt's
+decoded bytes.
+
+Full suite: 2415 passing (was 2400).
 
 ## Where this branch actually is — honest tracking
 

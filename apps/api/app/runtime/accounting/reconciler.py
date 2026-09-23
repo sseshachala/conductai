@@ -1,48 +1,44 @@
-"""Reconciliation writer (#2209 Session 6D).
+"""Reconciliation writer (#2209 Session 6D + 6H).
 
-Backfills missing shadow receipts. A settled ``guard_audit_events`` row
-with no matching ``llm_attempt_receipts`` row means one of:
+Backfills missing shadow receipts by reading
+``guard_audit_events.routing_meta.attempts[]`` and detecting gaps at
+the ``(request_id, attempt_ordinal)`` grain — not just the request
+grain. Session 6H closes the reviewer's #3-second-bullet gap: a
+request with a real receipt at ordinal 0 and a missing placeholder at
+ordinal 1 (fallback that never got a receipt) is now detected and
+backfilled.
 
-- The shadow writer's kill-switch was off when the request settled and
-  ops has since enabled it (backfill closes the historical gap).
-- shadow_write raised an unexpected exception at settlement time.
-- A worker crash truncated the settle path after audit-write but before
-  shadow-write.
+Reconciler writes go through ``shadow_write(source="reconciler",
+pinned_shadow_enabled=True)`` so:
 
-This module scans for the gap and writes placeholder receipts derived
-from the audit row's known-good columns (workspace_id, request_id,
-provider, model, tokens_after, cost_usd_after). The receipts carry
-``usage_origin=RECONCILED`` and ``execution_outcome=RECONCILED_LATE`` so
-Session 7's activation review can see they were not settled through the
-normal writer path.
+- Normalization + pricing run over any per-attempt
+  ``response_bytes_b64`` the coordinator captured (failed attempts
+  with an httpx.HTTPStatusError.response.content payload get real
+  usage on the placeholder).
+- ``_persist_atomic`` idempotency + placeholder-vs-real supersession
+  invariants are preserved on this path too.
+- Canary flag is bypassed — reconciler is manual/opt-in already.
 
-Not wired to any scheduler in this session — invoked manually by ops or
-from a future background job. The function itself is idempotent (the
-unique constraint on ``(request_id, attempt_ordinal)`` guarantees a
-duplicate run inserts nothing).
+Not wired to any scheduler in this session; invoked by ops or a future
+background job. Fully idempotent thanks to
+``ON CONFLICT DO NOTHING`` on reconciler-source writes.
 """
 
 from __future__ import annotations
 
+import base64
 import uuid
+from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from decimal import Decimal
-from typing import Optional
+from typing import Any, Mapping, Optional
 
 import structlog
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.core.database import SessionLocal
-from app.models.llm_attempt_receipt import LlmAttemptReceipt
-from app.runtime.accounting.contracts import (
-    CONTRACT_VERSION,
-    ExecutionOutcome,
-    PricingCompleteness,
-    UsageCompleteness,
-    UsageOrigin,
-)
 
 log = structlog.get_logger(__name__)
 
@@ -55,8 +51,9 @@ class ReconciliationResult:
     period_start: datetime
     period_end: datetime
     audit_rows_scanned: int
+    attempts_expected: int  # sum over routing_meta.attempts (default 1 per request)
     receipts_written: int
-    receipts_skipped: int  # unique-constraint hits (already reconciled)
+    receipts_skipped: int  # unique-constraint hits (already reconciled) or upsert no-ops
     errors: int
 
 
@@ -68,73 +65,28 @@ def reconcile_missing_receipts(
     db: Optional[Session] = None,
     limit: int = 1000,
 ) -> ReconciliationResult:
-    """Scan guard_audit_events for one workspace, backfill missing shadow rows.
+    """Scan guard_audit_events for one workspace, backfill missing per-attempt
+    shadow rows.
 
-    Idempotent: the ``(request_id, attempt_ordinal)`` unique constraint on
-    ``llm_attempt_receipts`` guarantees a second run of the same period
-    inserts nothing new. Returns counts so a caller can log +
-    aggregate them (Session 7 gate criterion 5: reconciler clean).
+    Attempt granularity: for each audit row, expected ordinals come from
+    ``routing_meta.attempts[]`` (or default to ``{0}`` for legacy rows).
+    Missing ``(request_id, attempt_ordinal)`` tuples get placeholder
+    receipts via ``shadow_write(source="reconciler")``. Failed attempts
+    that captured a provider error envelope get their bytes decoded +
+    normalized + priced — the placeholder is 'metadata-only' only when
+    the coordinator had nothing to record.
     """
     owned = db is None
     _db = db if db is not None else SessionLocal()
 
     scanned = 0
+    expected = 0
     written = 0
     skipped = 0
     errors = 0
 
     try:
-        # Pull unmatched audit rows. Same LEFT JOIN as the Session 6
-        # ``settled_requests_missing_shadow_count`` metric, but selecting
-        # the fields we need to synthesize the receipt.
-        #
-        # #2209 reviewer #1 (#2221 review at 1219d734): the column in
-        # ``guard_audit_events`` is ``ts``, not ``timestamp``. Prior code
-        # queried the wrong name; the metric caught the resulting SQL
-        # error and returned zero, hiding the failure. Fixed here + in
-        # metrics._count_settled_missing_shadow.
-        #
-        # #2209 Session 6G reviewer #3 (#2221 review at 42d89898): the
-        # LEFT JOIN now matches ANY receipt (real or placeholder). A
-        # request that already has a placeholder is not re-inserted on
-        # subsequent passes — that made the same placeholders fill the
-        # LIMIT window forever and blocked progress to new gaps.
-        # Placeholder-vs-real supersession still works: real writers
-        # use the ``_persist_atomic`` upsert with a
-        # ``source='reconciler'`` predicate; they overwrite placeholders
-        # on their own path.
-        rows = _db.execute(
-            text(
-                """
-                SELECT
-                    gae.workspace_id,
-                    gae.request_id,
-                    gae.provider,
-                    gae.model,
-                    gae.clerk_user_id,
-                    gae.ai_tool,
-                    gae.tokens_after,
-                    gae.cost_usd_after,
-                    gae.ts AS audit_ts
-                FROM guard_audit_events gae
-                LEFT JOIN llm_attempt_receipts r
-                  ON r.request_id = gae.request_id
-                WHERE gae.workspace_id = :workspace_id
-                  AND gae.ts >= :period_start
-                  AND gae.ts <  :period_end
-                  AND gae.request_id IS NOT NULL
-                  AND r.id IS NULL
-                ORDER BY gae.ts ASC
-                LIMIT :limit
-                """
-            ),
-            {
-                "workspace_id": workspace_id,
-                "period_start": period_start,
-                "period_end": period_end,
-                "limit": limit,
-            },
-        ).all()
+        audit_rows = _fetch_audit_rows(_db, workspace_id, period_start, period_end, limit)
     except Exception:
         log.exception(
             "accounting.reconciler.scan_failed",
@@ -150,67 +102,50 @@ def reconcile_missing_receipts(
             period_start=period_start,
             period_end=period_end,
             audit_rows_scanned=0,
+            attempts_expected=0,
             receipts_written=0,
             receipts_skipped=0,
             errors=1,
         )
 
-    for row in rows:
+    if not audit_rows:
+        if owned:
+            _db.close()
+        return ReconciliationResult(
+            workspace_id=str(workspace_id),
+            period_start=period_start,
+            period_end=period_end,
+            audit_rows_scanned=0,
+            attempts_expected=0,
+            receipts_written=0,
+            receipts_skipped=0,
+            errors=0,
+        )
+
+    request_ids = [row.request_id for row in audit_rows]
+    existing = _fetch_existing_ordinals(_db, request_ids)
+
+    for row in audit_rows:
         scanned += 1
-        try:
-            legacy_cost_micros = None
-            if row.cost_usd_after is not None:
-                legacy_cost_micros = int(
-                    (Decimal(str(row.cost_usd_after)) * Decimal(1_000_000))
-                    .to_integral_value()
-                )
-            receipt = LlmAttemptReceipt(
-                id=uuid.uuid4(),
-                workspace_id=row.workspace_id,
-                request_id=row.request_id,
-                attempt_ordinal=0,
-                contract_version=CONTRACT_VERSION,
-                developer_external_id=(
-                    str(row.clerk_user_id) if row.clerk_user_id else None
-                ),
-                source="reconciler",
-                client_tool=row.ai_tool,
-                provider=row.provider or "unknown",
-                model=row.model or "unknown",
-                operation="reconciled",
-                execution_outcome=ExecutionOutcome.RECONCILED_LATE.value,
-                total_input_tokens=None,
-                total_output_tokens=(
-                    int(row.tokens_after) if row.tokens_after is not None else None
-                ),
-                usage_origin=UsageOrigin.RECONCILED.value,
-                usage_completeness=UsageCompleteness.PENDING.value,
-                pricing_completeness=PricingCompleteness.UNPRICED.value,
-                legacy_cost_microdollars=legacy_cost_micros,
-                normalizer_version=None,
-                calculation_provenance={
-                    "reconciled_from": "guard_audit_events",
-                    "audit_timestamp": (
-                        row.audit_ts.isoformat() if row.audit_ts else None
-                    ),
-                },
-                finalized_at=datetime.now(timezone.utc),
-            )
-            _db.add(receipt)
-            _db.commit()
-            written += 1
-        except Exception:
-            # Unique-constraint violation (another writer got there first)
-            # or malformed audit row. Either is fine — roll back and count.
+        attempts = _extract_attempts_from_meta(row.routing_meta)
+        expected_ordinals = set(range(len(attempts))) if attempts else {0}
+        expected += len(expected_ordinals)
+        missing = expected_ordinals - existing.get(row.request_id, set())
+        for ordinal in sorted(missing):
+            attempt_meta = attempts[ordinal] if ordinal < len(attempts) else None
             try:
-                _db.rollback()
+                wrote = _write_placeholder(row, ordinal, attempt_meta)
+                if wrote:
+                    written += 1
+                else:
+                    skipped += 1
             except Exception:
-                pass
-            skipped += 1
-            log.debug(
-                "accounting.reconciler.receipt_skipped",
-                request_id=str(row.request_id),
-            )
+                log.exception(
+                    "accounting.reconciler.placeholder_write_failed",
+                    request_id=str(row.request_id),
+                    ordinal=ordinal,
+                )
+                errors += 1
 
     if owned:
         try:
@@ -223,7 +158,183 @@ def reconcile_missing_receipts(
         period_start=period_start,
         period_end=period_end,
         audit_rows_scanned=scanned,
+        attempts_expected=expected,
         receipts_written=written,
         receipts_skipped=skipped,
         errors=errors,
     )
+
+
+# ─── internal helpers ─────────────────────────────────────────────────────
+
+
+def _fetch_audit_rows(
+    db: Session,
+    workspace_id: str,
+    period_start: datetime,
+    period_end: datetime,
+    limit: int,
+) -> list:
+    """Fetch every audit row in the window, INCLUDING routing_meta.
+
+    Session 6H change: no LEFT JOIN against receipts — that was
+    request-granular and hid missing fallback ordinals. Per-attempt
+    filtering happens in Python via ``_fetch_existing_ordinals`` below.
+    ``ORDER BY gae.ts ASC`` gives deterministic pagination.
+    """
+    return db.execute(
+        text(
+            """
+            SELECT
+                gae.workspace_id,
+                gae.request_id,
+                gae.provider,
+                gae.model,
+                gae.clerk_user_id,
+                gae.ai_tool,
+                gae.tokens_after,
+                gae.cost_usd_after,
+                gae.ts AS audit_ts,
+                gae.routing_meta
+            FROM guard_audit_events gae
+            WHERE gae.workspace_id = :workspace_id
+              AND gae.ts >= :period_start
+              AND gae.ts <  :period_end
+              AND gae.request_id IS NOT NULL
+            ORDER BY gae.ts ASC
+            LIMIT :limit
+            """
+        ),
+        {
+            "workspace_id": workspace_id,
+            "period_start": period_start,
+            "period_end": period_end,
+            "limit": limit,
+        },
+    ).all()
+
+
+def _fetch_existing_ordinals(db: Session, request_ids: list) -> dict:
+    """Return ``{request_id: set(attempt_ordinal, ...)}`` for the scan batch.
+
+    One query for the whole batch instead of N per-request queries.
+    Includes BOTH real and placeholder receipts — a placeholder counts
+    as 'present' so we don't re-insert it (avoids the Session 6G
+    rescan-loop issue on the reconciler side too).
+    """
+    if not request_ids:
+        return {}
+    rows = db.execute(
+        text(
+            """
+            SELECT request_id, attempt_ordinal
+            FROM llm_attempt_receipts
+            WHERE request_id = ANY(:ids)
+            """
+        ),
+        {"ids": request_ids},
+    ).all()
+    out: dict = defaultdict(set)
+    for row in rows:
+        out[row.request_id].add(int(row.attempt_ordinal))
+    return dict(out)
+
+
+def _extract_attempts_from_meta(routing_meta: Any) -> list[dict]:
+    """Pull ``attempts[]`` off routing_meta. Handles JSONB dict form,
+    string form (some DB drivers stringify JSONB), and missing/None.
+    Returns [] when nothing usable is present (caller defaults to
+    ``{0}`` as the expected ordinal set)."""
+    if not routing_meta:
+        return []
+    if isinstance(routing_meta, str):
+        import json as _json
+        try:
+            routing_meta = _json.loads(routing_meta)
+        except Exception:
+            return []
+    if not isinstance(routing_meta, Mapping):
+        return []
+    attempts = routing_meta.get("attempts")
+    if not isinstance(attempts, list):
+        return []
+    return [a for a in attempts if isinstance(a, Mapping)]
+
+
+def _write_placeholder(row, ordinal: int, attempt_meta: Optional[Mapping]) -> bool:
+    """Write one reconciler-sourced placeholder for a missing attempt.
+
+    Uses ``shadow_write(source="reconciler", pinned_shadow_enabled=True)``
+    so it goes through the same normalization + pricing + atomic upsert
+    path as live writes. Returns True if the shadow_write returned a
+    receipt id (row inserted), False if it was a no-op (unique
+    constraint via ON CONFLICT DO NOTHING, or shadow disabled).
+    """
+    from app.runtime.accounting.contracts import (
+        CONTRACT_VERSION,
+        ExecutionOutcome,
+    )
+    from app.runtime.accounting.shadow_writer import shadow_write
+
+    attempt_meta = attempt_meta or {}
+    succeeded = bool(attempt_meta.get("succeeded", True))
+    is_winner = succeeded  # Any successful attempt in routing_meta IS the winner
+    provider = attempt_meta.get("provider_or_integration") or row.provider or "unknown"
+    model = attempt_meta.get("model") or row.model or "unknown"
+
+    # Decode captured failed-attempt bytes when present. Winner bytes
+    # aren't in routing_meta (they went to the client) — the winner
+    # placeholder relies on audit tokens_after / cost_usd_after.
+    response_bytes: Optional[bytes] = None
+    b64 = attempt_meta.get("response_bytes_b64")
+    if b64:
+        try:
+            response_bytes = base64.b64decode(b64)
+        except Exception:
+            response_bytes = None
+
+    # Legacy tokens + cost only apply to the winning attempt (audit
+    # tokens_after are per-request and reflect the winning path).
+    legacy_input: Optional[int] = None
+    legacy_output: Optional[int] = None
+    legacy_cost_usd: Optional[float] = None
+    if is_winner:
+        legacy_output = (
+            int(row.tokens_after) if row.tokens_after is not None else None
+        )
+        legacy_cost_usd = (
+            float(row.cost_usd_after) if row.cost_usd_after is not None else None
+        )
+
+    execution_outcome = (
+        ExecutionOutcome.SUCCEEDED.value if succeeded else ExecutionOutcome.FAILED.value
+    )
+    # If we're reconciling a settled row, mark it late so Session 7
+    # activation review can see this came from the backfill path.
+    if execution_outcome == ExecutionOutcome.SUCCEEDED.value:
+        execution_outcome = ExecutionOutcome.RECONCILED_LATE.value
+
+    result = shadow_write(
+        workspace_id=row.workspace_id,
+        request_id=row.request_id,
+        provider=provider,
+        model=model,
+        operation="reconciled",
+        dispatched=True,
+        response_bytes=response_bytes,
+        legacy_input_tokens=legacy_input,
+        legacy_output_tokens=legacy_output,
+        legacy_cost_usd=legacy_cost_usd,
+        developer_external_id=(
+            str(row.clerk_user_id) if row.clerk_user_id else None
+        ),
+        source="reconciler",
+        client_tool=row.ai_tool,
+        attempt_ordinal=ordinal,
+        succeeded=succeeded,
+        execution_outcome=execution_outcome,
+        # Bypass the canary — reconciliation is manual/opt-in already.
+        pinned_shadow_enabled=True,
+        pinned_contract_version=CONTRACT_VERSION,
+    )
+    return result is not None

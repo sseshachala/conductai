@@ -330,6 +330,7 @@ def test_reconciler_result_dataclass_frozen():
         period_start=datetime.now(timezone.utc),
         period_end=datetime.now(timezone.utc),
         audit_rows_scanned=0,
+        attempts_expected=0,
         receipts_written=0,
         receipts_skipped=0,
         errors=0,

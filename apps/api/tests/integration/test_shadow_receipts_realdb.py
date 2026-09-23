@@ -408,6 +408,150 @@ def test_reconciler_placeholder_never_overwrites_real_receipt(monkeypatch, works
     assert row.total_input_tokens == 42
 
 
+def test_reconciler_backfills_missing_fallback_ordinal(monkeypatch, workspace_id):
+    """#2209 Session 6H: audit row for a 3-attempt request has receipts
+    for ordinals 0 and 2 but ordinal 1 is missing (shadow_write dropped
+    it silently). Reconciler MUST detect + backfill ordinal 1 using
+    the failed attempt's captured response_bytes_b64."""
+    _shadow_on(monkeypatch)
+    import json as _json
+    from app.core.database import SessionLocal
+    from sqlalchemy import text
+    from app.runtime.accounting import reconcile_missing_receipts
+    from app.runtime.accounting.shadow_writer import shadow_write
+
+    req_id = uuid.uuid4()
+    now = datetime.now(timezone.utc)
+
+    # Insert audit row with 3 attempts in routing_meta.
+    failed_bytes = b'{"usage":{"input_tokens":50,"output_tokens":0}}'
+    routing_meta = {
+        "attempts": [
+            {
+                "provider_or_integration": "anthropic",
+                "succeeded": False,
+                "response_bytes_b64": base64.b64encode(failed_bytes).decode("ascii"),
+                "model": "claude-sonnet-4-6",
+            },
+            {
+                "provider_or_integration": "anthropic",
+                "succeeded": False,
+                "response_bytes_b64": base64.b64encode(failed_bytes).decode("ascii"),
+                "model": "claude-sonnet-4-6",
+            },
+            {
+                "provider_or_integration": "openai",
+                "succeeded": True,
+                "model": "gpt-4.1",
+            },
+        ]
+    }
+    with SessionLocal() as db:
+        db.execute(
+            text(
+                "INSERT INTO guard_audit_events "
+                "(id, workspace_id, request_id, provider, model, decision, "
+                "ai_tool, clerk_user_id, ts, tokens_after, cost_usd_after, routing_meta) "
+                "VALUES (gen_random_uuid(), CAST(:ws AS uuid), CAST(:rid AS uuid), "
+                ":prov, :model, 'allowed', 'test', 'user_x', :ts, 25, 0.001, "
+                "CAST(:meta AS jsonb))"
+            ),
+            {
+                "ws": workspace_id,
+                "rid": str(req_id),
+                "prov": "openai",  # winning attempt's provider
+                "model": "gpt-4.1",
+                "ts": now,
+                "meta": _json.dumps(routing_meta),
+            },
+        )
+        db.commit()
+
+    # Simulate real receipts for ordinal 0 (failed) and 2 (winner).
+    # Ordinal 1 is deliberately missing — the gap the reconciler fills.
+    shadow_write(
+        workspace_id=uuid.UUID(workspace_id),
+        request_id=req_id,
+        provider="anthropic",
+        model="claude-sonnet-4-6",
+        operation="messages.create",
+        dispatched=True,
+        response_bytes=failed_bytes,
+        legacy_input_tokens=50,
+        legacy_output_tokens=0,
+        legacy_cost_usd=None,
+        attempt_ordinal=0,
+        source="gateway",
+        succeeded=False,
+    )
+    shadow_write(
+        workspace_id=uuid.UUID(workspace_id),
+        request_id=req_id,
+        provider="openai",
+        model="gpt-4.1",
+        operation="chat.completions",
+        dispatched=True,
+        response_bytes=b'{"usage":{"prompt_tokens":100,"completion_tokens":25}}',
+        legacy_input_tokens=100,
+        legacy_output_tokens=25,
+        legacy_cost_usd=0.001,
+        attempt_ordinal=2,
+        source="gateway",
+        succeeded=True,
+    )
+
+    # Verify pre-state.
+    with SessionLocal() as db:
+        pre = db.execute(
+            text(
+                "SELECT attempt_ordinal, source FROM llm_attempt_receipts "
+                "WHERE request_id = :r ORDER BY attempt_ordinal"
+            ),
+            {"r": str(req_id)},
+        ).all()
+    assert [(row.attempt_ordinal, row.source) for row in pre] == [
+        (0, "gateway"),
+        (2, "gateway"),
+    ]
+
+    # Reconcile.
+    result = reconcile_missing_receipts(
+        workspace_id=workspace_id,
+        period_start=now - timedelta(minutes=5),
+        period_end=now + timedelta(minutes=5),
+    )
+    assert result.audit_rows_scanned == 1
+    assert result.attempts_expected == 3
+    assert result.receipts_written >= 1
+    assert result.errors == 0
+
+    # Post-state: ordinal 1 now exists as a reconciler placeholder,
+    # with the failed attempt's decoded bytes normalized into tokens.
+    with SessionLocal() as db:
+        post = db.execute(
+            text(
+                "SELECT attempt_ordinal, source, provider, "
+                "total_input_tokens, execution_outcome "
+                "FROM llm_attempt_receipts "
+                "WHERE request_id = :r ORDER BY attempt_ordinal"
+            ),
+            {"r": str(req_id)},
+        ).all()
+    ords = {row.attempt_ordinal: row for row in post}
+    assert set(ords.keys()) == {0, 1, 2}
+    # Real receipts untouched.
+    assert ords[0].source == "gateway"
+    assert ords[2].source == "gateway"
+    # New placeholder at ordinal 1.
+    placeholder = ords[1]
+    assert placeholder.source == "reconciler"
+    assert placeholder.provider == "anthropic"
+    # Normalizer extracted input_tokens from the captured error envelope.
+    assert placeholder.total_input_tokens == 50
+    # Failed-attempt placeholder → FAILED outcome.
+    assert placeholder.execution_outcome == "failed"
+
+
 def test_workspace_delete_cascades_to_receipts(monkeypatch):
     """Verify the FK CASCADE on migration 0148 fires — orphan receipts
     would leak otherwise when a workspace is deleted."""
