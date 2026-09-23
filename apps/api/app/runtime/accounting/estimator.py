@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Iterable, Mapping
+from typing import Any, Iterable, Mapping, Optional
 
 _CHARS_PER_TOKEN = 4
 _DEFAULT_OUTPUT_ALLOWANCE_TOKENS = 4096
@@ -62,7 +62,14 @@ class TokensEstimate:
 
 
 def _extract_text(body: Any) -> list[str]:
-    """Pull string content out of a `messages` array element."""
+    """Pull string content out of a `messages` array element.
+
+    Reviewer #9b (#2221): also walks tool-related payloads. Tool-call
+    arguments (OpenAI Chat) and tool_use.input / tool_result.content
+    (Anthropic Messages) are real prompt tokens that the pre-Session-6c
+    estimator missed.
+    """
+    import json as _json
     out: list[str] = []
     if not isinstance(body, dict):
         return out
@@ -75,11 +82,55 @@ def _extract_text(body: Any) -> list[str]:
             out.append(content)
         elif isinstance(content, list):
             for part in content:
-                if isinstance(part, dict):
-                    t = part.get("text") or ""
-                    if isinstance(t, str) and t:
-                        out.append(t)
+                if not isinstance(part, dict):
+                    continue
+                t = part.get("text") or ""
+                if isinstance(t, str) and t:
+                    out.append(t)
+                # Anthropic tool_use block — assistant asks to call a tool.
+                # The `input` dict is prompt-visible; serialize it for the
+                # heuristic count.
+                if part.get("type") == "tool_use":
+                    tu_input = part.get("input")
+                    if tu_input:
+                        try:
+                            out.append(_json.dumps(tu_input, separators=(",", ":")))
+                        except Exception:
+                            pass
+                # Anthropic tool_result block — user gives a tool response.
+                # The `content` field can be a string OR a list of blocks;
+                # both cases are covered by falling into the outer walker
+                # for list content, but we handle the string form here.
+                if part.get("type") == "tool_result":
+                    tr_content = part.get("content")
+                    if isinstance(tr_content, str):
+                        out.append(tr_content)
+        # OpenAI Chat tool_calls on assistant messages — the `function.arguments`
+        # string is JSON of what the model asked to call.
+        tool_calls = msg.get("tool_calls")
+        if isinstance(tool_calls, list):
+            for tc in tool_calls:
+                if not isinstance(tc, dict):
+                    continue
+                fn = tc.get("function") or {}
+                args = fn.get("arguments") if isinstance(fn, dict) else None
+                if isinstance(args, str) and args:
+                    out.append(args)
+        # OpenAI Chat tool-result messages — role="tool" with a `content` str
+        # was already handled above; nothing extra needed here.
     return out
+
+
+def _output_allowance_field(body: Any) -> Optional[int]:
+    """Return the caller-set output allowance if present. Reviewer #9b:
+    also recognizes ``max_output_tokens`` (OpenAI Responses API)."""
+    if not isinstance(body, dict):
+        return None
+    for key in ("max_tokens", "max_output_tokens", "max_completion_tokens"):
+        v = body.get(key)
+        if isinstance(v, int) and v > 0:
+            return v
+    return None
 
 
 def _extract_response_input(body: Any) -> list[str]:
@@ -142,12 +193,9 @@ def _vision_tokens(body: Any) -> int:
 
 
 def _output_allowance(body: Any, default: int = _DEFAULT_OUTPUT_ALLOWANCE_TOKENS) -> int:
-    """Honor the caller's `max_tokens` when set; otherwise use a bounded default."""
-    if isinstance(body, dict):
-        mt = body.get("max_tokens")
-        if isinstance(mt, int) and mt > 0:
-            return mt
-    return default
+    """Honor caller's output-limit param when set; otherwise use bounded default."""
+    v = _output_allowance_field(body)
+    return v if v is not None else default
 
 
 def estimate_tokens(

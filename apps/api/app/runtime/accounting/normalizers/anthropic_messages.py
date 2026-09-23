@@ -61,26 +61,46 @@ def _extract_cache_write_by_tier(usage: Mapping[str, Any]) -> dict[str, int]:
 
 def _tokens_from_usage(usage: Mapping[str, Any]) -> TokenBreakdown:
     """Anthropic ``input_tokens`` DOES NOT include cache reads — they are a
-    separate bucket. So total_input = input + cache_read + cache_write."""
+    separate bucket. So total_input = input + cache_read + cache_write.
+
+    Reviewer #8 (#2221): distinguishes "no usage fields present" (all None)
+    from "reported zero" (explicit 0). All-None → TokenBreakdown with every
+    field None; the ``.normalize_*`` methods surface UNAVAILABLE from that.
+    """
     input_only = usage.get("input_tokens")
     cache_read = usage.get("cache_read_input_tokens")
     cache_write_by_tier = _extract_cache_write_by_tier(usage)
-    cache_write_total = sum(cache_write_by_tier.values())
     output = usage.get("output_tokens")
 
+    input_is_numeric = isinstance(input_only, (int, float))
+    cache_read_is_numeric = isinstance(cache_read, (int, float))
+    output_is_numeric = isinstance(output, (int, float))
+    any_field_reported = (
+        input_is_numeric
+        or cache_read_is_numeric
+        or output_is_numeric
+        or bool(cache_write_by_tier)
+    )
+
+    if not any_field_reported:
+        # No usage fields present at all — do NOT synthesize zeros.
+        return TokenBreakdown()
+
+    cache_write_total = sum(cache_write_by_tier.values())
     parts: list[int] = []
-    if isinstance(input_only, (int, float)):
+    if input_is_numeric:
         parts.append(int(input_only))
-    if isinstance(cache_read, (int, float)):
+    if cache_read_is_numeric:
         parts.append(int(cache_read))
-    parts.append(cache_write_total)
+    if cache_write_total or cache_write_by_tier:
+        parts.append(cache_write_total)
     total_input = sum(parts) if parts else None
 
     return TokenBreakdown(
         total_input_tokens=total_input,
-        total_output_tokens=int(output) if isinstance(output, (int, float)) else None,
-        uncached_input_tokens=int(input_only) if isinstance(input_only, (int, float)) else None,
-        cache_read_tokens=int(cache_read) if isinstance(cache_read, (int, float)) else None,
+        total_output_tokens=int(output) if output_is_numeric else None,
+        uncached_input_tokens=int(input_only) if input_is_numeric else None,
+        cache_read_tokens=int(cache_read) if cache_read_is_numeric else None,
         cache_write_tokens_by_tier=cache_write_by_tier,
     )
 
@@ -111,14 +131,20 @@ class AnthropicMessagesNormalizer:
         if not isinstance(obj, dict):
             return _unavailable()
         usage = obj.get("usage")
-        if not isinstance(usage, dict):
+        if not isinstance(usage, dict) or not usage:
             return _unavailable()
         tokens = _tokens_from_usage(usage)
+        # Reviewer #8 (#2221): an empty usage dict OR one that produces no
+        # numeric fields must surface UNAVAILABLE, not COMPLETE-with-zero.
+        if (
+            tokens.total_output_tokens is None
+            and tokens.total_input_tokens is None
+            and tokens.cache_read_tokens is None
+            and not tokens.cache_write_tokens_by_tier
+        ):
+            return _unavailable()
         origin = UsageOrigin.PROVIDER_REPORTED
         completeness = UsageCompleteness.COMPLETE
-        if tokens.total_output_tokens is None and tokens.total_input_tokens is None:
-            completeness = UsageCompleteness.UNAVAILABLE
-            origin = UsageOrigin.MISSING
         return NormalizedUsage(
             tokens=tokens,
             origin=origin,

@@ -1380,48 +1380,42 @@ async def handle_gateway_request(
             # wrapper (``_wrap_v2_stream_finalize``) owns settlement so
             # actual_cents reflects the drained body. Skip inline here
             # to avoid settling twice.
+            # #2209 review #2 (#2221): compute tokens + cost OUTSIDE the
+            # reservation gate so shadow accounting fires for every settled
+            # attempt, not just reserved ones.
+            _in_tok: int | None = None
+            _out_tok: int | None = None
+            _cost_usd: float | None = None
+            _resp_bytes: bytes | None = None
+            if _dispatched and _response is not None and not isinstance(_response, StreamingResponse):
+                try:
+                    from app.guard.audit import (
+                        _compute_audit_cost as _mk_cost,
+                        _extract_token_counts as _mk_tokens,
+                    )
+                    _snapshot = locals().get("_v2_upstream_body_bytes")
+                    if isinstance(_snapshot, (bytes, bytearray)) and _snapshot:
+                        _resp_bytes = bytes(_snapshot)
+                    elif _response is not None and hasattr(_response, "body"):
+                        try:
+                            _resp_bytes = _response.body
+                        except Exception:
+                            _resp_bytes = None
+                    _in_tok, _out_tok = _mk_tokens(body, _resp_bytes)
+                    _cost_usd = _mk_cost(
+                        provider, model, _in_tok, _out_tok, _routing_meta
+                    )
+                except Exception:
+                    pass
+
+            # Reservation-gated settlement — behavior unchanged.
             if _reservations and not isinstance(_response, StreamingResponse):
                 try:
-                    # Try to derive actual cents from the upstream body
-                    # so a successful dispatch commits promptly. On
-                    # failure, actual_cents stays None -> settle marks
-                    # PENDING_RECONCILER (safe: reconciler handles).
-                    if _dispatched and _actual_cents is None and _response is not None:
-                        try:
-                            from app.guard.audit import (
-                                _compute_audit_cost as _mk_cost,
-                                _extract_token_counts as _mk_tokens,
-                            )
-                            # R4 fix (reviewer P1): the response gate may
-                            # have replaced _response.body with a 4xx
-                            # error envelope. _v2_upstream_body_bytes
-                            # captures the ORIGINAL upstream bytes
-                            # BEFORE the gate ran, so token counts +
-                            # cost still reflect what the provider
-                            # billed us for. Fall back to _response.body
-                            # only when no snapshot exists (non-v2 or
-                            # legacy path).
-                            _resp_bytes = None
-                            _snapshot = locals().get("_v2_upstream_body_bytes")
-                            if isinstance(_snapshot, (bytes, bytearray)) and _snapshot:
-                                _resp_bytes = bytes(_snapshot)
-                            elif _response is not None and hasattr(_response, "body"):
-                                try:
-                                    _resp_bytes = _response.body
-                                except Exception:
-                                    _resp_bytes = None
-                            _in_tok, _out_tok = _mk_tokens(body, _resp_bytes)
-                            _cost_usd = _mk_cost(
-                                provider, model, _in_tok, _out_tok, _routing_meta
-                            )
-                            if _cost_usd:
-                                _actual_cents = int(round(float(_cost_usd) * 100))
-                                _actual_micros = int(round(float(_cost_usd) * 1_000_000))
-                        except Exception:
-                            _actual_cents = None
+                    if _dispatched and _actual_cents is None and _cost_usd:
+                        _actual_cents = int(round(float(_cost_usd) * 100))
+                        _actual_micros = int(round(float(_cost_usd) * 1_000_000))
                     # R3 fix (reviewer P1): settle owns its own session
-                    # inside a threadpool call. No shared session held
-                    # across the upstream lifetime.
+                    # inside a threadpool call.
                     _reservations_snapshot = list(_reservations)
                     _dispatched_snapshot = _dispatched
                     _actual_cents_snapshot = _actual_cents
@@ -1447,54 +1441,63 @@ async def handle_gateway_request(
                             except Exception:
                                 pass
                     await run_in_threadpool(_settle_sync_owned)
-
-                    # #2209 Session 4 — shadow accounting writer. Off by
-                    # default (settings.guard_accounting_shadow_enabled).
-                    # Never fails the request: shadow_write catches
-                    # every exception internally.
-                    try:
-                        from app.runtime.accounting.shadow_writer import shadow_write
-                        _shadow_bytes = None
-                        _snap = locals().get("_v2_upstream_body_bytes")
-                        if isinstance(_snap, (bytes, bytearray)) and _snap:
-                            _shadow_bytes = bytes(_snap)
-                        elif _response is not None and hasattr(_response, "body"):
-                            try:
-                                _shadow_bytes = bytes(_response.body)
-                            except Exception:
-                                _shadow_bytes = None
-                        shadow_write(
-                            workspace_id=workspace_id,
-                            request_id=_audit_request_id,
-                            provider=provider,
-                            model=model,
-                            operation=request.url.path,
-                            dispatched=_dispatched_snapshot,
-                            response_bytes=_shadow_bytes,
-                            legacy_input_tokens=locals().get("_in_tok"),
-                            legacy_output_tokens=locals().get("_out_tok"),
-                            legacy_cost_usd=locals().get("_cost_usd"),
-                            reserved_microdollars=_actual_micros_snapshot,
-                            developer_user_id=clerk_user_id,
-                            agent_identity_id=_agent_identity_id,
-                            source="gateway",
-                            client_tool=ai_tool,
-                            attempts_meta=(
-                                _routing_meta.get("attempts")
-                                if isinstance(_routing_meta, dict)
-                                else None
-                            ),
-                        )
-                    except Exception:
-                        # shadow_write is designed to swallow; this is a
-                        # last-resort belt-and-suspenders.
-                        pass
                 except Exception:
                     log.exception(
                         "guard.gateway.settle_wire_failed",
                         reservation_count=len(_reservations),
                         dispatched=_dispatched,
                     )
+
+            # #2209 reviewer response (#2221):
+            #  - #2: shadow accounting fires REGARDLESS of reservations.
+            #  - #3: write one receipt per attempt via helper.
+            #  - #5: wrap the sync DB write in run_in_threadpool so it
+            #    does not block the async event loop.
+            #  - #9: reserved_microdollars comes from the ledger reservation
+            #    (sum of estimated_micros across active reservations),
+            #    NOT the actual cost. Actual cost lives in
+            #    calculated_cost_microdollars on the row.
+            if not isinstance(_response, StreamingResponse):
+                try:
+                    from app.runtime.accounting.shadow_writer import (
+                        write_receipts_for_attempts as _write_shadow_attempts,
+                    )
+                    _reserved_micros: int | None = None
+                    if _reservations:
+                        try:
+                            _reserved_micros = sum(
+                                int(getattr(r, "estimated_micros", 0) or 0)
+                                for r in _reservations
+                            ) or None
+                        except Exception:
+                            _reserved_micros = None
+                    _attempts_meta = (
+                        _routing_meta.get("attempts")
+                        if isinstance(_routing_meta, dict)
+                        else None
+                    )
+                    await run_in_threadpool(
+                        _write_shadow_attempts,
+                        workspace_id=workspace_id,
+                        request_id=_audit_request_id,
+                        provider=provider,
+                        model=model,
+                        operation=request.url.path,
+                        dispatched=_dispatched,
+                        response_bytes=_resp_bytes,
+                        legacy_input_tokens=_in_tok,
+                        legacy_output_tokens=_out_tok,
+                        legacy_cost_usd=_cost_usd,
+                        reserved_microdollars=_reserved_micros,
+                        developer_external_id=clerk_user_id,
+                        agent_identity_id=_agent_identity_id,
+                        source="gateway",
+                        client_tool=ai_tool,
+                        attempts_meta=_attempts_meta,
+                    )
+                except Exception:
+                    # shadow_write catches internally; belt-and-suspenders.
+                    pass
 
         # Streaming lifecycle: transfer admission ticket ownership so the
         # outer finally does not release before ASGI drains the response.
@@ -2473,46 +2476,66 @@ def _wrap_v2_stream_finalize(
                         run_in_threadpool as _rin_threadpool,
                     )
                     await _rin_threadpool(_settle_stream_owned)
-
-                    # #2209 Session 5 — shadow accounting on the streaming
-                    # settlement path (Session 4 covered non-streaming).
-                    # shadow_write is a no-op when the kill-switch is off,
-                    # and catches every exception internally.
-                    try:
-                        from app.runtime.accounting.shadow_writer import shadow_write
-                        _stream_meta = _routing_meta if isinstance(_routing_meta, dict) else {}
-                        shadow_write(
-                            workspace_id=workspace_id,
-                            request_id=(
-                                (durable.request_id if durable is not None else None)
-                                or row_id
-                            ),
-                            provider=provider,
-                            model=model,
-                            operation="chat.completions.stream",
-                            dispatched=True,
-                            response_bytes=_resp_bytes,
-                            legacy_input_tokens=_in_tok,
-                            legacy_output_tokens=_out_tok,
-                            legacy_cost_usd=_cost_usd,
-                            reserved_microdollars=(
-                                int(round(float(_cost_usd) * 1_000_000))
-                                if _cost_usd
-                                else None
-                            ),
-                            developer_user_id=clerk_user_id,
-                            source="gateway",
-                            client_tool=ai_tool,
-                            attempts_meta=_stream_meta.get("attempts"),
-                        )
-                    except Exception:
-                        pass
                 except Exception:
                     log.exception(
                         "guard.gateway.v2.stream_settle_failed",
                         row_id=row_id,
                         reservation_count=len(reservations) if reservations else 0,
                     )
+
+            # #2209 reviewer response (#2221):
+            #  - #2: shadow accounting fires REGARDLESS of reservations (was
+            #    nested inside `if reservations:`).
+            #  - #3: per-attempt via write_receipts_for_attempts helper.
+            #  - #5: wrap sync DB write in threadpool.
+            #  - #9: reserved_microdollars from ledger reservation, not
+            #    actual cost.
+            try:
+                from app.runtime.accounting.shadow_writer import (
+                    write_receipts_for_attempts as _write_shadow_attempts,
+                )
+                from starlette.concurrency import (
+                    run_in_threadpool as _rin_threadpool_shadow,
+                )
+                _stream_meta = _routing_meta if isinstance(_routing_meta, dict) else {}
+                _reserved_micros: int | None = None
+                if reservations:
+                    try:
+                        _reserved_micros = sum(
+                            int(getattr(r, "estimated_micros", 0) or 0)
+                            for r in reservations
+                        ) or None
+                    except Exception:
+                        _reserved_micros = None
+                _stream_resp_bytes = (
+                    bytes(collected) if collected else None
+                )
+                _stream_in_tok = locals().get("_in_tok")
+                _stream_out_tok = locals().get("_out_tok")
+                _stream_cost_usd = locals().get("_cost_usd")
+                await _rin_threadpool_shadow(
+                    _write_shadow_attempts,
+                    workspace_id=workspace_id,
+                    request_id=(
+                        (durable.request_id if durable is not None else None)
+                        or row_id
+                    ),
+                    provider=provider,
+                    model=model,
+                    operation="chat.completions.stream",
+                    dispatched=True,
+                    response_bytes=_stream_resp_bytes,
+                    legacy_input_tokens=_stream_in_tok,
+                    legacy_output_tokens=_stream_out_tok,
+                    legacy_cost_usd=_stream_cost_usd,
+                    reserved_microdollars=_reserved_micros,
+                    developer_external_id=clerk_user_id,
+                    source="gateway",
+                    client_tool=ai_tool,
+                    attempts_meta=_stream_meta.get("attempts"),
+                )
+            except Exception:
+                pass
 
             # X4 — cancel the renewal task last, AFTER finalize. If we
             # cancelled first, the row would show up as expired to the

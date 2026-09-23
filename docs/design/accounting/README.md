@@ -396,6 +396,68 @@ Postgres-backed integration tests (real duplicate-key races, transaction
 rollback isolation) will run in CI once the migration is upstream — the
 in-process tests here cover the writer's public contract.
 
+## Session 6c — reviewer response (PR #2221)
+
+Sudhi's review at commit `b08e31b3` surfaced 9 findings (7 P1 + 2 P2).
+Session 6c addresses all of them. Real Postgres/Redis concurrency
+validation, actual per-attempt usage capture in the coordinator, and
+Gateway↔workflow receipt linkage are scoped to Session 6D (gate-blocking).
+Lens consumer wiring + Flight Recorder integration are scoped to 6E
+(product-value, not gate-blocking).
+
+Findings + fixes:
+
+| # | Finding | Fix |
+|---|---------|-----|
+| P1 · 1 | Clerk IDs / emails / `"system:lens"` passed into UUID column silently dropped receipts | New `developer_external_id: Text` column (migration `0150`). Writer routes non-UUID identifiers there; real UUIDs still land in `developer_user_id` |
+| P1 · 2 | Gateway shadow hooks nested in `if _reservations:` — unreserved traffic invisible | Hooks moved OUT of the reservation gate. Fire for all settled requests |
+| P1 · 3 | Only one receipt per request; failed attempts unaccounted | `write_receipts_for_attempts` helper — one row per `attempts_meta` entry, chained via `parent_receipt_id`. Winner carries real usage; failed attempts recorded as `execution_outcome=FAILED` with `usage_completeness=UNAVAILABLE`. Full per-attempt usage capture at each dispatch boundary lands in 6D (coordinator extension) |
+| P1 · 4 | `PricingService.price_tokens(input_tokens=...)` subtracted `cache_read_tokens` again → 3,270 μUSD instead of 3,570 for reviewer's fixture | API param renamed to `uncached_input_tokens`. No subtraction inside pricing. Each token bucket priced at its own rate |
+| P1 · 5 | Sync DB commit on the async event loop | Gateway hooks wrap `write_receipts_for_attempts` in `run_in_threadpool` |
+| P1 · 6 | brain_block hook fired on both cache-hit and actual-call branches — replay manufactured a fake receipt | `_did_actual_llm_call` flag gates the hook to the else branch |
+| P1 · 7 | Shadow writer used `strict=False` → silent fallback contaminated the shadow-vs-legacy comparison | Writer uses `strict=True`. Unknown models surface as `PricingCompleteness.UNPRICED` with no `calculated_cost_microdollars`. Legacy path keeps `strict=False` (unchanged) |
+| P2 · 8 | Anthropic normalizer marked `{"usage": {}}` COMPLETE with zero input; writer inferred outcome from usage completeness | Normalizer distinguishes empty dict / all-None fields from reported zero → returns UNAVAILABLE. `shadow_write` accepts explicit `execution_outcome` and `succeeded` from callers |
+| P2 · 9 | `reserved_microdollars` populated with actual cost, not the ledger reservation. Estimator missed tool-call args, tool_use.input, tool_result content, and `max_output_tokens` | Hooks pass `reserved_microdollars = sum(estimated_micros for r in _reservations)`. Estimator walks `tool_calls[].function.arguments` (OpenAI Chat), `tool_use.input` and `tool_result.content` (Anthropic), and honors `max_tokens` / `max_output_tokens` / `max_completion_tokens` |
+
+Session 6c self-checks pin each fix (12 new tests in
+`test_reviewer_response.py`). Full suite: 2354 passing (up from 2341).
+
+## Session 6D — still needed before Session 7 gate
+
+Filed as follow-up. All gate-blocking:
+
+1. **True per-attempt usage capture** — extend `AttemptRecord` in
+   `attempt_coordinator` to carry response bytes and usage per attempt.
+   Session 6c writes a placeholder receipt for failed attempts;
+   Session 6D fills the usage in.
+2. **Accounting-version pin per row** — a rollout flag flip mid-flight
+   must not re-attribute an in-flight attempt to the new engine.
+3. **Reconciliation writer** — periodic scan of `guard_audit_events`
+   requests missing their shadow receipt; backfill with metadata-only
+   rows so `settled_requests_missing_shadow_count` in the Session 6
+   metric report trends to zero.
+4. **Gateway↔workflow receipt linkage** — when a Gateway request comes
+   from a workflow, populate `workflow_run_id` (+ optional
+   `parent_receipt_id`) on the Gateway receipt so per-run cost queries
+   join cleanly to workflow analytics.
+5. **Real Postgres/Redis concurrency + crash-recovery tests** —
+   duplicate-key races, transaction rollback isolation, mid-request kill.
+   Currently mocked.
+
+## Session 6E — Lens consumer + Flight Recorder
+
+Not gate-blocking. Unlocks product value.
+
+1. **Lens consumer wiring** — Lens conversational surface calls
+   `AccountingReader.summarize_by_scope(...)` for every number it
+   displays. Lens's LLM never invents math (per Sudhi's split of the
+   accounting vs Lens epics).
+2. **Lens streaming usage** — turn on `stream_options.include_usage`
+   in `guarded_client_stream` so Lens receipts stop being
+   `UNAVAILABLE`.
+3. **Flight Recorder (#2069) integration** — Lens hyperlinks answers
+   to Flight Recorder evidence entries.
+
 ## Session plan (7 sessions, one branch, one draft PR)
 
 | Session | Deliverable | Status |

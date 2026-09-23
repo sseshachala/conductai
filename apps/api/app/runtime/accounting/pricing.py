@@ -140,7 +140,7 @@ class PricingService:
         provider: str,
         model: str,
         *,
-        input_tokens: Optional[int],
+        uncached_input_tokens: Optional[int],
         output_tokens: Optional[int],
         cache_read_tokens: Optional[int] = None,
         cache_write_tokens: Optional[int] = None,
@@ -149,10 +149,16 @@ class PricingService:
     ) -> PriceResult:
         """Compute the microdollar cost for one attempt.
 
-        ``output_tokens`` is expected to be the FULL output count (which
-        already includes reasoning tokens — invariant #5). Callers must NOT
-        add ``reasoning_output_tokens`` on top. If the reasoning breakdown is
-        useful, pass it via provenance metadata upstream.
+        ``uncached_input_tokens`` is the FRESH input token count only. The
+        cache buckets are priced separately at their own rates. Prior API
+        accepted a ``total_input_tokens`` and subtracted ``cache_read``,
+        but this was ambiguous across providers (Anthropic's ``input_tokens``
+        excludes cache reads; OpenAI's ``prompt_tokens`` includes cached
+        tokens). The reviewer at #2221 caught the resulting double-subtract.
+
+        ``output_tokens`` is the FULL output count and already includes
+        reasoning tokens — invariant #5. Callers must NOT add
+        ``reasoning_output_tokens`` on top.
 
         Returns UNPRICED when strict=True and the model is unknown.
         """
@@ -166,20 +172,16 @@ class PricingService:
                 provenance={"reason": "unknown_model", "provider": provider, "model": model},
             )
 
-        in_tok = int(input_tokens or 0)
+        # Explicit-per-bucket accounting. None → 0 for arithmetic; the
+        # provenance dict below preserves the None vs 0 distinction for
+        # downstream telemetry.
+        uncached = int(uncached_input_tokens or 0)
         out_tok = int(output_tokens or 0)
         cache_r = int(cache_read_tokens or 0)
         cache_w = int(cache_write_tokens or 0)
 
-        # Cache reads and writes may already be counted inside input_tokens by
-        # some providers — Session 3 normalizers guarantee the caller passes
-        # UNCACHED input separately. Session 2 preserves the legacy accounting
-        # which puts total input tokens against the input rate; do not double-
-        # count cache_read here.
-        uncached_input = max(0, in_tok - cache_r) if cache_r else in_tok
-
         token_cost = (
-            (Decimal(uncached_input) * card.input_per_1m_usd)
+            (Decimal(uncached) * card.input_per_1m_usd)
             + (Decimal(cache_r) * card.cache_read_per_1m_usd)
             + (Decimal(cache_w) * card.cache_write_per_1m_usd)
             + (Decimal(out_tok) * card.output_per_1m_usd)
@@ -188,8 +190,8 @@ class PricingService:
         fee = card.request_fee_usd if request_fee else Decimal(0)
         total_usd = token_cost + fee
 
-        if in_tok == 0 and out_tok == 0 and cache_r == 0 and cache_w == 0 and fee == 0:
-            # Legacy behavior: nothing to charge, nothing to record. Preserves
+        if uncached == 0 and out_tok == 0 and cache_r == 0 and cache_w == 0 and fee == 0:
+            # Nothing to charge, nothing to record. Preserves
             # ``_compute_cost`` returning None for empty calls.
             return PriceResult(
                 microdollars=None,
@@ -204,7 +206,7 @@ class PricingService:
             completeness=card.completeness,
             pricing_version=card.version,
             provenance={
-                "uncached_input_tokens": uncached_input,
+                "uncached_input_tokens": uncached,
                 "cache_read_tokens": cache_r,
                 "cache_write_tokens": cache_w,
                 "output_tokens": out_tok,

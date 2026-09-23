@@ -793,6 +793,7 @@ def _execute_brain(
                              content=user_content[:8000] if user_content else None)
 
             _cached = _cache_get(run_id, block_id, turns)
+            _did_actual_llm_call = False
             if _cached is not None:
                 from app.runtime.llm_client import LLMResponse as _LLMResponse
                 response = _LLMResponse.from_cache_dict(_cached)
@@ -870,12 +871,15 @@ def _execute_brain(
                               run_id=run_id, block_id=block_id)
                     raise
                 _cache_set(run_id, block_id, turns, response.to_cache_dict())
+                _did_actual_llm_call = True
 
             # #2209 Session 6b — workflow shadow accounting. Skip when the
             # adapter routes through Gateway (Session 4 hook already wrote
-            # the receipt). shadow_write is a no-op when the workspace is
-            # not on the canary allowlist; catches every exception.
-            if not getattr(llm, "routes_through_gateway", False):
+            # the receipt). Reviewer #6 (#2221): also skip on cache-hit
+            # replay — no actual upstream inference happened, so no receipt.
+            # shadow_write is a no-op when the workspace is not on the
+            # canary allowlist; catches every exception.
+            if _did_actual_llm_call and not getattr(llm, "routes_through_gateway", False):
                 try:
                     import json as _json_shadow
                     import uuid as _uuid_shadow

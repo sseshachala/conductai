@@ -61,6 +61,23 @@ def _family_for(provider: str, operation: str) -> ProviderFamily:
     return _FAMILY_BY_PROVIDER.get((provider or "").lower(), ProviderFamily.OPENAI_CHAT)
 
 
+def _to_uuid_or_none(value: Any) -> Optional[uuid.UUID]:
+    """Coerce a str/UUID/None to a UUID, returning None on any failure.
+
+    Reviewer finding #1 (#2221): callers pass Clerk IDs, emails, and
+    ``"system:lens"`` sentinel strings into UUID columns. Silent DBAPI
+    errors previously dropped the whole receipt. Parse defensively.
+    """
+    if value is None:
+        return None
+    if isinstance(value, uuid.UUID):
+        return value
+    try:
+        return uuid.UUID(str(value))
+    except (ValueError, TypeError, AttributeError):
+        return None
+
+
 def _looks_like_sse(response_bytes: bytes) -> bool:
     """Rough heuristic — SSE always begins with an event or data line."""
     if not response_bytes:
@@ -83,6 +100,7 @@ def shadow_write(
     legacy_cost_usd: Optional[float],
     reserved_microdollars: Optional[int] = None,
     estimated_input_tokens: Optional[int] = None,
+    developer_external_id: Optional[str] = None,
     developer_user_id: Optional[uuid.UUID | str] = None,
     agent_identity_id: Optional[uuid.UUID | str] = None,
     workflow_run_id: Optional[uuid.UUID | str] = None,
@@ -97,6 +115,8 @@ def shadow_write(
     attempt_ordinal: int = 0,
     parent_receipt_id: Optional[uuid.UUID] = None,
     receipt_id: Optional[uuid.UUID] = None,
+    execution_outcome: Optional[str] = None,
+    succeeded: Optional[bool] = None,
 ) -> Optional[uuid.UUID]:
     """Persist one shadow receipt for a gateway attempt.
 
@@ -129,6 +149,7 @@ def shadow_write(
             legacy_cost_usd=legacy_cost_usd,
             reserved_microdollars=reserved_microdollars,
             estimated_input_tokens=estimated_input_tokens,
+            developer_external_id=developer_external_id,
             developer_user_id=developer_user_id,
             agent_identity_id=agent_identity_id,
             workflow_run_id=workflow_run_id,
@@ -138,6 +159,8 @@ def shadow_write(
             client_tool=client_tool,
             transport=transport,
             model_alias=model_alias,
+            execution_outcome=execution_outcome,
+            succeeded=succeeded,
             attempts_meta=attempts_meta or [],
             started_at=started_at,
             attempt_ordinal=attempt_ordinal,
@@ -164,11 +187,17 @@ def _shadow_write_impl(**kw: Any) -> uuid.UUID:
 
     family = _family_for(provider, operation)
 
+    # Fixes from #2221 review:
+    #  - #7: strict=True so unknown models surface as UNPRICED (not silently
+    #    substituted). Legacy comparison stays clean.
+    #  - #8: usage completeness derived from normalizer output only.
+    #    Execution outcome is a separate concept and comes from the caller
+    #    (dispatched + succeeded flags) — a failed call can still have
+    #    partial usage, and a successful call can have missing usage.
     if not dispatched:
         normalized_tokens = None
         usage_origin = UsageOrigin.MISSING
         usage_completeness = UsageCompleteness.UNAVAILABLE
-        execution_outcome = ExecutionOutcome.REJECTED_PREFLIGHT
         normalizer_version = NORMALIZER_VERSION
         provenance: dict[str, Any] = {"reason": "not_dispatched"}
     elif response_bytes:
@@ -181,40 +210,54 @@ def _shadow_write_impl(**kw: Any) -> uuid.UUID:
         usage_completeness = norm.completeness
         normalizer_version = norm.normalizer_version
         provenance = {"family": family.value, "raw_usage": dict(norm.raw_usage)}
-        # Outcome: PARTIAL usually means client dropped mid-stream; still
-        # possibly billed by provider.
-        if usage_completeness is UsageCompleteness.PARTIAL:
-            execution_outcome = ExecutionOutcome.DISCONNECTED
-        elif usage_completeness is UsageCompleteness.UNAVAILABLE:
-            execution_outcome = ExecutionOutcome.FAILED
-        else:
-            execution_outcome = ExecutionOutcome.SUCCEEDED
     else:
         normalized_tokens = None
         usage_origin = UsageOrigin.MISSING
         usage_completeness = UsageCompleteness.UNAVAILABLE
-        execution_outcome = ExecutionOutcome.FAILED
         normalizer_version = NORMALIZER_VERSION
         provenance = {"reason": "no_response_bytes"}
 
-    # Price via new engine — strict=False preserves legacy silent fallback so
-    # shadow rows can be compared against legacy audit rows on the same
-    # attempts. Session 6 flips strict=True and measures the UNPRICED delta.
+    # Execution outcome: caller wins. If not provided, infer conservatively.
+    if kw.get("execution_outcome"):
+        outcome_val = str(kw["execution_outcome"])
+    else:
+        if not dispatched:
+            outcome_val = ExecutionOutcome.REJECTED_PREFLIGHT.value
+        else:
+            succeeded = kw.get("succeeded")
+            if succeeded is True:
+                outcome_val = ExecutionOutcome.SUCCEEDED.value
+            elif succeeded is False:
+                outcome_val = ExecutionOutcome.FAILED.value
+            elif usage_completeness is UsageCompleteness.PARTIAL:
+                outcome_val = ExecutionOutcome.DISCONNECTED.value
+            elif usage_completeness is UsageCompleteness.UNAVAILABLE:
+                outcome_val = ExecutionOutcome.FAILED.value
+            else:
+                outcome_val = ExecutionOutcome.SUCCEEDED.value
+
+    # Price via new engine.
+    # Reviewer #7 (#2221): strict=True so unknown models are UNPRICED, not
+    # silently substituted. Preserves the honesty of the shadow-vs-legacy
+    # comparison.
     priced_microdollars = None
     pricing_version = None
     pricing_completeness_val = PricingCompleteness.UNPRICED.value
     if normalized_tokens is not None:
+        # Reviewer #4 (#2221): explicit-per-bucket, no subtraction.
+        _cache_write_total = (
+            sum(normalized_tokens.cache_write_tokens_by_tier.values())
+            if normalized_tokens.cache_write_tokens_by_tier
+            else 0
+        )
         price = default_pricing_service().price_tokens(
             provider,
             model,
-            input_tokens=normalized_tokens.uncached_input_tokens
-            or normalized_tokens.total_input_tokens,
+            uncached_input_tokens=normalized_tokens.uncached_input_tokens,
             output_tokens=normalized_tokens.total_output_tokens,
             cache_read_tokens=normalized_tokens.cache_read_tokens,
-            cache_write_tokens=sum(normalized_tokens.cache_write_tokens_by_tier.values())
-            if normalized_tokens.cache_write_tokens_by_tier
-            else 0,
-            strict=False,
+            cache_write_tokens=_cache_write_total,
+            strict=True,
         )
         priced_microdollars = price.microdollars
         pricing_version = price.pricing_version
@@ -231,6 +274,16 @@ def _shadow_write_impl(**kw: Any) -> uuid.UUID:
     receipt_id = kw.get("receipt_id") or uuid.uuid4()
     now = datetime.now(timezone.utc)
 
+    # Reviewer #1 (#2221): developer_user_id is a UUID column. Clerk IDs /
+    # emails / "system:*" are NOT UUIDs and would previously cause the
+    # write to silently drop. Convert to UUID when possible; otherwise
+    # fall back to developer_external_id (Text). Accept a caller-supplied
+    # developer_external_id override.
+    dev_user_uuid = _to_uuid_or_none(kw.get("developer_user_id"))
+    dev_external_id = kw.get("developer_external_id")
+    if dev_external_id is None and dev_user_uuid is None and kw.get("developer_user_id"):
+        dev_external_id = str(kw["developer_user_id"])
+
     row = LlmAttemptReceipt(
         id=receipt_id,
         workspace_id=kw["workspace_id"],
@@ -238,11 +291,12 @@ def _shadow_write_impl(**kw: Any) -> uuid.UUID:
         attempt_ordinal=int(kw.get("attempt_ordinal") or 0),
         parent_receipt_id=kw.get("parent_receipt_id"),
         contract_version=CONTRACT_VERSION,
-        developer_user_id=kw.get("developer_user_id"),
-        agent_identity_id=kw.get("agent_identity_id"),
-        workflow_run_id=kw.get("workflow_run_id"),
-        workflow_step_id=kw.get("workflow_step_id"),
-        hook_session_id=kw.get("hook_session_id"),
+        developer_user_id=dev_user_uuid,
+        developer_external_id=dev_external_id,
+        agent_identity_id=_to_uuid_or_none(kw.get("agent_identity_id")),
+        workflow_run_id=_to_uuid_or_none(kw.get("workflow_run_id")),
+        workflow_step_id=_to_uuid_or_none(kw.get("workflow_step_id")),
+        hook_session_id=_to_uuid_or_none(kw.get("hook_session_id")),
         source=kw.get("source"),
         client_tool=kw.get("client_tool"),
         transport=kw.get("transport"),
@@ -250,7 +304,7 @@ def _shadow_write_impl(**kw: Any) -> uuid.UUID:
         model=model,
         model_alias=kw.get("model_alias"),
         operation=operation,
-        execution_outcome=execution_outcome.value,
+        execution_outcome=outcome_val,
         total_input_tokens=normalized_tokens.total_input_tokens if normalized_tokens else None,
         total_output_tokens=normalized_tokens.total_output_tokens if normalized_tokens else None,
         uncached_input_tokens=(
@@ -288,3 +342,106 @@ def _shadow_write_impl(**kw: Any) -> uuid.UUID:
         db.close()
 
     return receipt_id
+
+
+def write_receipts_for_attempts(
+    *,
+    workspace_id,
+    request_id,
+    provider: str,
+    model: str,
+    operation: str,
+    dispatched: bool,
+    response_bytes: Optional[bytes],
+    legacy_input_tokens: Optional[int],
+    legacy_output_tokens: Optional[int],
+    legacy_cost_usd: Optional[float],
+    reserved_microdollars: Optional[int] = None,
+    developer_external_id: Optional[str] = None,
+    developer_user_id=None,
+    agent_identity_id=None,
+    workflow_run_id=None,
+    workflow_step_id=None,
+    hook_session_id=None,
+    source: Optional[str] = None,
+    client_tool: Optional[str] = None,
+    transport: Optional[str] = None,
+    attempts_meta: Optional[list[dict]] = None,
+) -> list[uuid.UUID]:
+    """Reviewer #3 (#2221): write one receipt per actual upstream attempt.
+
+    ``attempts_meta`` is the ``routing_meta["attempts"]`` list from the
+    coordinator (target_id, transport, provider_or_integration, succeeded,
+    error_class). If absent, writes a single receipt at ``attempt_ordinal=0``
+    matching the pre-Session-6c behavior (legacy v1 path with no coordinator).
+
+    Failed attempts before the winner write receipts with
+    ``response_bytes=None`` and ``execution_outcome=FAILED``; they are
+    attributed but not priced (invariant #7). Per-attempt usage capture at
+    each dispatch boundary lands in Session 6D — this helper is scaffolding
+    that ingests whatever the coordinator gives us today.
+    """
+    receipts: list[uuid.UUID] = []
+    attempts = attempts_meta or []
+
+    common = dict(
+        workspace_id=workspace_id,
+        request_id=request_id,
+        model=model,
+        operation=operation,
+        dispatched=dispatched,
+        reserved_microdollars=reserved_microdollars,
+        developer_external_id=developer_external_id,
+        developer_user_id=developer_user_id,
+        agent_identity_id=agent_identity_id,
+        workflow_run_id=workflow_run_id,
+        workflow_step_id=workflow_step_id,
+        hook_session_id=hook_session_id,
+        source=source,
+        client_tool=client_tool,
+    )
+
+    if not attempts:
+        rid = shadow_write(
+            **common,
+            provider=provider,
+            transport=transport,
+            response_bytes=response_bytes,
+            legacy_input_tokens=legacy_input_tokens,
+            legacy_output_tokens=legacy_output_tokens,
+            legacy_cost_usd=legacy_cost_usd,
+            attempt_ordinal=0,
+        )
+        if rid is not None:
+            receipts.append(rid)
+        return receipts
+
+    parent: Optional[uuid.UUID] = None
+    for idx, attempt in enumerate(attempts):
+        succeeded = bool(attempt.get("succeeded"))
+        attempt_provider = attempt.get("provider_or_integration") or provider
+        attempt_transport = attempt.get("transport") or transport
+        outcome = (
+            ExecutionOutcome.SUCCEEDED.value
+            if succeeded
+            else ExecutionOutcome.FAILED.value
+        )
+        rid = shadow_write(
+            **common,
+            provider=attempt_provider,
+            transport=attempt_transport,
+            response_bytes=response_bytes if succeeded else None,
+            legacy_input_tokens=legacy_input_tokens if succeeded else None,
+            legacy_output_tokens=legacy_output_tokens if succeeded else None,
+            legacy_cost_usd=legacy_cost_usd if succeeded else None,
+            attempts_meta=[attempt],
+            attempt_ordinal=idx,
+            parent_receipt_id=parent,
+            execution_outcome=outcome,
+            succeeded=succeeded,
+        )
+        if rid is not None:
+            receipts.append(rid)
+            if parent is None:
+                parent = rid
+    return receipts

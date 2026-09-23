@@ -52,7 +52,13 @@ class LlmAttemptReceipt(Base):
 
     contract_version = Column(Integer, nullable=False)
 
+    # #2209 review #1 (#2221): developer_user_id is the resolved internal
+    # user UUID. developer_external_id carries the untyped identifier
+    # callers pass in (Clerk ID, email, "system:lens"). Prior schema had
+    # only the UUID column and silently dropped receipts when non-UUID
+    # strings were passed.
     developer_user_id = Column(UUID(as_uuid=True), nullable=True)
+    developer_external_id = Column(Text, nullable=True)
     agent_identity_id = Column(UUID(as_uuid=True), nullable=True)
     workflow_run_id = Column(UUID(as_uuid=True), nullable=True)
     workflow_step_id = Column(UUID(as_uuid=True), nullable=True)
@@ -136,5 +142,10 @@ class LlmAttemptReceipt(Base):
             "ix_llm_attempt_receipts_hook_session",
             "hook_session_id",
             postgresql_where=sa.text("hook_session_id IS NOT NULL"),
+        ),
+        Index(
+            "ix_llm_attempt_receipts_developer_external_id",
+            "developer_external_id",
+            postgresql_where=sa.text("developer_external_id IS NOT NULL"),
         ),
     )

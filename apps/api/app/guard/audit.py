@@ -121,10 +121,13 @@ def _compute_cost(provider: str, model: str, in_tok: int | None, out_tok: int | 
     from app.runtime.accounting.pricing import default_pricing_service
 
     try:
+        # Legacy path passes input_tokens as-is (no cache breakout) — that's
+        # equivalent to uncached_input_tokens in the new API (all input
+        # priced at input_rate).
         result = default_pricing_service().price_tokens(
             provider,
             model,
-            input_tokens=in_tok,
+            uncached_input_tokens=in_tok,
             output_tokens=out_tok,
             strict=strict,
         )
