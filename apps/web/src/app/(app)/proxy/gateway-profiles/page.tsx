@@ -795,7 +795,7 @@ function TestPanel({ profileId, urls }: { profileId: string; urls: string[] }) {
 
   if (!open) {
     return (
-      <div style={{ marginTop: 12 }}>
+      <div style={{ marginTop: 12, display: "flex", justifyContent: "flex-end" }}>
         <button
           className="btn btn-ghost btn-sm"
           onClick={() => setOpen(true)}
