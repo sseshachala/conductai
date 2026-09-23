@@ -380,8 +380,8 @@ class ResyncOut(BaseModel):
     resync_requested_at: str
 
 
-#: ``"proxy"`` kept for backward compat; new writes should use ``"gateway"``.
-_VALID_PERSONAS = {"agent", "proxy", "gateway"}
+#: new writes should use ``"gateway"``.
+_VALID_PERSONAS = {"agent", "gateway"}
 
 
 class PersonaOut(BaseModel):
