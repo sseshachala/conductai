@@ -2,7 +2,9 @@
 
 See docs/design/accounting/README.md and issue #2209 for scope.
 
-Session 1: typed contracts only. No behavior change.
+Sessions delivered so far:
+- Session 1: typed contracts (contracts.py). No behavior change.
+- Session 2: shared pricing service + unified estimator, behind compat wrappers.
 """
 
 from app.runtime.accounting.contracts import (
@@ -18,6 +20,20 @@ from app.runtime.accounting.contracts import (
     microdollars_from_usd,
     usd_from_microdollars,
 )
+from app.runtime.accounting.estimator import (
+    ALL_SHAPES,
+    ESTIMATOR_VERSION,
+    InputShape,
+    TokensEstimate,
+    estimate_tokens,
+)
+from app.runtime.accounting.pricing import (
+    PriceResult,
+    PricingService,
+    RateCard,
+    default_pricing_service,
+    reset_default_pricing_service,
+)
 
 __all__ = [
     "CONTRACT_VERSION",
@@ -31,4 +47,14 @@ __all__ = [
     "UsageRecord",
     "microdollars_from_usd",
     "usd_from_microdollars",
+    "ALL_SHAPES",
+    "ESTIMATOR_VERSION",
+    "InputShape",
+    "TokensEstimate",
+    "estimate_tokens",
+    "PriceResult",
+    "PricingService",
+    "RateCard",
+    "default_pricing_service",
+    "reset_default_pricing_service",
 ]

@@ -589,89 +589,12 @@ def settle_reservations(
 # HTTP response that carries the block reason for the drawer + block
 # chip UI in the follow-up.
 
-# Prompt-length -> token heuristic. Same 4-chars-per-token approximation
-# used elsewhere in the codebase (``_estimate_input_tokens`` in audit.py).
-_CHARS_PER_TOKEN = 4
-
-# Default output allowance if the caller did not set max_tokens. Bounded
-# so a runaway completion cannot silently consume the entire budget on
-# reservation-time overestimation.
-_DEFAULT_OUTPUT_ALLOWANCE_TOKENS = 4096
-
-
-def estimate_budget_cents(
-    body: dict,
-    provider: str,
-    model: str,
-    ai_tool: str | None,
-) -> int:
-    """Bounded pre-flight cost estimate for the ledger reservation.
-
-    R10 fix (reviewer P1) — two changes vs the previous heuristic:
-
-    1. **Real output bound.** The 4096-token silent cap is gone.
-       ``max_tokens`` is honored as-is when the caller sets it. If the
-       caller wants 100k output tokens, the reservation reflects that.
-       When ``max_tokens`` is absent we use a generous default
-       (``_DEFAULT_OUTPUT_ALLOWANCE_TOKENS``); callers who care about
-       accurate reservations should always set ``max_tokens``.
-
-    2. **Model pricing, not client-tool pricing.** ``_tool_pricing``
-       returned per-client-tool rates that had no relation to the
-       actual (provider, model) forwarded on wire. R10: use the same
-       ``_compute_cost(provider, model, ...)`` the audit path uses so
-       estimation and settlement live in the same pricing universe.
-
-    Estimation is deliberately conservative — over-reservation is
-    always safer than under-reservation because settlement writes
-    the real cost via ``commit_all(actual_cents)``.
-    """
-    # Input tokens — approximate from the concatenated content of the
-    # messages array. Same shape as audit._estimate_input_tokens.
-    text_len = 0
-    if isinstance(body, dict):
-        messages = body.get("messages") or []
-        for m in messages:
-            content = (m or {}).get("content")
-            if isinstance(content, str):
-                text_len += len(content)
-            elif isinstance(content, list):
-                for part in content:
-                    if isinstance(part, dict) and isinstance(part.get("text"), str):
-                        text_len += len(part["text"])
-    input_tokens = max(1, text_len // _CHARS_PER_TOKEN)
-
-    # R10 fix: honor the caller's max_tokens as-is. No silent cap.
-    output_tokens = _DEFAULT_OUTPUT_ALLOWANCE_TOKENS
-    if isinstance(body, dict):
-        mt = body.get("max_tokens")
-        if isinstance(mt, int) and mt > 0:
-            output_tokens = mt
-
-    # R10 fix: use provider+model pricing via _compute_cost, matching
-    # the audit path. Falls back to the pre-R10 client-tool heuristic
-    # if the pricing registry lookup fails for any reason.
-    usd: float | None = None
-    try:
-        from app.guard.audit import _compute_cost
-        usd = _compute_cost(provider, model, input_tokens, output_tokens)
-    except Exception:
-        usd = None
-    if usd is None:
-        try:
-            from app.modules.guard.routers.events import _tool_pricing
-            tool_key = (ai_tool or "unknown").lower()
-            pricing = _tool_pricing(tool_key)
-        except Exception:
-            pricing = {"input": 3.0, "output": 15.0}
-        input_usd = (input_tokens * float(pricing.get("input", 3.0))) / 1_000_000
-        output_usd = (output_tokens * float(pricing.get("output", 15.0))) / 1_000_000
-        usd = input_usd + output_usd
-
-    # Round up so a partial cent still reserves a whole cent — under-
-    # reservation is worse than over-reservation for enforcement.
-    import math as _math
-    return _math.ceil(usd * 100)
+# #2209 Session 2: reservation estimators are compat shims over
+# ``app.runtime.accounting.estimator`` and ``.pricing``. The old duplicate
+# implementations diverged from ``guard.audit._estimate_input_tokens`` on
+# coverage (missed system/instructions/response_input/tools/vision) —
+# preserving that legacy coverage here for byte-identity while shadow mode
+# (Session 4) measures the delta before Session 6 activates full coverage.
 
 
 def estimate_budget_micros(
@@ -680,41 +603,49 @@ def estimate_budget_micros(
     model: str,
     ai_tool: str | None,
 ) -> int:
-    """R9 (reviewer P1) — microdollar-precision estimate.
+    """Microdollar-precision pre-flight cost estimate for the ledger reservation.
 
-    Same heuristic as ``estimate_budget_cents``, returning micros
-    (10 000 per cent). Callers should prefer this over the cents
-    version so sub-cent requests do not round to zero at reservation
-    time.
+    Compat shim over ``runtime.accounting`` — preserves messages-only
+    coverage and ceiling rounding for byte-identical reservations. See
+    #2209 for the migration plan.
     """
-    text_len = 0
-    if isinstance(body, dict):
-        messages = body.get("messages") or []
-        for m in messages:
-            content = (m or {}).get("content")
-            if isinstance(content, str):
-                text_len += len(content)
-            elif isinstance(content, list):
-                for part in content:
-                    if isinstance(part, dict) and isinstance(part.get("text"), str):
-                        text_len += len(part["text"])
-    input_tokens = max(1, text_len // _CHARS_PER_TOKEN)
+    from decimal import Decimal
 
-    output_tokens = _DEFAULT_OUTPUT_ALLOWANCE_TOKENS
+    from app.runtime.accounting.estimator import _extract_text
+    from app.runtime.accounting.pricing import default_pricing_service
+
+    # Messages-only char-sum, matching legacy pre-Session-2 behavior. Full
+    # coverage lives in ``runtime.accounting.estimator.estimate_tokens`` for
+    # the shadow path.
+    chunks = _extract_text(body)
+    text_len = sum(len(c) for c in chunks)
+    input_tokens = max(1, text_len // 4)
+
+    output_tokens = 4096
     if isinstance(body, dict):
         mt = body.get("max_tokens")
         if isinstance(mt, int) and mt > 0:
             output_tokens = mt
 
-    usd = None
+    usd: float | None = None
     try:
-        from app.guard.audit import _compute_cost
-        usd = _compute_cost(provider, model, input_tokens, output_tokens)
+        card = default_pricing_service().get_rate_card(provider, model, strict=False)
+        usd = float(
+            (
+                Decimal(input_tokens) * card.input_per_1m_usd
+                + Decimal(output_tokens) * card.output_per_1m_usd
+            )
+            / Decimal(1_000_000)
+            + card.request_fee_usd
+        )
     except Exception:
         usd = None
     if usd is None:
+        # Dead-code fallback preserved from pre-Session-2 for defensive
+        # coverage when pricing lookup fails for any reason.
         try:
             from app.modules.guard.routers.events import _tool_pricing
+
             tool_key = (ai_tool or "unknown").lower()
             pricing = _tool_pricing(tool_key)
         except Exception:
@@ -723,8 +654,23 @@ def estimate_budget_micros(
         output_usd = (output_tokens * float(pricing.get("output", 15.0))) / 1_000_000
         usd = input_usd + output_usd
 
+    # Ceiling — over-reservation is always safer than under-reservation
+    # because settlement writes the real cost via ``commit_all``.
     import math as _math
+
     return _math.ceil(usd * 1_000_000)
+
+
+def estimate_budget_cents(
+    body: dict,
+    provider: str,
+    model: str,
+    ai_tool: str | None,
+) -> int:
+    """Cents-precision estimate. Thin wrapper around ``estimate_budget_micros``."""
+    import math as _math
+
+    return _math.ceil(estimate_budget_micros(body, provider, model, ai_tool) / 10_000)
 
 
 def budget_block_response(result):

@@ -2,7 +2,7 @@
 
 Tracking issue: [#2209](https://github.com/sseshachala/conductai/issues/2209)
 Branch: `feat/accounting-foundation-2209`
-Status: Session 1 (contracts + inventory) in progress
+Status: Session 2 shipped (shared pricing + estimator behind compat wrappers)
 
 ## Goal
 
@@ -135,12 +135,44 @@ agnostic. No behavior change. Filled by future sessions.
 
 `CONTRACT_VERSION = 1`. Bumps require a documented migration.
 
+## Session 2 findings — silent under-reservation bug
+
+The two legacy estimators (`guard.audit._estimate_input_tokens` and
+`guard.gateway_lifecycle.estimate_budget_micros`) diverged on **coverage**:
+
+| Input shape | audit.py | gateway_lifecycle.py |
+|-------------|:--------:|:--------------------:|
+| messages | ✓ | ✓ |
+| system | ✓ | ✗ |
+| instructions | ✓ | ✗ |
+| response_input (Responses API) | ✓ | ✗ |
+| tool schemas | ✓ | ✗ |
+| vision content | ✓ | ✗ |
+
+The `gateway_lifecycle` path is what actually **reserves budget** pre-flight.
+It systematically under-reserves for requests that use anything beyond a
+`messages` array. `system` + `instructions` + tool schemas can easily add
+hundreds of tokens per request that the ledger did not reserve — meaning
+budgets can technically be exceeded on inbound requests.
+
+**Session 2 does NOT fix this.** Sudhi's correction #5 is explicit: shadow
+must exist before new calculations affect settlement. So the compat wrappers
+preserve legacy under-coverage byte-identically. The new
+`estimate_tokens(body, include=ALL_SHAPES)` API can be called for full
+coverage; Session 4 wires the shadow path that logs the delta, Session 6
+activates full coverage after canary verification.
+
+Filed observation, not a hot-fix: reservation short-fall is bounded by tool
+schema + system prompt sizes, and settlement (which uses the provider's
+real usage report) is authoritative. The ledger under-reserves during the
+request window but reconciles at commit.
+
 ## Session plan (7 sessions, one branch, one draft PR)
 
 | Session | Deliverable | Status |
 |---------|-------------|--------|
-| 1 | Inventory confirmation + typed contracts, no behavior change | **in progress** |
-| 2 | Shared pricing service + unified reservation estimator behind compat wrappers | pending |
+| 1 | Inventory confirmation + typed contracts, no behavior change | shipped |
+| 2 | Shared pricing service + unified reservation estimator behind compat wrappers | **shipped** |
 | 3 | Anthropic + OpenAI Chat/Responses + LiteLLM normalizers with fixtures | pending |
 | 4 | Gateway per-attempt persistence + shadow calculation | pending |
 | 5 | Workflow/runtime + Lens integration via receipt references | pending |
