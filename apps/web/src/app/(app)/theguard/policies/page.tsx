@@ -184,7 +184,7 @@ function GateChips({ gates }: { gates?: string[] | null }) {
 type SurfaceStatus = "hard" | "not_supported"
 const SURFACES: readonly { key: string; label: string }[] = [
   { key: "mcp",     label: "MCP" },
-  { key: "proxy",   label: "Proxy" },
+  { key: "proxy",   label: "Gateway" },
   { key: "runtime", label: "Runtime" },
   { key: "hook",    label: "Hook" },
 ] as const
@@ -822,7 +822,7 @@ function AddRuleModal({
         <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
           {([
             { value: "agent", label: "Agent", hint: "bash, file writes, web requests" },
-            { value: "proxy", label: "Proxy", hint: "what gets sent to the model" },
+            { value: "proxy", label: "Gateway", hint: "what gets sent to the model" },
           ] as const).map(p => (
             <button
               key={p.value}
@@ -1683,7 +1683,7 @@ function PoliciesContent() {
                   {visiblePolicies.length === 0
                     ? <div className="card" style={{ padding: "24px", textAlign: "center" }}>
                         <p style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                          {policyTab === "proxy" ? "No proxy rules." : policyTab === "agent" ? "No agent rules." : "No rules in this pack."}
+                          {policyTab === "proxy" ? "No gateway rules." : policyTab === "agent" ? "No agent rules." : "No rules in this pack."}
                         </p>
                       </div>
                     : <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>{visiblePolicies.map(p => renderCard(p))}</div>
