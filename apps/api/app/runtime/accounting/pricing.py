@@ -203,30 +203,38 @@ class PricingService:
         out_tok = int(output_tokens or 0)
         cache_r = int(cache_read_tokens or 0)
 
-        # Reviewer #3 (#2221 review at bbcb5388): honor per-tier
-        # cache-write rates when the caller passes a tier breakdown AND
-        # the rate card declares tier-specific rates. Unknown tiers
-        # under strict mode → PricingCompleteness.INCOMPLETE (never
-        # silently priced at the default rate). Legacy path keeps the
-        # summed × single rate behavior.
+        # Reviewer #3 (#2221 review at bbcb5388) + #2 (#2221 review at
+        # 4d4d3402): the tier-validation branch fires whenever the
+        # CALLER passes a tier breakdown, regardless of whether the rate
+        # card has tier-specific rates. Prior code required both, which
+        # silently fell back to the default rate when the card had no
+        # tier map — unknown tiers slipped through as PRICED.
+        #
+        # Strict mode: any tier without an exact match downgrades the
+        # result to PricingCompleteness.INCOMPLETE and the tier's tokens
+        # are excluded from the cost (cost becomes a lower bound).
+        # Non-strict mode: fall back to the single-tier rate, but
+        # provenance records the fallback so telemetry sees it.
         tier_completeness_penalty = False
         cache_w_cost = Decimal(0)
         cache_w_total = 0
         cache_w_provenance: dict[str, Any] = {}
-        if cache_write_tokens_by_tier and card.cache_write_by_tier_per_1m_usd:
+        if cache_write_tokens_by_tier:
             for tier, tokens in cache_write_tokens_by_tier.items():
                 tokens_int = int(tokens or 0)
                 cache_w_total += tokens_int
                 if tokens_int <= 0:
                     continue
-                tier_rate = card.cache_write_by_tier_per_1m_usd.get(tier)
+                tier_rate: Optional[Decimal] = None
+                if card.cache_write_by_tier_per_1m_usd:
+                    tier_rate = card.cache_write_by_tier_per_1m_usd.get(tier)
                 if tier_rate is None:
                     if strict:
+                        # Never silently price at the default rate. Cost
+                        # excludes these tokens; caller sees INCOMPLETE.
                         tier_completeness_penalty = True
                         cache_w_provenance[f"tier_{tier}_unpriced"] = tokens_int
                         continue
-                    # Non-strict: fall back to single-tier rate but still
-                    # mark provenance so callers can see it happened.
                     tier_rate = card.cache_write_per_1m_usd
                     cache_w_provenance[f"tier_{tier}_fallback"] = tokens_int
                 cache_w_cost += Decimal(tokens_int) * tier_rate

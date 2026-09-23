@@ -286,7 +286,7 @@ async def handle_gateway_request(
         if operation != "inference":
             _routing_meta = {
                 **(_routing_meta or {}),
-                "operation": plan.operation,
+                "operation": operation,
                 "billable": False,
             }
 
