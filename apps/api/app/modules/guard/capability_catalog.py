@@ -75,10 +75,15 @@ _LITELLM_SDK_CERTIFIED: dict[tuple[str, Operation], list[str] | None] = {
 # OpenRouter reference implementation deliberately punts on.
 _HTTP_PASSTHROUGH_CERTIFIED: dict[tuple[Integration, Operation], bool] = {
     ("openrouter", "openai_chat_completions"): True,
+    # PR 6 — Azure OpenAI. Per-tenant URL (admin sets Resource
+    # endpoint on the target) + deployment name in ``target.model``
+    # + ``api_version`` in ``provider_options``. Auth via
+    # ``api-key`` header (no Bearer).
+    ("azure_openai", "openai_chat_completions"): True,
 }
 
 
-CATALOG_VERSION = "2026.09.16.v2-openrouter-passthrough"
+CATALOG_VERSION = "2026.09.22.v2-azure-passthrough"
 
 
 class CapabilityMismatch(Exception):

@@ -45,10 +45,11 @@ const MODELS_BY_PROVIDER: Record<string, Array<{ id: string; label: string }>> =
 // publish, but a mismatch here silently drops accepts and produces
 // an empty operation list that fails validation server-side).
 const PASSTHROUGH_INTEGRATION_OPERATIONS: Record<string, Operation[]> = {
-  openrouter: ["openai_chat_completions"],
-  // portkey / helicone_anthropic / helicone_openai / azure_openai
-  // stay uncertified until each ships its per-integration auth
-  // shape. Absent = deriveAccepts contributes nothing for them.
+  openrouter:   ["openai_chat_completions"],
+  azure_openai: ["openai_chat_completions"],
+  // portkey (PR 4) / helicone_* (PR 5) / custom (PR 7) stay
+  // uncertified in this mirror until their PRs land.
+  // Absent = deriveAccepts contributes nothing for them.
 }
 
 // Compute the operations ONE target can serve. Anthropic native /
@@ -530,7 +531,7 @@ function TargetRow({
       {target.transport === "http_passthrough" ? (
         <FieldLabel
           label="Integration"
-          hint="External gateway routing traffic on our behalf. OpenRouter is certified for openai_chat_completions in PR 5; other integrations stay uncertified until each ships its per-integration auth shape."
+          hint="External gateway routing traffic on our behalf. OpenRouter + Azure OpenAI are certified; other integrations stay uncertified until each ships its per-integration auth shape. Azure needs the per-tenant Resource endpoint + a deployment name in place of a model id + api-version."
         >
           <select value={target.integration} disabled={!isAdmin}
             onChange={e => onChange({ integration: e.target.value })}
@@ -539,7 +540,7 @@ function TargetRow({
             <option value="portkey" disabled>portkey (not yet certified)</option>
             <option value="helicone_anthropic" disabled>helicone_anthropic (not yet certified)</option>
             <option value="helicone_openai" disabled>helicone_openai (not yet certified)</option>
-            <option value="azure_openai" disabled>azure_openai (not yet certified)</option>
+            <option value="azure_openai">azure_openai (certified)</option>
             <option value="custom" disabled>custom (not yet certified)</option>
           </select>
         </FieldLabel>
@@ -560,10 +561,19 @@ function TargetRow({
         </FieldLabel>
       )}
 
-      <FieldLabel label="Model" hint={target.transport === "http_passthrough" ? "OpenRouter model id (e.g. anthropic/claude-3.5-sonnet)." : "Real upstream model ID the request goes to."}>
+      <FieldLabel
+        label={target.transport === "http_passthrough" && target.integration === "azure_openai" ? "Deployment name" : "Model"}
+        hint={
+          target.transport === "http_passthrough"
+            ? (target.integration === "azure_openai"
+                ? "Azure OpenAI deployment name — the URL becomes /openai/deployments/{deployment}/... Not a model id."
+                : "OpenRouter model id (e.g. anthropic/claude-3.5-sonnet).")
+            : "Real upstream model ID the request goes to."
+        }
+      >
         {target.transport === "http_passthrough" ? (
           <input value={target.model} disabled={!isAdmin}
-            placeholder="anthropic/claude-3.5-sonnet"
+            placeholder={target.integration === "azure_openai" ? "gpt-4o-prod-deploy" : "anthropic/claude-3.5-sonnet"}
             onChange={e => onChange({ model: e.target.value })}
             style={inputStyle} />
         ) : (
@@ -607,6 +617,33 @@ function TargetRow({
           )}
         </FieldLabel>
       </div>
+
+      {/* PR 6 — Azure OpenAI needs per-tenant endpoint + api-version.
+          Endpoint reuses the existing `endpoint` field; api-version
+          lives in `provider_options` and is opaque to the schema. */}
+      {target.transport === "http_passthrough" && target.integration === "azure_openai" ? (
+        <div style={{ gridColumn: "2 / -1", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <FieldLabel label="Resource endpoint" hint="Your Azure OpenAI resource URL, e.g. https://my-resource.openai.azure.com (no trailing path).">
+            <input value={target.endpoint} disabled={!isAdmin}
+              placeholder="https://my-resource.openai.azure.com"
+              onChange={e => onChange({ endpoint: e.target.value })}
+              style={inputStyle} />
+          </FieldLabel>
+          <FieldLabel label="api-version" hint="Azure OpenAI API version, e.g. 2024-06-01. Added as a URL query parameter.">
+            <input
+              value={String((target.provider_options as Record<string, unknown> | undefined)?.api_version ?? "")}
+              disabled={!isAdmin}
+              placeholder="2024-06-01"
+              onChange={e => onChange({
+                provider_options: {
+                  ...(target.provider_options ?? {}),
+                  api_version: e.target.value,
+                },
+              })}
+              style={inputStyle} />
+          </FieldLabel>
+        </div>
+      ) : null}
     </div>
   )
 }

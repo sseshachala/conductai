@@ -46,6 +46,20 @@ def _openrouter_target(**overrides) -> HTTPPassthroughTarget:
     return HTTPPassthroughTarget(**defaults)
 
 
+def _azure_target(**overrides) -> HTTPPassthroughTarget:
+    defaults = dict(
+        id="azure-primary",
+        transport="http_passthrough",
+        integration="azure_openai",
+        model="gpt-4o-prod-deploy",   # deployment name, NOT a model id
+        credential_ref=f"vault://{ENV}/azure",
+        endpoint="https://my-resource.openai.azure.com",
+        provider_options={"api_version": "2024-06-01"},
+    )
+    defaults.update(overrides)
+    return HTTPPassthroughTarget(**defaults)
+
+
 class _FakeResponse:
     def __init__(self, status_code=200, json_body=None):
         self.status_code = status_code
@@ -93,6 +107,79 @@ async def test_openrouter_chat_completions_hits_correct_url_with_bearer(monkeypa
     # Attribution headers reach the wire.
     assert captured["headers"]["HTTP-Referer"] == "https://conductai.ai"
     assert captured["headers"]["X-Title"] == "Conduct AI Gateway"
+
+
+@pytest.mark.anyio("asyncio")
+async def test_azure_openai_url_has_deployment_and_api_version(monkeypatch):
+    """Azure URL is per-tenant: <endpoint>/openai/deployments/<deployment>/
+    chat/completions?api-version=<version>. Auth uses raw ``api-key``
+    header, NOT ``Authorization: Bearer``. Deployment lives in
+    target.model; api-version lives in target.provider_options and is
+    added as a query parameter with underscore→dash conversion."""
+    captured: dict = {}
+
+    async def _fake_post(url, headers, content):
+        captured.update(url=url, headers=headers, content=content)
+        return _FakeResponse(200, {"id": "chatcmpl-az"})
+
+    transport = HTTPPassthroughTransport()
+    fake_client = MagicMock()
+    fake_client.post = _fake_post
+    monkeypatch.setattr(transport, "_get_client", AsyncMock(return_value=fake_client))
+
+    result = await transport.execute(
+        target=_azure_target(),
+        operation="openai_chat_completions",
+        payload={"model": "cond-alias", "messages": [{"role": "user", "content": "hi"}]},
+        credential_resolver=lambda ref: "az-key-live",
+    )
+
+    assert result == {"id": "chatcmpl-az"}
+    assert captured["url"] == (
+        "https://my-resource.openai.azure.com"
+        "/openai/deployments/gpt-4o-prod-deploy/chat/completions"
+        "?api-version=2024-06-01"
+    )
+    # Raw api-key header, no Bearer prefix, no stray Authorization.
+    assert captured["headers"]["api-key"] == "az-key-live"
+    assert "authorization" not in {k.lower() for k in captured["headers"]}
+    # Body model still swapped to deployment name (harmless for Azure
+    # which reads deployment from the URL, but keeps behaviour uniform).
+    import json as _json
+    assert _json.loads(captured["content"])["model"] == "gpt-4o-prod-deploy"
+
+
+@pytest.mark.anyio("asyncio")
+async def test_azure_openai_endpoint_override_does_not_warn(monkeypatch):
+    """Azure is per-tenant, so an endpoint override is REQUIRED, not
+    accidental. The endpoint-override warning that fires for pinned
+    integrations must NOT fire for Azure."""
+    captured: dict = {}
+
+    async def _fake_post(url, headers, content):
+        captured.update(url=url, headers=headers)
+        return _FakeResponse(200, {"id": "x"})
+
+    transport = HTTPPassthroughTransport()
+    fake_client = MagicMock()
+    fake_client.post = _fake_post
+    monkeypatch.setattr(transport, "_get_client", AsyncMock(return_value=fake_client))
+
+    warnings: list[dict] = []
+    import app.runtime.http_passthrough_transport as mod
+    monkeypatch.setattr(mod.log, "warning", lambda ev, **kw: warnings.append({"event": ev, **kw}))
+
+    await transport.execute(
+        target=_azure_target(),
+        operation="openai_chat_completions",
+        payload={"messages": []},
+        credential_resolver=lambda ref: "az-key",
+    )
+    override_warnings = [
+        w for w in warnings
+        if w["event"] == "gateway.v2.http_passthrough.endpoint_override_ignored"
+    ]
+    assert override_warnings == []
 
 
 @pytest.mark.anyio("asyncio")
@@ -237,4 +324,7 @@ def test_integration_certifies_operation_helper():
     check the runtime matrix. Guards against catalog-vs-runtime drift."""
     assert integration_certifies_operation("openrouter", "openai_chat_completions") is True
     assert integration_certifies_operation("openrouter", "anthropic_messages") is False
+    assert integration_certifies_operation("azure_openai", "openai_chat_completions") is True
+    assert integration_certifies_operation("azure_openai", "anthropic_messages") is False
+    # Portkey (PR 4) + Helicone (PR 5) + Custom (PR 7) not registered on this branch.
     assert integration_certifies_operation("portkey", "openai_chat_completions") is False

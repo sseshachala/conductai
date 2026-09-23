@@ -276,13 +276,12 @@ def test_catalog_certifies_openrouter_for_openai_chat_completions():
 
 
 def test_catalog_still_rejects_other_passthrough_integrations():
-    """Portkey / Helicone / Azure OpenAI stay uncertified until each
-    ships its per-integration auth-header semantics (follow-up PRs).
-    Publish rejects them all — the loud rejection is what stops an
-    admin from believing a Portkey target is live before its executor
-    ships."""
-    for integration in ("portkey", "helicone_anthropic",
-                        "helicone_openai", "azure_openai"):
+    """Portkey / Helicone stay uncertified on THIS branch (PRs 4 + 5).
+    Azure OpenAI (PR 6) lands with per-tenant URL + api-version query.
+    Publish rejects the still-uncertified set — the loud rejection is
+    what stops an admin from believing a live target is up before its
+    executor ships."""
+    for integration in ("portkey", "helicone_anthropic", "helicone_openai"):
         target = HTTPPassthroughTarget(
             id=f"t-{integration}", transport="http_passthrough",
             integration=integration, model="some-model",
@@ -292,6 +291,23 @@ def test_catalog_still_rejects_other_passthrough_integrations():
             validate_targets_against_accepts(
                 accepts=["openai_chat_completions"], targets=[target],
             )
+
+
+def test_catalog_certifies_azure_openai_for_chat_completions():
+    """PR 6 — Azure OpenAI certified for openai_chat_completions.
+    Per-tenant endpoint + deployment-name-as-model + api-version in
+    provider_options are all validated at request time by the transport,
+    not the catalog."""
+    target = HTTPPassthroughTarget(
+        id="t-azure", transport="http_passthrough",
+        integration="azure_openai", model="gpt-4o-prod-deploy",
+        credential_ref=CRED_PORTKEY,
+        endpoint="https://my-resource.openai.azure.com",
+        provider_options={"api_version": "2024-06-01"},
+    )
+    validate_targets_against_accepts(
+        accepts=["openai_chat_completions"], targets=[target],
+    )
 
 
 def test_catalog_still_rejects_openrouter_for_uncertified_operation():

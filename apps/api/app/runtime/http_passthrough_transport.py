@@ -67,6 +67,13 @@ class IntegrationConfig:
     operation_paths: dict[Operation, str]
     extra_headers: dict[str, str] = field(default_factory=dict)
     allows_endpoint_override: bool = False
+    # PR 6 — per-tenant integrations (Azure OpenAI). A path containing
+    # ``{model}`` gets substituted with ``target.model`` at request
+    # time so the URL carries the deployment name inline. Names listed
+    # in ``query_params_from_options`` are pulled from
+    # ``target.provider_options`` and added as URL query parameters
+    # (underscore → dash conversion: ``api_version`` → ``api-version``).
+    query_params_from_options: tuple[str, ...] = field(default_factory=tuple)
 
 
 # One entry per supported integration. Adding one here requires a
@@ -95,6 +102,24 @@ _INTEGRATION_ENDPOINTS: dict[Integration, IntegrationConfig] = {
             "HTTP-Referer": "https://conductai.ai",
             "X-Title": "Conduct AI Gateway",
         },
+    ),
+    # PR 6 — Azure OpenAI. Per-tenant URL, so
+    # ``allows_endpoint_override=True`` and the admin supplies the
+    # Azure Resource endpoint (e.g. ``https://acme.openai.azure.com``)
+    # on the target. Deployment name is stored in ``target.model``
+    # and substituted into ``/openai/deployments/{model}/...`` at
+    # request time. ``api-version`` is Azure-specific and lives in
+    # ``target.provider_options.api_version`` — added as a URL query
+    # parameter. Auth uses raw ``api-key`` header (no Bearer prefix).
+    "azure_openai": IntegrationConfig(
+        base_url="",  # unused when allows_endpoint_override=True
+        auth_header="api-key",
+        bearer_prefix=False,
+        operation_paths={
+            "openai_chat_completions": "/openai/deployments/{model}/chat/completions",
+        },
+        allows_endpoint_override=True,
+        query_params_from_options=("api_version",),
     ),
 }
 
@@ -180,6 +205,12 @@ class HTTPPassthroughTransport:
                 f"catalog should have caught this at publish."
             )
 
+        # PR 6 — path templating for per-tenant integrations (Azure).
+        # Only ``{model}`` substitution is supported; anything else is
+        # a config bug and left in the URL to surface a clear 404.
+        if "{model}" in upstream_path:
+            upstream_path = upstream_path.replace("{model}", target.model)
+
         base_url = self._resolve_base_url(target, config)
 
         api_key = credential_resolver(target.credential_ref)
@@ -207,10 +238,25 @@ class HTTPPassthroughTransport:
             f"Bearer {api_key}" if config.bearer_prefix else api_key
         )
 
+        # PR 6 — query params from provider_options (Azure api-version).
+        # Underscore→dash on the wire so the vendor sees the header/
+        # param name in the shape they document (``api-version``).
+        url = base_url + upstream_path
+        if config.query_params_from_options:
+            from urllib.parse import urlencode
+            opts = getattr(target, "provider_options", None) or {}
+            params: dict[str, str] = {}
+            for opt_name in config.query_params_from_options:
+                val = opts.get(opt_name)
+                if val:
+                    params[opt_name.replace("_", "-")] = str(val)
+            if params:
+                url = url + ("&" if "?" in url else "?") + urlencode(params)
+
         client = await self._get_client()
         try:
             response = await client.post(
-                base_url + upstream_path,
+                url,
                 headers=headers,
                 content=json.dumps(request_body).encode("utf-8"),
             )
@@ -252,9 +298,9 @@ class HTTPPassthroughTransport:
         """Pick the base URL for this attempt.
 
         Integrations that don't allow overrides pin ``config.base_url``.
-        ``integration='custom'`` (allows_endpoint_override=True) uses
-        ``target.endpoint`` verbatim — it's the whole point of the
-        custom integration.
+        Per-tenant integrations (``custom``, ``azure_openai``) set
+        ``allows_endpoint_override=True`` and use ``target.endpoint``
+        verbatim — that's the whole point.
 
         Warns loudly if a pinned integration carries a non-null
         ``target.endpoint``: silently ignoring it would leave the
@@ -271,10 +317,10 @@ class HTTPPassthroughTransport:
                 pinned_base_url=config.base_url,
                 ignored_endpoint=target.endpoint,
                 note=(
-                    "target.endpoint is only honored for "
-                    "integration='custom'. Remove endpoint from this "
-                    "target or switch to integration='custom' if the "
-                    "override was intentional."
+                    "target.endpoint is only honored for per-tenant "
+                    "integrations (custom, azure_openai). Remove "
+                    "endpoint from this target or switch integration if "
+                    "the override was intentional."
                 ),
             )
         return config.base_url
