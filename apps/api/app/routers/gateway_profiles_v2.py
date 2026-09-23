@@ -45,11 +45,13 @@ policy still runs regardless of which revision serves.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 import json
 
+import httpx
+import structlog
 from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func
@@ -57,6 +59,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_workspace_id, require_permission
+from app.core.config import settings
 from app.core.database import get_db
 from app.models.gateway_profile import (
     GatewayProfile as GatewayProfileRow,
@@ -67,6 +70,8 @@ from app.modules.guard.capability_catalog import (
     validate_targets_against_accepts,
 )
 from app.modules.guard.gateway_config import GatewayProfileV2
+
+_log = structlog.get_logger(__name__)
 
 
 router = APIRouter(
@@ -1189,3 +1194,144 @@ def get_revision_snapshot(
     if revision is None:
         raise HTTPException(status_code=404, detail="revision not found")
     return revision.snapshot
+
+
+# ─── Smoke test (#2026) ────────────────────────────────────────────────
+
+class TestProfileIn(BaseModel):
+    prompt: str = Field(min_length=1, max_length=4000)
+    provider: Literal["anthropic", "openai"]
+
+
+class TestProfileOut(BaseModel):
+    ok: bool
+    status: int
+    content: str | None
+    body: str
+
+
+@router.post(
+    "/{workspace_id}/gateway-profiles-v2/{profile_id}/test",
+    response_model=TestProfileOut,
+)
+def test_profile(
+    workspace_id: str,
+    profile_id: UUID,
+    body: TestProfileIn,
+    db: Session = Depends(get_db),
+    _ws: str = Depends(_authorized_workspace_id),
+    _: str = Depends(require_permission("platform.credentials.manage")),
+) -> TestProfileOut:
+    """Mint a short-lived ``test-gateway-token``, hit the gateway server-side,
+    revoke, return the response. Dashboard host can't call the gateway
+    origin from the browser (CORS not open for browsers by design), so
+    the round trip is proxied through here.
+
+    Only published profiles are testable — a draft has no active revision
+    to resolve against.
+    """
+    from app.modules.agent_identity.router import mint_agent_identity
+
+    profile = _load_profile(db, workspace_id, profile_id)
+    if profile.active_revision_id is None:
+        raise HTTPException(status_code=409, detail="Profile is not published yet")
+
+    alias = profile.model_alias or ""
+    model = f"cond-{profile.cond_code}-{alias}" if alias else f"cond-{profile.cond_code}"
+
+    identity, plaintext = mint_agent_identity(
+        db, workspace_id, name="test-gateway-token", source="gateway_test_button",
+    )
+    db.commit()
+
+    try:
+        base = settings.conduct_proxy_url.rstrip("/")
+        if body.provider == "anthropic":
+            url = f"{base}/anthropic/v1/messages"
+            payload: dict[str, Any] = {
+                "model": model,
+                "max_tokens": 512,
+                "messages": [{"role": "user", "content": body.prompt}],
+            }
+            headers = {
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {plaintext}",
+                "anthropic-version": "2023-06-01",
+            }
+        else:  # openai
+            url = f"{base}/openai/chat/completions"
+            payload = {
+                "model": model,
+                "messages": [{"role": "user", "content": body.prompt}],
+                "stream": False,
+            }
+            headers = {
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {plaintext}",
+            }
+
+        try:
+            with httpx.Client(timeout=30.0) as client:
+                resp = client.post(url, json=payload, headers=headers)
+        except httpx.HTTPError as err:
+            return TestProfileOut(
+                ok=False, status=0, content=None,
+                body=f"Gateway request failed: {err}",
+            )
+
+        text = resp.text
+        parsed_content: str | None = None
+        ctype = resp.headers.get("content-type", "")
+        if ctype.startswith("application/json"):
+            try:
+                parsed = resp.json()
+                parsed_content = _extract_test_content(parsed)
+            except ValueError:
+                parsed_content = None
+
+        return TestProfileOut(
+            ok=resp.status_code < 400,
+            status=resp.status_code,
+            content=parsed_content,
+            body=text,
+        )
+    finally:
+        # Best-effort revoke — a leftover row is visible + deletable in the
+        # Agent Identities page. Do not let a cleanup failure fail the
+        # response the user just waited on.
+        try:
+            db.delete(identity)
+            db.commit()
+        except Exception as err:  # noqa: BLE001
+            _log.warning(
+                "gateway.test.revoke_failed",
+                identity_id=identity.id,
+                workspace_id=workspace_id,
+                error=str(err),
+            )
+
+
+def _extract_test_content(payload: Any) -> str | None:
+    """Pull the assistant text from either an Anthropic or an OpenAI response."""
+    if not isinstance(payload, dict):
+        return None
+    content = payload.get("content")
+    if isinstance(content, list):
+        parts = [
+            part.get("text") for part in content
+            if isinstance(part, dict)
+            and part.get("type") in (None, "text")
+            and isinstance(part.get("text"), str)
+        ]
+        joined = "\n".join(p for p in parts if p)
+        if joined:
+            return joined
+    choices = payload.get("choices")
+    if isinstance(choices, list) and choices:
+        msg = choices[0].get("message") if isinstance(choices[0], dict) else None
+        if isinstance(msg, dict) and isinstance(msg.get("content"), str):
+            return msg["content"]
+    err = payload.get("error")
+    if isinstance(err, dict) and isinstance(err.get("message"), str):
+        return err["message"]
+    return None
