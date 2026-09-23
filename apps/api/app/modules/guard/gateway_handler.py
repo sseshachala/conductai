@@ -1447,6 +1447,48 @@ async def handle_gateway_request(
                             except Exception:
                                 pass
                     await run_in_threadpool(_settle_sync_owned)
+
+                    # #2209 Session 4 — shadow accounting writer. Off by
+                    # default (settings.guard_accounting_shadow_enabled).
+                    # Never fails the request: shadow_write catches
+                    # every exception internally.
+                    try:
+                        from app.runtime.accounting.shadow_writer import shadow_write
+                        _shadow_bytes = None
+                        _snap = locals().get("_v2_upstream_body_bytes")
+                        if isinstance(_snap, (bytes, bytearray)) and _snap:
+                            _shadow_bytes = bytes(_snap)
+                        elif _response is not None and hasattr(_response, "body"):
+                            try:
+                                _shadow_bytes = bytes(_response.body)
+                            except Exception:
+                                _shadow_bytes = None
+                        shadow_write(
+                            workspace_id=workspace_id,
+                            request_id=_audit_request_id,
+                            provider=provider,
+                            model=model,
+                            operation=request.url.path,
+                            dispatched=_dispatched_snapshot,
+                            response_bytes=_shadow_bytes,
+                            legacy_input_tokens=locals().get("_in_tok"),
+                            legacy_output_tokens=locals().get("_out_tok"),
+                            legacy_cost_usd=locals().get("_cost_usd"),
+                            reserved_microdollars=_actual_micros_snapshot,
+                            developer_user_id=clerk_user_id,
+                            agent_identity_id=_agent_identity_id,
+                            source="gateway",
+                            client_tool=ai_tool,
+                            attempts_meta=(
+                                _routing_meta.get("attempts")
+                                if isinstance(_routing_meta, dict)
+                                else None
+                            ),
+                        )
+                    except Exception:
+                        # shadow_write is designed to swallow; this is a
+                        # last-resort belt-and-suspenders.
+                        pass
                 except Exception:
                     log.exception(
                         "guard.gateway.settle_wire_failed",

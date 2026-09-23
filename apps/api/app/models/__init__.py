@@ -16,6 +16,7 @@ from app.models.run import Run, RunEvent
 from app.models.run_analytics_event import RunAnalyticsEvent
 from app.models.run_trace import RunTrace
 from app.models.audit_log import AuditLog
+from app.models.llm_attempt_receipt import LlmAttemptReceipt  # noqa
 from app.models.email_template import EmailTemplate
 from app.models.playbook_submission import PlaybookSubmission
 

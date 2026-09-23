@@ -175,6 +175,14 @@ class Settings(BaseSettings):
     # our own caps do (should be rare — ours are strictly tighter).
     guard_gateway_vision_enabled: bool = True
 
+    # #2209 Session 4 — Unified accounting shadow writer. When ON, every
+    # settled gateway attempt also writes a row to ``llm_attempt_receipts``
+    # via ``runtime.accounting.shadow_writer``. Old settlement to
+    # ``guard_audit_events`` remains authoritative — the shadow row exists
+    # only for Session 6 delta metrics. Session 7 flips authority + retires.
+    # Default OFF: no traffic touches the new path until ops enables it.
+    guard_accounting_shadow_enabled: bool = False
+
     # #2001 commit 4 — LiteLLM in-process transport switch. When true,
     # v2 profiles whose targets carry transport=litellm_sdk execute
     # through the embedded LiteLLM SDK (anthropic_messages,

@@ -2,7 +2,7 @@
 
 Tracking issue: [#2209](https://github.com/sseshachala/conductai/issues/2209)
 Branch: `feat/accounting-foundation-2209`
-Status: Session 3 shipped (protocol-family normalizers with fixtures)
+Status: Session 4 shipped (per-attempt persistence + shadow writer, OFF by default)
 
 ## Goal
 
@@ -167,14 +167,55 @@ schema + system prompt sizes, and settlement (which uses the provider's
 real usage report) is authoritative. The ledger under-reserves during the
 request window but reconciles at commit.
 
+## Session 4 — per-attempt persistence + shadow calculation
+
+New table `llm_attempt_receipts` supports the N-receipts-per-request semantic
+that `guard_audit_events` cannot (Session 1 finding). Unique key on
+`(request_id, attempt_ordinal)`; migration `0148_llm_attempt_receipts.py`.
+
+The shadow writer (`app/runtime/accounting/shadow_writer.py`) runs
+alongside the legacy settlement path. Every settled Gateway request also
+persists a normalized receipt with:
+
+- Full `TokenBreakdown` from the Session-3 normalizers (cache tiers,
+  reasoning subset, uncached input)
+- Priced via `PricingService` (Session 2, non-strict — preserves silent
+  fallback for parity with legacy audit rows)
+- **Legacy comparison columns** — `legacy_input_tokens`,
+  `legacy_output_tokens`, `legacy_cost_microdollars` — populated with what
+  the pre-Session-2 extraction produced for the same request. Session 6
+  metrics query the delta.
+
+Invariants preserved:
+
+1. **Never fails the request.** `shadow_write()` catches every exception
+   internally + a belt-and-suspenders outer try in `gateway_handler`.
+2. **Additive only.** No mutation of `guard_audit_events`; no change to
+   `settle_reservations` behavior.
+3. **Kill-switch.** `settings.guard_accounting_shadow_enabled` defaults
+   `False` — no traffic touches the new path until ops enables it.
+4. **Contract-versioned.** Each row records `contract_version`,
+   `pricing_version`, `normalizer_version` so future readers dispatch
+   on version.
+
+Session 4 writes ONE row per request (matching current GuardAuditEvent
+granularity). Session 5 or 6 expands to true per-attempt writes once
+`attempt_coordinator.py` captures per-attempt response bytes (currently
+each attempt's usage bytes are only available for the FINAL winning
+attempt — failed attempts before it record only the error class).
+
+**Streaming path**: Session 4 hook is on the non-streaming settlement path
+only. Streaming settlement runs inside `_wrap_v2_stream_finalize`; Session 5
+adds the hook there.
+
 ## Session plan (7 sessions, one branch, one draft PR)
 
 | Session | Deliverable | Status |
 |---------|-------------|--------|
 | 1 | Inventory confirmation + typed contracts, no behavior change | shipped |
 | 2 | Shared pricing service + unified reservation estimator behind compat wrappers | shipped |
-| 3 | Anthropic + OpenAI Chat/Responses + LiteLLM normalizers with fixtures | **shipped** |
-| 4 | Gateway per-attempt persistence + shadow calculation | pending |
+| 3 | Anthropic + OpenAI Chat/Responses + LiteLLM normalizers with fixtures | shipped |
+| 4 | Gateway per-attempt persistence + shadow calculation | **shipped** |
 | 5 | Workflow/runtime + Lens integration via receipt references | pending |
 | 6 | Controlled activation + concurrent/failure/reconciliation tests + canary | pending |
 | 7 | Removal — completion gate, not calendar | pending |
