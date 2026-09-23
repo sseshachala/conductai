@@ -19,10 +19,11 @@ import {
 
 const KNOWN_LITELLM_PROVIDERS = ["anthropic", "openai"] as const
 
-// Pinned model catalog per provider. Real IDs the runtime accepts today
-// so the editor is a dropdown, not free text. Extend here when the
-// upstream catalog moves — the capability catalog on the server is the
-// authoritative filter, but this list makes the picker useful.
+// Fallback model catalog per provider — used when the workspace's LLM
+// Model Primitives tier_map is missing an entry, or the primitives
+// fetch failed. Live workspace primitives are the source of truth; see
+// ``modelsFromTierMap`` below. Extending here is only useful for the
+// zero-primitives boot path.
 const MODELS_BY_PROVIDER: Record<string, Array<{ id: string; label: string }>> = {
   anthropic: [
     { id: "claude-opus-4-7",              label: "Claude Opus 4.7 (most capable)" },
@@ -36,6 +37,36 @@ const MODELS_BY_PROVIDER: Record<string, Array<{ id: string; label: string }>> =
     { id: "o1",           label: "o1 (reasoning)" },
     { id: "o1-mini",      label: "o1 mini (reasoning, cheaper)" },
   ],
+}
+
+// Turn a workspace tier_map slice ({ cheap: "id", balanced: "id", smart: "id" })
+// into the dropdown option shape. Preserves tier order (cheap → balanced
+// → smart) so the UI is stable across renders. Empty slice → [] so the
+// caller can fall back to the hardcoded ``MODELS_BY_PROVIDER`` list.
+const TIER_ORDER = ["cheap", "balanced", "smart"] as const
+function modelsFromTierMap(slice: Record<string, string> | undefined): Array<{ id: string; label: string }> {
+  if (!slice) return []
+  const seen = new Set<string>()
+  const options: Array<{ id: string; label: string }> = []
+  for (const tier of TIER_ORDER) {
+    const id = slice[tier]
+    if (id && !seen.has(id)) {
+      options.push({ id, label: `${id} (${tier})` })
+      seen.add(id)
+    }
+  }
+  // Any custom tier keys the admin added beyond the three standard
+  // ones — surface them too so the dropdown reflects the primitives
+  // state exactly. Alpha-sorted for determinism.
+  for (const tier of Object.keys(slice).sort()) {
+    if ((TIER_ORDER as readonly string[]).includes(tier)) continue
+    const id = slice[tier]
+    if (id && !seen.has(id)) {
+      options.push({ id, label: `${id} (${tier})` })
+      seen.add(id)
+    }
+  }
+  return options
 }
 
 // Per-integration operations for http_passthrough targets. Mirrors
@@ -295,11 +326,31 @@ export default function GatewayProfileV2Editor({
   const [msg, setMsg] = useState("")
   const [err, setErr] = useState("")
   const [credsByEnv, setCredsByEnv] = useState<Record<string, CredentialRow[]>>({})
+  // Workspace-scoped LLM Model Primitives — the source of truth for
+  // which model IDs a workspace has decided to use per (provider, tier).
+  // Fetched once on mount; falls back to hardcoded ``MODELS_BY_PROVIDER``
+  // on failure so the editor still functions.
+  const [tierMap, setTierMap] = useState<Record<string, Record<string, string>>>({})
 
   useEffect(() => {
     setState(stateFromProfile(profile))
     setMsg(""); setErr("")
   }, [profile])
+
+  useEffect(() => {
+    if (!workspaceId) return
+    (async () => {
+      try {
+        const API = process.env.NEXT_PUBLIC_API_BASE ?? ""
+        const res = await authFetch(`${API}/workspaces/${workspaceId}/llm-primitives`)
+        if (!res.ok) return
+        const data = await res.json() as { tier_map?: Record<string, Record<string, string>> }
+        if (data.tier_map) setTierMap(data.tier_map)
+      } catch {
+        // Silent fallback — hardcoded MODELS_BY_PROVIDER covers the boot path.
+      }
+    })()
+  }, [authFetch, workspaceId])
 
   const loadCreds = useCallback(async (envId: string) => {
     if (!envId || credsByEnv[envId]) return
@@ -445,6 +496,7 @@ export default function GatewayProfileV2Editor({
           {state.targets.map((t, i) => (
             <TargetRow key={i} index={i} target={t} envs={envs} isAdmin={isAdmin}
               credentialsByEnv={credsByEnv} onLoadCredsFor={loadCreds}
+              tierMap={tierMap}
               onChange={u => patchTarget(i, u)}
               onRemove={() => removeTarget(i)}
               onMoveUp={() => move(i, -1)} onMoveDown={() => move(i, 1)}
@@ -510,7 +562,7 @@ export default function GatewayProfileV2Editor({
 
 function TargetRow({
   index, target, envs, isAdmin, credentialsByEnv, onLoadCredsFor,
-  onChange, onRemove, onMoveUp, onMoveDown, isFirst, isLast,
+  tierMap, onChange, onRemove, onMoveUp, onMoveDown, isFirst, isLast,
 }: {
   index: number
   target: DraftTarget
@@ -518,6 +570,7 @@ function TargetRow({
   isAdmin: boolean
   credentialsByEnv: Record<string, CredentialRow[]>
   onLoadCredsFor: (envId: string) => void
+  tierMap: Record<string, Record<string, string>>
   onChange: (u: Partial<DraftTarget>) => void
   onRemove: () => void
   onMoveUp: () => void
@@ -526,6 +579,14 @@ function TargetRow({
   isLast: boolean
 }) {
   const creds = target.credential_env_id ? credentialsByEnv[target.credential_env_id] ?? [] : []
+  // Prefer the workspace's LLM Model Primitives tier_map for this
+  // provider; fall back to the hardcoded catalog if the workspace
+  // hasn't customized (or if the primitives fetch failed).
+  const modelsForProvider = (provider: string): Array<{ id: string; label: string }> => {
+    const fromTiers = modelsFromTierMap(tierMap[provider])
+    return fromTiers.length ? fromTiers : (MODELS_BY_PROVIDER[provider] ?? [])
+  }
+  const modelsForCurrent = modelsForProvider(target.provider)
   return (
     <div className="card" style={{ padding: 12, display: "grid", gridTemplateColumns: "auto 1fr 1fr 1fr 1fr auto", gap: 10, alignItems: "end" }}>
       <div style={{ display: "flex", flexDirection: "column", gap: 3, alignItems: "center" }}>
@@ -572,11 +633,11 @@ function TargetRow({
           </select>
         </FieldLabel>
       ) : (
-        <FieldLabel label="Provider" hint="Upstream provider Anthropic or OpenAI in the launch matrix.">
+        <FieldLabel label="Provider" hint="Upstream provider — Anthropic or OpenAI in the launch matrix. Model list below is sourced from workspace LLM Model Primitives; customize under Settings → LLM Model Primitives.">
           <select value={target.provider} disabled={!isAdmin}
             onChange={e => {
               const provider = e.target.value
-              const models = MODELS_BY_PROVIDER[provider] ?? []
+              const models = modelsForProvider(provider)
               const modelStillValid = models.some(m => m.id === target.model)
               onChange({
                 provider,
@@ -613,7 +674,10 @@ function TargetRow({
         ) : (
           <select value={target.model} disabled={!isAdmin}
             onChange={e => onChange({ model: e.target.value })} style={inputStyle}>
-            {(MODELS_BY_PROVIDER[target.provider] ?? []).map(m => (
+            {modelsForCurrent.length === 0 ? (
+              <option value="">— no models for {target.provider} — configure Settings → LLM Model Primitives —</option>
+            ) : null}
+            {modelsForCurrent.map(m => (
               <option key={m.id} value={m.id}>{m.label}</option>
             ))}
           </select>
