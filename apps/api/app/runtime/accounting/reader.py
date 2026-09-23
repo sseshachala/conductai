@@ -133,12 +133,32 @@ class SpendAggregate:
         return unpriced > 0
 
 
+@dataclass(frozen=True)
+class CacheSavings:
+    """Cache-savings derivation for one aggregate.
+
+    The Lens epic asks 'how much did caching save?'. That answer is a
+    counterfactual (what would have been paid without cache), so it
+    depends on both the receipt totals AND the rate card the receipts
+    were priced under. This helper does the math so Lens's LLM never
+    invents it.
+    """
+
+    cache_read_tokens: int
+    uncached_input_tokens: int
+    cache_write_tokens: int
+    # (uncached_rate - cache_read_rate) × cache_read_tokens, in microdollars.
+    savings_microdollars: int
+    # If cache_read was priced at uncached_rate, this is what it would have cost.
+    counterfactual_cost_microdollars: int
+
+
 class AccountingReader:
     """Query surface for the shared accounting engine.
 
-    All numbers Lens surfaces come from here. Session 5 ships one method
-    (``summarize_by_scope``) which is enough to prove the contract; more
-    query shapes plug in as the Lens epic identifies conversational needs.
+    All numbers Lens surfaces come from here. Session 5 shipped
+    ``summarize_by_scope``; Session 6E adds session/request drilldown and
+    the cache-savings helper Lens will need most.
     """
 
     def __init__(self, db: Session) -> None:
@@ -244,6 +264,102 @@ class AccountingReader:
                 )
             )
         return results
+
+    def receipts_for_session(
+        self,
+        *,
+        workspace_id: uuid.UUID,
+        hook_session_id: uuid.UUID,
+        limit: int = 500,
+    ) -> list[LlmAttemptReceipt]:
+        """Return every receipt for one Lens session, most recent first.
+
+        Session 6E — Lens's session-drilldown UI consumes this to answer
+        "what did this conversation cost, and where did the tokens go?".
+        Lens must render `usage_completeness` + `pricing_completeness` on
+        every row; the aggregate helper collapses those into flags.
+        """
+        m = LlmAttemptReceipt
+        return list(
+            self._db.execute(
+                select(m)
+                .where(m.workspace_id == workspace_id)
+                .where(m.hook_session_id == hook_session_id)
+                .order_by(m.finalized_at.desc())
+                .limit(limit)
+            )
+            .scalars()
+            .all()
+        )
+
+    def receipts_for_request(
+        self,
+        *,
+        workspace_id: uuid.UUID,
+        request_id: uuid.UUID,
+    ) -> list[LlmAttemptReceipt]:
+        """Return every attempt receipt for one Gateway request, in order.
+
+        Session 6E — Lens's per-request drilldown ("why did this attempt
+        get 429'd, then succeed on the fallback?"). Ordered by
+        ``attempt_ordinal`` so failed attempts appear before the winner.
+        """
+        m = LlmAttemptReceipt
+        return list(
+            self._db.execute(
+                select(m)
+                .where(m.workspace_id == workspace_id)
+                .where(m.request_id == request_id)
+                .order_by(m.attempt_ordinal.asc())
+            )
+            .scalars()
+            .all()
+        )
+
+
+def compute_cache_savings(
+    aggregate: SpendAggregate,
+    *,
+    uncached_rate_per_1m_usd: Decimal,
+    cache_read_rate_per_1m_usd: Decimal,
+    cache_write_rate_per_1m_usd: Decimal = Decimal(0),
+) -> CacheSavings:
+    """Compute how much caching saved for one aggregate slice.
+
+    Session 6E — Lens must not invent this arithmetic. Formula:
+
+        savings = (uncached_rate - cache_read_rate) × cache_read_tokens
+
+    ``counterfactual_cost`` is what the input side would have cost if
+    every cache read had been billed at the uncached rate. Comparing
+    that against ``aggregate.total_cost_microdollars`` gives Lens the
+    "you saved $X" answer honestly.
+
+    Rates are per-1M tokens as ``Decimal``, matching ``RateCard``.
+    Callers pass them in explicitly so Lens's UI can also render the
+    pricing version + snapshot that produced the number.
+    """
+    delta_per_1m = uncached_rate_per_1m_usd - cache_read_rate_per_1m_usd
+    savings_usd = (
+        Decimal(aggregate.total_cache_read_tokens) * delta_per_1m
+    ) / Decimal(1_000_000)
+    counterfactual_input_usd = (
+        Decimal(aggregate.total_cache_read_tokens + aggregate.total_uncached_input_tokens)
+        * uncached_rate_per_1m_usd
+    ) / Decimal(1_000_000)
+    savings_micros = int(
+        (savings_usd * Decimal(1_000_000)).to_integral_value()
+    )
+    counterfactual_micros = int(
+        (counterfactual_input_usd * Decimal(1_000_000)).to_integral_value()
+    )
+    return CacheSavings(
+        cache_read_tokens=aggregate.total_cache_read_tokens,
+        uncached_input_tokens=aggregate.total_uncached_input_tokens,
+        cache_write_tokens=0,  # aggregate doesn't split writes by tier today
+        savings_microdollars=savings_micros,
+        counterfactual_cost_microdollars=counterfactual_micros,
+    )
 
 
 def aggregate_from_rows(

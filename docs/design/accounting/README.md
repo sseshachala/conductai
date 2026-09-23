@@ -466,19 +466,84 @@ covering the coordinator capture helper, the version pin, workflow
 linkage, and reconciler error paths. Full guard+runtime suite: 2367
 passing.
 
-## Session 6E — Lens consumer + Flight Recorder
+## Session 6E — Lens primitives + Flight Recorder handshake
 
-Not gate-blocking. Unlocks product value.
+Backend primitives shipped. UI/product Lens work belongs to the separate
+Lens epic per Sudhi's split.
 
-1. **Lens consumer wiring** — Lens conversational surface calls
-   `AccountingReader.summarize_by_scope(...)` for every number it
-   displays. Lens's LLM never invents math (per Sudhi's split of the
-   accounting vs Lens epics).
-2. **Lens streaming usage** — turn on `stream_options.include_usage`
-   in `guarded_client_stream` so Lens receipts stop being
-   `UNAVAILABLE`.
-3. **Flight Recorder (#2069) integration** — Lens hyperlinks answers
-   to Flight Recorder evidence entries.
+### Streaming usage capture
+
+- `OpenAIClient.stream(...)` now sends `stream_options.include_usage=True`
+  unconditionally. The terminal usage frame lands on
+  `client.last_usage: dict`.
+- `AnthropicClient.stream(...)` now iterates the raw event stream (not
+  just `text_stream`) so it can capture `message_start` (input +
+  cache_read + cache_write) and `message_delta` (final output_tokens)
+  into `client.last_usage`.
+- `guarded_client_stream` reads `client.last_usage` after iteration
+  completes, synthesizes a normalizer-friendly `{"usage": {...}}`
+  envelope, and passes it to `shadow_write` as `response_bytes`. Lens
+  streaming receipts now land as `COMPLETE` with real token counts
+  instead of `UNAVAILABLE`.
+
+### `AccountingReader` drilldown methods
+
+Two new methods complete the API surface Lens consumes:
+
+- `receipts_for_session(workspace_id, hook_session_id, limit=500)` —
+  every attempt receipt for one Lens session, most recent first. Powers
+  "what did this conversation cost, and where did the tokens go?".
+- `receipts_for_request(workspace_id, request_id)` — every attempt for
+  one Gateway request, ordered by `attempt_ordinal`. Powers per-request
+  drilldown ("why did this get 429'd, then succeed on the fallback?").
+
+Both return raw `LlmAttemptReceipt` rows; Lens must render
+`usage_completeness` + `pricing_completeness` + `execution_outcome`
+inline so users see which numbers are reported vs partial vs pending.
+
+### Cache-savings helper
+
+`compute_cache_savings(aggregate, uncached_rate, cache_read_rate,
+cache_write_rate)` returns a `CacheSavings` dataclass with
+`savings_microdollars` and `counterfactual_cost_microdollars`. Lens's
+LLM must not invent this — it calls the helper and quotes the number.
+
+Formula (documented in code):
+
+    savings = (uncached_rate − cache_read_rate) × cache_read_tokens
+    counterfactual = (cache_read + uncached_input) × uncached_rate
+
+Callers pass in the rate card explicitly so the answer travels with a
+pricing version + snapshot Lens can cite. This preserves invariant #9
+end-to-end: unknown pricing is not smuggled into a computed savings
+figure.
+
+### Flight Recorder (#2069) handshake spec
+
+Not implemented in this session — Flight Recorder is a coordinating
+epic that hasn't shipped its own receipt-linking contract yet. When it
+does, the handshake looks like:
+
+- Flight Recorder identifies each request via `guard_audit_events.request_id`.
+- `llm_attempt_receipts.request_id` matches that value 1:1.
+- Lens hyperlinks answers to Flight Recorder using
+  `/flight-recorder/{request_id}` (URL owned by #2069).
+- Per-attempt drilldown in Flight Recorder can reference receipts by
+  `(request_id, attempt_ordinal)`.
+- Reconciled receipts (`source="reconciler"`) MUST be flagged in the
+  UI so users don't mistake a metadata-only backfill for authoritative
+  usage.
+
+Deferred to #2069 to publish its route + event-emission contract. The
+accounting side already carries every identifier needed.
+
+### Session 6E test count
+
+11 new self-checks (`test_session_6e.py`): adapter payload contains
+`stream_options.include_usage`; anthropic captures `last_usage` from
+event stream; `_usage_to_dict` handles object/dict/tiered-cache forms;
+reader drilldown signatures pinned; cache-savings zero/normal/counter-
+factual/frozen. Full suite: 2378 passing (was 2367).
 
 ## Session plan (7 sessions, one branch, one draft PR)
 
