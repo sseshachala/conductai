@@ -1293,15 +1293,21 @@ def test_profile(
             body=text,
         )
     finally:
-        # Best-effort revoke — a leftover row is visible + deletable in the
-        # Agent Identities page. Do not let a cleanup failure fail the
-        # response the user just waited on.
+        # Expire (not delete) so the audit rows this call just wrote keep
+        # their agent_identity_id FK intact — guard_audit_events uses
+        # ON DELETE SET NULL, so a hard delete would blank the identity
+        # column on the row the user is about to look at. Setting
+        # expires_at to now still invalidates the token immediately
+        # (see auth.resolve_agent_identity_row: ai_row.expires_at < now
+        # returns None).
         try:
-            db.delete(identity)
+            from datetime import datetime as _dt, timezone as _tz
+            identity.expires_at = _dt.now(_tz.utc)
+            db.add(identity)
             db.commit()
         except Exception as err:  # noqa: BLE001
             _log.warning(
-                "gateway.test.revoke_failed",
+                "gateway.test.expire_failed",
                 identity_id=identity.id,
                 workspace_id=workspace_id,
                 error=str(err),
