@@ -276,12 +276,11 @@ def test_catalog_certifies_openrouter_for_openai_chat_completions():
 
 
 def test_catalog_still_rejects_other_passthrough_integrations():
-    """Portkey (PR 4) + Azure OpenAI (PR 6) stay uncertified on this
-    branch. Helicone_openai + helicone_anthropic landed in PR 5 with
-    two-key auth. Publish rejects the still-uncertified set — the loud
-    rejection is what stops an admin from believing a live target is
-    up before its executor ships."""
-    for integration in ("portkey", "azure_openai"):
+    """Azure OpenAI stays uncertified on this branch (PR 6). Portkey
+    (PR 4) + Helicone (PR 5) both landed. Publish rejects the still-
+    uncertified set — the loud rejection is what stops an admin from
+    believing a live target is up before its executor ships."""
+    for integration in ("azure_openai",):
         target = HTTPPassthroughTarget(
             id=f"t-{integration}", transport="http_passthrough",
             integration=integration, model="some-model",

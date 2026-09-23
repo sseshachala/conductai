@@ -91,19 +91,46 @@ def test_resolve_vendor_key_returns_none_when_no_candidates_match(monkeypatch):
     assert key is None
 
 
-def test_helicone_primary_key_uses_shared_alias(monkeypatch):
-    """PR 5 review — helicone_openai / helicone_anthropic both look up
-    ``HELICONE_API_KEY`` from the shared vault entry. Independent of
-    PR 3's alias table so this branch works standalone."""
+def test_integration_alias_covers_shared_helicone_key(monkeypatch):
+    # helicone_anthropic + helicone_openai both use HELICONE_API_KEY.
+    # The bridge passes integration name as ``provider``, so the alias
+    # map (PR 3, INTEGRATION_KEY_ALIASES) must be tried before the
+    # generic HELICONE_ANTHROPIC_API_KEY fallback (which the user is
+    # intentionally NOT expected to set).
     monkeypatch.setattr(
         "app.modules.guard.gateway_credentials.get_vault_credential",
-        lambda db, ws, env, sel: {"HELICONE_API_KEY": "sk-hel"},
+        lambda db, ws, env, sel: {"HELICONE_API_KEY": "hkey"},
     )
-    for provider in ("helicone_openai", "helicone_anthropic"):
+
+    for integration in ("helicone_anthropic", "helicone_openai"):
         key = resolve_gateway_key(
-            SimpleNamespace(), "workspace-1",
+            SimpleNamespace(),
+            "workspace-1",
             f"vault://{VAULT_ID}/helicone",
-            provider,
+            integration,
             None,
         )
-        assert key == "sk-hel", provider
+        assert key == "hkey", integration
+
+
+def test_integration_alias_precedes_generic_provider_key(monkeypatch):
+    # If both AZUREAI_API_KEY (alias) and AZURE_OPENAI_API_KEY (generic
+    # upper-case fallback) are present, the alias wins so operator
+    # intent stays consistent with the UI hint.
+    monkeypatch.setattr(
+        "app.modules.guard.gateway_credentials.get_vault_credential",
+        lambda db, ws, env, sel: {
+            "AZUREAI_API_KEY": "alias-key",
+            "AZURE_OPENAI_API_KEY": "generic-key",
+        },
+    )
+
+    key = resolve_gateway_key(
+        SimpleNamespace(),
+        "workspace-1",
+        f"vault://{VAULT_ID}/azure",
+        "azure_openai",
+        None,
+    )
+
+    assert key == "alias-key"
