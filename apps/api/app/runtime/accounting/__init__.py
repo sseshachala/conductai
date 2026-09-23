@@ -49,6 +49,12 @@ from app.runtime.accounting.pricing import (
     default_pricing_service,
     reset_default_pricing_service,
 )
+from app.runtime.accounting.metrics import (
+    DeltaBucket,
+    ShadowDeltaReport,
+    compute_deltas_from_rows,
+    compute_shadow_delta_report,
+)
 from app.runtime.accounting.reader import (
     AccountingReader,
     AggregateScope,
@@ -94,4 +100,8 @@ __all__ = [
     "AggregateScope",
     "SpendAggregate",
     "aggregate_from_rows",
+    "DeltaBucket",
+    "ShadowDeltaReport",
+    "compute_deltas_from_rows",
+    "compute_shadow_delta_report",
 ]

@@ -103,7 +103,16 @@ def shadow_write(
     Returns the receipt_id when written, None when disabled or on any error.
     Never raises.
     """
-    if not getattr(settings, "guard_accounting_shadow_enabled", False):
+    # Session 6: per-workspace canary. Uses settings.accounting_shadow_enabled_for
+    # which layers the global kill-switch AND the allowlist together.
+    _check = getattr(settings, "accounting_shadow_enabled_for", None)
+    if _check is not None:
+        try:
+            if not _check(str(workspace_id)):
+                return None
+        except Exception:
+            return None
+    elif not getattr(settings, "guard_accounting_shadow_enabled", False):
         return None
 
     try:

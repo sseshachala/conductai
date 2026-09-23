@@ -2,7 +2,7 @@
 
 Tracking issue: [#2209](https://github.com/sseshachala/conductai/issues/2209)
 Branch: `feat/accounting-foundation-2209`
-Status: Session 5 shipped (streaming + Lens hooks + accounting-to-Lens read API)
+Status: Session 6 shipped (per-workspace canary + delta metrics + failure tests)
 
 ## Goal
 
@@ -295,6 +295,93 @@ shadow hook naively risks double-counting when the workflow goes through
 Gateway. Filed as followup — will resolve after Session 6 canary shows the
 actual traffic mix.
 
+## Session 6 — canary rollout + delta metrics + Session 7 gate criteria
+
+### Per-workspace canary
+
+Old: `settings.guard_accounting_shadow_enabled` was a global on/off. Ops
+had to enable it everywhere or nowhere.
+
+New: `settings.accounting_shadow_enabled_for(workspace_id: str) -> bool`
+layers two settings:
+
+- `guard_accounting_shadow_enabled` (bool, default `False`) — global
+  kill-switch. When `False`, shadow writer is off for every workspace.
+- `guard_accounting_shadow_workspace_allowlist` (str, default `""`) —
+  comma-separated workspace IDs. Empty or `"*"` means "all workspaces".
+
+Precedence: global kill-switch > allowlist. Ops enables the global flag
+plus a small allowlist, expands the list, then removes the allowlist
+(sets `"*"`) to reach global-on.
+
+No percentage rollout: shadow rows are cheap and idempotent (unique on
+`(request_id, attempt_ordinal)`) so ops can flip workspaces on and off
+freely without partial-canary aliasing.
+
+### Delta metrics (`runtime/accounting/metrics.py`)
+
+`ShadowDeltaReport` — one report per (workspace, period). Session 7 gate
+review pulls this per canary workspace before deleting legacy paths.
+
+Report exposes:
+
+- **Cost deltas** — `new_cost_microdollars`, `legacy_cost_microdollars`,
+  `sum_abs_delta_microdollars` (Σ |new − legacy| per row),
+  `max_abs_delta_microdollars` (worst single row), `relative_delta_pct`
+  (|Σ delta| / legacy).
+- **Provenance counts** — `missing_usage_count`, `partial_usage_count`,
+  `pending_usage_count`, `unpriced_count`, `incomplete_pricing_count`.
+- **Reconciliation** — `settled_requests_missing_shadow_count` (LEFT JOIN
+  `guard_audit_events` against `llm_attempt_receipts` on `request_id`).
+- **Per-provider/model buckets** — `list[DeltaBucket]` for drilldown.
+
+Derived properties: `missing_usage_rate`, `unpriced_rate`,
+`relative_delta_pct`.
+
+### Session 7 gate criteria (documented; enforced by ops review)
+
+**Do not proceed to Session 7 removal until all of the following hold on
+at least one canary workspace for a documented observation window:**
+
+1. **Cost delta small and explained.** `relative_delta_pct` within a
+   documented tolerance (suggested: <2%), OR every non-trivial delta
+   explained by a known correctness fix (cache-tier pricing coverage,
+   reasoning-subset semantics, etc.).
+2. **No unpriced surprises.** `unpriced_count == 0` OR unpriced models
+   are on an approved list (workspace-specific overrides).
+3. **Missing-usage bounded.** `missing_usage_rate < 1%` of dispatched
+   attempts, and trending down as ops adds `stream_options.include_usage`
+   to callers.
+4. **No duplicate settlements.** DB unique constraint on `(request_id,
+   attempt_ordinal)` guarantees this — verify IntegrityError telemetry
+   rate is zero over the observation window.
+5. **Reconciliation clean.** `settled_requests_missing_shadow_count` is
+   below a documented rate (suggested: <0.1% of settled requests) AND
+   trending down.
+
+If any of these fails, **Session 7 does not proceed on schedule**. Old
+settlement stays authoritative until the specific delta is explained or
+the specific rate falls under the threshold.
+
+### Concurrent / failure hardening
+
+Session 6 self-checks prove the shadow writer:
+
+- Survives 50 concurrent invocations across 10 threads — no shared
+  mutable state, each call owns its DB session.
+- Never lets a settlement path fail: `IntegrityError` (duplicate key),
+  `db.close()` failures, normalizer exceptions, and pricing-service
+  exceptions all swallowed.
+- Is idempotent: same `(request_id, attempt_ordinal)` write twice → first
+  succeeds, second returns None (unique constraint), no receipt is lost
+  or duplicated.
+- Honors the per-workspace canary decision even when the decision
+  function itself raises.
+
+Postgres-backed integration tests (real duplicate-key races, transaction
+rollback isolation) will run in CI once the migration is upstream — the
+in-process tests here cover the writer's public contract.
+
 ## Session plan (7 sessions, one branch, one draft PR)
 
 | Session | Deliverable | Status |
@@ -303,8 +390,8 @@ actual traffic mix.
 | 2 | Shared pricing service + unified reservation estimator behind compat wrappers | shipped |
 | 3 | Anthropic + OpenAI Chat/Responses + LiteLLM normalizers with fixtures | shipped |
 | 4 | Gateway per-attempt persistence + shadow calculation | shipped |
-| 5 | Workflow/runtime + Lens integration via receipt references + read API | **shipped** |
-| 6 | Controlled activation + concurrent/failure/reconciliation tests + canary | pending |
+| 5 | Workflow/runtime + Lens integration via receipt references + read API | shipped |
+| 6 | Controlled activation + concurrent/failure/reconciliation tests + canary | **shipped** |
 | 7 | Removal — completion gate, not calendar | pending |
 
 Session 7 does **not** proceed on schedule. It proceeds only when shadow deltas
