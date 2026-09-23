@@ -17,31 +17,12 @@ import {
 // PUT /working_copy. Matches the styling of the sibling GatewayProfileSettings
 // (v1) component so both settings pages feel like one product.
 
-// Fallback provider list — used when the workspace has not seeded any
-// LLM Model Primitives (fresh workspace mid-boot). Live workspace
-// primitives are the source of truth; see the ``providers`` computed
-// value in TargetRow that reads ``tierMap`` keys.
-const FALLBACK_PROVIDERS = ["anthropic", "openai"] as const
-
-// Fallback model catalog per provider — used when the workspace's LLM
-// Model Primitives tier_map is missing an entry, or the primitives
-// fetch failed. Live workspace primitives are the source of truth; see
-// ``modelsFromTierMap`` below. Extending here is only useful for the
-// zero-primitives boot path.
-const MODELS_BY_PROVIDER: Record<string, Array<{ id: string; label: string }>> = {
-  anthropic: [
-    { id: "claude-opus-4-7",              label: "Claude Opus 4.7 (most capable)" },
-    { id: "claude-sonnet-4-6",            label: "Claude Sonnet 4.6 (balanced)" },
-    { id: "claude-haiku-4-5-20251001",    label: "Claude Haiku 4.5 (fast + cheap)" },
-    { id: "claude-sonnet-4-5-20250529",   label: "Claude Sonnet 4.5 (previous)" },
-  ],
-  openai: [
-    { id: "gpt-4o",       label: "GPT-4o (flagship)" },
-    { id: "gpt-4o-mini",  label: "GPT-4o mini (cheap)" },
-    { id: "o1",           label: "o1 (reasoning)" },
-    { id: "o1-mini",      label: "o1 mini (reasoning, cheaper)" },
-  ],
-}
+// LLM Model Primitives is the single source of truth for the model
+// catalog. No hardcoded fallback — if the fetch fails the editor
+// surfaces the error and the dropdown stays empty until the operator
+// fixes primitives. Preserves the "one source of truth" invariant even
+// when the API is down (better a visible empty state than a stale
+// hardcoded list that lies about which models the workspace approved).
 
 // Turn a workspace tier_map slice ({ cheap: "id", balanced: "id", smart: "id" })
 // into the dropdown option shape. Preserves tier order (cheap → balanced
@@ -330,11 +311,15 @@ export default function GatewayProfileV2Editor({
   const [msg, setMsg] = useState("")
   const [err, setErr] = useState("")
   const [credsByEnv, setCredsByEnv] = useState<Record<string, CredentialRow[]>>({})
-  // Workspace-scoped LLM Model Primitives — the source of truth for
-  // which model IDs a workspace has decided to use per (provider, tier).
-  // Fetched once on mount; falls back to hardcoded ``MODELS_BY_PROVIDER``
-  // on failure so the editor still functions.
+  // Workspace-scoped LLM Model Primitives — the SINGLE source of truth
+  // for which model IDs a workspace has decided to use per (provider,
+  // tier). Fetched once on mount. Error state is loud (banner) so the
+  // operator can go fix primitives instead of seeing a stale hardcoded
+  // list masquerading as truth.
   const [tierMap, setTierMap] = useState<Record<string, Record<string, string>>>({})
+  const [primitivesLoading, setPrimitivesLoading] = useState(true)
+  const [primitivesError, setPrimitivesError] = useState("")
+  const providerKeys = useMemo(() => Object.keys(tierMap).sort(), [tierMap])
 
   useEffect(() => {
     setState(stateFromProfile(profile))
@@ -343,15 +328,22 @@ export default function GatewayProfileV2Editor({
 
   useEffect(() => {
     if (!workspaceId) return
-    (async () => {
+    setPrimitivesLoading(true)
+    setPrimitivesError("")
+    ;(async () => {
       try {
         const API = process.env.NEXT_PUBLIC_API_BASE ?? ""
         const res = await authFetch(`${API}/workspaces/${workspaceId}/llm-primitives`)
-        if (!res.ok) return
+        if (!res.ok) {
+          throw new Error(`LLM Model Primitives fetch failed (${res.status})`)
+        }
         const data = await res.json() as { tier_map?: Record<string, Record<string, string>> }
-        if (data.tier_map) setTierMap(data.tier_map)
-      } catch {
-        // Silent fallback — hardcoded MODELS_BY_PROVIDER covers the boot path.
+        setTierMap(data.tier_map ?? {})
+      } catch (e) {
+        setPrimitivesError(e instanceof Error ? e.message : "LLM Model Primitives fetch failed")
+        setTierMap({})
+      } finally {
+        setPrimitivesLoading(false)
       }
     })()
   }, [authFetch, workspaceId])
@@ -509,6 +501,28 @@ export default function GatewayProfileV2Editor({
         </div>
       </div>
 
+      {primitivesError && (
+        <div className="sbadge err" style={{ display: "block", height: "auto", padding: "10px 12px", borderRadius: 8, whiteSpace: "normal" }}>
+          <strong>LLM Model Primitives unreachable</strong>
+          <div style={{ fontSize: 12, fontWeight: 400, marginTop: 4 }}>
+            {primitivesError}. Provider + Model dropdowns are empty until
+            this loads. Fix under Settings → LLM Model Primitives, then
+            reload this page.
+          </div>
+        </div>
+      )}
+
+      {!primitivesLoading && !primitivesError && providerKeys.length === 0 && (
+        <div className="sbadge warn" style={{ display: "block", height: "auto", padding: "10px 12px", borderRadius: 8, whiteSpace: "normal" }}>
+          <strong>No providers configured</strong>
+          <div style={{ fontSize: 12, fontWeight: 400, marginTop: 4 }}>
+            The workspace's LLM Model Primitives has no providers. Add
+            at least one under Settings → LLM Model Primitives before
+            saving this profile.
+          </div>
+        </div>
+      )}
+
       {catalogErrors.length > 0 && (
         <div className="sbadge warn" style={{ display: "block", height: "auto", padding: "10px 12px", borderRadius: 8, whiteSpace: "normal" }}>
           <strong>Capability catalog: {catalogErrors.length} issue(s)</strong>
@@ -587,18 +601,14 @@ function TargetRow({
   // provider; fall back to the hardcoded catalog if the workspace
   // hasn't customized (or if the primitives fetch failed).
   const modelsForProvider = (provider: string): Array<{ id: string; label: string }> => {
-    const fromTiers = modelsFromTierMap(tierMap[provider])
-    return fromTiers.length ? fromTiers : (MODELS_BY_PROVIDER[provider] ?? [])
+    // No fallback — primitives is authoritative. Empty list surfaces
+    // the empty-state hint that points at Settings.
+    return modelsFromTierMap(tierMap[provider])
   }
   const modelsForCurrent = modelsForProvider(target.provider)
-  // Provider list sourced from workspace LLM Model Primitives keys.
-  // Ensures new providers admins add under Settings show up here
-  // without a code change. Merged with the fallback set so a fresh
-  // workspace with no primitives still sees anthropic + openai.
-  const providers = (() => {
-    const merged = new Set<string>([...FALLBACK_PROVIDERS, ...Object.keys(tierMap)])
-    return [...merged].sort()
-  })()
+  // Provider list = keys the workspace declared in primitives.
+  // Sorted for stable render. Empty state handled in the render below.
+  const providers = Object.keys(tierMap).sort()
   return (
     <div className="card" style={{ padding: 12, display: "grid", gridTemplateColumns: "auto 1fr 1fr 1fr 1fr auto", gap: 10, alignItems: "end" }}>
       <div style={{ display: "flex", flexDirection: "column", gap: 3, alignItems: "center" }}>
@@ -645,8 +655,8 @@ function TargetRow({
           </select>
         </FieldLabel>
       ) : (
-        <FieldLabel label="Provider" hint="Upstream provider — sourced from workspace LLM Model Primitives. Add providers under Settings → LLM Model Primitives. Only anthropic + openai are catalog-certified for native_http / litellm_sdk today; others surface a publish-time capability error.">
-          <select value={target.provider} disabled={!isAdmin}
+        <FieldLabel label="Provider" hint="Upstream provider — sourced from workspace LLM Model Primitives. Add providers under Settings → LLM Model Primitives. Only anthropic + openai + LiteLLM-compat (perplexity/together) are catalog-certified for native_http / litellm_sdk today; others surface a publish-time capability error.">
+          <select value={target.provider} disabled={!isAdmin || providers.length === 0}
             onChange={e => {
               const provider = e.target.value
               const models = modelsForProvider(provider)
@@ -656,6 +666,9 @@ function TargetRow({
                 model: modelStillValid ? target.model : (models[0]?.id ?? ""),
               })
             }} style={inputStyle}>
+            {providers.length === 0 ? (
+              <option value="">— no providers in primitives — configure Settings → LLM Model Primitives —</option>
+            ) : null}
             {providers.map(p => <option key={p} value={p}>{p}</option>)}
           </select>
         </FieldLabel>
