@@ -74,9 +74,22 @@ class IntegrationConfig:
     operation_paths: dict[Operation, str]
     extra_headers: dict[str, str] = field(default_factory=dict)
     allows_endpoint_override: bool = False
+    # PR 5 — Two-key integrations (Helicone) authenticate the
+    # observability layer via ``auth_header`` AND the upstream vendor
+    # via ``vendor_auth_header``. Both keys live in the SAME vault
+    # entry; ``vendor_key_names`` lists the credential-dict names to
+    # try when the transport asks the vendor resolver for the upstream
+    # key. Empty tuple = one-key integration.
     vendor_auth_header: str | None = None
     vendor_bearer_prefix: bool = False
     vendor_key_names: tuple[str, ...] = ()
+    # PR 6 — per-tenant integrations (Azure OpenAI). A path containing
+    # ``{model}`` gets substituted with ``target.model`` at request
+    # time so the URL carries the deployment name inline. Names listed
+    # in ``query_params_from_options`` are pulled from
+    # ``target.provider_options`` and added as URL query parameters
+    # (underscore → dash conversion: ``api_version`` → ``api-version``).
+    query_params_from_options: tuple[str, ...] = field(default_factory=tuple)
 
 
 # One entry per supported integration. Adding one here requires a
@@ -107,10 +120,8 @@ _INTEGRATION_ENDPOINTS: dict[Integration, IntegrationConfig] = {
         },
     ),
     # PR 4 — Portkey. OpenAI-compat on ``/v1/chat/completions``. Auth
-    # uses a raw key in ``x-portkey-api-key`` (NOT ``Authorization:
-    # Bearer``). ``provider_options`` supplies the upstream selector
-    # (virtual_key / provider / config) — transport injects the
-    # matching ``x-portkey-*`` header at request time.
+    # uses a raw key in ``x-portkey-api-key``. ``provider_options``
+    # supplies the upstream selector (virtual_key / provider / config).
     "portkey": IntegrationConfig(
         base_url="https://api.portkey.ai/v1",
         auth_header="x-portkey-api-key",
@@ -119,11 +130,7 @@ _INTEGRATION_ENDPOINTS: dict[Integration, IntegrationConfig] = {
             "openai_chat_completions": "/chat/completions",
         },
     ),
-    # PR 5 — Helicone observability proxy for OpenAI. Two-key auth:
-    # ``Helicone-Auth: Bearer <helicone-key>`` for the observability
-    # layer PLUS ``Authorization: Bearer <openai-key>`` for the upstream
-    # vendor. Both keys live in the same vault handle
-    # (HELICONE_API_KEY + OPENAI_API_KEY inside one credential blob).
+    # PR 5 — Helicone observability proxy for OpenAI. Two-key auth.
     "helicone_openai": IntegrationConfig(
         base_url="https://oai.helicone.ai/v1",
         auth_header="Helicone-Auth",
@@ -146,14 +153,28 @@ _INTEGRATION_ENDPOINTS: dict[Integration, IntegrationConfig] = {
             "anthropic_messages": "/messages",
         },
         extra_headers={
-            # Anthropic REST requires an explicit API-version pin. The
-            # Anthropic native transport sends this too — Helicone just
-            # forwards it through to Anthropic.
             "anthropic-version": "2023-06-01",
         },
         vendor_auth_header="x-api-key",
         vendor_bearer_prefix=False,
         vendor_key_names=("ANTHROPIC_API_KEY", "anthropic_api_key", "api_key"),
+    ),
+    # PR 6 — Azure OpenAI. Per-tenant URL,
+    # ``allows_endpoint_override=True`` and the admin supplies the
+    # Azure Resource endpoint. Deployment name lives in
+    # ``target.model`` and substitutes into
+    # ``/openai/deployments/{model}/...`` at request time.
+    # ``api-version`` lives in ``target.provider_options.api_version``.
+    # Auth uses raw ``api-key`` header (no Bearer prefix).
+    "azure_openai": IntegrationConfig(
+        base_url="",  # unused when allows_endpoint_override=True
+        auth_header="api-key",
+        bearer_prefix=False,
+        operation_paths={
+            "openai_chat_completions": "/openai/deployments/{model}/chat/completions",
+        },
+        allows_endpoint_override=True,
+        query_params_from_options=("api_version",),
     ),
 }
 
@@ -245,6 +266,17 @@ class HTTPPassthroughTransport:
                 f"catalog should have caught this at publish."
             )
 
+        # PR 6 — path templating for per-tenant integrations (Azure).
+        # Only ``{model}`` substitution is supported; anything else is
+        # a config bug and left in the URL to surface a clear 404.
+        # Review fix — quote the model so slashes / spaces / control
+        # characters in a deployment name can't smuggle path segments
+        # (a name like ``prod/../secret`` shouldn't be able to redirect
+        # the request).
+        if "{model}" in upstream_path:
+            from urllib.parse import quote
+            upstream_path = upstream_path.replace("{model}", quote(target.model, safe=""))
+
         base_url = self._resolve_base_url(target, config)
 
         api_key = credential_resolver(target.credential_ref)
@@ -319,10 +351,25 @@ class HTTPPassthroughTransport:
                 f"Bearer {vendor_key}" if config.vendor_bearer_prefix else vendor_key
             )
 
+        # PR 6 — query params from provider_options (Azure api-version).
+        # Underscore→dash on the wire so the vendor sees the param name
+        # in the shape they document (``api-version``).
+        url = base_url + upstream_path
+        if config.query_params_from_options:
+            from urllib.parse import urlencode
+            opts = getattr(target, "provider_options", None) or {}
+            params: dict[str, str] = {}
+            for opt_name in config.query_params_from_options:
+                val = opts.get(opt_name)
+                if val:
+                    params[opt_name.replace("_", "-")] = str(val)
+            if params:
+                url = url + ("&" if "?" in url else "?") + urlencode(params)
+
         client = await self._get_client()
         try:
             response = await client.post(
-                base_url + upstream_path,
+                url,
                 headers=headers,
                 content=json.dumps(request_body).encode("utf-8"),
             )
@@ -364,9 +411,9 @@ class HTTPPassthroughTransport:
         """Pick the base URL for this attempt.
 
         Integrations that don't allow overrides pin ``config.base_url``.
-        ``integration='custom'`` (allows_endpoint_override=True) uses
-        ``target.endpoint`` verbatim — it's the whole point of the
-        custom integration.
+        Per-tenant integrations (``custom``, ``azure_openai``) set
+        ``allows_endpoint_override=True`` and use ``target.endpoint``
+        verbatim — that's the whole point.
 
         Warns loudly if a pinned integration carries a non-null
         ``target.endpoint``: silently ignoring it would leave the
@@ -383,10 +430,10 @@ class HTTPPassthroughTransport:
                 pinned_base_url=config.base_url,
                 ignored_endpoint=target.endpoint,
                 note=(
-                    "target.endpoint is only honored for "
-                    "integration='custom'. Remove endpoint from this "
-                    "target or switch to integration='custom' if the "
-                    "override was intentional."
+                    "target.endpoint is only honored for per-tenant "
+                    "integrations (custom, azure_openai). Remove "
+                    "endpoint from this target or switch integration if "
+                    "the override was intentional."
                 ),
             )
         return config.base_url

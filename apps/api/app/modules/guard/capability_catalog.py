@@ -76,20 +76,22 @@ _LITELLM_SDK_CERTIFIED: dict[tuple[str, Operation], list[str] | None] = {
 _HTTP_PASSTHROUGH_CERTIFIED: dict[tuple[Integration, Operation], bool] = {
     ("openrouter", "openai_chat_completions"): True,
     # PR 4 — Portkey certified for OpenAI-compat chat completions.
-    # Auth = raw ``x-portkey-api-key`` (see ``_INTEGRATION_ENDPOINTS``);
     # ``provider_options`` supplies the upstream selector.
     ("portkey", "openai_chat_completions"): True,
     # PR 5 — Helicone observability proxy. Two-key auth
     # (Helicone-Auth + upstream vendor auth) is handled in
-    # ``_INTEGRATION_ENDPOINTS`` via ``vendor_auth_header``. Each
-    # integration certifies exactly the operation surface the
-    # underlying vendor exposes on Helicone's mirror URL.
+    # ``_INTEGRATION_ENDPOINTS`` via ``vendor_auth_header``.
     ("helicone_openai",    "openai_chat_completions"): True,
     ("helicone_anthropic", "anthropic_messages"):      True,
+    # PR 6 — Azure OpenAI. Per-tenant URL (admin sets Resource
+    # endpoint on the target) + deployment name in ``target.model``
+    # + ``api_version`` in ``provider_options``. Auth via
+    # ``api-key`` header (no Bearer).
+    ("azure_openai", "openai_chat_completions"): True,
 }
 
 
-CATALOG_VERSION = "2026.09.22.v2-helicone-passthrough"
+CATALOG_VERSION = "2026.09.22.v2-azure-passthrough"
 
 
 class CapabilityMismatch(Exception):

@@ -5,7 +5,7 @@
 // operation is not certified" before the round-trip. Stale mirror =
 // less-helpful UI, never a bad profile in the DB.
 
-export const CATALOG_VERSION = "2026.09.22.v2-helicone-passthrough"
+export const CATALOG_VERSION = "2026.09.22.v2-azure-passthrough"
 
 export type Operation =
   | "anthropic_messages"
@@ -53,7 +53,7 @@ const _HTTP_PASSTHROUGH: Record<Integration, Operation[]> = {
   openrouter: ["openai_chat_completions"],
   helicone_anthropic: ["anthropic_messages"],
   helicone_openai: ["openai_chat_completions"],
-  azure_openai: [],
+  azure_openai: ["openai_chat_completions"],
   custom: [],
 }
 

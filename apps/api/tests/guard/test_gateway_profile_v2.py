@@ -276,11 +276,15 @@ def test_catalog_certifies_openrouter_for_openai_chat_completions():
 
 
 def test_catalog_still_rejects_other_passthrough_integrations():
-    """Azure OpenAI stays uncertified on this branch (PR 6). Portkey
-    (PR 4) + Helicone (PR 5) both landed. Publish rejects the still-
-    uncertified set — the loud rejection is what stops an admin from
-    believing a live target is up before its executor ships."""
-    for integration in ("azure_openai",):
+    """All passthrough presets landed except ``custom`` (PR 7). Publish
+    rejects the still-uncertified set — the loud rejection is what
+    stops an admin from believing a live target is up before its
+    executor ships. ``custom`` uses a dedicated
+    ``test_catalog_rejects_custom_integration_without_explicit_certification``
+    below."""
+    # After PR 6, only ``custom`` remains uncertified in this test's
+    # scope. Leave the loop shape in place so PR 7 can flip it easily.
+    for integration in ():
         target = HTTPPassthroughTarget(
             id=f"t-{integration}", transport="http_passthrough",
             integration=integration, model="some-model",
@@ -303,6 +307,23 @@ def test_catalog_certifies_helicone_openai_for_chat_completions():
     )
 
 
+def test_catalog_certifies_azure_openai_for_chat_completions():
+    """PR 6 — Azure OpenAI certified for openai_chat_completions.
+    Per-tenant endpoint + deployment-name-as-model + api-version in
+    provider_options are all validated at request time by the transport,
+    not the catalog."""
+    target = HTTPPassthroughTarget(
+        id="t-azure", transport="http_passthrough",
+        integration="azure_openai", model="gpt-4o-prod-deploy",
+        credential_ref=CRED_PORTKEY,
+        endpoint="https://my-resource.openai.azure.com",
+        provider_options={"api_version": "2024-06-01"},
+    )
+    validate_targets_against_accepts(
+        accepts=["openai_chat_completions"], targets=[target],
+    )
+
+
 def test_catalog_certifies_helicone_anthropic_for_messages():
     target = HTTPPassthroughTarget(
         id="t-helicone-anthropic", transport="http_passthrough",
@@ -312,6 +333,57 @@ def test_catalog_certifies_helicone_anthropic_for_messages():
     validate_targets_against_accepts(
         accepts=["anthropic_messages"], targets=[target],
     )
+
+
+def test_azure_target_requires_endpoint():
+    """PR 6 review — publish must reject an Azure target with no
+    endpoint. Per-tenant integration; there is no shared fallback URL."""
+    with pytest.raises(ValueError, match=r"endpoint"):
+        HTTPPassthroughTarget(
+            id="t-azure", transport="http_passthrough",
+            integration="azure_openai", model="gpt-4o",
+            credential_ref=CRED_PORTKEY,
+            provider_options={"api_version": "2024-06-01"},
+            # No endpoint.
+        )
+
+
+def test_azure_target_requires_api_version():
+    """PR 6 review — publish must reject an Azure target with no
+    api_version in provider_options. Azure REST won't honour requests
+    without one; catching at publish beats a 400 at request time."""
+    with pytest.raises(ValueError, match=r"api_version"):
+        HTTPPassthroughTarget(
+            id="t-azure", transport="http_passthrough",
+            integration="azure_openai", model="gpt-4o",
+            credential_ref=CRED_PORTKEY,
+            endpoint="https://my-resource.openai.azure.com",
+            # No provider_options.api_version.
+        )
+
+
+@pytest.mark.parametrize("bad_endpoint", [
+    "http://127.0.0.1:8080/v1",
+    "http://localhost/v1",
+    "https://10.0.0.5/v1",
+    "https://192.168.1.1/v1",
+    "http://169.254.169.254/latest/meta-data",  # cloud metadata service
+    "http://[::1]/v1",
+])
+def test_endpoint_rejects_private_and_loopback_targets(bad_endpoint):
+    """PR 6 review finding 1 — schema rejects literal-IP loopback,
+    RFC 1918 private ranges, link-local (incl. cloud metadata), and
+    loopback aliases. Full egress control remains deployment policy
+    but this stops the obvious workspace-admin-points-at-127.0.0.1
+    class of attack."""
+    with pytest.raises(ValueError, match=r"loopback|non-public|refused"):
+        HTTPPassthroughTarget(
+            id="t", transport="http_passthrough",
+            integration="azure_openai", model="gpt-4o",
+            credential_ref=CRED_PORTKEY,
+            endpoint=bad_endpoint,
+            provider_options={"api_version": "2024-06-01"},
+        )
 
 
 def test_catalog_still_rejects_openrouter_for_uncertified_operation():

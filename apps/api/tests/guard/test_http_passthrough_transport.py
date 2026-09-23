@@ -86,6 +86,20 @@ def _helicone_anthropic_target(**overrides) -> HTTPPassthroughTarget:
     return HTTPPassthroughTarget(**defaults)
 
 
+def _azure_target(**overrides) -> HTTPPassthroughTarget:
+    defaults = dict(
+        id="azure-primary",
+        transport="http_passthrough",
+        integration="azure_openai",
+        model="gpt-4o-prod-deploy",   # deployment name, NOT a model id
+        credential_ref=f"vault://{ENV}/azure",
+        endpoint="https://my-resource.openai.azure.com",
+        provider_options={"api_version": "2024-06-01"},
+    )
+    defaults.update(overrides)
+    return HTTPPassthroughTarget(**defaults)
+
+
 class _FakeResponse:
     def __init__(self, status_code=200, json_body=None):
         self.status_code = status_code
@@ -285,12 +299,9 @@ async def test_helicone_anthropic_uses_x_api_key_and_version_header(monkeypatch)
 @pytest.mark.anyio("asyncio")
 async def test_helicone_missing_vendor_key_fails_closed():
     """Fail-closed if the bridge didn't supply a vendor resolver, or
-    the vendor resolver returns empty. Two-key integrations require
-    both keys — degrading to a Helicone-only call would 401 anyway,
-    but the specific config-error message beats a mystery 401."""
+    the vendor resolver returns empty."""
     transport = HTTPPassthroughTransport()
 
-    # Case 1: no vendor resolver passed at all.
     with pytest.raises(ValueError, match=r"vendor_credential_resolver"):
         await transport.execute(
             target=_helicone_openai_target(),
@@ -299,7 +310,6 @@ async def test_helicone_missing_vendor_key_fails_closed():
             credential_resolver=lambda ref: "sk-hel",
         )
 
-    # Case 2: vendor resolver returns empty (vault entry missing key).
     with pytest.raises(ValueError, match=r"empty"):
         await transport.execute(
             target=_helicone_openai_target(),
@@ -308,6 +318,100 @@ async def test_helicone_missing_vendor_key_fails_closed():
             credential_resolver=lambda ref: "sk-hel",
             vendor_credential_resolver=lambda ref: "",
         )
+
+
+@pytest.mark.anyio("asyncio")
+async def test_azure_openai_url_has_deployment_and_api_version(monkeypatch):
+    """Azure URL is per-tenant: <endpoint>/openai/deployments/<deployment>/
+    chat/completions?api-version=<version>. Auth uses raw ``api-key``
+    header, NOT ``Authorization: Bearer``. Deployment lives in
+    target.model; api-version lives in target.provider_options and is
+    added as a query parameter with underscore→dash conversion."""
+    captured: dict = {}
+
+    async def _fake_post(url, headers, content):
+        captured.update(url=url, headers=headers, content=content)
+        return _FakeResponse(200, {"id": "chatcmpl-az"})
+
+    transport = HTTPPassthroughTransport()
+    fake_client = MagicMock()
+    fake_client.post = _fake_post
+    monkeypatch.setattr(transport, "_get_client", AsyncMock(return_value=fake_client))
+
+    result = await transport.execute(
+        target=_azure_target(),
+        operation="openai_chat_completions",
+        payload={"model": "cond-alias", "messages": [{"role": "user", "content": "hi"}]},
+        credential_resolver=lambda ref: "az-key-live",
+    )
+
+    assert result == {"id": "chatcmpl-az"}
+    assert captured["url"] == (
+        "https://my-resource.openai.azure.com"
+        "/openai/deployments/gpt-4o-prod-deploy/chat/completions"
+        "?api-version=2024-06-01"
+    )
+    assert captured["headers"]["api-key"] == "az-key-live"
+    assert "authorization" not in {k.lower() for k in captured["headers"]}
+    import json as _json
+    assert _json.loads(captured["content"])["model"] == "gpt-4o-prod-deploy"
+
+
+@pytest.mark.anyio("asyncio")
+async def test_azure_deployment_name_is_url_encoded(monkeypatch):
+    """PR 6 review — a deployment name with slashes / spaces would
+    otherwise smuggle path segments into the Azure URL. Quote per RFC
+    3986 unreserved so the request lands at the literal deployment."""
+    captured: dict = {}
+
+    async def _fake_post(url, headers, content):
+        captured.update(url=url)
+        return _FakeResponse(200, {})
+
+    transport = HTTPPassthroughTransport()
+    fake_client = MagicMock()
+    fake_client.post = _fake_post
+    monkeypatch.setattr(transport, "_get_client", AsyncMock(return_value=fake_client))
+
+    await transport.execute(
+        target=_azure_target(model="my deploy/name+special"),
+        operation="openai_chat_completions",
+        payload={"messages": []},
+        credential_resolver=lambda ref: "az-key",
+    )
+    # Space → %20, slash → %2F, plus → %2B — no raw segments smuggled.
+    assert "/openai/deployments/my%20deploy%2Fname%2Bspecial/chat/completions" in captured["url"]
+
+
+@pytest.mark.anyio("asyncio")
+async def test_azure_openai_endpoint_override_does_not_warn(monkeypatch):
+    """Azure is per-tenant, so an endpoint override is REQUIRED, not
+    accidental. The endpoint-override warning that fires for pinned
+    integrations must NOT fire for Azure."""
+
+    async def _fake_post(url, headers, content):
+        return _FakeResponse(200, {"id": "x"})
+
+    transport = HTTPPassthroughTransport()
+    fake_client = MagicMock()
+    fake_client.post = _fake_post
+    monkeypatch.setattr(transport, "_get_client", AsyncMock(return_value=fake_client))
+
+    warnings: list[dict] = []
+    import app.runtime.http_passthrough_transport as mod
+    monkeypatch.setattr(mod.log, "warning", lambda ev, **kw: warnings.append({"event": ev, **kw}))
+
+    await transport.execute(
+        target=_azure_target(),
+        operation="openai_chat_completions",
+        payload={"messages": []},
+        credential_resolver=lambda ref: "az-key",
+    )
+    override_warnings = [
+        w for w in warnings
+        if w["event"] == "gateway.v2.http_passthrough.endpoint_override_ignored"
+    ]
+    assert override_warnings == []
 
 
 @pytest.mark.anyio("asyncio")
@@ -419,16 +523,15 @@ async def test_empty_credential_raises_before_calling_upstream():
 
 @pytest.mark.anyio("asyncio")
 async def test_unregistered_integration_raises_before_upstream():
-    """Azure / Custom aren't registered in ``_INTEGRATION_ENDPOINTS``
-    yet (Portkey landed in PR 4, Helicone_* in PR 5). Fail loudly with
-    the specific integration name, don't guess at a URL."""
+    """Custom is not yet registered in ``_INTEGRATION_ENDPOINTS`` (PR 7).
+    Fail loudly with the specific integration name, don't guess at a URL."""
     transport = HTTPPassthroughTransport()
-    with pytest.raises(UnsupportedPassthroughIntegration, match=r"azure_openai"):
+    with pytest.raises(UnsupportedPassthroughIntegration, match=r"custom"):
         await transport.execute(
-            target=_openrouter_target(integration="azure_openai"),
+            target=_openrouter_target(integration="custom"),
             operation="openai_chat_completions",
             payload={"messages": []},
-            credential_resolver=lambda ref: "az-key",
+            credential_resolver=lambda ref: "sk-custom",
         )
 
 
@@ -458,5 +561,7 @@ def test_integration_certifies_operation_helper():
     assert integration_certifies_operation("helicone_openai", "anthropic_messages") is False
     assert integration_certifies_operation("helicone_anthropic", "anthropic_messages") is True
     assert integration_certifies_operation("helicone_anthropic", "openai_chat_completions") is False
-    # Azure (PR 6) + Custom (PR 7) not registered on this branch.
-    assert integration_certifies_operation("azure_openai", "openai_chat_completions") is False
+    assert integration_certifies_operation("azure_openai", "openai_chat_completions") is True
+    assert integration_certifies_operation("azure_openai", "anthropic_messages") is False
+    # Custom (PR 7) still not registered on this branch.
+    assert integration_certifies_operation("custom", "openai_chat_completions") is False

@@ -483,9 +483,17 @@ def _validate_working_copy(working_copy: dict[str, Any]) -> GatewayProfileV2:
                 and isinstance(loc_parts[1], int)
             ):
                 target_index = loc_parts[1]
-                if len(loc_parts) >= 3 and isinstance(loc_parts[2], str) \
-                        and loc_parts[2] in _TRANSPORT_VARIANT_NAME.values():
-                    variant_name = loc_parts[2]
+                # Historical shape: ("targets", i, "LiteLLMSDKTarget", ...).
+                # PR 6 review — model_validator errors wrap the variant
+                # name inside a ``function-after[...HTTPPassthroughTarget]``
+                # synthetic segment. Detect exact match OR substring so
+                # the filter still catches the noise.
+                if len(loc_parts) >= 3 and isinstance(loc_parts[2], str):
+                    seg = loc_parts[2]
+                    for name in _TRANSPORT_VARIANT_NAME.values():
+                        if name == seg or name in seg:
+                            variant_name = name
+                            break
 
             # Discriminated-union noise filter (self-review #2): when
             # a target's ``transport`` is set, Pydantic still walks the

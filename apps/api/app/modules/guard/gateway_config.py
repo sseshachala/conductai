@@ -22,11 +22,59 @@ profile behind the ``guard_gateway_profile_v2`` flag.
 """
 from __future__ import annotations
 
+import ipaddress
 import re
 from typing import Any, Literal, Union
+from urllib.parse import urlparse
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+
+def _reject_private_endpoint(url: str) -> None:
+    """Reject endpoints that resolve to loopback / private / link-local
+    address literals.
+
+    PR 6 review finding 1 — the transport HTTPX-forwards ``target.endpoint``
+    verbatim for integrations with ``allows_endpoint_override=True``
+    (currently ``azure_openai`` + ``custom``). Without this guard a
+    workspace admin can point at any service reachable from the hosted
+    gateway (127.0.0.1, RFC 1918, 169.254.169.254 for cloud metadata,
+    ::1, etc.). Full network-level egress protection is deployment
+    policy; this schema-level guard blocks the obvious literal-IP
+    cases so a hostile profile can't ship without an admin explicitly
+    disabling the check.
+
+    Does NOT resolve hostnames — DNS rebinding is out of scope for
+    schema validation. Deployment-level egress firewalls remain the
+    authoritative boundary; this is defense in depth.
+    """
+    try:
+        parsed = urlparse(url)
+    except Exception as exc:
+        raise ValueError(f"endpoint URL malformed: {exc}") from exc
+    host = (parsed.hostname or "").strip()
+    if not host:
+        raise ValueError("endpoint URL has no hostname")
+    # Literal IP checks (v4 + v6).
+    try:
+        addr = ipaddress.ip_address(host)
+    except ValueError:
+        # Not an IP literal — hostname. Block the obvious loopback
+        # aliases anyway; DNS-based blocking is deployment policy.
+        if host.lower() in {"localhost", "localhost.localdomain", "ip6-localhost"}:
+            raise ValueError(
+                f"endpoint hostname {host!r} is a loopback alias — refused. "
+                f"Point at a public hostname or use a hosted deployment "
+                f"policy to opt-in to internal endpoints."
+            )
+        return
+    if addr.is_loopback or addr.is_private or addr.is_link_local or addr.is_reserved or addr.is_multicast:
+        raise ValueError(
+            f"endpoint {url!r} resolves to a non-public address "
+            f"({addr}). Refused. Public endpoints only; internal "
+            f"destinations require a deployment-level egress policy."
+        )
 
 
 # ─── Schema v1 (legacy — retained for the current resolver path) ────────
@@ -285,24 +333,53 @@ class HTTPPassthroughTarget(BaseModel):
     model: str = Field(min_length=1, max_length=256)
     credential_ref: str = Field(min_length=1, max_length=512)
     endpoint: str | None = Field(default=None, max_length=2048)
-    # PR 4 — opaque per-integration tuning bag. Portkey reads
-    # ``virtual_key`` / ``provider`` / ``config`` from here to drive
-    # the ``x-portkey-*`` routing headers. Symmetric with the field
-    # on the native + LiteLLM target subclasses; persisted as JSON
-    # inside the profile row so no Alembic migration is required.
+    # Opaque per-integration tuning bag. Symmetric with the field on
+    # the native + LiteLLM target subclasses; persisted as JSON inside
+    # the profile row so no Alembic migration is required.
+    # - PR 4: Portkey reads ``virtual_key`` / ``provider`` / ``config``
+    #   to drive the ``x-portkey-*`` routing headers.
+    # - PR 6: Azure OpenAI uses ``api_version`` (added as a URL query
+    #   parameter by the transport via
+    #   ``IntegrationConfig.query_params_from_options``).
     provider_options: dict[str, Any] = Field(default_factory=dict)
 
     @field_validator("endpoint")
     @classmethod
     def validate_endpoint(cls, value: str | None) -> str | None:
-        if value is not None and not value.startswith(("https://", "http://")):
+        if value is None:
+            return value
+        if not value.startswith(("https://", "http://")):
             raise ValueError("endpoint must use http:// or https://")
-        return value.rstrip("/") if value else value
+        _reject_private_endpoint(value)
+        return value.rstrip("/")
 
     @field_validator("credential_ref")
     @classmethod
     def validate_credential(cls, value: str) -> str:
         return _validate_credential_ref(value)
+
+    @model_validator(mode="after")
+    def _validate_per_integration_requirements(self):
+        """PR 6 review — integrations with ``allows_endpoint_override``
+        actually REQUIRE an endpoint (Azure OpenAI: per-tenant Resource
+        URL). Azure additionally requires ``provider_options.api_version``.
+        Both were previously optional; missing them was accepted at
+        publish and would only surface as a 4xx at request time."""
+        if self.integration == "azure_openai":
+            if not self.endpoint:
+                raise ValueError(
+                    "azure_openai target requires an ``endpoint`` — set "
+                    "the per-tenant Azure OpenAI Resource URL "
+                    "(e.g. https://my-resource.openai.azure.com)."
+                )
+            api_version = (self.provider_options or {}).get("api_version")
+            if not isinstance(api_version, str) or not api_version.strip():
+                raise ValueError(
+                    "azure_openai target requires "
+                    "``provider_options.api_version`` (e.g. \"2024-06-01\") "
+                    "— the Azure REST API does not honour requests without one."
+                )
+        return self
 
 
 # Discriminated union — target shape depends on ``transport``. Pydantic

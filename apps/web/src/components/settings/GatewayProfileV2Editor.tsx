@@ -49,9 +49,9 @@ const PASSTHROUGH_INTEGRATION_OPERATIONS: Record<string, Operation[]> = {
   portkey:            ["openai_chat_completions"],
   helicone_openai:    ["openai_chat_completions"],
   helicone_anthropic: ["anthropic_messages"],
-  // azure_openai (PR 6) / custom (PR 7) stay uncertified in this
-  // mirror until they ship. Absent = deriveAccepts contributes
-  // nothing for them.
+  azure_openai:       ["openai_chat_completions"],
+  // custom (PR 7) stays uncertified in this mirror until it ships.
+  // Absent = deriveAccepts contributes nothing for it.
 }
 
 // Expected vault key name per passthrough integration. Mirrors
@@ -547,7 +547,7 @@ function TargetRow({
       {target.transport === "http_passthrough" ? (
         <FieldLabel
           label="Integration"
-          hint="External gateway routing traffic on our behalf. OpenRouter, Portkey, and Helicone (OpenAI + Anthropic) are certified today; Azure OpenAI + Custom stay uncertified until each ships its per-integration auth shape. Helicone vault entries must hold two keys: HELICONE_API_KEY + the vendor key (OPENAI_API_KEY or ANTHROPIC_API_KEY)."
+          hint="External gateway routing traffic on our behalf. OpenRouter, Portkey, Helicone (OpenAI + Anthropic), and Azure OpenAI are certified today; Custom stays uncertified until it ships. Helicone vault entries must hold two keys (HELICONE_API_KEY + vendor); Azure needs a per-tenant Resource endpoint + deployment name (in place of model id) + api-version."
         >
           <select value={target.integration} disabled={!isAdmin}
             onChange={e => onChange({ integration: e.target.value })}
@@ -556,7 +556,7 @@ function TargetRow({
             <option value="portkey">portkey (certified)</option>
             <option value="helicone_anthropic">helicone_anthropic (certified)</option>
             <option value="helicone_openai">helicone_openai (certified)</option>
-            <option value="azure_openai" disabled>azure_openai (not yet certified)</option>
+            <option value="azure_openai">azure_openai (certified)</option>
             <option value="custom" disabled>custom (not yet certified)</option>
           </select>
         </FieldLabel>
@@ -577,10 +577,23 @@ function TargetRow({
         </FieldLabel>
       )}
 
-      <FieldLabel label="Model" hint={target.transport === "http_passthrough" ? "Upstream model id in the integration's format (OpenRouter: `anthropic/claude-3.5-sonnet`, Portkey: `gpt-4o` or vendor-prefixed via virtual key)." : "Real upstream model ID the request goes to."}>
+      <FieldLabel
+        label={target.transport === "http_passthrough" && target.integration === "azure_openai" ? "Deployment name" : "Model"}
+        hint={
+          target.transport === "http_passthrough"
+            ? (target.integration === "azure_openai"
+                ? "Azure OpenAI deployment name — the URL becomes /openai/deployments/{deployment}/... Not a model id."
+                : "Upstream model id in the integration's format (OpenRouter: `anthropic/claude-3.5-sonnet`, Portkey: `gpt-4o` or vendor-prefixed via virtual key).")
+            : "Real upstream model ID the request goes to."
+        }
+      >
         {target.transport === "http_passthrough" ? (
           <input value={target.model} disabled={!isAdmin}
-            placeholder={target.integration === "portkey" ? "gpt-4o" : "anthropic/claude-3.5-sonnet"}
+            placeholder={
+              target.integration === "azure_openai" ? "gpt-4o-prod-deploy"
+              : target.integration === "portkey" ? "gpt-4o"
+              : "anthropic/claude-3.5-sonnet"
+            }
             onChange={e => onChange({ model: e.target.value })}
             style={inputStyle} />
         ) : (
@@ -630,8 +643,8 @@ function TargetRow({
         </FieldLabel>
       </div>
 
-      {/* PR 4 review — Portkey needs an upstream selector alongside
-          the gateway key. Any one of virtual_key / provider / config
+      {/* PR 4 — Portkey needs an upstream selector alongside the
+          gateway key. Any one of virtual_key / provider / config
           satisfies the required-selector check server-side. */}
       {target.transport === "http_passthrough" && target.integration === "portkey" ? (
         <div style={{ gridColumn: "2 / -1", display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
@@ -670,6 +683,33 @@ function TargetRow({
                 provider_options: {
                   ...(target.provider_options ?? {}),
                   config: e.target.value || undefined,
+                },
+              })}
+              style={inputStyle} />
+          </FieldLabel>
+        </div>
+      ) : null}
+
+      {/* PR 6 — Azure OpenAI needs per-tenant endpoint + api-version.
+          Endpoint reuses the existing `endpoint` field; api-version
+          lives in `provider_options` and is opaque to the schema. */}
+      {target.transport === "http_passthrough" && target.integration === "azure_openai" ? (
+        <div style={{ gridColumn: "2 / -1", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <FieldLabel label="Resource endpoint" hint="Your Azure OpenAI resource URL, e.g. https://my-resource.openai.azure.com (no trailing path).">
+            <input value={target.endpoint} disabled={!isAdmin}
+              placeholder="https://my-resource.openai.azure.com"
+              onChange={e => onChange({ endpoint: e.target.value })}
+              style={inputStyle} />
+          </FieldLabel>
+          <FieldLabel label="api-version" hint="Azure OpenAI API version, e.g. 2024-06-01. Added as a URL query parameter.">
+            <input
+              value={String((target.provider_options as Record<string, unknown> | undefined)?.api_version ?? "")}
+              disabled={!isAdmin}
+              placeholder="2024-06-01"
+              onChange={e => onChange({
+                provider_options: {
+                  ...(target.provider_options ?? {}),
+                  api_version: e.target.value,
                 },
               })}
               style={inputStyle} />
