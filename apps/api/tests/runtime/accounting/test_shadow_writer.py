@@ -40,22 +40,27 @@ def _shadow_off(monkeypatch):
 
 @pytest.fixture
 def _captured_row(monkeypatch):
-    """Intercept SessionLocal and return whatever row was added."""
+    """Intercept _persist_atomic and return whatever row was persisted.
+
+    #2209 Session 6G: the writer now uses ``INSERT ... ON CONFLICT ... DO
+    UPDATE`` via SQLAlchemy Core so a mocked ``session.add`` wouldn't fire.
+    Tests hook the extracted persist helper instead — captures the ORM
+    row exactly as before.
+    """
     captured: dict = {}
-    session = MagicMock()
 
-    def _add(row):
+    def _capture(_db, row, *, is_reconciler):
         captured["row"] = row
+        captured["is_reconciler"] = is_reconciler
 
-    def _commit():
-        captured["committed"] = True
-
-    session.add.side_effect = _add
-    session.commit.side_effect = _commit
-
-    session_factory = MagicMock(return_value=session)
     monkeypatch.setattr(
-        "app.runtime.accounting.shadow_writer.SessionLocal", session_factory
+        "app.runtime.accounting.shadow_writer._persist_atomic", _capture
+    )
+    # SessionLocal still gets opened; keep it a no-op MagicMock so the
+    # writer can call db.commit() / db.close() without raising.
+    monkeypatch.setattr(
+        "app.runtime.accounting.shadow_writer.SessionLocal",
+        MagicMock(return_value=MagicMock()),
     )
     return captured
 
@@ -262,11 +267,14 @@ def test_shadow_records_attempts_meta_in_provenance(_shadow_on, _captured_row):
 
 def test_shadow_swallows_db_error(_shadow_on, monkeypatch):
     """Even if the DB throws, shadow_write returns None and does not propagate."""
-    session = MagicMock()
-    session.add.side_effect = RuntimeError("db exploded")
+    def _boom(*_a, **_kw):
+        raise RuntimeError("db exploded")
+    monkeypatch.setattr(
+        "app.runtime.accounting.shadow_writer._persist_atomic", _boom
+    )
     monkeypatch.setattr(
         "app.runtime.accounting.shadow_writer.SessionLocal",
-        MagicMock(return_value=session),
+        MagicMock(return_value=MagicMock()),
     )
     result = shadow_write(
         workspace_id=uuid.uuid4(),

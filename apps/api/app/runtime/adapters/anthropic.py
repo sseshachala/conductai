@@ -276,7 +276,13 @@ class AnthropicClient:
         """
         # Reset per-call scratch. Populated as we see message_start (input
         # + cache tokens) and message_delta (final output_tokens).
+        # ``last_usage_final`` distinguishes "saw the terminal
+        # message_delta" from "only saw message_start" — reviewer #1
+        # (#2221 review at 42d89898). Without this a mid-stream
+        # interruption gets marked COMPLETE with output=0 even though we
+        # never observed the terminal frame.
         self.last_usage = None
+        self.last_usage_final = False
         with self._client.messages.stream(
             model=model,
             max_tokens=max_tokens,
@@ -296,6 +302,10 @@ class AnthropicClient:
                         merged = dict(self.last_usage or {})
                         merged.update(_usage_to_dict(usage))
                         self.last_usage = merged
+                        # message_delta is Anthropic's terminal usage
+                        # event (carries final output_tokens). Seeing it
+                        # means we captured complete usage.
+                        self.last_usage_final = True
                 elif event_type == "content_block_delta":
                     delta = getattr(event, "delta", None)
                     text_val = getattr(delta, "text", None) if delta is not None else None

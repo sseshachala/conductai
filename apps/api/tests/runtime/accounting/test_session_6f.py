@@ -28,13 +28,14 @@ def _shadow_on(monkeypatch):
 @pytest.fixture
 def _captured(monkeypatch):
     rows: list = []
-    def _make_session():
-        session = MagicMock()
-        session.add.side_effect = lambda r: rows.append(r)
-        return session
+    def _capture(_db, row, *, is_reconciler):
+        rows.append(row)
+    monkeypatch.setattr(
+        "app.runtime.accounting.shadow_writer._persist_atomic", _capture
+    )
     monkeypatch.setattr(
         "app.runtime.accounting.shadow_writer.SessionLocal",
-        MagicMock(side_effect=_make_session),
+        MagicMock(return_value=MagicMock()),
     )
     return rows
 
@@ -178,22 +179,20 @@ def test_attempt_record_model_field_present():
 # ─── #4 reconciler placeholder promotion ───────────────────────────────
 
 
-def test_reconciler_writer_deletes_placeholder_before_real_insert(
-    _shadow_on, _captured, monkeypatch
-):
-    """When a reconciler-source row exists at (request_id, ordinal), a
-    subsequent real shadow_write MUST replace it, not collide silently."""
-    executed_deletes: list = []
-    def _make_session():
-        session = MagicMock()
-        session.add.side_effect = lambda r: _captured.append(r)
-        session.execute.side_effect = lambda sql, params=None: executed_deletes.append(
-            (str(sql), params)
-        )
-        return session
+def test_non_reconciler_write_flags_atomic_promotion(_shadow_on, monkeypatch):
+    """Session 6G moved placeholder promotion from DELETE-then-INSERT to
+    atomic ``INSERT ON CONFLICT DO UPDATE ... WHERE source='reconciler'``.
+    Callers signal 'this is a real write' via ``is_reconciler=False`` to
+    ``_persist_atomic``; the SQL clause does the guarded overwrite."""
+    calls: list = []
+    def _capture(_db, row, *, is_reconciler):
+        calls.append(is_reconciler)
+    monkeypatch.setattr(
+        "app.runtime.accounting.shadow_writer._persist_atomic", _capture
+    )
     monkeypatch.setattr(
         "app.runtime.accounting.shadow_writer.SessionLocal",
-        MagicMock(side_effect=_make_session),
+        MagicMock(return_value=MagicMock()),
     )
     from app.runtime.accounting.shadow_writer import shadow_write
 
@@ -208,31 +207,24 @@ def test_reconciler_writer_deletes_placeholder_before_real_insert(
         legacy_input_tokens=10,
         legacy_output_tokens=5,
         legacy_cost_usd=0.0001,
-        source="gateway",  # NOT reconciler
+        source="gateway",
     )
-    # DELETE issued before the INSERT.
-    assert any(
-        "DELETE FROM llm_attempt_receipts" in sql and "source = 'reconciler'" in sql
-        for sql, _ in executed_deletes
-    )
+    assert calls == [False]
 
 
-def test_reconciler_writes_do_not_cascade_delete_themselves(
-    _shadow_on, _captured, monkeypatch
-):
-    """A second reconciler pass must NOT delete its own placeholder to
-    make room for another placeholder — that would loop."""
-    executed_deletes: list = []
-    def _make_session():
-        session = MagicMock()
-        session.add.side_effect = lambda r: _captured.append(r)
-        session.execute.side_effect = lambda sql, params=None: executed_deletes.append(
-            (str(sql), params)
-        )
-        return session
+def test_reconciler_write_flags_placeholder_mode(_shadow_on, monkeypatch):
+    """Reconciler writes MUST pass ``is_reconciler=True`` so ``_persist_atomic``
+    uses ``ON CONFLICT DO NOTHING`` — a placeholder never overwrites a
+    real receipt."""
+    calls: list = []
+    def _capture(_db, row, *, is_reconciler):
+        calls.append(is_reconciler)
+    monkeypatch.setattr(
+        "app.runtime.accounting.shadow_writer._persist_atomic", _capture
+    )
     monkeypatch.setattr(
         "app.runtime.accounting.shadow_writer.SessionLocal",
-        MagicMock(side_effect=_make_session),
+        MagicMock(return_value=MagicMock()),
     )
     from app.runtime.accounting.shadow_writer import shadow_write
 
@@ -249,20 +241,35 @@ def test_reconciler_writes_do_not_cascade_delete_themselves(
         legacy_cost_usd=None,
         source="reconciler",
     )
-    assert not any(
-        "DELETE FROM llm_attempt_receipts" in sql for sql, _ in executed_deletes
-    )
+    assert calls == [True]
 
 
-def test_reconciler_join_excludes_placeholders():
-    """The reconciler's LEFT JOIN should ignore reconciler-source rows so
-    a stale placeholder never blocks re-reconciliation once real data
-    arrives."""
+def test_persist_atomic_builds_on_conflict_do_update_for_real_writes():
+    """Pin the SQL construction: non-reconciler → DO UPDATE with the
+    ``source='reconciler'`` predicate. A regression to DELETE-then-INSERT
+    would drop this clause."""
+    import inspect
+    from app.runtime.accounting import shadow_writer
+
+    src = inspect.getsource(shadow_writer._persist_atomic)
+    assert "on_conflict_do_update" in src
+    assert "table.c.source == \"reconciler\"" in src
+    assert "on_conflict_do_nothing" in src
+
+
+def test_reconciler_join_matches_any_receipt():
+    """Session 6G reviewer #3 REVERSED Session 6F's LEFT JOIN filter. The
+    reconciler now matches ANY receipt (placeholder or real) so the same
+    placeholders are not rescanned every pass. Placeholder-vs-real
+    supersession happens in ``_persist_atomic`` via the atomic upsert."""
     import inspect
     from app.runtime.accounting import reconciler
 
     src = inspect.getsource(reconciler)
-    assert "r.source IS DISTINCT FROM 'reconciler'" in src
+    # The old filter must be gone.
+    assert "r.source IS DISTINCT FROM 'reconciler'" not in src
+    # The scan is ORDER BY ts so pagination is deterministic.
+    assert "ORDER BY gae.ts" in src
 
 
 # ─── #6 cache-savings helper honest scope ──────────────────────────────

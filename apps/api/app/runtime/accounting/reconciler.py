@@ -94,9 +94,15 @@ def reconcile_missing_receipts(
         # error and returned zero, hiding the failure. Fixed here + in
         # metrics._count_settled_missing_shadow.
         #
-        # Reviewer #4: also filter out reconciled placeholders so a
-        # real receipt written later can supersede them (see
-        # write_receipts_for_attempts placeholder-promotion logic).
+        # #2209 Session 6G reviewer #3 (#2221 review at 42d89898): the
+        # LEFT JOIN now matches ANY receipt (real or placeholder). A
+        # request that already has a placeholder is not re-inserted on
+        # subsequent passes — that made the same placeholders fill the
+        # LIMIT window forever and blocked progress to new gaps.
+        # Placeholder-vs-real supersession still works: real writers
+        # use the ``_persist_atomic`` upsert with a
+        # ``source='reconciler'`` predicate; they overwrite placeholders
+        # on their own path.
         rows = _db.execute(
             text(
                 """
@@ -113,12 +119,12 @@ def reconcile_missing_receipts(
                 FROM guard_audit_events gae
                 LEFT JOIN llm_attempt_receipts r
                   ON r.request_id = gae.request_id
-                 AND r.source IS DISTINCT FROM 'reconciler'
                 WHERE gae.workspace_id = :workspace_id
                   AND gae.ts >= :period_start
                   AND gae.ts <  :period_end
                   AND gae.request_id IS NOT NULL
                   AND r.id IS NULL
+                ORDER BY gae.ts ASC
                 LIMIT :limit
                 """
             ),

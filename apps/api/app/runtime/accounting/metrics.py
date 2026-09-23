@@ -83,6 +83,10 @@ class ShadowDeltaReport:
 
     # Reconciliation
     settled_requests_missing_shadow_count: int  # requires the legacy audit table
+    # Session 6G reviewer #3: requests whose only receipts are
+    # reconciler-source placeholders. Session 7 gate criterion 5 now
+    # covers both counts trending down.
+    settled_requests_placeholder_only_count: int = 0
 
     # Per-(provider, model) drilldown
     buckets: list[DeltaBucket] = field(default_factory=list)
@@ -207,6 +211,12 @@ def compute_shadow_delta_report(
         period_start=period_start,
         period_end=period_end,
     )
+    placeholder_only = _count_settled_placeholder_only(
+        db,
+        workspace_id=workspace_id,
+        period_start=period_start,
+        period_end=period_end,
+    )
 
     return ShadowDeltaReport(
         workspace_id=str(workspace_id),
@@ -224,6 +234,7 @@ def compute_shadow_delta_report(
         unpriced_count=unpriced,
         incomplete_pricing_count=incomplete_pricing,
         settled_requests_missing_shadow_count=missing_shadow,
+        settled_requests_placeholder_only_count=placeholder_only,
         buckets=buckets,
     )
 
@@ -255,18 +266,21 @@ def _count_settled_missing_shadow(
     """
     from sqlalchemy import text
 
-    # #2209 reviewer #1 (#2221 review at 1219d734): the column is ``ts``,
-    # not ``timestamp``. Prior code silently swallowed the resulting SQL
-    # error and returned zero, falsely reporting healthy reconciler
-    # coverage. Also excludes reconciler-source placeholders so the
-    # metric surfaces real gaps rather than being masked by placeholders.
+    # #2209 Session 6G reviewer #3 (#2221 review at 42d89898): this
+    # metric now counts requests with NO receipt at all (real or
+    # placeholder). Placeholder-only requests are tracked separately by
+    # ``_count_settled_placeholder_only`` so ops sees the gap without
+    # driving the reconciler into a placeholder-rescan loop.
+    #
+    # Column is ``gae.ts`` (fixed in Session 6F — see reviewer #1).
+    # Exception is re-raised, not swallowed — a broken query previously
+    # hid the column-name bug for a whole review cycle.
     sql = text(
         """
         SELECT COUNT(*)
         FROM guard_audit_events gae
         LEFT JOIN llm_attempt_receipts r
           ON r.request_id = gae.request_id
-         AND r.source IS DISTINCT FROM 'reconciler'
         WHERE gae.workspace_id = :workspace_id
           AND gae.ts >= :period_start
           AND gae.ts <  :period_end
@@ -286,14 +300,65 @@ def _count_settled_missing_shadow(
             ).scalar_one()
         )
     except Exception:
-        # Do NOT swallow silently — a broken query here previously hid
-        # the ts-vs-timestamp bug for a whole review cycle. Re-raise
-        # after logging so callers see the failure explicitly and
-        # ShadowDeltaReport surfaces it as a report error rather than a
-        # false-clean count.
         import structlog as _structlog
         _structlog.get_logger(__name__).exception(
             "accounting.metrics.settled_missing_shadow_query_failed",
+            workspace_id=str(workspace_id),
+        )
+        raise
+
+
+def _count_settled_placeholder_only(
+    db: Session,
+    *,
+    workspace_id: str,
+    period_start: datetime,
+    period_end: datetime,
+) -> int:
+    """Session 6G reviewer #3: count requests whose ONLY receipt(s) are
+    reconciler-source placeholders. These are 'reconciled but never
+    resolved' — ops watches this trend down as real writes arrive and
+    the atomic upsert promotes placeholders into real receipts.
+
+    A NOT EXISTS clause guarantees we do not count a request that has
+    any real receipt at any attempt_ordinal, even if a stale placeholder
+    also happens to exist.
+    """
+    from sqlalchemy import text
+
+    sql = text(
+        """
+        SELECT COUNT(DISTINCT gae.request_id)
+        FROM guard_audit_events gae
+        JOIN llm_attempt_receipts placeholder
+          ON placeholder.request_id = gae.request_id
+         AND placeholder.source = 'reconciler'
+        WHERE gae.workspace_id = :workspace_id
+          AND gae.ts >= :period_start
+          AND gae.ts <  :period_end
+          AND gae.request_id IS NOT NULL
+          AND NOT EXISTS (
+              SELECT 1 FROM llm_attempt_receipts real
+              WHERE real.request_id = gae.request_id
+                AND real.source IS DISTINCT FROM 'reconciler'
+          )
+        """
+    )
+    try:
+        return int(
+            db.execute(
+                sql,
+                {
+                    "workspace_id": workspace_id,
+                    "period_start": period_start,
+                    "period_end": period_end,
+                },
+            ).scalar_one()
+        )
+    except Exception:
+        import structlog as _structlog
+        _structlog.get_logger(__name__).exception(
+            "accounting.metrics.settled_placeholder_only_query_failed",
             workspace_id=str(workspace_id),
         )
         raise

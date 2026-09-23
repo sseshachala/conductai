@@ -18,11 +18,14 @@ from app.runtime.accounting.shadow_writer import shadow_write
 @pytest.fixture
 def _captured_row(monkeypatch):
     captured: dict = {}
-    session = MagicMock()
-    session.add.side_effect = lambda row: captured.setdefault("row", row)
+    def _capture(_db, row, *, is_reconciler):
+        captured.setdefault("row", row)
+    monkeypatch.setattr(
+        "app.runtime.accounting.shadow_writer._persist_atomic", _capture
+    )
     monkeypatch.setattr(
         "app.runtime.accounting.shadow_writer.SessionLocal",
-        MagicMock(return_value=session),
+        MagicMock(return_value=MagicMock()),
     )
     return captured
 

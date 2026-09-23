@@ -2,8 +2,10 @@
 
 Tracking issue: [#2209](https://github.com/sseshachala/conductai/issues/2209)
 Branch: `feat/accounting-foundation-2209`
-Status: Session 6F shipped — reviewer response for the 6 findings at commit
-1219d734. Not observation-only yet; see the honest tracking table below.
+Status: Session 6G shipped — reviewer response for the 3 findings at commit
+42d89898 (partial-stream completeness, DELETE-then-INSERT race, reconciler
+placeholder-rescan). Not observation-only yet; see the honest tracking
+table below.
 
 ## Goal
 
@@ -563,6 +565,26 @@ sessions and had escaped my own tests. All fixed in this session.
 11 new self-checks (`test_session_6f.py`) pin each fix — including
 source-string checks on both SQL queries so a future rename can't
 silently regress. Full suite: 2389 passing (was 2378).
+
+## Session 6G — reviewer response for 42d89898
+
+Three defects the Session 6F fixes introduced or missed.
+
+| # | Finding | Fix |
+|---|---------|-----|
+| P1 · 1 | Interrupted Lens streams still marked COMPLETE. `DISCONNECTED` execution_outcome existed, but synthesizing JSON from partial usage let the normalizer see `input=100, output=0` as a legitimate zero. | Adapters expose a `last_usage_final: bool` flag that flips True only when the terminal usage frame (OpenAI include_usage chunk / Anthropic message_delta) arrives. `shadow_write` accepts a `usage_completeness_override` kwarg that Lens sets to `PARTIAL` when either the stream didn't complete or the terminal frame didn't arrive. Normalizer decision is preserved when no override is passed |
+| P1 · 2 | Placeholder promotion had a DELETE-then-INSERT race: reconciler could insert a placeholder between the real writer's DELETE and INSERT, then the real INSERT lost on the unique constraint | Replaced with atomic `INSERT ... ON CONFLICT (request_id, attempt_ordinal) DO UPDATE ... WHERE source = 'reconciler'` via SQLAlchemy Core's `pg_insert`. Real writes promote placeholders in a single statement. Reconciler writes use `ON CONFLICT DO NOTHING` so a placeholder never overwrites a real receipt. Extracted `_persist_atomic` helper — tests hook there instead of `session.add` (7 test files updated). Deterministic PG race test in `test_shadow_receipts_realdb.py::test_atomic_placeholder_promotion_survives_race` |
+| P2 · 3 | Reconciler LEFT JOIN excluded placeholders → same placeholders rescanned every pass; enough of them could fill the LIMIT window and starve fresh gaps | LEFT JOIN now matches ANY receipt (real or placeholder). Placeholder-vs-real supersession still works via the atomic upsert above. Added `settled_requests_placeholder_only_count` to `ShadowDeltaReport` + `_count_settled_placeholder_only` helper so ops can watch placeholder-only requests trend down separately from raw missing count. `ORDER BY gae.ts ASC` on the scan gives deterministic pagination |
+
+10 new self-checks in `test_session_6g.py` — plus two Postgres race
+tests in `test_shadow_receipts_realdb.py` (nightly-only via
+`RUN_ACCOUNTING_REALDB=1`). Full suite: 2400 passing (was 2389).
+
+Attempt-level reconciliation (per Sudhi's #3 second bullet) remains
+open — audit rows carry request_id only, not per-attempt identity, so
+the reconciler cannot detect "attempt 1 missing but attempt 0
+present". That requires a coordinator-side durable attempt log which
+is separate work (open as follow-up to Session 6D per-attempt capture).
 
 ## Where this branch actually is — honest tracking
 

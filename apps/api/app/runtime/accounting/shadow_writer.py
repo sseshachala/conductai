@@ -119,6 +119,7 @@ def shadow_write(
     succeeded: Optional[bool] = None,
     pinned_shadow_enabled: Optional[bool] = None,
     pinned_contract_version: Optional[int] = None,
+    usage_completeness_override: Optional[str] = None,
 ) -> Optional[uuid.UUID]:
     """Persist one shadow receipt for a gateway attempt.
 
@@ -171,6 +172,7 @@ def shadow_write(
             execution_outcome=execution_outcome,
             succeeded=succeeded,
             pinned_contract_version=pinned_contract_version,
+            usage_completeness_override=usage_completeness_override,
             attempts_meta=attempts_meta or [],
             started_at=started_at,
             attempt_ordinal=attempt_ordinal,
@@ -220,6 +222,14 @@ def _shadow_write_impl(**kw: Any) -> uuid.UUID:
         usage_completeness = norm.completeness
         normalizer_version = norm.normalizer_version
         provenance = {"family": family.value, "raw_usage": dict(norm.raw_usage)}
+        # #2209 Session 6G reviewer #1 (#2221 review at 42d89898): a
+        # streaming caller that knows the terminal usage frame never
+        # arrived can override the normalizer's COMPLETE verdict. The
+        # normalizer sees synthesized JSON as a static payload and
+        # cannot tell partial from final on its own.
+        override = kw.get("usage_completeness_override")
+        if override:
+            usage_completeness = UsageCompleteness(override)
     else:
         normalized_tokens = None
         usage_origin = UsageOrigin.MISSING
@@ -348,39 +358,62 @@ def _shadow_write_impl(**kw: Any) -> uuid.UUID:
 
     db = SessionLocal()
     try:
-        # #2209 Session 6F reviewer #4 (#2221 review at 1219d734):
-        # placeholder promotion. If a reconciler-sourced placeholder
-        # already exists at (request_id, attempt_ordinal), delete it in
-        # the same transaction so the real receipt can take its slot.
-        # Skip when we ARE the reconciler (a second reconciler pass
-        # should be a no-op via the unique constraint, not a cascade).
-        if kw.get("source") != "reconciler":
-            try:
-                from sqlalchemy import text as _sa_text
-                db.execute(
-                    _sa_text(
-                        "DELETE FROM llm_attempt_receipts "
-                        "WHERE request_id = :rid "
-                        "AND attempt_ordinal = :ord "
-                        "AND source = 'reconciler'"
-                    ),
-                    {
-                        "rid": kw["request_id"],
-                        "ord": int(kw.get("attempt_ordinal") or 0),
-                    },
-                )
-            except Exception:
-                # If the promotion delete fails, fall through — the
-                # INSERT will just collide on the unique constraint and
-                # the outer wrapper will swallow the IntegrityError. We
-                # never want promotion to fail the request path.
-                pass
-        db.add(row)
+        _persist_atomic(
+            db,
+            row,
+            is_reconciler=(kw.get("source") == "reconciler"),
+        )
         db.commit()
     finally:
         db.close()
 
     return receipt_id
+
+
+def _persist_atomic(db, row, *, is_reconciler: bool) -> None:
+    """Race-safe upsert with placeholder promotion.
+
+    #2209 Session 6G reviewer #2 (#2221 review at 42d89898): the prior
+    DELETE-then-INSERT sequence had a window where the reconciler could
+    insert a placeholder between the DELETE and the INSERT, and the
+    real writer's INSERT then lost to the unique constraint. Replaced
+    with atomic ``INSERT ... ON CONFLICT ... DO UPDATE ...
+    WHERE source = 'reconciler'`` so promotion is a single statement.
+
+    - Non-reconciler write: DO UPDATE — overwrites an existing
+      placeholder, does nothing when a real receipt already occupies
+      the slot (WHERE clause excludes it, so the UPDATE matches zero
+      rows and the INSERT was already replaced by ON CONFLICT).
+    - Reconciler write: DO NOTHING — a placeholder never overwrites a
+      real receipt.
+
+    ``pg_insert.excluded`` refers to the row that would have been
+    inserted (Postgres EXCLUDED pseudo-table); it's what we copy into
+    the existing placeholder columns when promotion fires.
+    """
+    from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+    from app.models.llm_attempt_receipt import LlmAttemptReceipt
+
+    table = LlmAttemptReceipt.__table__
+    values = {c.name: getattr(row, c.name) for c in table.columns}
+
+    stmt = pg_insert(table).values(**values)
+    if is_reconciler:
+        stmt = stmt.on_conflict_do_nothing(
+            index_elements=["request_id", "attempt_ordinal"],
+        )
+    else:
+        stmt = stmt.on_conflict_do_update(
+            index_elements=["request_id", "attempt_ordinal"],
+            set_={
+                c.name: stmt.excluded[c.name]
+                for c in table.columns
+                if c.name != "id"
+            },
+            where=(table.c.source == "reconciler"),
+        )
+    db.execute(stmt)
 
 
 def write_receipts_for_attempts(

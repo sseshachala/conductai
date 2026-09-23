@@ -184,8 +184,14 @@ class OpenAIClient:
         }
         # Reset per-call scratch. Populated when we see the terminal
         # usage chunk; callers read via ``client.last_usage`` after
-        # iteration completes.
+        # iteration completes. ``last_usage_final`` distinguishes "saw
+        # the terminal usage frame" from "captured partial usage on the
+        # way" — reviewer #1 (#2221 review at 42d89898) called out that
+        # synthesizing JSON from partial usage lets the normalizer mark
+        # the receipt COMPLETE even though the stream never emitted a
+        # terminal frame.
         self.last_usage = None
+        self.last_usage_final = False
         headers = {
             "Authorization": f"Bearer {self._api_key}",
             "Content-Type": "application/json",
@@ -213,10 +219,13 @@ class OpenAIClient:
                     continue
                 # Terminal usage frame — arrives after the last delta when
                 # ``stream_options.include_usage=True``. Has no ``choices``
-                # entries; just ``usage``. Stash for the caller.
+                # entries; just ``usage``. Stash for the caller and mark
+                # the frame as final so the Lens hook can tell partial
+                # from complete stream state.
                 usage = obj.get("usage")
                 if isinstance(usage, dict):
                     self.last_usage = dict(usage)
+                    self.last_usage_final = True
                 choices = obj.get("choices") or []
                 if not choices:
                     continue

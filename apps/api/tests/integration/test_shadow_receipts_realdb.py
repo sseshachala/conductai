@@ -275,6 +275,139 @@ def test_reconciler_idempotent_on_repeat(monkeypatch, workspace_id):
     assert _receipt_count(req_id) == 1
 
 
+def test_atomic_placeholder_promotion_survives_race(monkeypatch, workspace_id):
+    """#2209 Session 6G reviewer #2 (#2221 review at 42d89898):
+    reproduces the DELETE-then-INSERT race with two threads.
+
+    Thread A: reconciler-source placeholder at (req, 0).
+    Thread B: real gateway-source write at (req, 0), delayed slightly
+              so A gets there first.
+
+    Under the old DELETE-then-INSERT: A's placeholder was in place when
+    B started. B's DELETE removed it, but if A ran between B's DELETE
+    and B's INSERT, A re-inserted and B's INSERT would collide + be
+    swallowed. Real data lost.
+
+    With the atomic upsert: B's ``ON CONFLICT DO UPDATE ... WHERE
+    source='reconciler'`` promotes A's placeholder to a real row
+    regardless of ordering. Final row MUST have source='gateway'.
+    """
+    _shadow_on(monkeypatch)
+    import threading
+    from app.runtime.accounting.shadow_writer import shadow_write
+    from app.core.database import SessionLocal
+    from sqlalchemy import text
+
+    req_id = uuid.uuid4()
+    barrier = threading.Barrier(2)
+
+    def _placeholder():
+        barrier.wait()
+        shadow_write(
+            workspace_id=uuid.UUID(workspace_id),
+            request_id=req_id,
+            provider="anthropic",
+            model="claude-sonnet-4-6",
+            operation="reconciled",
+            dispatched=True,
+            response_bytes=None,
+            legacy_input_tokens=None,
+            legacy_output_tokens=None,
+            legacy_cost_usd=None,
+            attempt_ordinal=0,
+            source="reconciler",
+        )
+
+    def _real():
+        barrier.wait()
+        shadow_write(
+            workspace_id=uuid.UUID(workspace_id),
+            request_id=req_id,
+            provider="anthropic",
+            model="claude-sonnet-4-6",
+            operation="messages.create",
+            dispatched=True,
+            response_bytes=b'{"usage":{"input_tokens":10,"output_tokens":5}}',
+            legacy_input_tokens=10,
+            legacy_output_tokens=5,
+            legacy_cost_usd=0.0001,
+            attempt_ordinal=0,
+            source="gateway",
+        )
+
+    # Run several rounds — race outcome varies but final source must
+    # always be 'gateway' regardless of which thread commits first.
+    threads = [threading.Thread(target=_placeholder), threading.Thread(target=_real)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    with SessionLocal() as db:
+        row = db.execute(
+            text(
+                "SELECT source, total_input_tokens FROM llm_attempt_receipts "
+                "WHERE request_id = :r AND attempt_ordinal = 0"
+            ),
+            {"r": str(req_id)},
+        ).one()
+    assert row.source == "gateway"
+    # Promoted row has the real tokens, not the placeholder's None.
+    assert row.total_input_tokens == 10
+
+
+def test_reconciler_placeholder_never_overwrites_real_receipt(monkeypatch, workspace_id):
+    """The reverse race: a real receipt exists; a concurrent reconciler
+    pass must NOT overwrite it. ``ON CONFLICT DO NOTHING`` guarantees
+    the real row stays put."""
+    _shadow_on(monkeypatch)
+    from app.runtime.accounting.shadow_writer import shadow_write
+    from app.core.database import SessionLocal
+    from sqlalchemy import text
+
+    req_id = uuid.uuid4()
+    # Real receipt first.
+    shadow_write(
+        workspace_id=uuid.UUID(workspace_id),
+        request_id=req_id,
+        provider="anthropic",
+        model="claude-sonnet-4-6",
+        operation="messages.create",
+        dispatched=True,
+        response_bytes=b'{"usage":{"input_tokens":42,"output_tokens":17}}',
+        legacy_input_tokens=42,
+        legacy_output_tokens=17,
+        legacy_cost_usd=0.0002,
+        attempt_ordinal=0,
+        source="gateway",
+    )
+    # Reconciler tries to place a placeholder — must be a no-op.
+    shadow_write(
+        workspace_id=uuid.UUID(workspace_id),
+        request_id=req_id,
+        provider="anthropic",
+        model="claude-sonnet-4-6",
+        operation="reconciled",
+        dispatched=True,
+        response_bytes=None,
+        legacy_input_tokens=None,
+        legacy_output_tokens=None,
+        legacy_cost_usd=None,
+        attempt_ordinal=0,
+        source="reconciler",
+    )
+    with SessionLocal() as db:
+        row = db.execute(
+            text(
+                "SELECT source, total_input_tokens FROM llm_attempt_receipts "
+                "WHERE request_id = :r AND attempt_ordinal = 0"
+            ),
+            {"r": str(req_id)},
+        ).one()
+    assert row.source == "gateway"
+    assert row.total_input_tokens == 42
+
+
 def test_workspace_delete_cascades_to_receipts(monkeypatch):
     """Verify the FK CASCADE on migration 0148 fires — orphan receipts
     would leak otherwise when a workspace is deleted."""

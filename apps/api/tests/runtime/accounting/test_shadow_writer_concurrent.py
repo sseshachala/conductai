@@ -50,19 +50,16 @@ def test_concurrent_writes_do_not_share_state(_shadow_on, monkeypatch):
     written: list = []
     lock = threading.Lock()
 
-    def _make_session():
-        session = MagicMock()
-        # Capture per-session (per-call) so each thread's row lands here
-        # in isolation — race-safe append.
-        def _add(row):
-            with lock:
-                written.append(row)
-        session.add.side_effect = _add
-        return session
+    def _capture(_db, row, *, is_reconciler):
+        with lock:
+            written.append(row)
 
     monkeypatch.setattr(
+        "app.runtime.accounting.shadow_writer._persist_atomic", _capture
+    )
+    monkeypatch.setattr(
         "app.runtime.accounting.shadow_writer.SessionLocal",
-        MagicMock(side_effect=_make_session),
+        MagicMock(return_value=MagicMock()),
     )
 
     def _worker():
@@ -86,11 +83,15 @@ def test_db_integrity_error_never_raises(_shadow_on, monkeypatch):
     class _Integrity(Exception):
         pass
 
-    session = MagicMock()
-    session.add.side_effect = _Integrity("duplicate key value")
+    def _boom(*_a, **_kw):
+        raise _Integrity("duplicate key value")
+
+    monkeypatch.setattr(
+        "app.runtime.accounting.shadow_writer._persist_atomic", _boom
+    )
     monkeypatch.setattr(
         "app.runtime.accounting.shadow_writer.SessionLocal",
-        MagicMock(return_value=session),
+        MagicMock(return_value=MagicMock()),
     )
     result = _write()
     assert result is None
@@ -161,18 +162,18 @@ def test_duplicate_write_for_same_request_attempt_is_idempotent(_shadow_on, monk
     written: list = []
     call_count = [0]
 
-    def _make_session():
+    def _persist(_db, row, *, is_reconciler):
         call_count[0] += 1
-        session = MagicMock()
         if call_count[0] == 2:
-            session.add.side_effect = Exception("unique_violation")
-        else:
-            session.add.side_effect = lambda row: written.append(row)
-        return session
+            raise Exception("unique_violation")
+        written.append(row)
 
     monkeypatch.setattr(
+        "app.runtime.accounting.shadow_writer._persist_atomic", _persist
+    )
+    monkeypatch.setattr(
         "app.runtime.accounting.shadow_writer.SessionLocal",
-        MagicMock(side_effect=_make_session),
+        MagicMock(return_value=MagicMock()),
     )
     receipt_id = uuid.uuid4()
     request_id = uuid.uuid4()

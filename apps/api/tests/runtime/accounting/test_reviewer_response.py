@@ -29,13 +29,14 @@ def _shadow_on(monkeypatch):
 @pytest.fixture
 def _captured_rows(monkeypatch):
     captured: list = []
-    def _make_session():
-        session = MagicMock()
-        session.add.side_effect = lambda row: captured.append(row)
-        return session
+    def _capture(_db, row, *, is_reconciler):
+        captured.append(row)
+    monkeypatch.setattr(
+        "app.runtime.accounting.shadow_writer._persist_atomic", _capture
+    )
     monkeypatch.setattr(
         "app.runtime.accounting.shadow_writer.SessionLocal",
-        MagicMock(side_effect=_make_session),
+        MagicMock(return_value=MagicMock()),
     )
     return captured
 
