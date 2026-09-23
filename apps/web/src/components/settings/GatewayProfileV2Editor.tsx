@@ -608,6 +608,53 @@ function TargetRow({
           )}
         </FieldLabel>
       </div>
+
+      {/* PR 4 review — Portkey needs an upstream selector alongside
+          the gateway key. Any one of virtual_key / provider / config
+          satisfies the required-selector check server-side. */}
+      {target.transport === "http_passthrough" && target.integration === "portkey" ? (
+        <div style={{ gridColumn: "2 / -1", display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+          <FieldLabel label="Virtual key" hint="Portkey virtual key ID (recommended — carries provider config). Sent as x-portkey-virtual-key.">
+            <input
+              value={String((target.provider_options as Record<string, unknown> | undefined)?.virtual_key ?? "")}
+              disabled={!isAdmin}
+              placeholder="vk-openai-prod"
+              onChange={e => onChange({
+                provider_options: {
+                  ...(target.provider_options ?? {}),
+                  virtual_key: e.target.value || undefined,
+                },
+              })}
+              style={inputStyle} />
+          </FieldLabel>
+          <FieldLabel label="Provider" hint="Portkey provider slug (openai / anthropic / etc.). Sent as x-portkey-provider.">
+            <input
+              value={String((target.provider_options as Record<string, unknown> | undefined)?.provider ?? "")}
+              disabled={!isAdmin}
+              placeholder="openai"
+              onChange={e => onChange({
+                provider_options: {
+                  ...(target.provider_options ?? {}),
+                  provider: e.target.value || undefined,
+                },
+              })}
+              style={inputStyle} />
+          </FieldLabel>
+          <FieldLabel label="Config ID" hint="Portkey saved config ID. Sent as x-portkey-config.">
+            <input
+              value={String((target.provider_options as Record<string, unknown> | undefined)?.config ?? "")}
+              disabled={!isAdmin}
+              placeholder="cfg_abc"
+              onChange={e => onChange({
+                provider_options: {
+                  ...(target.provider_options ?? {}),
+                  config: e.target.value || undefined,
+                },
+              })}
+              style={inputStyle} />
+          </FieldLabel>
+        </div>
+      ) : null}
     </div>
   )
 }

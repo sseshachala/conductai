@@ -53,6 +53,10 @@ def _portkey_target(**overrides) -> HTTPPassthroughTarget:
         integration="portkey",
         model="gpt-4o",
         credential_ref=f"vault://{ENV}/portkey",
+        # PR 4 review — portkey needs an upstream selector alongside
+        # the gateway key. Default the test target to a virtual key so
+        # the required-selector guard doesn't trip in the happy paths.
+        provider_options={"virtual_key": "vk-openai-prod"},
     )
     defaults.update(overrides)
     return HTTPPassthroughTarget(**defaults)
@@ -135,12 +139,61 @@ async def test_portkey_chat_completions_uses_x_portkey_api_key_header(monkeypatc
     assert captured["url"] == "https://api.portkey.ai/v1/chat/completions"
     # Raw key, no Bearer prefix.
     assert captured["headers"]["x-portkey-api-key"] == "pk-live"
+    # Virtual key from provider_options selects the upstream.
+    assert captured["headers"]["x-portkey-virtual-key"] == "vk-openai-prod"
     # No accidental Authorization + no OpenRouter attribution leak.
     assert "authorization" not in {k.lower() for k in captured["headers"]}
     assert "HTTP-Referer" not in captured["headers"]
     # Target model id wins over the client's alias in the forwarded body.
     import json as _json
     assert _json.loads(captured["content"])["model"] == "gpt-4o"
+
+
+@pytest.mark.anyio("asyncio")
+async def test_portkey_missing_upstream_selector_fails_closed(monkeypatch):
+    """Portkey's gateway key alone doesn't route anywhere. Fail loudly
+    with a config error instead of letting the request reach Portkey
+    and getting a mystery 400."""
+    transport = HTTPPassthroughTransport()
+    fake_client = MagicMock()
+    fake_client.post = AsyncMock(return_value=_FakeResponse(200, {}))
+    monkeypatch.setattr(transport, "_get_client", AsyncMock(return_value=fake_client))
+
+    with pytest.raises(ValueError, match=r"virtual_key.*provider.*config"):
+        await transport.execute(
+            target=_portkey_target(provider_options={}),
+            operation="openai_chat_completions",
+            payload={"messages": []},
+            credential_resolver=lambda ref: "pk-live",
+        )
+    fake_client.post.assert_not_called()
+
+
+@pytest.mark.anyio("asyncio")
+async def test_portkey_provider_and_config_headers_reach_wire(monkeypatch):
+    """``provider`` and ``config`` are the other two Portkey selectors;
+    any one of the three satisfies the required-selector check and
+    each maps to its documented header."""
+    captured: dict = {}
+
+    async def _fake_post(url, headers, content):
+        captured.update(headers=headers)
+        return _FakeResponse(200, {"id": "ok"})
+
+    transport = HTTPPassthroughTransport()
+    fake_client = MagicMock()
+    fake_client.post = _fake_post
+    monkeypatch.setattr(transport, "_get_client", AsyncMock(return_value=fake_client))
+
+    await transport.execute(
+        target=_portkey_target(provider_options={"provider": "openai", "config": "cfg_abc"}),
+        operation="openai_chat_completions",
+        payload={"messages": []},
+        credential_resolver=lambda ref: "pk-live",
+    )
+
+    assert captured["headers"]["x-portkey-provider"] == "openai"
+    assert captured["headers"]["x-portkey-config"] == "cfg_abc"
 
 
 @pytest.mark.anyio("asyncio")

@@ -285,6 +285,12 @@ class HTTPPassthroughTarget(BaseModel):
     model: str = Field(min_length=1, max_length=256)
     credential_ref: str = Field(min_length=1, max_length=512)
     endpoint: str | None = Field(default=None, max_length=2048)
+    # PR 4 — opaque per-integration tuning bag. Portkey reads
+    # ``virtual_key`` / ``provider`` / ``config`` from here to drive
+    # the ``x-portkey-*`` routing headers. Symmetric with the field
+    # on the native + LiteLLM target subclasses; persisted as JSON
+    # inside the profile row so no Alembic migration is required.
+    provider_options: dict[str, Any] = Field(default_factory=dict)
 
     @field_validator("endpoint")
     @classmethod
