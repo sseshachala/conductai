@@ -13,7 +13,10 @@ interface LLMPrimitives {
 }
 
 const PROVIDERS = ["anthropic", "openai", "perplexity", "together"] as const
-const TIERS = ["cheap", "balanced", "smart"] as const
+// Router looks up cheap/balanced/smart. Extra tier keys (e.g. flagship,
+// reasoning, previous) are allowed — they widen the Gateway Profile V2
+// editor's Model dropdown without changing router behaviour.
+const ROUTER_TIERS = ["cheap", "balanced", "smart"] as const
 
 type Provider = (typeof PROVIDERS)[number]
 
@@ -99,8 +102,8 @@ export default function LLMPrimitivesPanel({
         return "tier map must be a JSON object"
       }
       for (const [k, v] of Object.entries(parsed)) {
-        if (!(TIERS as readonly string[]).includes(k)) {
-          return `Unknown tier ${JSON.stringify(k)} — must be one of ${TIERS.join(", ")}`
+        if (!k.trim()) {
+          return "tier key must be a non-empty string"
         }
         if (typeof v !== "string" || !v.trim()) {
           return `Model for tier ${JSON.stringify(k)} must be a non-empty string`
@@ -193,7 +196,7 @@ export default function LLMPrimitivesPanel({
             style={{ fontSize: 12, padding: "10px 12px", border: `1px solid ${parseError ? "var(--err-bd)" : "var(--border)"}`, borderRadius: 8, background: "var(--surface)", color: "var(--text)", outline: "none", resize: "vertical" }}
           />
           <p style={{ fontSize: 11.5, color: parseError ? "var(--err)" : "var(--text-muted)", margin: 0 }}>
-            {parseError ?? `Keys: ${TIERS.join(" / ")}. Values are model IDs for ${currentProvider}. Other providers keep their own tier maps.`}
+            {parseError ?? `Router tiers: ${ROUTER_TIERS.join(" / ")}. Add any extra keys (e.g. flagship, reasoning, previous) — they show up as selectable models in the Gateway Profile V2 editor. Values are model IDs for ${currentProvider}.`}
           </p>
         </div>
 

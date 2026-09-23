@@ -28,20 +28,32 @@ router = APIRouter(prefix="/workspaces", tags=["workspace-llm-primitives"])
 
 DEFAULT_PREFERRED_PROVIDER = "anthropic"
 SUPPORTED_PROVIDERS = {"anthropic", "openai", "perplexity", "together"}
-SUPPORTED_TIERS = {"cheap", "balanced", "smart"}
+#: Tier keys the ``model_router`` looks up. Extra keys (e.g. ``flagship``,
+#: ``reasoning``, ``previous``) are ALLOWED and surface in the Gateway
+#: Profile V2 editor's Model dropdown; router just ignores them. Keeping
+#: the router-relevant set here so tests can assert against it without
+#: locking admins out of adding their own tier names.
+ROUTER_TIER_KEYS = {"cheap", "balanced", "smart"}
 
 # Anthropic uses native Claude models. Everything else speaks OpenAI protocol
 # (openai, perplexity, together via OpenAI-compat) so the same GPT tier map
 # is a sensible starting default; users tune from there.
+#
+# Defaults now include a 4th tier per provider so a freshly-created
+# workspace already has more than the three router entries in its
+# selectable-models list — no editing required to see them in the
+# Gateway Profile V2 editor.
 ANTHROPIC_TIER_MAP: dict[str, str] = {
     "cheap":    "claude-haiku-4-5-20251001",
     "balanced": "claude-sonnet-4-6",
     "smart":    "claude-opus-4-7",
+    "previous": "claude-sonnet-4-5-20250529",
 }
 OPENAI_COMPAT_TIER_MAP: dict[str, str] = {
-    "cheap":    "gpt-4.1-mini",
-    "balanced": "gpt-4.1",
-    "smart":    "gpt-4.1",
+    "cheap":     "gpt-4.1-mini",
+    "balanced":  "gpt-4.1",
+    "smart":     "gpt-4.1",
+    "reasoning": "o1",
 }
 
 DEFAULT_TIER_MAPS: dict[str, dict[str, str]] = {
@@ -138,14 +150,16 @@ def put_llm_primitives(
             )
         prov_tiers: dict[str, str] = {}
         for tier, model in (tiers or {}).items():
-            if tier not in SUPPORTED_TIERS:
-                raise HTTPException(
-                    status_code=422,
-                    detail=f"tier_map[{prov_key}] key {tier!r} must be one of {sorted(SUPPORTED_TIERS)}",
-                )
+            # Any tier key is accepted — router looks up cheap/balanced/smart
+            # and ignores the rest; extras just widen the Gateway editor's
+            # Model dropdown. Guard shape only: non-empty string key with
+            # a non-empty string value.
+            tier_key = str(tier).strip()
+            if not tier_key:
+                continue
             if not isinstance(model, str) or not model.strip():
                 continue
-            prov_tiers[tier] = model.strip()
+            prov_tiers[tier_key] = model.strip()
         if prov_tiers:
             cleaned[prov_key] = prov_tiers
 
