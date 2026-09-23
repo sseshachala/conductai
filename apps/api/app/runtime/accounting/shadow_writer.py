@@ -117,23 +117,32 @@ def shadow_write(
     receipt_id: Optional[uuid.UUID] = None,
     execution_outcome: Optional[str] = None,
     succeeded: Optional[bool] = None,
+    pinned_shadow_enabled: Optional[bool] = None,
+    pinned_contract_version: Optional[int] = None,
 ) -> Optional[uuid.UUID]:
     """Persist one shadow receipt for a gateway attempt.
 
     Returns the receipt_id when written, None when disabled or on any error.
     Never raises.
     """
-    # Session 6: per-workspace canary. Uses settings.accounting_shadow_enabled_for
-    # which layers the global kill-switch AND the allowlist together.
-    _check = getattr(settings, "accounting_shadow_enabled_for", None)
-    if _check is not None:
-        try:
-            if not _check(str(workspace_id)):
-                return None
-        except Exception:
-            return None
-    elif not getattr(settings, "guard_accounting_shadow_enabled", False):
+    # Session 6D: accounting-version pin. Handlers snapshot the
+    # shadow-enabled decision at request entry so a mid-flight flag flip
+    # cannot re-attribute an in-progress attempt to the new engine. If
+    # the caller pinned False, we drop the write; if pinned True, we
+    # skip the settings re-check. Absent pin → fall through to the
+    # Session 6 per-workspace canary check.
+    if pinned_shadow_enabled is False:
         return None
+    if pinned_shadow_enabled is None:
+        _check = getattr(settings, "accounting_shadow_enabled_for", None)
+        if _check is not None:
+            try:
+                if not _check(str(workspace_id)):
+                    return None
+            except Exception:
+                return None
+        elif not getattr(settings, "guard_accounting_shadow_enabled", False):
+            return None
 
     try:
         return _shadow_write_impl(
@@ -161,6 +170,7 @@ def shadow_write(
             model_alias=model_alias,
             execution_outcome=execution_outcome,
             succeeded=succeeded,
+            pinned_contract_version=pinned_contract_version,
             attempts_meta=attempts_meta or [],
             started_at=started_at,
             attempt_ordinal=attempt_ordinal,
@@ -290,7 +300,9 @@ def _shadow_write_impl(**kw: Any) -> uuid.UUID:
         request_id=kw["request_id"],
         attempt_ordinal=int(kw.get("attempt_ordinal") or 0),
         parent_receipt_id=kw.get("parent_receipt_id"),
-        contract_version=CONTRACT_VERSION,
+        contract_version=(
+            kw.get("pinned_contract_version") or CONTRACT_VERSION
+        ),
         developer_user_id=dev_user_uuid,
         developer_external_id=dev_external_id,
         agent_identity_id=_to_uuid_or_none(kw.get("agent_identity_id")),
@@ -367,6 +379,8 @@ def write_receipts_for_attempts(
     client_tool: Optional[str] = None,
     transport: Optional[str] = None,
     attempts_meta: Optional[list[dict]] = None,
+    pinned_shadow_enabled: Optional[bool] = None,
+    pinned_contract_version: Optional[int] = None,
 ) -> list[uuid.UUID]:
     """Reviewer #3 (#2221): write one receipt per actual upstream attempt.
 
@@ -399,6 +413,8 @@ def write_receipts_for_attempts(
         hook_session_id=hook_session_id,
         source=source,
         client_tool=client_tool,
+        pinned_shadow_enabled=pinned_shadow_enabled,
+        pinned_contract_version=pinned_contract_version,
     )
 
     if not attempts:
@@ -426,15 +442,34 @@ def write_receipts_for_attempts(
             if succeeded
             else ExecutionOutcome.FAILED.value
         )
+        # #2209 Session 6D: for failed attempts, the coordinator captured
+        # the provider response body (base64) so we can normalize + price
+        # it. Decode when present; fall back to the winner-only response_bytes
+        # for the successful attempt.
+        attempt_bytes: Optional[bytes] = None
+        if succeeded:
+            attempt_bytes = response_bytes
+        else:
+            b64 = attempt.get("response_bytes_b64")
+            if b64:
+                try:
+                    import base64 as _b64
+                    attempt_bytes = _b64.b64decode(b64)
+                except Exception:
+                    attempt_bytes = None
         rid = shadow_write(
             **common,
             provider=attempt_provider,
             transport=attempt_transport,
-            response_bytes=response_bytes if succeeded else None,
+            response_bytes=attempt_bytes,
             legacy_input_tokens=legacy_input_tokens if succeeded else None,
             legacy_output_tokens=legacy_output_tokens if succeeded else None,
             legacy_cost_usd=legacy_cost_usd if succeeded else None,
-            attempts_meta=[attempt],
+            attempts_meta=[
+                # Drop the base64 payload from the stored provenance —
+                # it's already been normalized into the row's own columns.
+                {k: v for k, v in attempt.items() if k != "response_bytes_b64"}
+            ],
             attempt_ordinal=idx,
             parent_receipt_id=parent,
             execution_outcome=outcome,

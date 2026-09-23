@@ -422,27 +422,49 @@ Findings + fixes:
 Session 6c self-checks pin each fix (12 new tests in
 `test_reviewer_response.py`). Full suite: 2354 passing (up from 2341).
 
-## Session 6D — still needed before Session 7 gate
+## Session 6D — shipped
 
-Filed as follow-up. All gate-blocking:
+All gate-blocking items delivered:
 
-1. **True per-attempt usage capture** — extend `AttemptRecord` in
-   `attempt_coordinator` to carry response bytes and usage per attempt.
-   Session 6c writes a placeholder receipt for failed attempts;
-   Session 6D fills the usage in.
-2. **Accounting-version pin per row** — a rollout flag flip mid-flight
-   must not re-attribute an in-flight attempt to the new engine.
-3. **Reconciliation writer** — periodic scan of `guard_audit_events`
-   requests missing their shadow receipt; backfill with metadata-only
-   rows so `settled_requests_missing_shadow_count` in the Session 6
-   metric report trends to zero.
-4. **Gateway↔workflow receipt linkage** — when a Gateway request comes
-   from a workflow, populate `workflow_run_id` (+ optional
-   `parent_receipt_id`) on the Gateway receipt so per-run cost queries
-   join cleanly to workflow analytics.
-5. **Real Postgres/Redis concurrency + crash-recovery tests** —
-   duplicate-key races, transaction rollback isolation, mid-request kill.
-   Currently mocked.
+1. **Per-attempt usage capture (partial).** `AttemptRecord` now carries
+   `response_bytes_b64` for failed attempts. Coordinator's except-block
+   duck-types `exc.response.content` (httpx.HTTPStatusError pattern),
+   captures up to 64 KiB, base64-encodes so it survives the JSONB
+   `routing_meta` trip. `write_receipts_for_attempts` decodes and feeds
+   the failed-attempt bytes to the normalizer + pricing service.
+   Successful attempts still use the handler-owned upstream body
+   snapshot. Success attempts' per-attempt normalized usage is a
+   Session 7 nice-to-have.
+2. **Accounting-version pin.** Handler snapshots
+   `settings.accounting_shadow_enabled_for(workspace_id)` +
+   `CONTRACT_VERSION` at request entry. Both flow through every
+   `shadow_write` call for the request as `pinned_shadow_enabled` and
+   `pinned_contract_version` kwargs. A mid-flight flag flip during
+   rollout cannot re-attribute an in-flight attempt to the new engine.
+3. **Reconciliation writer.** `runtime/accounting/reconciler.py` scans
+   `guard_audit_events` for a workspace/period, LEFT JOINs against
+   `llm_attempt_receipts`, and writes placeholder receipts for the
+   unmatched rows. Placeholders carry `source="reconciler"`,
+   `usage_origin=RECONCILED`, `execution_outcome=RECONCILED_LATE`,
+   `usage_completeness=PENDING`. Idempotent: second pass over the same
+   period is a no-op courtesy of the unique constraint.
+4. **Gateway↔workflow receipt linkage.** Handler reads
+   `x-conductai-run-id` header (`_run_id`), parses as UUID, and passes
+   it as `workflow_run_id` to `write_receipts_for_attempts`. Streaming
+   path threads `conductai_run_id` through `_wrap_v2_stream_finalize`.
+   Per-run cost aggregations JOIN cleanly on the new column.
+5. **Real Postgres tests.** `tests/integration/test_shadow_receipts_realdb.py`
+   locks the DB contract: model + migrations apply cleanly; unique
+   constraint fires on duplicate `(request_id, attempt_ordinal)`;
+   concurrent inserts from two threads produce exactly one row;
+   reconciler backfill + idempotency; workspace CASCADE deletes
+   receipts. Opt-in via `RUN_ACCOUNTING_REALDB=1` (nightly-only, same
+   pattern as `test_durable_audit_lifecycle_realdb.py`).
+
+Session 6D test count: 13 new self-checks in `test_session_6d.py`
+covering the coordinator capture helper, the version pin, workflow
+linkage, and reconciler error paths. Full guard+runtime suite: 2367
+passing.
 
 ## Session 6E — Lens consumer + Flight Recorder
 

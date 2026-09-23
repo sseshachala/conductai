@@ -74,6 +74,30 @@ from app.runtime.native_http_transport import NativeHTTPTransport
 log = structlog.get_logger(__name__)
 
 
+def _capture_failed_response_bytes(exc: BaseException) -> str | None:
+    """Best-effort: extract the provider response body from a failed-attempt
+    exception, base64-encoded so it survives the JSONB routing_meta trip.
+
+    Handles httpx.HTTPStatusError and similar patterns without importing
+    the underlying transport library — we just duck-type ``exc.response``.
+    Returns None when no body is available (timeout, DNS failure, socket
+    error, etc.).
+    """
+    resp = getattr(exc, "response", None)
+    if resp is None:
+        return None
+    content = getattr(resp, "content", None)
+    if isinstance(content, (bytes, bytearray)) and content:
+        try:
+            import base64 as _b64
+            # Cap at ~64 KiB so a runaway provider error page cannot
+            # bloat the audit row unbounded.
+            return _b64.b64encode(bytes(content[:65_536])).decode("ascii")
+        except Exception:
+            return None
+    return None
+
+
 class UnsupportedTransport(Exception):
     """Raised when the coordinator encounters a target type it can't
     dispatch. Should be unreachable in practice — the schema union
@@ -125,6 +149,13 @@ class AttemptRecord:
     Callers write these into the durable audit row so the Flight
     Recorder can show which target served the request, how many
     fell through, and what each one failed on.
+
+    #2209 Session 6D adds ``response_bytes_b64`` for FAILED attempts.
+    Success attempts' bytes live in the handler-owned upstream body
+    snapshot; the coordinator only needs to capture the failure envelopes
+    (typically small provider error bodies like ``{"error": {...}}``) so
+    per-attempt accounting can normalize + price them. Base64 keeps the
+    field JSON-safe when the record ends up in the JSONB routing_meta.
     """
     target_id: str
     transport: str
@@ -134,6 +165,7 @@ class AttemptRecord:
     succeeded: bool
     error_class: str | None
     error_summary: str | None
+    response_bytes_b64: str | None = None
 
 
 @dataclass(frozen=True)
@@ -312,6 +344,13 @@ class AttemptCoordinator:
                 # in sequence and giving the client a misleading 5xx.
                 raise
             except Exception as exc:  # noqa: BLE001
+                # #2209 Session 6D — capture the provider response body
+                # for the failed attempt when the exception carries one.
+                # httpx.HTTPStatusError.response.content is the common case
+                # (native HTTP + LiteLLM SDK both raise this pattern for
+                # 4xx/5xx). Kept as base64 so it can travel through the
+                # JSONB routing_meta cleanly.
+                _failed_bytes_b64 = _capture_failed_response_bytes(exc)
                 attempts.append(AttemptRecord(
                     target_id=target.id,
                     transport=target.transport,
@@ -321,6 +360,7 @@ class AttemptCoordinator:
                     succeeded=False,
                     error_class=type(exc).__name__,
                     error_summary=str(exc)[:200],
+                    response_bytes_b64=_failed_bytes_b64,
                 ))
                 # #2001 review fix — retry classification. Fall through
                 # to the next target ONLY on transient failure classes

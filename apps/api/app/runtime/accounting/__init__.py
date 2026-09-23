@@ -55,6 +55,10 @@ from app.runtime.accounting.metrics import (
     compute_deltas_from_rows,
     compute_shadow_delta_report,
 )
+from app.runtime.accounting.reconciler import (
+    ReconciliationResult,
+    reconcile_missing_receipts,
+)
 from app.runtime.accounting.reader import (
     AccountingReader,
     AggregateScope,
@@ -104,4 +108,6 @@ __all__ = [
     "ShadowDeltaReport",
     "compute_deltas_from_rows",
     "compute_shadow_delta_report",
+    "ReconciliationResult",
+    "reconcile_missing_receipts",
 ]
