@@ -8,7 +8,6 @@ import GatewayProfileV2DeleteDialog from "@/components/settings/GatewayProfileV2
 import GatewayProfileV2ImportDialog from "@/components/settings/GatewayProfileV2ImportDialog"
 import GatewayProfileV2Editor from "@/components/settings/GatewayProfileV2Editor"
 import GatewayProfileV2PublishDialog from "@/components/settings/GatewayProfileV2PublishDialog"
-import GatewayProfileV2RollbackDialog from "@/components/settings/GatewayProfileV2RollbackDialog"
 import { useAuthFetch } from "@/hooks/useAuthFetch"
 import { useGuardRole } from "@/hooks/useGuardRole"
 import { useWorkspace } from "@/lib/WorkspaceContext"
@@ -164,7 +163,6 @@ export default function GatewayProfilesV2Page() {
   const [busy, setBusy] = useState<string>("")
   const [filter, setFilter] = useState<Filter>("all")
   const [showPublish, setShowPublish] = useState(false)
-  const [showRollback, setShowRollback] = useState(false)
   const [showImport, setShowImport] = useState(false)
   // Type-to-confirm delete dialog target. When non-null, renders the
   // dialog against this profile. Cleared on confirm or cancel.
@@ -448,7 +446,6 @@ export default function GatewayProfilesV2Page() {
                 isAdmin={isAdmin}
                 onReload={load}
                 onOpenPublish={() => setShowPublish(true)}
-                onOpenRollback={() => setShowRollback(true)}
                 onDuplicate={() => void duplicateProfile(selected)}
               />
             ) : (
@@ -466,12 +463,6 @@ export default function GatewayProfilesV2Page() {
             workspaceId={workspaceId} profile={selected}
             onClose={() => setShowPublish(false)}
             onPublished={() => void load()} />
-        )}
-        {selected && showRollback && (
-          <GatewayProfileV2RollbackDialog
-            workspaceId={workspaceId} profile={selected}
-            onClose={() => setShowRollback(false)}
-            onRolledBack={() => void load()} />
         )}
         {pendingDeleteId && (() => {
           const target = profiles.find(p => p.id === pendingDeleteId)
@@ -556,7 +547,7 @@ function ProfileListItem({
 
 function ProfileDetail({
   profile, envs, envName, workspaceId, isAdmin,
-  onReload, onOpenPublish, onOpenRollback, onDuplicate,
+  onReload, onOpenPublish, onDuplicate,
 }: {
   profile: GatewayProfileV2Out
   envs: EnvironmentRow[]
@@ -565,7 +556,6 @@ function ProfileDetail({
   isAdmin: boolean
   onReload: () => void
   onOpenPublish: () => void
-  onOpenRollback: () => void
   onDuplicate: () => void
 }) {
   const published = isPublished(profile)
@@ -593,8 +583,6 @@ function ProfileDetail({
                 <button onClick={onDuplicate} className="btn btn-primary btn-sm">
                   Duplicate to new draft
                 </button>
-                <button onClick={onOpenRollback} className="btn btn-ghost btn-sm"
-                  disabled={profile.revisions.length < 2}>Rollback…</button>
               </>
             ) : (
               <button onClick={onOpenPublish} className="btn btn-primary btn-sm"
