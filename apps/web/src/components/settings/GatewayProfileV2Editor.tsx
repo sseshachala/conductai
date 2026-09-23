@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 
 import { useAuthFetch } from "@/hooks/useAuthFetch"
-import { credentials, guard } from "@/lib/api"
+import { API, credentials, guard } from "@/lib/api"
 import type { GatewayProfileV2Out, GatewayProfileV2Target } from "@/lib/api/guard"
 import {
   type Operation,
@@ -332,7 +332,6 @@ export default function GatewayProfileV2Editor({
     setPrimitivesError("")
     ;(async () => {
       try {
-        const API = process.env.NEXT_PUBLIC_API_BASE ?? ""
         const res = await authFetch(`${API}/workspaces/${workspaceId}/llm-primitives`)
         if (!res.ok) {
           throw new Error(`LLM Model Primitives fetch failed (${res.status})`)
