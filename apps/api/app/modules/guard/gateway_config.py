@@ -285,6 +285,12 @@ class HTTPPassthroughTarget(BaseModel):
     model: str = Field(min_length=1, max_length=256)
     credential_ref: str = Field(min_length=1, max_length=512)
     endpoint: str | None = Field(default=None, max_length=2048)
+    # PR 7 — opaque per-integration tuning bag. Custom integration
+    # reads auth_header / bearer_prefix / extra_headers from here to
+    # override the preset defaults. Symmetric with the same field on
+    # the native + LiteLLM target subclasses; persisted as JSON inside
+    # the profile row so no Alembic migration is required.
+    provider_options: dict[str, Any] = Field(default_factory=dict)
 
     @field_validator("endpoint")
     @classmethod

@@ -46,6 +46,19 @@ def _openrouter_target(**overrides) -> HTTPPassthroughTarget:
     return HTTPPassthroughTarget(**defaults)
 
 
+def _custom_target(**overrides) -> HTTPPassthroughTarget:
+    defaults = dict(
+        id="custom-primary",
+        transport="http_passthrough",
+        integration="custom",
+        model="gpt-4o",
+        credential_ref=f"vault://{ENV}/custom",
+        endpoint="https://my-llm-proxy.example.com/v1",
+    )
+    defaults.update(overrides)
+    return HTTPPassthroughTarget(**defaults)
+
+
 class _FakeResponse:
     def __init__(self, status_code=200, json_body=None):
         self.status_code = status_code
@@ -93,6 +106,74 @@ async def test_openrouter_chat_completions_hits_correct_url_with_bearer(monkeypa
     # Attribution headers reach the wire.
     assert captured["headers"]["HTTP-Referer"] == "https://conductai.ai"
     assert captured["headers"]["X-Title"] == "Conduct AI Gateway"
+
+
+@pytest.mark.anyio("asyncio")
+async def test_custom_defaults_to_bearer_authorization_and_target_endpoint(monkeypatch):
+    """Custom with no provider_options overrides falls back to the
+    Bearer + authorization defaults. URL comes from target.endpoint +
+    the operation's standard suffix."""
+    captured: dict = {}
+
+    async def _fake_post(url, headers, content):
+        captured.update(url=url, headers=headers, content=content)
+        return _FakeResponse(200, {"id": "chatcmpl-custom"})
+
+    transport = HTTPPassthroughTransport()
+    fake_client = MagicMock()
+    fake_client.post = _fake_post
+    monkeypatch.setattr(transport, "_get_client", AsyncMock(return_value=fake_client))
+
+    result = await transport.execute(
+        target=_custom_target(),
+        operation="openai_chat_completions",
+        payload={"model": "cond-alias", "messages": [{"role": "user", "content": "hi"}]},
+        credential_resolver=lambda ref: "sk-live",
+    )
+
+    assert result == {"id": "chatcmpl-custom"}
+    assert captured["url"] == "https://my-llm-proxy.example.com/v1/chat/completions"
+    assert captured["headers"]["authorization"] == "Bearer sk-live"
+    # No accidental static extra headers leaked from other integrations.
+    assert "HTTP-Referer" not in captured["headers"]
+    assert "Helicone-Auth" not in captured["headers"]
+
+
+@pytest.mark.anyio("asyncio")
+async def test_custom_provider_options_override_auth_header_and_prefix(monkeypatch):
+    """Admin sets auth_header=x-api-key + bearer_prefix=False +
+    extra_headers={X-Team: platform}. All three land on the wire in
+    place of / in addition to the defaults."""
+    captured: dict = {}
+
+    async def _fake_post(url, headers, content):
+        captured.update(url=url, headers=headers)
+        return _FakeResponse(200, {"id": "x"})
+
+    transport = HTTPPassthroughTransport()
+    fake_client = MagicMock()
+    fake_client.post = _fake_post
+    monkeypatch.setattr(transport, "_get_client", AsyncMock(return_value=fake_client))
+
+    await transport.execute(
+        target=_custom_target(provider_options={
+            "auth_header":    "x-api-key",
+            "bearer_prefix":  False,
+            "extra_headers":  {"X-Team": "platform", "X-Env": "prod"},
+        }),
+        operation="anthropic_messages",
+        payload={"messages": []},
+        credential_resolver=lambda ref: "sk-raw",
+    )
+
+    # Path picks the Anthropic-shape suffix from the pinned operation_paths.
+    assert captured["url"] == "https://my-llm-proxy.example.com/v1/messages"
+    # Raw key in the admin-chosen header, no Bearer.
+    assert captured["headers"]["x-api-key"] == "sk-raw"
+    assert "authorization" not in {k.lower() for k in captured["headers"]}
+    # Extra static headers reach the wire.
+    assert captured["headers"]["X-Team"] == "platform"
+    assert captured["headers"]["X-Env"] == "prod"
 
 
 @pytest.mark.anyio("asyncio")
@@ -237,4 +318,10 @@ def test_integration_certifies_operation_helper():
     check the runtime matrix. Guards against catalog-vs-runtime drift."""
     assert integration_certifies_operation("openrouter", "openai_chat_completions") is True
     assert integration_certifies_operation("openrouter", "anthropic_messages") is False
+    # PR 7 — Custom certified for every launch operation.
+    assert integration_certifies_operation("custom", "openai_chat_completions") is True
+    assert integration_certifies_operation("custom", "openai_responses") is True
+    assert integration_certifies_operation("custom", "anthropic_messages") is True
+    assert integration_certifies_operation("custom", "anthropic_count_tokens") is True
+    # Portkey (PR 4) / Helicone (PR 5) / Azure (PR 6) not registered on this branch.
     assert integration_certifies_operation("portkey", "openai_chat_completions") is False

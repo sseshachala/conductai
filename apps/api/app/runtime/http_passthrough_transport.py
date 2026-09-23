@@ -96,6 +96,26 @@ _INTEGRATION_ENDPOINTS: dict[Integration, IntegrationConfig] = {
             "X-Title": "Conduct AI Gateway",
         },
     ),
+    # PR 7 — Custom is a template, not a preset. The admin supplies
+    # ``target.endpoint`` (full base URL up to ``/v1``) +
+    # ``target.provider_options`` to override auth header shape and
+    # inject extra headers. Defaults below match OpenRouter (Bearer +
+    # ``authorization``) — safe fallback for the most common shape.
+    # Path suffixes stay pinned per Operation because a custom proxy
+    # sitting in front of OpenAI-shape or Anthropic-shape upstreams
+    # will use the same routes the vendor documents.
+    "custom": IntegrationConfig(
+        base_url="",  # unused; target.endpoint is required
+        auth_header="authorization",
+        bearer_prefix=True,
+        operation_paths={
+            "openai_chat_completions": "/chat/completions",
+            "openai_responses":        "/responses",
+            "anthropic_messages":      "/messages",
+            "anthropic_count_tokens":  "/messages/count_tokens",
+        },
+        allows_endpoint_override=True,
+    ),
 }
 
 
@@ -192,19 +212,24 @@ class HTTPPassthroughTransport:
         request_body = dict(payload)
         request_body["model"] = target.model
 
+        # PR 7 — custom integration lets the admin override the preset's
+        # auth header shape + inject extra static headers per-target.
+        # For every other integration these come from the pinned config.
+        auth_header, bearer_prefix, static_extra_headers = _effective_auth(target, config)
+
         headers = {
             "content-type": "application/json",
-            config.auth_header: (
-                f"Bearer {api_key}" if config.bearer_prefix else api_key
+            auth_header: (
+                f"Bearer {api_key}" if bearer_prefix else api_key
             ),
-            **config.extra_headers,
+            **static_extra_headers,
             **(client_headers or {}),
         }
         # content-type + auth stay under transport control regardless of
         # what the client sent.
         headers["content-type"] = "application/json"
-        headers[config.auth_header] = (
-            f"Bearer {api_key}" if config.bearer_prefix else api_key
+        headers[auth_header] = (
+            f"Bearer {api_key}" if bearer_prefix else api_key
         )
 
         client = await self._get_client()
@@ -278,6 +303,41 @@ class HTTPPassthroughTransport:
                 ),
             )
         return config.base_url
+
+
+def _effective_auth(
+    target: HTTPPassthroughTarget,
+    config: IntegrationConfig,
+) -> tuple[str, bool, dict[str, str]]:
+    """Resolve the auth header shape + static extras for this attempt.
+
+    Every integration except ``custom`` uses the values pinned in
+    ``IntegrationConfig``. Custom targets let the admin override them
+    via ``target.provider_options``:
+
+    - ``auth_header`` (str, default from config)
+    - ``bearer_prefix`` (bool, default from config)
+    - ``extra_headers`` (dict[str, str], default from config)
+
+    Kept separate from ``execute`` so the override rules stay a small,
+    testable unit — and so future integrations that need similar
+    per-target flexibility can opt in without another branch inside
+    the hot path.
+    """
+    if target.integration != "custom":
+        return config.auth_header, config.bearer_prefix, dict(config.extra_headers)
+    opts = getattr(target, "provider_options", None) or {}
+    auth_header = str(opts.get("auth_header") or config.auth_header)
+    # Explicit `False` from admin must beat the `True` default.
+    if "bearer_prefix" in opts:
+        bearer_prefix = bool(opts["bearer_prefix"])
+    else:
+        bearer_prefix = config.bearer_prefix
+    raw_extras = opts.get("extra_headers") or {}
+    if not isinstance(raw_extras, dict):
+        raw_extras = {}
+    extras = {str(k): str(v) for k, v in raw_extras.items()}
+    return auth_header, bearer_prefix, extras
 
 
 def integration_certifies_operation(

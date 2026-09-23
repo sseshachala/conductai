@@ -75,10 +75,19 @@ _LITELLM_SDK_CERTIFIED: dict[tuple[str, Operation], list[str] | None] = {
 # OpenRouter reference implementation deliberately punts on.
 _HTTP_PASSTHROUGH_CERTIFIED: dict[tuple[Integration, Operation], bool] = {
     ("openrouter", "openai_chat_completions"): True,
+    # PR 7 — Custom is a template, not a preset. Admin supplies
+    # target.endpoint + provider_options (auth_header/bearer_prefix/
+    # extra_headers). Certified for every launch-set operation because
+    # a Custom proxy can front any OpenAI-shape or Anthropic-shape
+    # upstream — the runtime enforces the wire shape at request time.
+    ("custom", "openai_chat_completions"): True,
+    ("custom", "openai_responses"):        True,
+    ("custom", "anthropic_messages"):      True,
+    ("custom", "anthropic_count_tokens"):  True,
 }
 
 
-CATALOG_VERSION = "2026.09.16.v2-openrouter-passthrough"
+CATALOG_VERSION = "2026.09.22.v2-custom-passthrough"
 
 
 class CapabilityMismatch(Exception):

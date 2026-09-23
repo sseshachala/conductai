@@ -307,16 +307,18 @@ def test_catalog_still_rejects_openrouter_for_uncertified_operation():
         )
 
 
-def test_catalog_rejects_custom_integration_without_explicit_certification():
-    """``integration='custom'`` is intentionally absent from the certified
-    matrix. A custom passthrough MUST be certified per operation before
-    it can be published, even with an endpoint override."""
+def test_catalog_certifies_custom_integration_for_launch_operations():
+    """PR 7 — Custom is certified for every launch-set operation because
+    a Custom proxy can front any OpenAI-shape or Anthropic-shape upstream.
+    The runtime enforces the wire shape at request time via
+    ``target.provider_options`` overrides on auth header + extras."""
     target = HTTPPassthroughTarget(
         id="c", transport="http_passthrough", integration="custom",
         model="my-model", credential_ref=CRED_PORTKEY,
         endpoint="https://custom.example.com/v1",
     )
-    with pytest.raises(CapabilityMismatch):
-        validate_targets_against_accepts(
-            accepts=["anthropic_messages"], targets=[target],
-        )
+    validate_targets_against_accepts(
+        accepts=["openai_chat_completions", "openai_responses",
+                 "anthropic_messages", "anthropic_count_tokens"],
+        targets=[target],
+    )

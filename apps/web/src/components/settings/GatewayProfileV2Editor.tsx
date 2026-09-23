@@ -46,9 +46,15 @@ const MODELS_BY_PROVIDER: Record<string, Array<{ id: string; label: string }>> =
 // an empty operation list that fails validation server-side).
 const PASSTHROUGH_INTEGRATION_OPERATIONS: Record<string, Operation[]> = {
   openrouter: ["openai_chat_completions"],
-  // portkey / helicone_anthropic / helicone_openai / azure_openai
-  // stay uncertified until each ships its per-integration auth
-  // shape. Absent = deriveAccepts contributes nothing for them.
+  // PR 7 — Custom is a template certified for every launch operation.
+  custom: [
+    "openai_chat_completions",
+    "openai_responses",
+    "anthropic_messages",
+    "anthropic_count_tokens",
+  ],
+  // portkey (PR 4) / helicone_* (PR 5) / azure_openai (PR 6) stay
+  // uncertified in this mirror until their PRs land.
 }
 
 // Compute the operations ONE target can serve. Anthropic native /
@@ -530,7 +536,7 @@ function TargetRow({
       {target.transport === "http_passthrough" ? (
         <FieldLabel
           label="Integration"
-          hint="External gateway routing traffic on our behalf. OpenRouter is certified for openai_chat_completions in PR 5; other integrations stay uncertified until each ships its per-integration auth shape."
+          hint="External gateway routing traffic on our behalf. OpenRouter + Custom are certified today. Custom is a template: you supply the endpoint URL, auth header shape, and any extra headers your proxy needs — Conduct forwards OpenAI- or Anthropic-shape bodies based on the accepts you publish."
         >
           <select value={target.integration} disabled={!isAdmin}
             onChange={e => onChange({ integration: e.target.value })}
@@ -540,7 +546,7 @@ function TargetRow({
             <option value="helicone_anthropic" disabled>helicone_anthropic (not yet certified)</option>
             <option value="helicone_openai" disabled>helicone_openai (not yet certified)</option>
             <option value="azure_openai" disabled>azure_openai (not yet certified)</option>
-            <option value="custom" disabled>custom (not yet certified)</option>
+            <option value="custom">custom (certified)</option>
           </select>
         </FieldLabel>
       ) : (
@@ -560,10 +566,19 @@ function TargetRow({
         </FieldLabel>
       )}
 
-      <FieldLabel label="Model" hint={target.transport === "http_passthrough" ? "OpenRouter model id (e.g. anthropic/claude-3.5-sonnet)." : "Real upstream model ID the request goes to."}>
+      <FieldLabel
+        label="Model"
+        hint={
+          target.transport === "http_passthrough"
+            ? (target.integration === "custom"
+                ? "Model id the request body carries — whatever your proxy expects (e.g. gpt-4o or claude-sonnet-4-6)."
+                : "OpenRouter model id (e.g. anthropic/claude-3.5-sonnet).")
+            : "Real upstream model ID the request goes to."
+        }
+      >
         {target.transport === "http_passthrough" ? (
           <input value={target.model} disabled={!isAdmin}
-            placeholder="anthropic/claude-3.5-sonnet"
+            placeholder={target.integration === "custom" ? "gpt-4o" : "anthropic/claude-3.5-sonnet"}
             onChange={e => onChange({ model: e.target.value })}
             style={inputStyle} />
         ) : (
@@ -607,6 +622,85 @@ function TargetRow({
           )}
         </FieldLabel>
       </div>
+
+      {/* PR 7 — Custom integration exposes auth-header shape + extra
+          headers JSON on the target itself. Endpoint reuses the
+          existing `endpoint` field. All three live in provider_options
+          so the schema stays stable. */}
+      {target.transport === "http_passthrough" && target.integration === "custom" ? (
+        <>
+          <div style={{ gridColumn: "2 / -1", display: "grid", gridTemplateColumns: "2fr 1fr 1fr", gap: 10 }}>
+            <FieldLabel label="Endpoint URL" hint="Full base URL up to /v1 (e.g. https://my-llm-proxy.example.com/v1). Suffixes like /chat/completions or /messages are added per operation.">
+              <input value={target.endpoint} disabled={!isAdmin}
+                placeholder="https://my-llm-proxy.example.com/v1"
+                onChange={e => onChange({ endpoint: e.target.value })}
+                style={inputStyle} />
+            </FieldLabel>
+            <FieldLabel label="Auth header" hint="Name of the header carrying the API key (default: authorization).">
+              <input
+                value={String((target.provider_options as Record<string, unknown> | undefined)?.auth_header ?? "")}
+                disabled={!isAdmin}
+                placeholder="authorization"
+                onChange={e => onChange({
+                  provider_options: {
+                    ...(target.provider_options ?? {}),
+                    auth_header: e.target.value,
+                  },
+                })}
+                style={inputStyle} />
+            </FieldLabel>
+            <FieldLabel label="Bearer prefix" hint="Prepend `Bearer ` to the key value. Turn off if your proxy expects the raw key (e.g. x-api-key style).">
+              <select
+                value={((target.provider_options as Record<string, unknown> | undefined)?.bearer_prefix ?? true) ? "yes" : "no"}
+                disabled={!isAdmin}
+                onChange={e => onChange({
+                  provider_options: {
+                    ...(target.provider_options ?? {}),
+                    bearer_prefix: e.target.value === "yes",
+                  },
+                })}
+                style={inputStyle}>
+                <option value="yes">Bearer</option>
+                <option value="no">Raw</option>
+              </select>
+            </FieldLabel>
+          </div>
+          <div style={{ gridColumn: "2 / -1" }}>
+            <FieldLabel label="Extra headers (JSON)" hint='Optional static headers to send on every request. Must parse as a flat JSON object of strings, e.g. {"X-Team":"platform"}. Merged AFTER auth + client headers.'>
+              <textarea
+                value={(() => {
+                  const eh = (target.provider_options as Record<string, unknown> | undefined)?.extra_headers
+                  return eh && typeof eh === "object" ? JSON.stringify(eh, null, 2) : ""
+                })()}
+                disabled={!isAdmin}
+                placeholder='{"X-Team": "platform"}'
+                onChange={e => {
+                  const text = e.target.value
+                  let parsed: Record<string, string> | undefined
+                  try {
+                    parsed = text.trim() ? JSON.parse(text) : undefined
+                  } catch {
+                    // keep the raw text visible via provider_options.extra_headers_raw
+                    // so the admin can fix the typo without losing their work.
+                    onChange({
+                      provider_options: {
+                        ...(target.provider_options ?? {}),
+                        extra_headers_raw: text,
+                      },
+                    })
+                    return
+                  }
+                  const next = { ...(target.provider_options ?? {}) }
+                  delete (next as Record<string, unknown>).extra_headers_raw
+                  if (parsed) next.extra_headers = parsed
+                  else delete (next as Record<string, unknown>).extra_headers
+                  onChange({ provider_options: next })
+                }}
+                style={{ ...inputStyle, minHeight: 72, fontFamily: "monospace", fontSize: 11 }} />
+            </FieldLabel>
+          </div>
+        </>
+      ) : null}
     </div>
   )
 }
