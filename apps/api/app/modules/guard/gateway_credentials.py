@@ -10,6 +10,26 @@ from app.core.credentials import get_vault_credential
 from app.models.environment import Environment
 
 
+# Canonical vault key names per gateway integration. The passthrough
+# bridge (``build_credential_resolver``) passes ``target.integration``
+# as the ``provider`` arg to ``resolve_gateway_key``, so these names
+# are looked up ahead of the generic ``{PROVIDER}_API_KEY`` fallback.
+# One entry per integration keeps user vaults small: users store
+# ``HELICONE_API_KEY`` once and both ``helicone_anthropic`` +
+# ``helicone_openai`` targets pick it up, instead of forcing
+# ``HELICONE_ANTHROPIC_API_KEY`` / ``HELICONE_OPENAI_API_KEY``
+# duplication. Kept in sync with ``INTEGRATION_KEY_HINTS`` in the
+# Gateway Profile V2 editor UI.
+INTEGRATION_KEY_ALIASES: dict[str, tuple[str, ...]] = {
+    "openrouter":         ("OPENROUTER_API_KEY",),
+    "portkey":            ("PORTKEY_API_KEY",),
+    "helicone_anthropic": ("HELICONE_API_KEY",),
+    "helicone_openai":    ("HELICONE_API_KEY",),
+    "azure_openai":       ("AZUREAI_API_KEY", "AZURE_OPENAI_API_KEY"),
+    "custom":             (),
+}
+
+
 @dataclass(frozen=True)
 class VaultCredentialRef:
     environment_id: str | None
@@ -54,7 +74,12 @@ def resolve_gateway_key(
     if not vault_id:
         return None
     creds = get_vault_credential(db, workspace_id, vault_id, parsed.selector)
-    key = (
+    # Integration aliases first (e.g. HELICONE_API_KEY covers both
+    # helicone_anthropic + helicone_openai), then the generic ladder.
+    key = next(
+        (creds.get(name) for name in INTEGRATION_KEY_ALIASES.get(provider, ()) if creds.get(name)),
+        None,
+    ) or (
         creds.get("LLM_UPSTREAM_API_KEY")
         or creds.get("api_key")
         or creds.get(f"{provider.upper()}_API_KEY")
