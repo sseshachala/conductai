@@ -484,7 +484,7 @@ def _validate_working_copy(working_copy: dict[str, Any]) -> GatewayProfileV2:
             ):
                 target_index = loc_parts[1]
                 # Historical shape: ("targets", i, "LiteLLMSDKTarget", ...).
-                # PR 6 review — model_validator errors wrap the variant
+                # PR 6/7 review — model_validator errors wrap the variant
                 # name inside a ``function-after[...HTTPPassthroughTarget]``
                 # synthetic segment. Detect exact match OR substring so
                 # the filter still catches the noise.

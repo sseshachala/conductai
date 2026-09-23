@@ -88,10 +88,27 @@ _HTTP_PASSTHROUGH_CERTIFIED: dict[tuple[Integration, Operation], bool] = {
     # + ``api_version`` in ``provider_options``. Auth via
     # ``api-key`` header (no Bearer).
     ("azure_openai", "openai_chat_completions"): True,
+    # PR 7 — Custom certification is per-protocol, not universal.
+    # ``target.provider_options.protocol`` selects the operation set;
+    # see ``_CUSTOM_OPS_BY_PROTOCOL`` + the custom branch in
+    # ``_certified_operations_for_target`` below. Not listed here
+    # because custom needs the runtime protocol lookup.
 }
 
 
-CATALOG_VERSION = "2026.09.22.v2-azure-passthrough"
+#: PR 7 review finding 6 — per-protocol operation set for
+#: ``integration=custom``. Universal certification advertised
+#: operations the target's upstream might not speak (e.g. a Custom
+#: target on an OpenAI-only proxy claiming ``anthropic_messages``).
+#: Admin picks a protocol at publish; the catalog limits accepts to
+#: the matching operations for that shape.
+_CUSTOM_OPS_BY_PROTOCOL: dict[str, set[Operation]] = {
+    "openai":    {"openai_chat_completions", "openai_responses"},
+    "anthropic": {"anthropic_messages", "anthropic_count_tokens"},
+}
+
+
+CATALOG_VERSION = "2026.09.22.v2-custom-passthrough"
 
 
 class CapabilityMismatch(Exception):
@@ -117,6 +134,10 @@ def _certified_operations_for_target(target: Target) -> set[Operation]:
             if prov == target.provider
         }
     if isinstance(target, HTTPPassthroughTarget):
+        # Custom is per-protocol; the standard matrix skips it.
+        if target.integration == "custom":
+            protocol = (getattr(target, "provider_options", None) or {}).get("protocol")
+            return set(_CUSTOM_OPS_BY_PROTOCOL.get(str(protocol), ()))
         return {
             op
             for (integration, op), certified in _HTTP_PASSTHROUGH_CERTIFIED.items()

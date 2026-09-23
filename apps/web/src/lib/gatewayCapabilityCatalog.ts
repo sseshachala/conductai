@@ -5,7 +5,7 @@
 // operation is not certified" before the round-trip. Stale mirror =
 // less-helpful UI, never a bad profile in the DB.
 
-export const CATALOG_VERSION = "2026.09.22.v2-azure-passthrough"
+export const CATALOG_VERSION = "2026.09.22.v2-custom-passthrough"
 
 export type Operation =
   | "anthropic_messages"
@@ -54,7 +54,15 @@ const _HTTP_PASSTHROUGH: Record<Integration, Operation[]> = {
   helicone_anthropic: ["anthropic_messages"],
   helicone_openai: ["openai_chat_completions"],
   azure_openai: ["openai_chat_completions"],
-  custom: [],
+  // PR 7 — Custom is a template; certified for every launch operation
+  // (per-protocol restriction is enforced server-side by
+  // ``_CUSTOM_OPS_BY_PROTOCOL`` in the Python catalog).
+  custom: [
+    "openai_chat_completions",
+    "openai_responses",
+    "anthropic_messages",
+    "anthropic_count_tokens",
+  ],
 }
 
 export type TargetShape =

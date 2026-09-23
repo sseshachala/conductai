@@ -50,15 +50,21 @@ const PASSTHROUGH_INTEGRATION_OPERATIONS: Record<string, Operation[]> = {
   helicone_openai:    ["openai_chat_completions"],
   helicone_anthropic: ["anthropic_messages"],
   azure_openai:       ["openai_chat_completions"],
-  // custom (PR 7) stays uncertified in this mirror until it ships.
-  // Absent = deriveAccepts contributes nothing for it.
+  // PR 7 — Custom transport can serve every launch operation; the
+  // capability catalog narrows the per-target set by
+  // ``provider_options.protocol`` at publish time.
+  custom: [
+    "openai_chat_completions",
+    "openai_responses",
+    "anthropic_messages",
+    "anthropic_count_tokens",
+  ],
 }
 
 // Expected vault key name per passthrough integration. Mirrors
 // ``INTEGRATION_KEY_ALIASES`` in
 // ``apps/api/app/modules/guard/gateway_credentials.py`` — first tuple
-// entry is the canonical name shown to users. Both Helicone integrations
-// share HELICONE_API_KEY on purpose so users store one key.
+// entry is the canonical name shown to users.
 const INTEGRATION_KEY_HINTS: Record<string, string> = {
   openrouter:         "OPENROUTER_API_KEY",
   portkey:            "PORTKEY_API_KEY",
@@ -547,7 +553,7 @@ function TargetRow({
       {target.transport === "http_passthrough" ? (
         <FieldLabel
           label="Integration"
-          hint="External gateway routing traffic on our behalf. OpenRouter, Portkey, Helicone (OpenAI + Anthropic), and Azure OpenAI are certified today; Custom stays uncertified until it ships. Helicone vault entries must hold two keys (HELICONE_API_KEY + vendor); Azure needs a per-tenant Resource endpoint + deployment name (in place of model id) + api-version."
+          hint="External gateway routing traffic on our behalf. All six integrations certified: OpenRouter, Portkey, Helicone (OpenAI + Anthropic), Azure OpenAI, and Custom. Portkey needs virtual_key/provider/config. Helicone vault holds two keys (HELICONE_API_KEY + vendor). Azure needs Resource endpoint + deployment name + api-version. Custom is a template — you pick protocol + endpoint + auth shape."
         >
           <select value={target.integration} disabled={!isAdmin}
             onChange={e => onChange({ integration: e.target.value })}
@@ -557,7 +563,7 @@ function TargetRow({
             <option value="helicone_anthropic">helicone_anthropic (certified)</option>
             <option value="helicone_openai">helicone_openai (certified)</option>
             <option value="azure_openai">azure_openai (certified)</option>
-            <option value="custom" disabled>custom (not yet certified)</option>
+            <option value="custom">custom (certified)</option>
           </select>
         </FieldLabel>
       ) : (
@@ -583,7 +589,9 @@ function TargetRow({
           target.transport === "http_passthrough"
             ? (target.integration === "azure_openai"
                 ? "Azure OpenAI deployment name — the URL becomes /openai/deployments/{deployment}/... Not a model id."
-                : "Upstream model id in the integration's format (OpenRouter: `anthropic/claude-3.5-sonnet`, Portkey: `gpt-4o` or vendor-prefixed via virtual key).")
+                : target.integration === "custom"
+                    ? "Model id the request body carries — whatever your proxy expects (e.g. gpt-4o or claude-sonnet-4-6)."
+                    : "Upstream model id in the integration's format (OpenRouter: `anthropic/claude-3.5-sonnet`, Portkey: `gpt-4o` or vendor-prefixed via virtual key).")
             : "Real upstream model ID the request goes to."
         }
       >
@@ -592,6 +600,7 @@ function TargetRow({
             placeholder={
               target.integration === "azure_openai" ? "gpt-4o-prod-deploy"
               : target.integration === "portkey" ? "gpt-4o"
+              : target.integration === "custom" ? "gpt-4o"
               : "anthropic/claude-3.5-sonnet"
             }
             onChange={e => onChange({ model: e.target.value })}
@@ -716,6 +725,75 @@ function TargetRow({
           </FieldLabel>
         </div>
       ) : null}
+
+      {/* PR 7 — Custom integration exposes protocol + auth-header shape
+          + extra headers JSON on the target itself. Endpoint reuses
+          the existing `endpoint` field. All live in provider_options. */}
+      {target.transport === "http_passthrough" && target.integration === "custom" ? (
+        <>
+          <div style={{ gridColumn: "2 / -1", display: "grid", gridTemplateColumns: "2fr 1fr 1fr", gap: 10 }}>
+            <FieldLabel label="Endpoint URL" hint="Full base URL up to /v1 (e.g. https://my-llm-proxy.example.com/v1). Suffixes like /chat/completions or /messages are added per operation.">
+              <input value={target.endpoint} disabled={!isAdmin}
+                placeholder="https://my-llm-proxy.example.com/v1"
+                onChange={e => onChange({ endpoint: e.target.value })}
+                style={inputStyle} />
+            </FieldLabel>
+            <FieldLabel label="Protocol" hint="Which wire shape your upstream speaks. Determines which operations publish will certify (openai_* vs anthropic_*).">
+              <select
+                value={String((target.provider_options as Record<string, unknown> | undefined)?.protocol ?? "")}
+                disabled={!isAdmin}
+                onChange={e => onChange({
+                  provider_options: {
+                    ...(target.provider_options ?? {}),
+                    protocol: e.target.value || undefined,
+                  },
+                })}
+                style={inputStyle}>
+                <option value="">— pick protocol —</option>
+                <option value="openai">OpenAI-shape</option>
+                <option value="anthropic">Anthropic-shape</option>
+              </select>
+            </FieldLabel>
+            <FieldLabel label="Bearer prefix" hint="Prepend `Bearer ` to the key value. Turn off if your proxy expects the raw key.">
+              <select
+                value={((target.provider_options as Record<string, unknown> | undefined)?.bearer_prefix ?? true) ? "yes" : "no"}
+                disabled={!isAdmin}
+                onChange={e => onChange({
+                  provider_options: {
+                    ...(target.provider_options ?? {}),
+                    bearer_prefix: e.target.value === "yes",
+                  },
+                })}
+                style={inputStyle}>
+                <option value="yes">Bearer</option>
+                <option value="no">Raw</option>
+              </select>
+            </FieldLabel>
+          </div>
+          <div style={{ gridColumn: "2 / -1", display: "grid", gridTemplateColumns: "1fr", gap: 10 }}>
+            <FieldLabel label="Auth header" hint="Name of the header carrying the API key (default: authorization). Reserved names (cookie / host / content-* / *-api-key etc.) are refused.">
+              <input
+                value={String((target.provider_options as Record<string, unknown> | undefined)?.auth_header ?? "")}
+                disabled={!isAdmin}
+                placeholder="authorization"
+                onChange={e => onChange({
+                  provider_options: {
+                    ...(target.provider_options ?? {}),
+                    auth_header: e.target.value,
+                  },
+                })}
+                style={inputStyle} />
+            </FieldLabel>
+          </div>
+          <div style={{ gridColumn: "2 / -1" }}>
+            <CustomExtraHeadersField
+              value={target.provider_options as Record<string, unknown> | undefined}
+              disabled={!isAdmin}
+              onChange={next => onChange({ provider_options: next })}
+            />
+          </div>
+        </>
+      ) : null}
     </div>
   )
 }
@@ -736,6 +814,94 @@ function FieldLabel({
       </span>
       {children}
     </label>
+  )
+}
+
+
+// PR 7 review finding 7 — the previous inline textarea bound its
+// ``value`` to the last-valid parsed ``extra_headers`` object. Typing
+// the first ``{`` produced invalid JSON, wrote to ``extra_headers_raw``,
+// and the next render resets the visible text to whatever was last
+// parseable — so users literally couldn't type. This component keeps
+// a local raw string state, seeded from either ``extra_headers_raw``
+// or a pretty-printed ``extra_headers``, parses on every keystroke,
+// and surfaces the error inline without wiping input.
+function CustomExtraHeadersField({
+  value, disabled, onChange,
+}: {
+  value: Record<string, unknown> | undefined
+  disabled: boolean
+  onChange: (next: Record<string, unknown>) => void
+}) {
+  const seed = (() => {
+    if (value && typeof value.extra_headers_raw === "string") return value.extra_headers_raw
+    const eh = value?.extra_headers
+    return eh && typeof eh === "object" ? JSON.stringify(eh, null, 2) : ""
+  })()
+  const [raw, setRaw] = useState(seed)
+  const [error, setError] = useState<string | null>(null)
+
+  return (
+    <FieldLabel
+      label="Extra headers (JSON)"
+      hint='Optional static headers to send on every request. Must parse as a flat JSON object of strings, e.g. {"X-Team":"platform"}. Reserved names (authorization / cookie / content-* / any *api-key*) are refused.'
+    >
+      <textarea
+        value={raw}
+        disabled={disabled}
+        placeholder='{"X-Team": "platform"}'
+        onChange={e => {
+          const text = e.target.value
+          setRaw(text)
+          const trimmed = text.trim()
+          const next: Record<string, unknown> = { ...(value ?? {}) }
+          if (!trimmed) {
+            delete next.extra_headers
+            delete next.extra_headers_raw
+            setError(null)
+            onChange(next)
+            return
+          }
+          try {
+            const parsed = JSON.parse(trimmed)
+            if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+              throw new Error("must be a JSON object")
+            }
+            for (const [k, v] of Object.entries(parsed)) {
+              if (typeof v !== "string") {
+                throw new Error(`value for "${k}" must be a string`)
+              }
+            }
+            next.extra_headers = parsed as Record<string, string>
+            delete next.extra_headers_raw
+            setError(null)
+          } catch (err) {
+            // Keep the raw text alongside a validation error so the
+            // admin can fix without losing keystrokes. Publish still
+            // sees ``extra_headers_raw`` — the server refuses that
+            // key at the schema level, so a broken draft can't ship.
+            delete next.extra_headers
+            next.extra_headers_raw = text
+            setError((err as Error).message || "invalid JSON")
+          }
+          onChange(next)
+        }}
+        style={{
+          padding: 6,
+          borderRadius: 4,
+          border: `1px solid var(${error ? "--err-bd" : "--border"})`,
+          background: "var(--surface)",
+          color: "var(--text)",
+          minHeight: 72,
+          fontFamily: "monospace",
+          fontSize: 11,
+        }} />
+      {error ? (
+        <span style={{ fontSize: 11, color: "var(--err)" }}>
+          {error} — publish will reject until this parses.
+        </span>
+      ) : null}
+    </FieldLabel>
   )
 }
 

@@ -399,16 +399,129 @@ def test_catalog_still_rejects_openrouter_for_uncertified_operation():
         )
 
 
-def test_catalog_rejects_custom_integration_without_explicit_certification():
-    """``integration='custom'`` is intentionally absent from the certified
-    matrix. A custom passthrough MUST be certified per operation before
-    it can be published, even with an endpoint override."""
+def test_catalog_certifies_custom_openai_protocol_for_openai_ops():
+    """PR 7 review finding 6 — Custom certification is per-protocol.
+    openai-shape targets certify openai_chat_completions + openai_responses
+    only; publishing anthropic_messages against an openai proxy would
+    silently 4xx at request time, so publish rejects at build time."""
     target = HTTPPassthroughTarget(
         id="c", transport="http_passthrough", integration="custom",
-        model="my-model", credential_ref=CRED_PORTKEY,
+        model="gpt-4o", credential_ref=CRED_PORTKEY,
         endpoint="https://custom.example.com/v1",
+        provider_options={"protocol": "openai"},
+    )
+    validate_targets_against_accepts(
+        accepts=["openai_chat_completions", "openai_responses"],
+        targets=[target],
     )
     with pytest.raises(CapabilityMismatch):
         validate_targets_against_accepts(
             accepts=["anthropic_messages"], targets=[target],
+        )
+
+
+def test_catalog_certifies_custom_anthropic_protocol_for_anthropic_ops():
+    target = HTTPPassthroughTarget(
+        id="c", transport="http_passthrough", integration="custom",
+        model="claude-sonnet-4-6", credential_ref=CRED_PORTKEY,
+        endpoint="https://custom.example.com/v1",
+        provider_options={"protocol": "anthropic"},
+    )
+    validate_targets_against_accepts(
+        accepts=["anthropic_messages", "anthropic_count_tokens"],
+        targets=[target],
+    )
+    with pytest.raises(CapabilityMismatch):
+        validate_targets_against_accepts(
+            accepts=["openai_chat_completions"], targets=[target],
+        )
+
+
+def test_custom_target_requires_endpoint():
+    with pytest.raises(ValueError, match=r"endpoint"):
+        HTTPPassthroughTarget(
+            id="c", transport="http_passthrough", integration="custom",
+            model="gpt-4o", credential_ref=CRED_PORTKEY,
+            provider_options={"protocol": "openai"},
+        )
+
+
+def test_custom_target_requires_protocol():
+    with pytest.raises(ValueError, match=r"protocol"):
+        HTTPPassthroughTarget(
+            id="c", transport="http_passthrough", integration="custom",
+            model="gpt-4o", credential_ref=CRED_PORTKEY,
+            endpoint="https://custom.example.com/v1",
+            # No provider_options.protocol.
+        )
+
+
+def test_custom_target_rejects_string_bearer_prefix():
+    """PR 7 review finding 5 — ``"false"`` (string) previously
+    coerced to True via ``bool(...)``. Publish now rejects with a
+    specific message so the operator fixes the config, not the
+    runtime coercion."""
+    with pytest.raises(ValueError, match=r"boolean"):
+        HTTPPassthroughTarget(
+            id="c", transport="http_passthrough", integration="custom",
+            model="gpt-4o", credential_ref=CRED_PORTKEY,
+            endpoint="https://custom.example.com/v1",
+            provider_options={"protocol": "openai", "bearer_prefix": "false"},
+        )
+
+
+@pytest.mark.parametrize("banned_key", [
+    "Authorization", "authorization",
+    "X-API-Key", "x-api-key",
+    "Cookie", "content-type", "Content-Length",
+    "Helicone-Auth", "x-portkey-api-key",
+    "my-openai-api-key", "some-vendor-secret", "unknown-token",
+])
+def test_custom_extra_headers_reject_reserved_names(banned_key):
+    """PR 7 review finding 2 — credential-bearing + transport-reserved
+    headers can't ride into a profile via extra_headers. Case-insensitive
+    reject, plus substring guards for password/secret/token/api-key."""
+    with pytest.raises(ValueError, match=r"reserved"):
+        HTTPPassthroughTarget(
+            id="c", transport="http_passthrough", integration="custom",
+            model="gpt-4o", credential_ref=CRED_PORTKEY,
+            endpoint="https://custom.example.com/v1",
+            provider_options={
+                "protocol": "openai",
+                "extra_headers": {banned_key: "value"},
+            },
+        )
+
+
+def test_custom_extra_headers_reject_crlf_injection():
+    with pytest.raises(ValueError, match=r"CR/LF|illegal"):
+        HTTPPassthroughTarget(
+            id="c", transport="http_passthrough", integration="custom",
+            model="gpt-4o", credential_ref=CRED_PORTKEY,
+            endpoint="https://custom.example.com/v1",
+            provider_options={
+                "protocol": "openai",
+                "extra_headers": {"X-Team": "line1\r\nX-Injected: true"},
+            },
+        )
+
+
+@pytest.mark.parametrize("bad_endpoint", [
+    "http://127.0.0.1:8080/v1",
+    "http://localhost/v1",
+    "https://10.0.0.5/v1",
+    "https://192.168.1.1/v1",
+    "http://169.254.169.254/latest/meta-data",  # cloud metadata service
+    "http://[::1]/v1",
+])
+def test_custom_endpoint_rejects_private_and_loopback(bad_endpoint):
+    """PR 7 review finding 1 — mirror of PR 6's guard for the Custom
+    integration. Full egress control is deployment policy; this stops
+    the workspace-admin-points-at-127.0.0.1 class of attack."""
+    with pytest.raises(ValueError, match=r"loopback|non-public|refused"):
+        HTTPPassthroughTarget(
+            id="c", transport="http_passthrough", integration="custom",
+            model="gpt-4o", credential_ref=CRED_PORTKEY,
+            endpoint=bad_endpoint,
+            provider_options={"protocol": "openai"},
         )

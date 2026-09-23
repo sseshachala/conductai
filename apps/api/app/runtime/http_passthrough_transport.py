@@ -159,11 +159,9 @@ _INTEGRATION_ENDPOINTS: dict[Integration, IntegrationConfig] = {
         vendor_bearer_prefix=False,
         vendor_key_names=("ANTHROPIC_API_KEY", "anthropic_api_key", "api_key"),
     ),
-    # PR 6 — Azure OpenAI. Per-tenant URL,
-    # ``allows_endpoint_override=True`` and the admin supplies the
-    # Azure Resource endpoint. Deployment name lives in
-    # ``target.model`` and substitutes into
-    # ``/openai/deployments/{model}/...`` at request time.
+    # PR 6 — Azure OpenAI. Per-tenant URL, admin supplies the Resource
+    # endpoint. Deployment name is stored in ``target.model``,
+    # substituted into ``/openai/deployments/{model}/...``.
     # ``api-version`` lives in ``target.provider_options.api_version``.
     # Auth uses raw ``api-key`` header (no Bearer prefix).
     "azure_openai": IntegrationConfig(
@@ -175,6 +173,24 @@ _INTEGRATION_ENDPOINTS: dict[Integration, IntegrationConfig] = {
         },
         allows_endpoint_override=True,
         query_params_from_options=("api_version",),
+    ),
+    # PR 7 — Custom is a template, not a preset. Admin supplies
+    # ``target.endpoint`` (full base URL up to ``/v1``) +
+    # ``target.provider_options`` (protocol, optional auth_header /
+    # bearer_prefix / extra_headers overrides). Defaults match
+    # OpenRouter (Bearer + ``authorization``). Path suffixes pinned
+    # per Operation.
+    "custom": IntegrationConfig(
+        base_url="",  # unused; target.endpoint is required
+        auth_header="authorization",
+        bearer_prefix=True,
+        operation_paths={
+            "openai_chat_completions": "/chat/completions",
+            "openai_responses":        "/responses",
+            "anthropic_messages":      "/messages",
+            "anthropic_count_tokens":  "/messages/count_tokens",
+        },
+        allows_endpoint_override=True,
     ),
 }
 
@@ -289,19 +305,24 @@ class HTTPPassthroughTransport:
         request_body = dict(payload)
         request_body["model"] = target.model
 
+        # PR 7 — custom integration lets the admin override the preset's
+        # auth header shape + inject extra static headers per-target.
+        # For every other integration these come from the pinned config.
+        auth_header, bearer_prefix, static_extra_headers = _effective_auth(target, config)
+
         headers = {
             "content-type": "application/json",
-            config.auth_header: (
-                f"Bearer {api_key}" if config.bearer_prefix else api_key
+            auth_header: (
+                f"Bearer {api_key}" if bearer_prefix else api_key
             ),
-            **config.extra_headers,
+            **static_extra_headers,
             **(client_headers or {}),
         }
         # content-type + auth stay under transport control regardless of
         # what the client sent.
         headers["content-type"] = "application/json"
-        headers[config.auth_header] = (
-            f"Bearer {api_key}" if config.bearer_prefix else api_key
+        headers[auth_header] = (
+            f"Bearer {api_key}" if bearer_prefix else api_key
         )
 
         # PR 4 — Portkey routing headers. Per Portkey docs the gateway
@@ -437,6 +458,58 @@ class HTTPPassthroughTransport:
                 ),
             )
         return config.base_url
+
+
+def _effective_auth(
+    target: HTTPPassthroughTarget,
+    config: IntegrationConfig,
+) -> tuple[str, bool, dict[str, str]]:
+    """Resolve the auth header shape + static extras for this attempt.
+
+    Every integration except ``custom`` uses the values pinned in
+    ``IntegrationConfig``. Custom targets let the admin override them
+    via ``target.provider_options``:
+
+    - ``auth_header`` (str, default from config)
+    - ``bearer_prefix`` (bool, default from config)
+    - ``extra_headers`` (dict[str, str], default from config)
+
+    Kept separate from ``execute`` so the override rules stay a small,
+    testable unit — and so future integrations that need similar
+    per-target flexibility can opt in without another branch inside
+    the hot path.
+    """
+    # PR 7 review finding 2 — always lowercase header names before
+    # they hit the outbound dict. Python dicts are case-sensitive; a
+    # mixed-case ``AuThOrIzAtIoN`` would otherwise coexist alongside
+    # the transport's own ``authorization`` and both reach the wire.
+    # Publish already rejects reserved header names case-insensitively
+    # via ``_validate_custom_extra_headers``, but lowercase here is
+    # defense in depth for anything that slipped past validation.
+    if target.integration != "custom":
+        return (
+            config.auth_header.lower(),
+            config.bearer_prefix,
+            {k.lower(): v for k, v in config.extra_headers.items()},
+        )
+    opts = getattr(target, "provider_options", None) or {}
+    auth_header = str(opts.get("auth_header") or config.auth_header).lower()
+    # PR 7 review finding 5 — publish-time model_validator refuses a
+    # non-bool ``bearer_prefix``. Guard again at runtime with strict
+    # isinstance rather than the truthy ``bool(...)`` coercion that
+    # turned the string ``"false"`` into True.
+    raw_prefix = opts.get("bearer_prefix", config.bearer_prefix)
+    if not isinstance(raw_prefix, bool):
+        raise ValueError(
+            f"custom target {target.id!r} has non-bool bearer_prefix "
+            f"{raw_prefix!r}; publish should have rejected this."
+        )
+    bearer_prefix = raw_prefix
+    raw_extras = opts.get("extra_headers") or {}
+    if not isinstance(raw_extras, dict):
+        raw_extras = {}
+    extras = {str(k).lower(): str(v) for k, v in raw_extras.items()}
+    return auth_header, bearer_prefix, extras
 
 
 def integration_certifies_operation(
