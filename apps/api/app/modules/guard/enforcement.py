@@ -50,11 +50,14 @@ def rule_personas(rule: dict[str, Any]) -> set[str]:
         raw = set(value)
     else:
         return set()
-    # Alias-collapse: proxy → gateway. Legacy rows keep working, but the
-    # returned set uses the current name so downstream gate derivation
-    # doesn't need to know about the old spelling.
-    if "proxy" in raw:
-        raw.discard("proxy")
+    # Alias-expand: proxy ↔ gateway. Legacy consumers (skill-pack
+    # ``validate_enforcement_metadata``, pack coverage tests, older
+    # rules with hand-authored ``persona="proxy"``) still key on the
+    # old name. Rather than chase every literal check across the
+    # codebase, keep BOTH names in the set when either was present —
+    # anything checking for ``"proxy"`` OR ``"gateway"`` sees a match.
+    if "proxy" in raw or "gateway" in raw:
+        raw.add("proxy")
         raw.add("gateway")
     return raw
 
