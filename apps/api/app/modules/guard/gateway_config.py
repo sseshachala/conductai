@@ -333,12 +333,14 @@ class HTTPPassthroughTarget(BaseModel):
     model: str = Field(min_length=1, max_length=256)
     credential_ref: str = Field(min_length=1, max_length=512)
     endpoint: str | None = Field(default=None, max_length=2048)
-    # PR 6 — opaque per-integration tuning bag. Azure OpenAI uses
-    # ``api_version`` (added as a URL query parameter by the transport
-    # via ``IntegrationConfig.query_params_from_options``). Kept as
-    # dict[str, Any] so schema stays stable when future integrations
-    # add their own knobs. Symmetric with the same field on the
-    # native + LiteLLM target subclasses.
+    # Opaque per-integration tuning bag. Symmetric with the field on
+    # the native + LiteLLM target subclasses; persisted as JSON inside
+    # the profile row so no Alembic migration is required.
+    # - PR 4: Portkey reads ``virtual_key`` / ``provider`` / ``config``
+    #   to drive the ``x-portkey-*`` routing headers.
+    # - PR 6: Azure OpenAI uses ``api_version`` (added as a URL query
+    #   parameter by the transport via
+    #   ``IntegrationConfig.query_params_from_options``).
     provider_options: dict[str, Any] = Field(default_factory=dict)
 
     @field_validator("endpoint")

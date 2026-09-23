@@ -542,6 +542,95 @@ def test_cross_workspace_url_is_rejected(client_and_db):
     assert other_ws not in resp.text
 
 
+def test_publish_rejects_helicone_missing_vendor_key(monkeypatch):
+    """PR 5 review — publish must verify BOTH keys are present in the
+    vault entry for two-key integrations. Row existence alone was the
+    old bar; that let a stub row slip through and 500 at request time."""
+    from fastapi import HTTPException
+    from app.modules.guard.gateway_config import GatewayProfileV2
+    from app.routers.gateway_profiles_v2 import _verify_credentials_exist
+
+    profile = GatewayProfileV2.model_validate({
+        "schema_version": 2, "name": "hel", "model_alias": "coding",
+        "accepts": ["openai_chat_completions"], "timeout_seconds": 60,
+        "max_attempts": 1,
+        "targets": [{
+            "id": "hel", "transport": "http_passthrough",
+            "integration": "helicone_openai", "model": "gpt-4o",
+            "credential_ref": f"vault://{ENV}/helicone",
+        }],
+    })
+
+    fake_env = SimpleNamespace(id=ENV, workspace_id="ws")
+    fake_cred = SimpleNamespace(workspace_id="ws", environment_id=ENV, handle="helicone")
+
+    class _FakeDB:
+        def query(self, model):
+            model_name = model.__name__
+            class _Q:
+                def filter(self_inner, *a, **k): return self_inner
+                def one_or_none(self_inner):
+                    if model_name == "Environment": return fake_env
+                    if model_name == "Integration": return fake_cred
+                    return None
+            return _Q()
+
+    # Vault entry has ONLY the primary Helicone key — vendor key missing.
+    monkeypatch.setattr(
+        "app.core.credentials.get_vault_credential",
+        lambda db, ws, env, sel: {"HELICONE_API_KEY": "sk-hel-only"},
+    )
+
+    try:
+        _verify_credentials_exist(_FakeDB(), "ws", profile)
+    except HTTPException as exc:
+        assert exc.status_code == 400
+        assert "OPENAI_API_KEY" in str(exc.detail)
+        return
+    raise AssertionError("expected publish to reject missing vendor key")
+
+
+def test_publish_accepts_helicone_when_both_keys_present(monkeypatch):
+    """Mirror of the above — vault entry has both keys → passes."""
+    from app.modules.guard.gateway_config import GatewayProfileV2
+    from app.routers.gateway_profiles_v2 import _verify_credentials_exist
+
+    profile = GatewayProfileV2.model_validate({
+        "schema_version": 2, "name": "hel", "model_alias": "coding",
+        "accepts": ["openai_chat_completions"], "timeout_seconds": 60,
+        "max_attempts": 1,
+        "targets": [{
+            "id": "hel", "transport": "http_passthrough",
+            "integration": "helicone_openai", "model": "gpt-4o",
+            "credential_ref": f"vault://{ENV}/helicone",
+        }],
+    })
+
+    fake_env = SimpleNamespace(id=ENV, workspace_id="ws")
+    fake_cred = SimpleNamespace(workspace_id="ws", environment_id=ENV, handle="helicone")
+
+    class _FakeDB:
+        def query(self, model):
+            model_name = model.__name__
+            class _Q:
+                def filter(self_inner, *a, **k): return self_inner
+                def one_or_none(self_inner):
+                    if model_name == "Environment": return fake_env
+                    if model_name == "Integration": return fake_cred
+                    return None
+            return _Q()
+
+    monkeypatch.setattr(
+        "app.core.credentials.get_vault_credential",
+        lambda db, ws, env, sel: {
+            "HELICONE_API_KEY": "sk-hel",
+            "OPENAI_API_KEY":   "sk-openai",
+        },
+    )
+
+    _verify_credentials_exist(_FakeDB(), "ws", profile)  # must not raise
+
+
 def test_publish_rejects_missing_credential(client_and_db):
     """P1 review fix: publish must verify every target's credential_ref
     resolves to a real Vault entry. Otherwise the runtime discovers the

@@ -276,12 +276,15 @@ def test_catalog_certifies_openrouter_for_openai_chat_completions():
 
 
 def test_catalog_still_rejects_other_passthrough_integrations():
-    """Portkey / Helicone stay uncertified on THIS branch (PRs 4 + 5).
-    Azure OpenAI (PR 6) lands with per-tenant URL + api-version query.
-    Publish rejects the still-uncertified set — the loud rejection is
-    what stops an admin from believing a live target is up before its
-    executor ships."""
-    for integration in ("portkey", "helicone_anthropic", "helicone_openai"):
+    """All passthrough presets landed except ``custom`` (PR 7). Publish
+    rejects the still-uncertified set — the loud rejection is what
+    stops an admin from believing a live target is up before its
+    executor ships. ``custom`` uses a dedicated
+    ``test_catalog_rejects_custom_integration_without_explicit_certification``
+    below."""
+    # After PR 6, only ``custom`` remains uncertified in this test's
+    # scope. Leave the loop shape in place so PR 7 can flip it easily.
+    for integration in ():
         target = HTTPPassthroughTarget(
             id=f"t-{integration}", transport="http_passthrough",
             integration=integration, model="some-model",
@@ -291,6 +294,17 @@ def test_catalog_still_rejects_other_passthrough_integrations():
             validate_targets_against_accepts(
                 accepts=["openai_chat_completions"], targets=[target],
             )
+
+
+def test_catalog_certifies_helicone_openai_for_chat_completions():
+    target = HTTPPassthroughTarget(
+        id="t-helicone-openai", transport="http_passthrough",
+        integration="helicone_openai", model="gpt-4o",
+        credential_ref=CRED_PORTKEY,
+    )
+    validate_targets_against_accepts(
+        accepts=["openai_chat_completions"], targets=[target],
+    )
 
 
 def test_catalog_certifies_azure_openai_for_chat_completions():
@@ -307,6 +321,17 @@ def test_catalog_certifies_azure_openai_for_chat_completions():
     )
     validate_targets_against_accepts(
         accepts=["openai_chat_completions"], targets=[target],
+    )
+
+
+def test_catalog_certifies_helicone_anthropic_for_messages():
+    target = HTTPPassthroughTarget(
+        id="t-helicone-anthropic", transport="http_passthrough",
+        integration="helicone_anthropic", model="claude-sonnet-4-6",
+        credential_ref=CRED_PORTKEY,
+    )
+    validate_targets_against_accepts(
+        accepts=["anthropic_messages"], targets=[target],
     )
 
 
