@@ -58,7 +58,7 @@ from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.core.auth import get_workspace_id, require_permission
+from app.core.auth import get_user_id, get_workspace_id, require_permission
 from app.core.config import settings
 from app.core.database import get_db
 from app.models.gateway_profile import (
@@ -1220,6 +1220,7 @@ def test_profile(
     body: TestProfileIn,
     db: Session = Depends(get_db),
     _ws: str = Depends(_authorized_workspace_id),
+    creator_id: str = Depends(get_user_id),
     _: str = Depends(require_permission("platform.credentials.manage")),
 ) -> TestProfileOut:
     """Mint a short-lived ``test-gateway-token``, hit the gateway server-side,
@@ -1230,8 +1231,6 @@ def test_profile(
     Only published profiles are testable — a draft has no active revision
     to resolve against.
     """
-    from app.modules.agent_identity.router import mint_agent_identity
-
     profile = _load_profile(db, workspace_id, profile_id)
     if profile.active_revision_id is None:
         raise HTTPException(status_code=409, detail="Profile is not published yet")
@@ -1239,9 +1238,7 @@ def test_profile(
     alias = profile.model_alias or ""
     model = f"cond-{profile.cond_code}-{alias}" if alias else f"cond-{profile.cond_code}"
 
-    identity, plaintext = mint_agent_identity(
-        db, workspace_id, name="test-gateway-token", source="gateway_test_button",
-    )
+    identity, plaintext = _mint_test_api_token(db, workspace_id, creator_id)
     db.commit()
 
     try:
@@ -1309,6 +1306,46 @@ def test_profile(
                 workspace_id=workspace_id,
                 error=str(err),
             )
+
+
+def _mint_test_api_token(db: Session, workspace_id: str, creator_id: str):
+    """Mint a short-lived ``cond_api_*`` machine token used only for the
+    Test button. API-token flow (not session-token flow) because the
+    gateway rejects session tokens that aren't linked to a
+    guard_member_config row — API tokens fall back to the creator id
+    via auth.resolve_agent_token, which is what we want here.
+
+    Expires in one hour: the endpoint revokes on exit anyway; the TTL
+    is a safety net if the revoke best-effort DELETE ever fails.
+    """
+    import secrets
+    import uuid as _uuid
+    from datetime import datetime, timedelta, timezone
+    from app.core.crypto import encrypt
+    from app.modules.agent_identity.models import AgentIdentity
+    from app.modules.agent_identity.router import API_TOKEN_PREFIX, _API_TOKEN_PREFIX_LEN
+
+    plaintext = API_TOKEN_PREFIX + secrets.token_urlsafe(32)
+    prefix = plaintext[:_API_TOKEN_PREFIX_LEN]
+    now = datetime.now(timezone.utc)
+    row = AgentIdentity(
+        id=str(_uuid.uuid4()),
+        workspace_id=workspace_id,
+        name="test-gateway-token",
+        provider="conduct",
+        source="gateway_test_button",
+        token_prefix=prefix,
+        token_encrypted=encrypt({"token": plaintext}),
+        token_type="api",
+        token_name="test-gateway-token",
+        created_by_clerk_user_id=creator_id,
+        environment_id=None,
+        created_at=now,
+        last_used_at=None,
+        expires_at=now + timedelta(hours=1),
+    )
+    db.add(row)
+    return row, plaintext
 
 
 def _extract_test_content(payload: Any) -> str | None:
