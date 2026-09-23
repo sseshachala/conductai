@@ -97,6 +97,23 @@ def _authorized_workspace_id(
     return workspace_id
 
 
+#: Publish-time key-presence contract per two-key integration.
+#: (integration → (primary_key_names, vendor_key_names)). Kept next to
+#: the publish check so the contract lives with the code that enforces
+#: it — reviewer finding 4 called out that runtime knew the shape but
+#: publish only checked row existence.
+_TWO_KEY_INTEGRATION_CONTRACT: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
+    "helicone_openai": (
+        ("HELICONE_API_KEY",),
+        ("OPENAI_API_KEY", "openai_api_key", "api_key"),
+    ),
+    "helicone_anthropic": (
+        ("HELICONE_API_KEY",),
+        ("ANTHROPIC_API_KEY", "anthropic_api_key", "api_key"),
+    ),
+}
+
+
 def _verify_credentials_exist(
     db: Session, workspace_id: str, profile: "GatewayProfileV2",
 ) -> None:
@@ -104,10 +121,20 @@ def _verify_credentials_exist(
     a Vault entry the workspace actually owns. Publishing to a missing
     credential would 500 at request time; catch it here so the admin sees
     the failure while the profile is still a draft.
+
+    PR 5 review — two-key integrations (Helicone) additionally require
+    BOTH the observability key + the upstream vendor key inside the
+    same vault entry. Row existence alone is not enough because a stub
+    row with just a placeholder would 500 at request time when the
+    vendor resolver returns empty.
     """
+    from app.core.credentials import get_vault_credential
     from app.models.environment import Environment
     from app.models.integration import Integration
-    from app.modules.guard.gateway_config import parse_credential_ref
+    from app.modules.guard.gateway_config import (
+        HTTPPassthroughTarget as _HTTPPassthroughTarget,
+        parse_credential_ref,
+    )
 
     for target in profile.targets:
         try:
@@ -155,6 +182,34 @@ def _verify_credentials_exist(
                     f"in Settings → Vault before publishing"
                 ),
             )
+
+        # Two-key contract enforcement (Helicone).
+        if isinstance(target, _HTTPPassthroughTarget):
+            contract = _TWO_KEY_INTEGRATION_CONTRACT.get(target.integration)
+            if contract is not None:
+                primary_names, vendor_names = contract
+                blob = get_vault_credential(db, workspace_id, str(env_id), name)
+                if not any(blob.get(k) for k in primary_names):
+                    raise HTTPException(
+                        status_code=400,
+                        detail=(
+                            f"target {target.id!r} on {target.integration!r} "
+                            f"needs one of {list(primary_names)!r} in vault "
+                            f"entry {name!r}. Add the observability key and "
+                            f"republish."
+                        ),
+                    )
+                if not any(blob.get(k) for k in vendor_names):
+                    raise HTTPException(
+                        status_code=400,
+                        detail=(
+                            f"target {target.id!r} on {target.integration!r} "
+                            f"needs one of {list(vendor_names)!r} in vault "
+                            f"entry {name!r} (upstream vendor key). Add the "
+                            f"vendor key alongside the observability key and "
+                            f"republish."
+                        ),
+                    )
 
 
 # ─── Request / response DTOs ──────────────────────────────────────────
@@ -429,10 +484,10 @@ def _validate_working_copy(working_copy: dict[str, Any]) -> GatewayProfileV2:
             ):
                 target_index = loc_parts[1]
                 # Historical shape: ("targets", i, "LiteLLMSDKTarget", ...).
-                # PR 7 review — model_validator errors wrap the variant
+                # PR 6/7 review — model_validator errors wrap the variant
                 # name inside a ``function-after[...HTTPPassthroughTarget]``
-                # synthetic segment. Detect either exact match or
-                # substring so the filter still catches the noise.
+                # synthetic segment. Detect exact match OR substring so
+                # the filter still catches the noise.
                 if len(loc_parts) >= 3 and isinstance(loc_parts[2], str):
                     seg = loc_parts[2]
                     for name in _TRANSPORT_VARIANT_NAME.values():

@@ -35,17 +35,18 @@ def _reject_private_endpoint(url: str) -> None:
     """Reject endpoints that resolve to loopback / private / link-local
     literal addresses.
 
-    PR 7 review finding 1 — the transport HTTPX-forwards ``target.endpoint``
-    verbatim for integrations with ``allows_endpoint_override=True``
-    (Azure + Custom). Without this guard a workspace admin can point at
-    any service reachable from the hosted gateway (127.0.0.1, RFC 1918,
+    The transport HTTPX-forwards ``target.endpoint`` verbatim for
+    integrations with ``allows_endpoint_override=True`` (Azure + Custom).
+    Without this guard a workspace admin can point at any service
+    reachable from the hosted gateway (127.0.0.1, RFC 1918,
     169.254.169.254 for cloud metadata, ::1). Full network-level egress
     protection is deployment policy; this schema-level guard blocks the
     literal-IP cases so a hostile profile can't ship without an
     operator explicitly disabling the check at the deployment layer.
 
     Does NOT resolve hostnames — DNS rebinding is deployment policy;
-    this is defense in depth."""
+    this is defense in depth.
+    """
     try:
         parsed = urlparse(url)
     except Exception as exc:
@@ -53,6 +54,8 @@ def _reject_private_endpoint(url: str) -> None:
     host = (parsed.hostname or "").strip()
     if not host:
         raise ValueError("endpoint URL has no hostname")
+    # Literal IP checks (v4 + v6). Not an IP literal → hostname; block
+    # the obvious loopback aliases anyway.
     try:
         addr = ipaddress.ip_address(host)
     except ValueError:
@@ -69,6 +72,7 @@ def _reject_private_endpoint(url: str) -> None:
             f"({addr}). Refused. Public endpoints only; internal "
             f"destinations require a deployment-level egress policy."
         )
+
 
 
 #: PR 7 review finding 2 — headers we refuse to accept in
@@ -395,11 +399,14 @@ class HTTPPassthroughTarget(BaseModel):
     model: str = Field(min_length=1, max_length=256)
     credential_ref: str = Field(min_length=1, max_length=512)
     endpoint: str | None = Field(default=None, max_length=2048)
-    # PR 7 — opaque per-integration tuning bag. Custom integration
-    # reads auth_header / bearer_prefix / extra_headers from here to
-    # override the preset defaults. Symmetric with the same field on
+    # Opaque per-integration tuning bag. Symmetric with the field on
     # the native + LiteLLM target subclasses; persisted as JSON inside
     # the profile row so no Alembic migration is required.
+    # - PR 4: Portkey reads ``virtual_key`` / ``provider`` / ``config``.
+    # - PR 6: Azure OpenAI uses ``api_version`` (added as URL query
+    #   param via ``IntegrationConfig.query_params_from_options``).
+    # - PR 7: Custom reads ``protocol`` / ``auth_header`` /
+    #   ``bearer_prefix`` / ``extra_headers`` — see model_validator.
     provider_options: dict[str, Any] = Field(default_factory=dict)
 
     @field_validator("endpoint")
@@ -419,56 +426,68 @@ class HTTPPassthroughTarget(BaseModel):
 
     @model_validator(mode="after")
     def _validate_per_integration_requirements(self):
-        """PR 7 review findings 5 + 6 + 2 (partial):
+        """Per-integration schema requirements:
 
-        - custom: endpoint REQUIRED, ``provider_options.protocol`` REQUIRED
-          in {openai, anthropic} — determines certified operations.
-        - custom: ``bearer_prefix`` must be an actual bool if set
-          (string "false" was being coerced to True previously).
-        - custom: ``extra_headers`` runs through the reserved-name check
-          so credential-bearing or transport-reserved headers can't be
-          smuggled into profile JSON.
-        - custom: ``auth_header`` name itself may not be reserved.
+        - PR 6 (azure_openai): ``endpoint`` + ``provider_options.api_version``
+          REQUIRED. Both previously optional; missing them surfaced as
+          a 4xx at request time.
+        - PR 7 (custom): ``endpoint`` + ``provider_options.protocol`` in
+          {openai, anthropic} REQUIRED. Strict bool for ``bearer_prefix``.
+          Reserved-name check on ``auth_header`` and ``extra_headers``.
         """
-        if self.integration != "custom":
+        if self.integration == "azure_openai":
+            if not self.endpoint:
+                raise ValueError(
+                    "azure_openai target requires an ``endpoint`` — set "
+                    "the per-tenant Azure OpenAI Resource URL "
+                    "(e.g. https://my-resource.openai.azure.com)."
+                )
+            api_version = (self.provider_options or {}).get("api_version")
+            if not isinstance(api_version, str) or not api_version.strip():
+                raise ValueError(
+                    "azure_openai target requires "
+                    "``provider_options.api_version`` (e.g. \"2024-06-01\") "
+                    "— the Azure REST API does not honour requests without one."
+                )
             return self
 
-        if not self.endpoint:
-            raise ValueError(
-                "custom target requires an ``endpoint`` — set the "
-                "full base URL up through /v1 (or equivalent) so the "
-                "operation-suffix paths land on your proxy."
-            )
-        opts = self.provider_options or {}
-
-        protocol = opts.get("protocol")
-        if protocol not in ("openai", "anthropic"):
-            raise ValueError(
-                "custom target requires ``provider_options.protocol`` "
-                "in {'openai', 'anthropic'} — determines which "
-                "operations the capability catalog certifies for this "
-                "target (openai_* vs anthropic_*)."
-            )
-
-        if "bearer_prefix" in opts and not isinstance(opts["bearer_prefix"], bool):
-            raise ValueError(
-                "custom target ``provider_options.bearer_prefix`` must "
-                "be a JSON boolean (true / false), not a string. Got "
-                f"{opts['bearer_prefix']!r}."
-            )
-
-        if "auth_header" in opts:
-            hdr = str(opts["auth_header"]).strip().casefold()
-            if hdr in _RESERVED_HEADER_NAMES or any(b in hdr for b in ("password", "secret", "cookie")):
+        if self.integration == "custom":
+            if not self.endpoint:
                 raise ValueError(
-                    f"custom target ``provider_options.auth_header`` "
-                    f"{opts['auth_header']!r} is reserved. Pick a "
-                    f"vendor-documented header name (e.g. "
-                    f"``x-vendor-key``)."
+                    "custom target requires an ``endpoint`` — set the "
+                    "full base URL up through /v1 (or equivalent) so the "
+                    "operation-suffix paths land on your proxy."
+                )
+            opts = self.provider_options or {}
+
+            protocol = opts.get("protocol")
+            if protocol not in ("openai", "anthropic"):
+                raise ValueError(
+                    "custom target requires ``provider_options.protocol`` "
+                    "in {'openai', 'anthropic'} — determines which "
+                    "operations the capability catalog certifies for this "
+                    "target (openai_* vs anthropic_*)."
                 )
 
-        if opts.get("extra_headers") is not None:
-            _validate_custom_extra_headers(opts["extra_headers"])
+            if "bearer_prefix" in opts and not isinstance(opts["bearer_prefix"], bool):
+                raise ValueError(
+                    "custom target ``provider_options.bearer_prefix`` must "
+                    "be a JSON boolean (true / false), not a string. Got "
+                    f"{opts['bearer_prefix']!r}."
+                )
+
+            if "auth_header" in opts:
+                hdr = str(opts["auth_header"]).strip().casefold()
+                if hdr in _RESERVED_HEADER_NAMES or any(b in hdr for b in ("password", "secret", "cookie")):
+                    raise ValueError(
+                        f"custom target ``provider_options.auth_header`` "
+                        f"{opts['auth_header']!r} is reserved. Pick a "
+                        f"vendor-documented header name (e.g. "
+                        f"``x-vendor-key``)."
+                    )
+
+            if opts.get("extra_headers") is not None:
+                _validate_custom_extra_headers(opts["extra_headers"])
 
         return self
 

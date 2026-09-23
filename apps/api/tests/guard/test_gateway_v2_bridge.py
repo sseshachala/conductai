@@ -21,6 +21,7 @@ from app.modules.guard.gateway_config import GatewayProfileV2
 from app.runtime.gateway_v2_bridge import (
     CredentialsUnavailable,
     build_credential_resolver,
+    build_vendor_credential_resolver,
     coerce_response_body,
     map_operation,
 )
@@ -173,6 +174,75 @@ def test_build_credential_resolver_pre_resolves_http_passthrough_targets():
         p for ref, p in calls if ref.endswith("/openrouter")
     )
     assert provider_for_passthrough == "openrouter"
+
+
+# ─── build_vendor_credential_resolver (PR 5) ──────────────────────────
+
+
+def test_vendor_resolver_none_when_no_helicone_targets():
+    """Non-Helicone-only profiles get None so the coordinator hot path
+    stays clear of extra indirection."""
+    profile = GatewayProfileV2.model_validate({
+        "name": "prod", "model_alias": "coding",
+        "accepts": ["openai_chat_completions"],
+        "targets": [{
+            "id": "or", "transport": "http_passthrough",
+            "integration": "openrouter", "model": "anthropic/claude-sonnet",
+            "credential_ref": f"vault://{ENV}/openrouter",
+        }],
+    })
+    assert build_vendor_credential_resolver(
+        db=object(), workspace_id="ws", environment_id=ENV, profile=profile,
+    ) is None
+
+
+def test_vendor_resolver_pre_resolves_helicone_vendor_keys():
+    """Helicone targets pre-resolve BOTH keys from the same vault
+    entry. The returned callable takes the credential_ref and hands
+    back the vendor key (OpenAI or Anthropic) — the coordinator threads
+    it to the passthrough transport for the second auth header."""
+    profile = GatewayProfileV2.model_validate({
+        "name": "prod", "model_alias": "coding",
+        "accepts": ["openai_chat_completions"],
+        "targets": [{
+            "id": "hel", "transport": "http_passthrough",
+            "integration": "helicone_openai", "model": "gpt-4o",
+            "credential_ref": f"vault://{ENV}/helicone",
+        }],
+    })
+    with patch(
+        "app.runtime.gateway_v2_bridge.resolve_vendor_key",
+        return_value="sk-openai-live",
+    ):
+        vendor = build_vendor_credential_resolver(
+            db=object(), workspace_id="ws", environment_id=ENV, profile=profile,
+        )
+    assert vendor is not None
+    assert vendor(f"vault://{ENV}/helicone") == "sk-openai-live"
+
+
+def test_vendor_resolver_raises_when_helicone_vault_missing_vendor_key():
+    """If the Helicone vault entry doesn't hold a vendor key, raise
+    the same CredentialsUnavailable shape the primary resolver uses so
+    the handler returns 503 with the specific target id."""
+    profile = GatewayProfileV2.model_validate({
+        "name": "prod", "model_alias": "coding",
+        "accepts": ["anthropic_messages"],
+        "targets": [{
+            "id": "hel-ant", "transport": "http_passthrough",
+            "integration": "helicone_anthropic", "model": "claude-sonnet-4-6",
+            "credential_ref": f"vault://{ENV}/helicone",
+        }],
+    })
+    with patch(
+        "app.runtime.gateway_v2_bridge.resolve_vendor_key",
+        return_value=None,
+    ):
+        with pytest.raises(CredentialsUnavailable) as excinfo:
+            build_vendor_credential_resolver(
+                db=object(), workspace_id="ws", environment_id=ENV, profile=profile,
+            )
+    assert excinfo.value.target_id == "hel-ant"
 
 
 # ─── coerce_response_body ─────────────────────────────────────────────

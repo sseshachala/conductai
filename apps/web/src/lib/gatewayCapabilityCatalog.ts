@@ -49,12 +49,14 @@ const _LITELLM_SDK: Record<string, Operation[]> = {
 // publish time. This mirror lets the draft editor flag uncertified
 // (integration, operation) tuples before the round-trip.
 const _HTTP_PASSTHROUGH: Record<Integration, Operation[]> = {
-  portkey: [],
+  portkey: ["openai_chat_completions"],
   openrouter: ["openai_chat_completions"],
-  helicone_anthropic: [],
-  helicone_openai: [],
-  azure_openai: [],
-  // PR 7 — Custom is a template; certified for every launch operation.
+  helicone_anthropic: ["anthropic_messages"],
+  helicone_openai: ["openai_chat_completions"],
+  azure_openai: ["openai_chat_completions"],
+  // PR 7 — Custom is a template; certified for every launch operation
+  // (per-protocol restriction is enforced server-side by
+  // ``_CUSTOM_OPS_BY_PROTOCOL`` in the Python catalog).
   custom: [
     "openai_chat_completions",
     "openai_responses",

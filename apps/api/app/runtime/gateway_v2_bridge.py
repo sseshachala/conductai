@@ -35,7 +35,23 @@ from app.modules.guard.gateway_config import (
     NativeHTTPTarget,
     Operation,
 )
-from app.modules.guard.gateway_credentials import resolve_gateway_key
+from app.modules.guard.gateway_credentials import (
+    resolve_gateway_key,
+    resolve_vendor_key,
+)
+
+
+# Integrations whose targets need a second (upstream vendor) API key
+# pulled from the same vault entry as the primary integration key.
+# Kept next to the bridge because the bridge is the boundary that
+# converts DB reads into pure closures the coordinator can call
+# without touching Postgres. Values must match
+# ``IntegrationConfig.vendor_key_names`` in
+# ``app/runtime/http_passthrough_transport.py``.
+_VENDOR_KEY_NAMES_BY_INTEGRATION: dict[str, tuple[str, ...]] = {
+    "helicone_openai":    ("OPENAI_API_KEY", "openai_api_key", "api_key"),
+    "helicone_anthropic": ("ANTHROPIC_API_KEY", "anthropic_api_key", "api_key"),
+}
 
 
 # (provider, upstream_path) → capability-catalog Operation.
@@ -158,6 +174,58 @@ def build_credential_resolver(
     return _resolver
 
 
+def build_vendor_credential_resolver(
+    db: Session,
+    *,
+    workspace_id: str,
+    environment_id: str | None,
+    profile: GatewayProfileV2,
+) -> Callable[[str], str] | None:
+    """Pre-resolve vendor keys for Helicone-style two-key integrations.
+
+    Returns ``None`` if no target in the profile needs a vendor key —
+    keeps the coordinator's per-attempt hot path free of extra
+    indirection when only one-key integrations are in play.
+
+    Fail-closed: any Helicone target that can't produce a vendor key
+    from its vault entry raises ``CredentialsUnavailable``. Publish
+    also verifies both keys exist ahead of time via
+    ``_verify_credentials_exist`` in ``routers/gateway_profiles_v2.py``
+    (``_TWO_KEY_INTEGRATION_CONTRACT``) so an admin can't slip past
+    validation with a stub credential row.
+    """
+    resolved: dict[str, str] = {}
+    needs_vendor = False
+    for target in profile.targets:
+        if not isinstance(target, HTTPPassthroughTarget):
+            continue
+        vendor_names = _VENDOR_KEY_NAMES_BY_INTEGRATION.get(target.integration)
+        if not vendor_names:
+            continue
+        needs_vendor = True
+        vendor_key = resolve_vendor_key(
+            db,
+            workspace_id,
+            target.credential_ref,
+            vendor_names,
+            environment_id,
+        )
+        if not vendor_key:
+            raise CredentialsUnavailable(target.id, target.credential_ref)
+        resolved[target.credential_ref] = vendor_key
+
+    if not needs_vendor:
+        return None
+
+    def _vendor_resolver(credential_ref: str) -> str:
+        key = resolved.get(credential_ref)
+        if not key:
+            raise CredentialsUnavailable("<unknown>", credential_ref)
+        return key
+
+    return _vendor_resolver
+
+
 def coerce_response_body(response: Any) -> Any:
     """Normalize a LiteLLM SDK response into a JSON-safe dict.
 
@@ -179,6 +247,7 @@ def coerce_response_body(response: Any) -> Any:
 __all__ = [
     "CredentialsUnavailable",
     "build_credential_resolver",
+    "build_vendor_credential_resolver",
     "coerce_response_body",
     "map_operation",
 ]
