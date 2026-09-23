@@ -96,6 +96,19 @@ _INTEGRATION_ENDPOINTS: dict[Integration, IntegrationConfig] = {
             "X-Title": "Conduct AI Gateway",
         },
     ),
+    # Portkey is OpenAI-compatible on ``/v1/chat/completions``. Auth
+    # uses a raw key in ``x-portkey-api-key`` (NOT ``Authorization:
+    # Bearer``) — Portkey pairs the gateway key with a "virtual key"
+    # that already carries the upstream provider config, so a single
+    # key value is the whole auth story. Model id lives in the body.
+    "portkey": IntegrationConfig(
+        base_url="https://api.portkey.ai/v1",
+        auth_header="x-portkey-api-key",
+        bearer_prefix=False,
+        operation_paths={
+            "openai_chat_completions": "/chat/completions",
+        },
+    ),
 }
 
 
@@ -206,6 +219,30 @@ class HTTPPassthroughTransport:
         headers[config.auth_header] = (
             f"Bearer {api_key}" if config.bearer_prefix else api_key
         )
+
+        # PR 4 review — Portkey routing headers. Per Portkey docs the
+        # gateway key alone doesn't select an upstream; one of
+        # ``x-portkey-virtual-key`` (points at a stored config), plain
+        # ``x-portkey-provider`` (routes by name), or
+        # ``x-portkey-config`` (id of a saved config) MUST accompany
+        # the auth key. Admin supplies via ``provider_options``.
+        if target.integration == "portkey":
+            opts = getattr(target, "provider_options", None) or {}
+            if virtual_key := opts.get("virtual_key"):
+                headers["x-portkey-virtual-key"] = str(virtual_key)
+            if provider := opts.get("provider"):
+                headers["x-portkey-provider"] = str(provider)
+            if config_id := opts.get("config"):
+                headers["x-portkey-config"] = str(config_id)
+            if not any(k in headers for k in ("x-portkey-virtual-key", "x-portkey-provider", "x-portkey-config")):
+                raise ValueError(
+                    f"portkey target {target.id!r} needs one of "
+                    f"``virtual_key`` / ``provider`` / ``config`` in "
+                    f"provider_options — Portkey's gateway key does "
+                    f"not select an upstream on its own. See "
+                    f"https://portkey.ai/docs/product/ai-gateway/"
+                    f"configs for the routing options."
+                )
 
         client = await self._get_client()
         try:

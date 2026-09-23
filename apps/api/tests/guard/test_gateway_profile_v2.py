@@ -276,13 +276,11 @@ def test_catalog_certifies_openrouter_for_openai_chat_completions():
 
 
 def test_catalog_still_rejects_other_passthrough_integrations():
-    """Portkey / Helicone / Azure OpenAI stay uncertified until each
-    ships its per-integration auth-header semantics (follow-up PRs).
-    Publish rejects them all — the loud rejection is what stops an
-    admin from believing a Portkey target is live before its executor
-    ships."""
-    for integration in ("portkey", "helicone_anthropic",
-                        "helicone_openai", "azure_openai"):
+    """Helicone / Azure OpenAI stay uncertified until each ships its
+    per-integration auth-header semantics (follow-up PRs). Portkey
+    landed in PR 4. The loud rejection is what stops an admin from
+    believing a Helicone target is live before its executor ships."""
+    for integration in ("helicone_anthropic", "helicone_openai", "azure_openai"):
         target = HTTPPassthroughTarget(
             id=f"t-{integration}", transport="http_passthrough",
             integration=integration, model="some-model",

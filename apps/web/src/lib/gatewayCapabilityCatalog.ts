@@ -5,7 +5,7 @@
 // operation is not certified" before the round-trip. Stale mirror =
 // less-helpful UI, never a bad profile in the DB.
 
-export const CATALOG_VERSION = "2026.09.16.v2-openrouter-passthrough"
+export const CATALOG_VERSION = "2026.09.22.v2-portkey-passthrough"
 
 export type Operation =
   | "anthropic_messages"
@@ -49,7 +49,7 @@ const _LITELLM_SDK: Record<string, Operation[]> = {
 // publish time. This mirror lets the draft editor flag uncertified
 // (integration, operation) tuples before the round-trip.
 const _HTTP_PASSTHROUGH: Record<Integration, Operation[]> = {
-  portkey: [],
+  portkey: ["openai_chat_completions"],
   openrouter: ["openai_chat_completions"],
   helicone_anthropic: [],
   helicone_openai: [],

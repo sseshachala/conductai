@@ -46,9 +46,10 @@ const MODELS_BY_PROVIDER: Record<string, Array<{ id: string; label: string }>> =
 // an empty operation list that fails validation server-side).
 const PASSTHROUGH_INTEGRATION_OPERATIONS: Record<string, Operation[]> = {
   openrouter: ["openai_chat_completions"],
-  // portkey / helicone_anthropic / helicone_openai / azure_openai
-  // stay uncertified until each ships its per-integration auth
-  // shape. Absent = deriveAccepts contributes nothing for them.
+  portkey:    ["openai_chat_completions"],
+  // helicone_anthropic / helicone_openai / azure_openai stay
+  // uncertified until each ships its per-integration auth shape.
+  // Absent = deriveAccepts contributes nothing for them.
 }
 
 // Expected vault key name per passthrough integration. Mirrors
@@ -544,13 +545,13 @@ function TargetRow({
       {target.transport === "http_passthrough" ? (
         <FieldLabel
           label="Integration"
-          hint="External gateway routing traffic on our behalf. OpenRouter is certified for openai_chat_completions in PR 5; other integrations stay uncertified until each ships its per-integration auth shape."
+          hint="External gateway routing traffic on our behalf. OpenRouter and Portkey are certified for openai_chat_completions; Helicone, Azure OpenAI, and Custom stay uncertified until each ships its per-integration auth shape."
         >
           <select value={target.integration} disabled={!isAdmin}
             onChange={e => onChange({ integration: e.target.value })}
             style={inputStyle}>
             <option value="openrouter">openrouter (certified)</option>
-            <option value="portkey" disabled>portkey (not yet certified)</option>
+            <option value="portkey">portkey (certified)</option>
             <option value="helicone_anthropic" disabled>helicone_anthropic (not yet certified)</option>
             <option value="helicone_openai" disabled>helicone_openai (not yet certified)</option>
             <option value="azure_openai" disabled>azure_openai (not yet certified)</option>
@@ -574,10 +575,10 @@ function TargetRow({
         </FieldLabel>
       )}
 
-      <FieldLabel label="Model" hint={target.transport === "http_passthrough" ? "OpenRouter model id (e.g. anthropic/claude-3.5-sonnet)." : "Real upstream model ID the request goes to."}>
+      <FieldLabel label="Model" hint={target.transport === "http_passthrough" ? "Upstream model id in the integration's format (OpenRouter: `anthropic/claude-3.5-sonnet`, Portkey: `gpt-4o` or vendor-prefixed via virtual key)." : "Real upstream model ID the request goes to."}>
         {target.transport === "http_passthrough" ? (
           <input value={target.model} disabled={!isAdmin}
-            placeholder="anthropic/claude-3.5-sonnet"
+            placeholder={target.integration === "portkey" ? "gpt-4o" : "anthropic/claude-3.5-sonnet"}
             onChange={e => onChange({ model: e.target.value })}
             style={inputStyle} />
         ) : (
@@ -626,6 +627,53 @@ function TargetRow({
           ) : null}
         </FieldLabel>
       </div>
+
+      {/* PR 4 review — Portkey needs an upstream selector alongside
+          the gateway key. Any one of virtual_key / provider / config
+          satisfies the required-selector check server-side. */}
+      {target.transport === "http_passthrough" && target.integration === "portkey" ? (
+        <div style={{ gridColumn: "2 / -1", display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+          <FieldLabel label="Virtual key" hint="Portkey virtual key ID (recommended — carries provider config). Sent as x-portkey-virtual-key.">
+            <input
+              value={String((target.provider_options as Record<string, unknown> | undefined)?.virtual_key ?? "")}
+              disabled={!isAdmin}
+              placeholder="vk-openai-prod"
+              onChange={e => onChange({
+                provider_options: {
+                  ...(target.provider_options ?? {}),
+                  virtual_key: e.target.value || undefined,
+                },
+              })}
+              style={inputStyle} />
+          </FieldLabel>
+          <FieldLabel label="Provider" hint="Portkey provider slug (openai / anthropic / etc.). Sent as x-portkey-provider.">
+            <input
+              value={String((target.provider_options as Record<string, unknown> | undefined)?.provider ?? "")}
+              disabled={!isAdmin}
+              placeholder="openai"
+              onChange={e => onChange({
+                provider_options: {
+                  ...(target.provider_options ?? {}),
+                  provider: e.target.value || undefined,
+                },
+              })}
+              style={inputStyle} />
+          </FieldLabel>
+          <FieldLabel label="Config ID" hint="Portkey saved config ID. Sent as x-portkey-config.">
+            <input
+              value={String((target.provider_options as Record<string, unknown> | undefined)?.config ?? "")}
+              disabled={!isAdmin}
+              placeholder="cfg_abc"
+              onChange={e => onChange({
+                provider_options: {
+                  ...(target.provider_options ?? {}),
+                  config: e.target.value || undefined,
+                },
+              })}
+              style={inputStyle} />
+          </FieldLabel>
+        </div>
+      ) : null}
     </div>
   )
 }
