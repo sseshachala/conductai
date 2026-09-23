@@ -184,7 +184,7 @@ function GateChips({ gates }: { gates?: string[] | null }) {
 type SurfaceStatus = "hard" | "not_supported"
 const SURFACES: readonly { key: string; label: string }[] = [
   { key: "mcp",     label: "MCP" },
-  { key: "proxy",   label: "Proxy" },
+  { key: "proxy",   label: "Gateway" },
   { key: "runtime", label: "Runtime" },
   { key: "hook",    label: "Hook" },
 ] as const
@@ -626,7 +626,8 @@ interface AddRuleFormData {
   inject_guidance: boolean
   guidance: string
   message: string
-  persona: "agent" | "proxy"
+  // Legacy value ``proxy`` stays accepted on read; new writes use ``gateway``.
+  persona: "agent" | "proxy" | "gateway"
 }
 
 const EMPTY_FORM: AddRuleFormData = {
@@ -821,7 +822,7 @@ function AddRuleModal({
         <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
           {([
             { value: "agent", label: "Agent", hint: "bash, file writes, web requests" },
-            { value: "proxy", label: "Proxy", hint: "what gets sent to the model" },
+            { value: "proxy", label: "Gateway", hint: "what gets sent to the model" },
           ] as const).map(p => (
             <button
               key={p.value}
@@ -1274,8 +1275,9 @@ function PoliciesContent() {
   const securityRules = policies.filter(p => p.tag === "security_policy")
   const policyTabs = [
     { id: "security", label: "Security", count: securityRules.length },
-    { id: "agent",  label: "Agent",  count: policies.filter(p => p.builtin && (!p.persona || p.persona === "agent")).length },
-    { id: "proxy",  label: "Proxy",  count: policies.filter(p => p.builtin && p.persona === "proxy").length },
+    { id: "agent",   label: "Agent",   count: policies.filter(p => p.builtin && (!p.persona || p.persona === "agent")).length },
+    // Legacy ``proxy`` persona counted here — same rules, new label.
+    { id: "gateway", label: "Gateway", count: policies.filter(p => p.builtin && (p.persona === "gateway" || p.persona === "proxy")).length },
     { id: "custom", label: "Custom", count: customRules.length },
     ...installedPackIds.map(id => ({
       id,
@@ -1287,8 +1289,8 @@ function PoliciesContent() {
     ? securityRules
     : policyTab === "agent"
     ? policies.filter(p => p.builtin && (!p.persona || p.persona === "agent"))
-    : policyTab === "proxy"
-    ? policies.filter(p => p.builtin && p.persona === "proxy")
+    : policyTab === "gateway"
+    ? policies.filter(p => p.builtin && (p.persona === "gateway" || p.persona === "proxy"))
     : policyTab === "custom"
     ? customRules
     : policies.filter(p => p.pack_id === policyTab)
@@ -1681,7 +1683,7 @@ function PoliciesContent() {
                   {visiblePolicies.length === 0
                     ? <div className="card" style={{ padding: "24px", textAlign: "center" }}>
                         <p style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                          {policyTab === "proxy" ? "No proxy rules." : policyTab === "agent" ? "No agent rules." : "No rules in this pack."}
+                          {policyTab === "proxy" ? "No gateway rules." : policyTab === "agent" ? "No agent rules." : "No rules in this pack."}
                         </p>
                       </div>
                     : <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>{visiblePolicies.map(p => renderCard(p))}</div>

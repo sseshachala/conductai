@@ -31,7 +31,8 @@ const AI_SURFACES = [
 interface GeneratedPolicy {
   rule_id: string
   description: string
-  persona: "agent" | "proxy"
+  // Legacy value ``proxy`` stays accepted on read; new writes use ``gateway``.
+  persona: "agent" | "proxy" | "gateway"
   match_tool: MatchTool
   match_ai_tool: string   // comma-separated surface values, or "" = any
   match_pattern: string
@@ -415,7 +416,11 @@ function ReviewCard({
 export default function NewPolicyPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const initialPersona = (searchParams.get("persona") === "proxy" ? "proxy" : "agent") as "agent" | "proxy"
+  // Accept legacy ``?persona=proxy`` URLs and land on the new
+  // ``gateway`` name. ``agent`` remains as-is.
+  const rawPersona = searchParams.get("persona")
+  const initialPersona: "agent" | "gateway" =
+    rawPersona === "proxy" || rawPersona === "gateway" ? "gateway" : "agent"
   const { authFetch } = useAuthFetch()
   const { teamId } = useGuardTeam()
   const { activeWorkspace } = useWorkspace()

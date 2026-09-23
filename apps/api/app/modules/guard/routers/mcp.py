@@ -505,7 +505,8 @@ def _get_rules(db: Session, ws_uuid: uuid.UUID, persona: str = "agent") -> list[
     return [_project_rule(r) for r in rules]
 
 
-_PERSONAS = ["agent", "proxy"]
+#: ``"proxy"`` kept for backward compat; new writes should use ``"gateway"``.
+_PERSONAS = ["agent", "proxy", "gateway"]
 
 # _get_rules_for_pack was retired in #1753 (2026-09-10). Callers who need
 # pack-scoped isolation use the guard_test MCP verb instead — same behavior,

@@ -22,7 +22,7 @@ const TABS: readonly SettingsTab<Tab>[] = [
   { key: "llm_primitives", label: "LLM Model Primitives" },
   { key: "preferences",    label: "Appearance" },
   { key: "canvas",         label: "Canvas" },
-  { key: "proxy",          label: "Proxy → Guard" },
+  { key: "proxy",          label: "Gateway → Guard" },
   { key: "rate_limits",    label: "Rate limits", adminOnly: true },
   { key: "members",        label: "Members & roles", adminOnly: true },
 ]
