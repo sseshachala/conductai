@@ -496,6 +496,32 @@ def guarded_client_call(
     except Exception as e:
         log.warning("guarded_client_call.audit_allow_failed", err=str(e))
 
+    # #2209 Session 5 — Lens shadow accounting. Off by default via
+    # settings.guard_accounting_shadow_enabled. shadow_write catches
+    # every exception internally.
+    try:
+        import uuid as _uuid_shadow
+        from app.runtime.accounting.shadow_writer import shadow_write as _shadow_write
+        _shadow_write(
+            workspace_id=workspace_id,
+            request_id=_uuid_shadow.uuid4(),
+            provider=provider,
+            model=model,
+            operation="chat.completions",
+            dispatched=True,
+            response_bytes=synth,
+            legacy_input_tokens=getattr(resp.usage, "input_tokens", None),
+            legacy_output_tokens=getattr(resp.usage, "output_tokens", None),
+            legacy_cost_usd=None,
+            developer_user_id=clerk_user_id,
+            agent_identity_id=agent_identity_id,
+            hook_session_id=hook_session_id,
+            source="lens",
+            client_tool=ai_tool,
+        )
+    except Exception:
+        pass
+
     return resp
 
 
@@ -589,11 +615,40 @@ def guarded_client_stream(
             body=body, response_bytes=None,
             prompt_summary=prompt_summary, user_email=user_email,
             hook_session_id=hook_session_id,
-        
+
         agent_identity_id=agent_identity_id,
         )
     except Exception as e:
         log.warning("guarded_client_stream.audit_allow_failed", err=str(e))
+
+    # #2209 Session 5 — Lens streaming shadow accounting. Off by default.
+    # Streamed text is not the provider's usage payload; usage extraction
+    # via the normalizer is unavailable here (Lens streams do not carry
+    # stream_options.include_usage today). The receipt records the
+    # attempt anyway with usage_completeness=UNAVAILABLE so Session 6
+    # metrics can see the volume.
+    try:
+        import uuid as _uuid_shadow
+        from app.runtime.accounting.shadow_writer import shadow_write as _shadow_write
+        _shadow_write(
+            workspace_id=workspace_id,
+            request_id=_uuid_shadow.uuid4(),
+            provider=provider,
+            model=model,
+            operation="chat.completions",
+            dispatched=True,
+            response_bytes=None,
+            legacy_input_tokens=None,
+            legacy_output_tokens=None,
+            legacy_cost_usd=None,
+            developer_user_id=clerk_user_id,
+            agent_identity_id=agent_identity_id,
+            hook_session_id=hook_session_id,
+            source="lens",
+            client_tool=ai_tool,
+        )
+    except Exception:
+        pass
 
     return text
 

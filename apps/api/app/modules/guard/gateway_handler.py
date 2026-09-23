@@ -2473,6 +2473,40 @@ def _wrap_v2_stream_finalize(
                         run_in_threadpool as _rin_threadpool,
                     )
                     await _rin_threadpool(_settle_stream_owned)
+
+                    # #2209 Session 5 — shadow accounting on the streaming
+                    # settlement path (Session 4 covered non-streaming).
+                    # shadow_write is a no-op when the kill-switch is off,
+                    # and catches every exception internally.
+                    try:
+                        from app.runtime.accounting.shadow_writer import shadow_write
+                        _stream_meta = _routing_meta if isinstance(_routing_meta, dict) else {}
+                        shadow_write(
+                            workspace_id=workspace_id,
+                            request_id=(
+                                (durable.request_id if durable is not None else None)
+                                or row_id
+                            ),
+                            provider=provider,
+                            model=model,
+                            operation="chat.completions.stream",
+                            dispatched=True,
+                            response_bytes=_resp_bytes,
+                            legacy_input_tokens=_in_tok,
+                            legacy_output_tokens=_out_tok,
+                            legacy_cost_usd=_cost_usd,
+                            reserved_microdollars=(
+                                int(round(float(_cost_usd) * 1_000_000))
+                                if _cost_usd
+                                else None
+                            ),
+                            developer_user_id=clerk_user_id,
+                            source="gateway",
+                            client_tool=ai_tool,
+                            attempts_meta=_stream_meta.get("attempts"),
+                        )
+                    except Exception:
+                        pass
                 except Exception:
                     log.exception(
                         "guard.gateway.v2.stream_settle_failed",

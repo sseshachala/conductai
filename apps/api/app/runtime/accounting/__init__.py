@@ -49,6 +49,12 @@ from app.runtime.accounting.pricing import (
     default_pricing_service,
     reset_default_pricing_service,
 )
+from app.runtime.accounting.reader import (
+    AccountingReader,
+    AggregateScope,
+    SpendAggregate,
+    aggregate_from_rows,
+)
 
 __all__ = [
     "CONTRACT_VERSION",
@@ -84,4 +90,8 @@ __all__ = [
     "get_normalizer",
     "normalize_json",
     "normalize_sse",
+    "AccountingReader",
+    "AggregateScope",
+    "SpendAggregate",
+    "aggregate_from_rows",
 ]

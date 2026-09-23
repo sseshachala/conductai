@@ -54,6 +54,9 @@ class LlmAttemptReceipt(Base):
 
     developer_user_id = Column(UUID(as_uuid=True), nullable=True)
     agent_identity_id = Column(UUID(as_uuid=True), nullable=True)
+    workflow_run_id = Column(UUID(as_uuid=True), nullable=True)
+    workflow_step_id = Column(UUID(as_uuid=True), nullable=True)
+    hook_session_id = Column(UUID(as_uuid=True), nullable=True)
     source = Column(Text, nullable=True)
     client_tool = Column(Text, nullable=True)
     transport = Column(Text, nullable=True)
@@ -123,5 +126,15 @@ class LlmAttemptReceipt(Base):
             "ix_llm_attempt_receipts_parent_receipt_id",
             "parent_receipt_id",
             postgresql_where=sa.text("parent_receipt_id IS NOT NULL"),
+        ),
+        Index(
+            "ix_llm_attempt_receipts_workflow_run",
+            "workflow_run_id",
+            postgresql_where=sa.text("workflow_run_id IS NOT NULL"),
+        ),
+        Index(
+            "ix_llm_attempt_receipts_hook_session",
+            "hook_session_id",
+            postgresql_where=sa.text("hook_session_id IS NOT NULL"),
         ),
     )

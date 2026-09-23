@@ -2,7 +2,7 @@
 
 Tracking issue: [#2209](https://github.com/sseshachala/conductai/issues/2209)
 Branch: `feat/accounting-foundation-2209`
-Status: Session 4 shipped (per-attempt persistence + shadow writer, OFF by default)
+Status: Session 5 shipped (streaming + Lens hooks + accounting-to-Lens read API)
 
 ## Goal
 
@@ -208,6 +208,93 @@ attempt — failed attempts before it record only the error class).
 only. Streaming settlement runs inside `_wrap_v2_stream_finalize`; Session 5
 adds the hook there.
 
+## Session 5 — Lens integration + read API contract
+
+### Separation of concerns (per Sudhi, 2026-09-23)
+
+Three epics, three responsibilities:
+
+| Epic | Responsibility |
+|------|----------------|
+| **Accounting** (#2209, this branch) | Produce trustworthy usage / cost / attribution + queryable aggregates. Distinguish reported vs estimated vs incomplete data. |
+| **Lens** (separate epic) | Conversational surface that turns evidence into answers ("who drove yesterday's spend?", "how much did caching save?", "why was this budget-blocked?"). Consumes the accounting API for every number. |
+| **Flight Recorder** ([#2069](https://github.com/sseshachala/conductai/issues/2069)) | Evidence links: requests, attempts, policy decisions. Lens hyperlinks to Flight Recorder entries when a user drills into a specific answer. |
+
+**Non-negotiable**: Lens's LLM never invents math. Every number Lens
+surfaces to a user comes from `AccountingReader`; the LLM's role is to
+route the question, phrase the answer, and cite the source — not to compute.
+
+### Accounting → Lens API contract (v1)
+
+Location: `apps/api/app/runtime/accounting/reader.py`.
+
+**Types:**
+
+- `SpendAggregate` (frozen dataclass) — one slice of aggregated evidence.
+  Every field is a fact derived from `llm_attempt_receipts` rows. Fields:
+  - `receipt_count`, `request_count` (distinct request_ids)
+  - `total_cost_microdollars`, `total_reserved_microdollars`,
+    `legacy_cost_microdollars` (for Session 6 shadow deltas)
+  - `total_input_tokens`, `total_output_tokens`,
+    `total_uncached_input_tokens`, `total_cache_read_tokens`,
+    `total_reasoning_output_tokens`
+  - `completeness_breakdown: dict[UsageCompleteness → count]`
+  - `pricing_completeness_breakdown: dict[PricingCompleteness → count]`
+  - `execution_outcome_breakdown: dict[ExecutionOutcome → count]`
+  - Derived properties: `total_cost_usd`, `has_partial_or_missing`,
+    `has_unpriced_attempts`
+
+- `AggregateScope` enum: `WORKSPACE`, `DEVELOPER`, `AGENT_IDENTITY`,
+  `MODEL`, `PROVIDER`, `CLIENT_TOOL`, `WORKFLOW_RUN`, `HOOK_SESSION`.
+
+**Methods:**
+
+- `AccountingReader.summarize_by_scope(workspace_id, period_start, period_end, scope)`
+  returns `list[SpendAggregate]` — one per distinct scope value.
+
+Session 5 ships the shape + this one method. Additional query shapes
+(per-attempt drilldown, cache-savings computation, budget-block correlation)
+plug in as the Lens epic identifies conversational needs.
+
+### Invariants the reader surfaces to Lens
+
+1. **Known-zero ≠ missing ≠ pending ≠ partial** (invariant #4). Lens must
+   caveat any figure derived from an aggregate where
+   `has_partial_or_missing` is true.
+2. **Unpriced attempts are visible** (invariant #9). Lens must NOT report
+   `total_cost_microdollars` as the exact spend when `has_unpriced_attempts`
+   is true; the true cost is at least the reported figure.
+3. **Reasoning tokens are a subset** (invariant #5). Available for display
+   ("this run used 30k reasoning tokens") but never contribute to cost.
+4. **Cache savings are queryable, not invented**. Lens can compute
+   "caching saved $X" as `(uncached_rate - cache_read_rate) * cache_read_tokens`
+   from the aggregate + the pricing snapshot version recorded on each
+   receipt. Lens does not run its own aggregation.
+
+### Session 5 wiring summary
+
+| Path | File | What fires |
+|------|------|------------|
+| Gateway non-streaming | `gateway_handler.py:1449+` (Session 4) | one shadow row per request at settlement |
+| Gateway streaming | `gateway_handler.py::_wrap_v2_stream_finalize` (Session 5) | one shadow row per stream at finalize |
+| Lens tool resolution | `guard/gateway.py::guarded_client_call` (Session 5) | one shadow row per Lens LLM call, `source="lens"` |
+| Lens streaming synthesis | `guard/gateway.py::guarded_client_stream` (Session 5) | one shadow row per streamed synthesis, usage=UNAVAILABLE (Lens streams do not opt into include_usage yet) |
+
+New scope columns on `llm_attempt_receipts` (migration `0149`):
+`workflow_run_id`, `workflow_step_id`, `hook_session_id` — nullable, indexed
+partial. Lets aggregations answer "cost per workflow run" and "cost per
+Lens session" from a single JOIN-free scan.
+
+### Deferred to a followup task
+
+**Workflow runtime direct-adapter hook** (brain_block) is NOT wired in
+Session 5. brain_block routes through multiple adapter types
+(`gateway_profile` = HTTP hop through Gateway, which Session 4 already
+covers; native adapters = direct provider call, no Gateway hop). Adding a
+shadow hook naively risks double-counting when the workflow goes through
+Gateway. Filed as followup — will resolve after Session 6 canary shows the
+actual traffic mix.
+
 ## Session plan (7 sessions, one branch, one draft PR)
 
 | Session | Deliverable | Status |
@@ -215,8 +302,8 @@ adds the hook there.
 | 1 | Inventory confirmation + typed contracts, no behavior change | shipped |
 | 2 | Shared pricing service + unified reservation estimator behind compat wrappers | shipped |
 | 3 | Anthropic + OpenAI Chat/Responses + LiteLLM normalizers with fixtures | shipped |
-| 4 | Gateway per-attempt persistence + shadow calculation | **shipped** |
-| 5 | Workflow/runtime + Lens integration via receipt references | pending |
+| 4 | Gateway per-attempt persistence + shadow calculation | shipped |
+| 5 | Workflow/runtime + Lens integration via receipt references + read API | **shipped** |
 | 6 | Controlled activation + concurrent/failure/reconciliation tests + canary | pending |
 | 7 | Removal — completion gate, not calendar | pending |
 
