@@ -52,6 +52,7 @@ def _captured_row(monkeypatch):
     def _capture(_db, row, *, is_reconciler):
         captured["row"] = row
         captured["is_reconciler"] = is_reconciler
+        return row.id  # simulate successful insert; matches RETURNING id
 
     monkeypatch.setattr(
         "app.runtime.accounting.shadow_writer._persist_atomic", _capture

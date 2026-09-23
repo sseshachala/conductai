@@ -491,10 +491,25 @@ def aggregate_from_rows(
 
 
 def _scope_column(scope: AggregateScope):
+    from sqlalchemy import cast, func
+    from sqlalchemy import Text as _SqlText
+
     m = LlmAttemptReceipt
+    if scope is AggregateScope.DEVELOPER:
+        # Reviewer #4 (#2221 review at bbcb5388): most callers pass a
+        # Clerk ID / email / "system:*" sentinel into
+        # ``developer_external_id`` (Session 6c) — they do not have a
+        # resolved internal user UUID. Grouping by
+        # ``developer_user_id`` alone collapses every one of them into
+        # the NULL bucket. COALESCE the two columns so per-developer
+        # reporting stays intact regardless of which identity kind the
+        # writer had.
+        return func.coalesce(
+            cast(m.developer_user_id, _SqlText),
+            m.developer_external_id,
+        )
     return {
         AggregateScope.WORKSPACE: m.workspace_id,
-        AggregateScope.DEVELOPER: m.developer_user_id,
         AggregateScope.AGENT_IDENTITY: m.agent_identity_id,
         AggregateScope.MODEL: m.model,
         AggregateScope.PROVIDER: m.provider,

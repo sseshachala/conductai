@@ -45,7 +45,14 @@ log = structlog.get_logger(__name__)
 
 @dataclass(frozen=True)
 class ReconciliationResult:
-    """Summary of one reconciliation pass — for ops dashboards + Session 7 gate."""
+    """Summary of one reconciliation pass — for ops dashboards + Session 7 gate.
+
+    ``next_cursor`` is the ``(ts, request_id)`` tuple to pass on the next
+    call so the following pass skips rows this pass already saw. ``None``
+    means the scan hit the end of the period (no more rows). Reviewer #2
+    at bbcb5388 called out that a fixed-limit scan without a cursor kept
+    re-processing the earliest rows and never reached later gaps.
+    """
 
     workspace_id: str
     period_start: datetime
@@ -55,6 +62,7 @@ class ReconciliationResult:
     receipts_written: int
     receipts_skipped: int  # unique-constraint hits (already reconciled) or upsert no-ops
     errors: int
+    next_cursor: Optional[tuple[datetime, uuid.UUID]] = None
 
 
 def reconcile_missing_receipts(
@@ -64,6 +72,7 @@ def reconcile_missing_receipts(
     period_end: datetime,
     db: Optional[Session] = None,
     limit: int = 1000,
+    since_cursor: Optional[tuple[datetime, uuid.UUID]] = None,
 ) -> ReconciliationResult:
     """Scan guard_audit_events for one workspace, backfill missing per-attempt
     shadow rows.
@@ -75,6 +84,11 @@ def reconcile_missing_receipts(
     that captured a provider error envelope get their bytes decoded +
     normalized + priced — the placeholder is 'metadata-only' only when
     the coordinator had nothing to record.
+
+    Keyset pagination (reviewer #2 at bbcb5388): callers pass
+    ``since_cursor=(ts, request_id)`` from the previous pass's
+    ``result.next_cursor`` to resume where the last call left off. When
+    ``next_cursor`` is None the scan hit the end of the period.
     """
     owned = db is None
     _db = db if db is not None else SessionLocal()
@@ -86,7 +100,14 @@ def reconcile_missing_receipts(
     errors = 0
 
     try:
-        audit_rows = _fetch_audit_rows(_db, workspace_id, period_start, period_end, limit)
+        audit_rows = _fetch_audit_rows(
+            _db,
+            workspace_id,
+            period_start,
+            period_end,
+            limit,
+            since_cursor,
+        )
     except Exception:
         log.exception(
             "accounting.reconciler.scan_failed",
@@ -120,6 +141,7 @@ def reconcile_missing_receipts(
             receipts_written=0,
             receipts_skipped=0,
             errors=0,
+            next_cursor=None,  # end of period
         )
 
     request_ids = [row.request_id for row in audit_rows]
@@ -127,14 +149,24 @@ def reconcile_missing_receipts(
 
     for row in audit_rows:
         scanned += 1
-        attempts = _extract_attempts_from_meta(row.routing_meta)
-        expected_ordinals = set(range(len(attempts))) if attempts else {0}
+        total_attempts, attempts_by_ordinal = _extract_attempts_from_meta(
+            row.routing_meta
+        )
+        original_operation = _extract_operation_from_meta(row.routing_meta)
+        expected_ordinals = (
+            set(range(total_attempts)) if total_attempts > 0 else {0}
+        )
         expected += len(expected_ordinals)
         missing = expected_ordinals - existing.get(row.request_id, set())
         for ordinal in sorted(missing):
-            attempt_meta = attempts[ordinal] if ordinal < len(attempts) else None
+            # None for slots whose metadata was malformed; _write_placeholder
+            # falls back to audit-row defaults for provider/model in that
+            # case rather than borrowing another ordinal's identity.
+            attempt_meta = attempts_by_ordinal.get(ordinal)
             try:
-                wrote = _write_placeholder(row, ordinal, attempt_meta)
+                wrote = _write_placeholder(
+                    row, ordinal, attempt_meta, original_operation=original_operation
+                )
                 if wrote:
                     written += 1
                 else:
@@ -153,6 +185,13 @@ def reconcile_missing_receipts(
         except Exception:
             pass
 
+    # Advance the cursor to the last (ts, request_id) we scanned. If we
+    # fetched fewer rows than ``limit``, we're at the end — return None.
+    next_cursor: Optional[tuple[datetime, uuid.UUID]] = None
+    if len(audit_rows) >= limit:
+        last = audit_rows[-1]
+        next_cursor = (last.audit_ts, last.request_id)
+
     return ReconciliationResult(
         workspace_id=str(workspace_id),
         period_start=period_start,
@@ -162,6 +201,7 @@ def reconcile_missing_receipts(
         receipts_written=written,
         receipts_skipped=skipped,
         errors=errors,
+        next_cursor=next_cursor,
     )
 
 
@@ -174,16 +214,24 @@ def _fetch_audit_rows(
     period_start: datetime,
     period_end: datetime,
     limit: int,
+    since_cursor: Optional[tuple[datetime, uuid.UUID]] = None,
 ) -> list:
-    """Fetch every audit row in the window, INCLUDING routing_meta.
+    """Fetch audit rows in the window, resuming from ``since_cursor``.
 
-    Session 6H change: no LEFT JOIN against receipts — that was
-    request-granular and hid missing fallback ordinals. Per-attempt
-    filtering happens in Python via ``_fetch_existing_ordinals`` below.
-    ``ORDER BY gae.ts ASC`` gives deterministic pagination.
+    Session 6H removed the LEFT JOIN against receipts (that was
+    request-granular). Session 6J adds keyset pagination: reviewer #2
+    at bbcb5388 pointed out that a fixed-limit ``ORDER BY ts LIMIT
+    1000`` kept re-scanning the earliest rows and never reached later
+    gaps. Cursor is ``(ts, request_id)`` — a stable pair thanks to the
+    unique index on ``request_id``.
     """
-    return db.execute(
-        text(
+    cursor_ts: Optional[datetime] = None
+    cursor_rid: Optional[uuid.UUID] = None
+    if since_cursor is not None:
+        cursor_ts, cursor_rid = since_cursor
+
+    if cursor_ts is None:
+        sql = text(
             """
             SELECT
                 gae.workspace_id,
@@ -201,17 +249,49 @@ def _fetch_audit_rows(
               AND gae.ts >= :period_start
               AND gae.ts <  :period_end
               AND gae.request_id IS NOT NULL
-            ORDER BY gae.ts ASC
+            ORDER BY gae.ts ASC, gae.request_id ASC
             LIMIT :limit
             """
-        ),
-        {
+        )
+        params = {
             "workspace_id": workspace_id,
             "period_start": period_start,
             "period_end": period_end,
             "limit": limit,
-        },
-    ).all()
+        }
+    else:
+        sql = text(
+            """
+            SELECT
+                gae.workspace_id,
+                gae.request_id,
+                gae.provider,
+                gae.model,
+                gae.clerk_user_id,
+                gae.ai_tool,
+                gae.tokens_after,
+                gae.cost_usd_after,
+                gae.ts AS audit_ts,
+                gae.routing_meta
+            FROM guard_audit_events gae
+            WHERE gae.workspace_id = :workspace_id
+              AND gae.ts >= :period_start
+              AND gae.ts <  :period_end
+              AND gae.request_id IS NOT NULL
+              AND (gae.ts, gae.request_id) > (:cursor_ts, :cursor_rid)
+            ORDER BY gae.ts ASC, gae.request_id ASC
+            LIMIT :limit
+            """
+        )
+        params = {
+            "workspace_id": workspace_id,
+            "period_start": period_start,
+            "period_end": period_end,
+            "cursor_ts": cursor_ts,
+            "cursor_rid": cursor_rid,
+            "limit": limit,
+        }
+    return db.execute(sql, params).all()
 
 
 def _fetch_existing_ordinals(db: Session, request_ids: list) -> dict:
@@ -240,28 +320,65 @@ def _fetch_existing_ordinals(db: Session, request_ids: list) -> dict:
     return dict(out)
 
 
-def _extract_attempts_from_meta(routing_meta: Any) -> list[dict]:
-    """Pull ``attempts[]`` off routing_meta. Handles JSONB dict form,
-    string form (some DB drivers stringify JSONB), and missing/None.
-    Returns [] when nothing usable is present (caller defaults to
-    ``{0}`` as the expected ordinal set)."""
+def _extract_attempts_from_meta(routing_meta: Any) -> tuple[int, dict[int, dict]]:
+    """Pull ``attempts[]`` off routing_meta.
+
+    Returns ``(total_count, {index: attempt_dict})``. ``total_count`` is
+    the ORIGINAL array length so the caller's expected ordinal set covers
+    every position — including ones where the attempt metadata was
+    malformed. Only dict entries are keyed into the returned map; the
+    slot remains reserved but has no per-attempt metadata (caller falls
+    back to audit-row defaults for that ordinal).
+
+    Reviewer #6 (#2221 review at bbcb5388): the prior list-based return
+    dropped non-dict entries entirely, compressing ordinals. Under
+    ``[attempt0, null, attempt2]`` the reconciler used to write a
+    placeholder for ordinal 1 with attempt2's metadata — wrong.
+    """
     if not routing_meta:
-        return []
+        return 0, {}
     if isinstance(routing_meta, str):
         import json as _json
         try:
             routing_meta = _json.loads(routing_meta)
         except Exception:
-            return []
+            return 0, {}
     if not isinstance(routing_meta, Mapping):
-        return []
+        return 0, {}
     attempts = routing_meta.get("attempts")
     if not isinstance(attempts, list):
-        return []
-    return [a for a in attempts if isinstance(a, Mapping)]
+        return 0, {}
+    total = len(attempts)
+    keyed = {i: a for i, a in enumerate(attempts) if isinstance(a, Mapping)}
+    return total, keyed
 
 
-def _write_placeholder(row, ordinal: int, attempt_meta: Optional[Mapping]) -> bool:
+def _extract_operation_from_meta(routing_meta: Any) -> Optional[str]:
+    """Session 6J reviewer #5: pull ``operation`` off routing_meta so the
+    reconciler can pick the right normalizer family. Returns None for
+    legacy audit rows written before Session 6J; the caller falls back
+    to ``"reconciled"`` and the writer picks OPENAI_CHAT as default."""
+    if not routing_meta:
+        return None
+    if isinstance(routing_meta, str):
+        import json as _json
+        try:
+            routing_meta = _json.loads(routing_meta)
+        except Exception:
+            return None
+    if not isinstance(routing_meta, Mapping):
+        return None
+    op = routing_meta.get("operation")
+    return op if isinstance(op, str) and op else None
+
+
+def _write_placeholder(
+    row,
+    ordinal: int,
+    attempt_meta: Optional[Mapping],
+    *,
+    original_operation: Optional[str] = None,
+) -> bool:
     """Write one reconciler-sourced placeholder for a missing attempt.
 
     Uses ``shadow_write(source="reconciler", pinned_shadow_enabled=True)``
@@ -314,12 +431,18 @@ def _write_placeholder(row, ordinal: int, attempt_meta: Optional[Mapping]) -> bo
     if execution_outcome == ExecutionOutcome.SUCCEEDED.value:
         execution_outcome = ExecutionOutcome.RECONCILED_LATE.value
 
+    # Reviewer #5: preserve the original operation so the normalizer
+    # picks the right family (OpenAI Chat vs Responses). Legacy audit
+    # rows without ``routing_meta.operation`` fall back to "reconciled";
+    # provenance below records that fact.
+    operation = original_operation or "reconciled"
+
     result = shadow_write(
         workspace_id=row.workspace_id,
         request_id=row.request_id,
         provider=provider,
         model=model,
-        operation="reconciled",
+        operation=operation,
         dispatched=True,
         response_bytes=response_bytes,
         legacy_input_tokens=legacy_input,

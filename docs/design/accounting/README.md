@@ -645,6 +645,27 @@ decoded bytes.
 
 Full suite: 2415 passing (was 2400).
 
+## Session 6J — reviewer response for bbcb5388
+
+Seven more defects, three P1 + four P2. All fixed.
+
+| # | Finding | Fix |
+|---|---------|-----|
+| P1 · 1 | `shadow_write` returned a fresh UUID on upsert conflict; placeholder promotion preserves the pre-existing row id, and DO NOTHING returns nothing. The returned ID could reference a row that never existed | `_persist_atomic` uses `INSERT ... RETURNING id` and returns the ACTUAL persisted id (or `None` on no-op). `shadow_write` returns that. Callers now get valid IDs for `parent_receipt_id` chains |
+| P1 · 2 | Reconciler stopped progressing after the first 1000 rows — no cursor, so each pass rescanned the earliest audit rows | Keyset pagination via `since_cursor=(ts, request_id)`. `ReconciliationResult.next_cursor` carries the last-seen pair; None signals end of period. `ORDER BY gae.ts ASC, gae.request_id ASC` makes the tuple compare deterministic |
+| P1 · 3 | Cache-write tiers were summed to a single count and priced at one rate; ephemeral_5m and ephemeral_1h therefore got the same rate | `RateCard.cache_write_by_tier_per_1m_usd` + `PricingService.price_tokens(cache_write_tokens_by_tier=...)`. Writer passes the tier map from the normalizer. Unknown tiers under `strict=True` downgrade result completeness to `PricingCompleteness.INCOMPLETE` (never silently use the default rate). Legacy snapshots without tier data keep the single-rate behavior |
+| P2 · 4 | Reader's DEVELOPER scope grouped only by `developer_user_id`. Gateway writes `developer_external_id` (Clerk IDs aren't UUIDs), so every developer collapsed into the NULL group | `_scope_column(DEVELOPER)` now returns `COALESCE(developer_user_id::text, developer_external_id)`. Per-developer reporting works whether the writer had a resolved UUID or an external identifier |
+| P2 · 5 | Reconciler hardcoded `operation="reconciled"`. OpenAI Responses payloads got misrouted to the Chat normalizer | `gateway_handler` writes `routing_meta.operation` at request finalize (both success + failure paths). Reconciler reads it via `_extract_operation_from_meta` and passes through to `shadow_write`. Legacy audit rows without the field fall back to `"reconciled"` |
+| P2 · 6 | `_extract_attempts_from_meta` filtered non-dict entries out of the array, compressing ordinals: `[a0, null, a2]` became `[a0, a2]` at ordinals 0,1. Reconciler wrote a placeholder at ordinal 1 using `a2`'s metadata | Function now returns `(total_count, {index: dict})`. Non-dict slots reserve their ordinal but have no per-attempt metadata (reconciler falls back to audit-row defaults for that ordinal) |
+| P2 · 7 | `{"usage": {}}` on OpenAI Chat + Responses returned COMPLETE with all-None token counts. Same bug Session 6F fixed for Anthropic | Both OpenAI normalizers now check `not usage or every-field-None` after `_tokens_from_usage` and return UNAVAILABLE. Reported zero (invariant #4) still lands COMPLETE |
+
+18 new self-checks in `test_session_6j.py` pin each fix — including
+source-string checks on the RETURNING clause, keyset SQL, per-tier
+pricing formula, `_extract_operation_from_meta` behavior, and the
+`gateway_handler` operation-write points.
+
+Full suite: 2433 passing (was 2415).
+
 ## Where this branch actually is — honest tracking
 
 Sudhi's review at 1219d734 also called out that my Session-6E summary

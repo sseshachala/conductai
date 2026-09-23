@@ -22,9 +22,9 @@ def test_extract_attempts_from_dict_meta():
             {"succeeded": True, "provider_or_integration": "openai"},
         ]
     }
-    result = _extract_attempts_from_meta(meta)
-    assert len(result) == 2
-    assert result[1]["provider_or_integration"] == "openai"
+    total, keyed = _extract_attempts_from_meta(meta)
+    assert total == 2
+    assert keyed[1]["provider_or_integration"] == "openai"
 
 
 def test_extract_attempts_from_stringified_meta():
@@ -33,28 +33,37 @@ def test_extract_attempts_from_stringified_meta():
     from app.runtime.accounting.reconciler import _extract_attempts_from_meta
 
     meta_str = json.dumps({"attempts": [{"succeeded": True}]})
-    assert len(_extract_attempts_from_meta(meta_str)) == 1
+    total, keyed = _extract_attempts_from_meta(meta_str)
+    assert total == 1
+    assert 0 in keyed
 
 
 def test_extract_attempts_from_missing_meta_returns_empty():
-    """Legacy audit rows without routing_meta.attempts return [] so the
-    caller defaults to a single expected ordinal {0}."""
+    """Legacy audit rows without routing_meta.attempts return (0, {}) so
+    the caller defaults to a single expected ordinal {0}."""
     from app.runtime.accounting.reconciler import _extract_attempts_from_meta
 
-    assert _extract_attempts_from_meta(None) == []
-    assert _extract_attempts_from_meta({}) == []
-    assert _extract_attempts_from_meta({"other_field": "x"}) == []
-    assert _extract_attempts_from_meta("not-json{{") == []
+    assert _extract_attempts_from_meta(None) == (0, {})
+    assert _extract_attempts_from_meta({}) == (0, {})
+    assert _extract_attempts_from_meta({"other_field": "x"}) == (0, {})
+    assert _extract_attempts_from_meta("not-json{{") == (0, {})
 
 
-def test_extract_attempts_skips_non_dict_elements():
-    """Corrupted attempts array (mixed types) — only dict entries survive."""
+def test_extract_attempts_preserves_ordinals_around_bad_entries():
+    """Session 6J reviewer #6 (#2221 review at bbcb5388): non-dict
+    entries reserve their ordinal slot instead of compressing the
+    array. ``[attempt0, null, attempt2]`` now returns
+    ``total=3, keyed={0: attempt0, 2: attempt2}`` — never
+    ``total=2, keyed={0: attempt0, 1: attempt2}``."""
     from app.runtime.accounting.reconciler import _extract_attempts_from_meta
 
-    result = _extract_attempts_from_meta(
-        {"attempts": [{"succeeded": True}, "bogus", 42, None, {"succeeded": False}]}
+    total, keyed = _extract_attempts_from_meta(
+        {"attempts": [{"provider_or_integration": "a"}, None, "bogus", 42, {"provider_or_integration": "e"}]}
     )
-    assert len(result) == 2
+    assert total == 5
+    assert set(keyed.keys()) == {0, 4}
+    assert keyed[0]["provider_or_integration"] == "a"
+    assert keyed[4]["provider_or_integration"] == "e"
 
 
 # ─── Placeholder writer per-attempt behavior ─────────────────────────────

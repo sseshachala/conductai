@@ -53,6 +53,7 @@ def test_concurrent_writes_do_not_share_state(_shadow_on, monkeypatch):
     def _capture(_db, row, *, is_reconciler):
         with lock:
             written.append(row)
+        return row.id
 
     monkeypatch.setattr(
         "app.runtime.accounting.shadow_writer._persist_atomic", _capture
@@ -167,6 +168,7 @@ def test_duplicate_write_for_same_request_attempt_is_idempotent(_shadow_on, monk
         if call_count[0] == 2:
             raise Exception("unique_violation")
         written.append(row)
+        return row.id
 
     monkeypatch.setattr(
         "app.runtime.accounting.shadow_writer._persist_atomic", _persist

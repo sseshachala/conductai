@@ -64,9 +64,20 @@ class OpenAIChatNormalizer:
         if not isinstance(obj, dict):
             return _unavailable()
         usage = obj.get("usage")
-        if not isinstance(usage, dict):
+        if not isinstance(usage, dict) or not usage:
             return _unavailable()
         tokens = _tokens_from_usage(usage)
+        # #2209 Session 6J reviewer #7 (#2221 review at bbcb5388):
+        # {"usage": {}} or a usage dict where every numeric field is
+        # absent must return UNAVAILABLE, not COMPLETE. Session 6F
+        # applied the same fix to the Anthropic normalizer; this closes
+        # the gap for OpenAI Chat.
+        if (
+            tokens.total_input_tokens is None
+            and tokens.total_output_tokens is None
+            and tokens.cache_read_tokens is None
+        ):
+            return _unavailable()
         return NormalizedUsage(
             tokens=tokens,
             origin=UsageOrigin.PROVIDER_REPORTED,

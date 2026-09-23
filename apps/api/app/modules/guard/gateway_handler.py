@@ -286,7 +286,7 @@ async def handle_gateway_request(
         if operation != "inference":
             _routing_meta = {
                 **(_routing_meta or {}),
-                "operation": operation,
+                "operation": plan.operation,
                 "billable": False,
             }
 
@@ -2020,6 +2020,9 @@ async def _execute_v2(
         plan.last_meta = {
             "winning_target_id": None,
             "attempt_count": len(exc.attempts),
+            # Session 6J reviewer #5: same operation preservation as the
+            # success path.
+            "operation": plan.operation,
             "attempts": [
                 {
                     "target_id": a.target_id,
@@ -2065,6 +2068,12 @@ async def _execute_v2(
     plan.last_meta = {
         "winning_target_id": result.winning_target_id,
         "attempt_count": len(result.attempts),
+        # #2209 Session 6J reviewer #5 (#2221 review at bbcb5388): the
+        # reconciler needs the original operation to pick the right
+        # normalizer family (OpenAI Chat vs Responses). Carrying it in
+        # routing_meta means the audit row already has what the
+        # reconciler needs; no schema change required.
+        "operation": plan.operation,
         "attempts": [
             {
                 "target_id": a.target_id,

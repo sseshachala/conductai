@@ -264,12 +264,12 @@ def _shadow_write_impl(**kw: Any) -> uuid.UUID:
     pricing_version = None
     pricing_completeness_val = PricingCompleteness.UNPRICED.value
     if normalized_tokens is not None:
-        # Reviewer #4 (#2221): explicit-per-bucket, no subtraction.
-        _cache_write_total = (
-            sum(normalized_tokens.cache_write_tokens_by_tier.values())
-            if normalized_tokens.cache_write_tokens_by_tier
-            else 0
-        )
+        # Reviewer #4 (Session 6c #2221): explicit-per-bucket, no subtraction.
+        # Reviewer #3 (Session 6J #2221): pass the tier breakdown so
+        # Anthropic ephemeral_5m vs ephemeral_1h writes can be priced
+        # at their own rates instead of one summed rate.
+        _cache_write_by_tier = dict(normalized_tokens.cache_write_tokens_by_tier or {})
+        _cache_write_total = sum(_cache_write_by_tier.values()) if _cache_write_by_tier else 0
         price = default_pricing_service().price_tokens(
             provider,
             model,
@@ -277,6 +277,7 @@ def _shadow_write_impl(**kw: Any) -> uuid.UUID:
             output_tokens=normalized_tokens.total_output_tokens,
             cache_read_tokens=normalized_tokens.cache_read_tokens,
             cache_write_tokens=_cache_write_total,
+            cache_write_tokens_by_tier=_cache_write_by_tier or None,
             strict=True,
         )
         priced_microdollars = price.microdollars
@@ -358,7 +359,7 @@ def _shadow_write_impl(**kw: Any) -> uuid.UUID:
 
     db = SessionLocal()
     try:
-        _persist_atomic(
+        persisted_id = _persist_atomic(
             db,
             row,
             is_reconciler=(kw.get("source") == "reconciler"),
@@ -367,29 +368,51 @@ def _shadow_write_impl(**kw: Any) -> uuid.UUID:
     finally:
         db.close()
 
-    return receipt_id
+    # Reviewer #1 (#2221 review at bbcb5388): return the ACTUAL persisted
+    # row id (via RETURNING). On placeholder promotion the id belongs to
+    # the pre-existing placeholder row — the fresh UUID we built never
+    # made it to disk. On no-op (real receipt already exists, or
+    # reconciler DO NOTHING), returns None so callers do not chain
+    # parent_receipt_id to a nonexistent row.
+    if persisted_id is None:
+        log.debug(
+            "accounting.shadow_writer.skipped",
+            request_id=str(kw["request_id"]),
+            attempt_ordinal=int(kw.get("attempt_ordinal") or 0),
+            source=kw.get("source"),
+        )
+        return None
+    if persisted_id != receipt_id:
+        log.debug(
+            "accounting.shadow_writer.promoted_placeholder",
+            request_id=str(kw["request_id"]),
+            attempt_ordinal=int(kw.get("attempt_ordinal") or 0),
+            promoted_id=str(persisted_id),
+        )
+    return persisted_id
 
 
-def _persist_atomic(db, row, *, is_reconciler: bool) -> None:
-    """Race-safe upsert with placeholder promotion.
+def _persist_atomic(db, row, *, is_reconciler: bool) -> "Optional[uuid.UUID]":
+    """Race-safe upsert with placeholder promotion. Returns the persisted
+    row id (from Postgres ``RETURNING id``), or ``None`` when nothing
+    changed.
 
-    #2209 Session 6G reviewer #2 (#2221 review at 42d89898): the prior
-    DELETE-then-INSERT sequence had a window where the reconciler could
-    insert a placeholder between the DELETE and the INSERT, and the
-    real writer's INSERT then lost to the unique constraint. Replaced
-    with atomic ``INSERT ... ON CONFLICT ... DO UPDATE ...
-    WHERE source = 'reconciler'`` so promotion is a single statement.
+    Return-value semantics (reviewer #1 at bbcb5388):
+    - Fresh insert: returns the new row's id.
+    - Placeholder promotion (DO UPDATE fired): returns the pre-existing
+      placeholder row's id — the caller's freshly-generated UUID never
+      made it to disk because we exclude ``id`` from the UPDATE SET.
+    - No-op (real receipt already exists under the reconciler ``WHERE
+      source='reconciler'`` predicate, or the reconciler write hit
+      ``DO NOTHING``): returns None so downstream chains cannot point
+      at a row that isn't there.
 
-    - Non-reconciler write: DO UPDATE — overwrites an existing
-      placeholder, does nothing when a real receipt already occupies
-      the slot (WHERE clause excludes it, so the UPDATE matches zero
-      rows and the INSERT was already replaced by ON CONFLICT).
-    - Reconciler write: DO NOTHING — a placeholder never overwrites a
-      real receipt.
-
-    ``pg_insert.excluded`` refers to the row that would have been
-    inserted (Postgres EXCLUDED pseudo-table); it's what we copy into
-    the existing placeholder columns when promotion fires.
+    Session 6G background: the prior DELETE-then-INSERT sequence had a
+    window where the reconciler could insert a placeholder between the
+    DELETE and the INSERT, and the real writer's INSERT then lost to
+    the unique constraint. Replaced with atomic ``INSERT ... ON CONFLICT
+    ... DO UPDATE ... WHERE source = 'reconciler'`` so promotion is a
+    single statement.
     """
     from sqlalchemy.dialects.postgresql import insert as pg_insert
 
@@ -413,7 +436,12 @@ def _persist_atomic(db, row, *, is_reconciler: bool) -> None:
             },
             where=(table.c.source == "reconciler"),
         )
-    db.execute(stmt)
+    stmt = stmt.returning(table.c.id)
+    result = db.execute(stmt)
+    persisted = result.fetchone()
+    if persisted is None:
+        return None
+    return persisted[0]
 
 
 def write_receipts_for_attempts(

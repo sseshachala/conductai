@@ -30,6 +30,7 @@ def _captured(monkeypatch):
     rows: list = []
     def _capture(_db, row, *, is_reconciler):
         rows.append(row)
+        return row.id
     monkeypatch.setattr(
         "app.runtime.accounting.shadow_writer._persist_atomic", _capture
     )

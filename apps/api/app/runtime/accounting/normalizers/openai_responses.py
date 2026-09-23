@@ -59,10 +59,19 @@ class OpenAIResponsesNormalizer:
         if not isinstance(obj, dict):
             return _unavailable()
         usage = obj.get("usage")
-        if not isinstance(usage, dict):
+        if not isinstance(usage, dict) or not usage:
+            return _unavailable()
+        tokens = _tokens_from_usage(usage)
+        # #2209 Session 6J reviewer #7 (#2221 review at bbcb5388): same
+        # empty-usage guard as OpenAI Chat + Anthropic (Session 6F).
+        if (
+            tokens.total_input_tokens is None
+            and tokens.total_output_tokens is None
+            and tokens.cache_read_tokens is None
+        ):
             return _unavailable()
         return NormalizedUsage(
-            tokens=_tokens_from_usage(usage),
+            tokens=tokens,
             origin=UsageOrigin.PROVIDER_REPORTED,
             completeness=UsageCompleteness.COMPLETE,
             provider_family=_FAMILY,
