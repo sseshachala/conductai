@@ -324,19 +324,36 @@ def _effective_auth(
     per-target flexibility can opt in without another branch inside
     the hot path.
     """
+    # PR 7 review finding 2 — always lowercase header names before
+    # they hit the outbound dict. Python dicts are case-sensitive; a
+    # mixed-case ``AuThOrIzAtIoN`` would otherwise coexist alongside
+    # the transport's own ``authorization`` and both reach the wire.
+    # Publish already rejects reserved header names case-insensitively
+    # via ``_validate_custom_extra_headers``, but lowercase here is
+    # defense in depth for anything that slipped past validation.
     if target.integration != "custom":
-        return config.auth_header, config.bearer_prefix, dict(config.extra_headers)
+        return (
+            config.auth_header.lower(),
+            config.bearer_prefix,
+            {k.lower(): v for k, v in config.extra_headers.items()},
+        )
     opts = getattr(target, "provider_options", None) or {}
-    auth_header = str(opts.get("auth_header") or config.auth_header)
-    # Explicit `False` from admin must beat the `True` default.
-    if "bearer_prefix" in opts:
-        bearer_prefix = bool(opts["bearer_prefix"])
-    else:
-        bearer_prefix = config.bearer_prefix
+    auth_header = str(opts.get("auth_header") or config.auth_header).lower()
+    # PR 7 review finding 5 — publish-time model_validator refuses a
+    # non-bool ``bearer_prefix``. Guard again at runtime with strict
+    # isinstance rather than the truthy ``bool(...)`` coercion that
+    # turned the string ``"false"`` into True.
+    raw_prefix = opts.get("bearer_prefix", config.bearer_prefix)
+    if not isinstance(raw_prefix, bool):
+        raise ValueError(
+            f"custom target {target.id!r} has non-bool bearer_prefix "
+            f"{raw_prefix!r}; publish should have rejected this."
+        )
+    bearer_prefix = raw_prefix
     raw_extras = opts.get("extra_headers") or {}
     if not isinstance(raw_extras, dict):
         raw_extras = {}
-    extras = {str(k): str(v) for k, v in raw_extras.items()}
+    extras = {str(k).lower(): str(v) for k, v in raw_extras.items()}
     return auth_header, bearer_prefix, extras
 
 

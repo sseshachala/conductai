@@ -47,6 +47,8 @@ def _openrouter_target(**overrides) -> HTTPPassthroughTarget:
 
 
 def _custom_target(**overrides) -> HTTPPassthroughTarget:
+    """PR 7 review — custom now REQUIRES ``provider_options.protocol``.
+    Default the fixture to OpenAI-shape unless the caller overrides."""
     defaults = dict(
         id="custom-primary",
         transport="http_passthrough",
@@ -54,6 +56,7 @@ def _custom_target(**overrides) -> HTTPPassthroughTarget:
         model="gpt-4o",
         credential_ref=f"vault://{ENV}/custom",
         endpoint="https://my-llm-proxy.example.com/v1",
+        provider_options={"protocol": "openai"},
     )
     defaults.update(overrides)
     return HTTPPassthroughTarget(**defaults)
@@ -103,9 +106,11 @@ async def test_openrouter_chat_completions_hits_correct_url_with_bearer(monkeypa
     assert result == {"id": "chatcmpl-x"}
     assert captured["url"] == "https://openrouter.ai/api/v1/chat/completions"
     assert captured["headers"]["authorization"] == "Bearer sk-or-live"
-    # Attribution headers reach the wire.
-    assert captured["headers"]["HTTP-Referer"] == "https://conductai.ai"
-    assert captured["headers"]["X-Title"] == "Conduct AI Gateway"
+    # PR 7 review — extras normalized to lowercase before merge so a
+    # mixed-case admin extra can't shadow the auth header. Assert the
+    # attribution values reach the wire under their case-folded names.
+    assert captured["headers"]["http-referer"] == "https://conductai.ai"
+    assert captured["headers"]["x-title"] == "Conduct AI Gateway"
 
 
 @pytest.mark.anyio("asyncio")
@@ -155,9 +160,14 @@ async def test_custom_provider_options_override_auth_header_and_prefix(monkeypat
     fake_client.post = _fake_post
     monkeypatch.setattr(transport, "_get_client", AsyncMock(return_value=fake_client))
 
+    # PR 7 review — anthropic-shape target so anthropic_messages
+    # is a certified operation for this custom protocol. auth_header
+    # ``x-vendor-key`` is a benign example; ``x-api-key`` alone would
+    # be rejected by the schema-level substring check on ``auth_header``.
     await transport.execute(
         target=_custom_target(provider_options={
-            "auth_header":    "x-api-key",
+            "protocol":       "anthropic",
+            "auth_header":    "x-vendor-key",
             "bearer_prefix":  False,
             "extra_headers":  {"X-Team": "platform", "X-Env": "prod"},
         }),
@@ -168,12 +178,46 @@ async def test_custom_provider_options_override_auth_header_and_prefix(monkeypat
 
     # Path picks the Anthropic-shape suffix from the pinned operation_paths.
     assert captured["url"] == "https://my-llm-proxy.example.com/v1/messages"
-    # Raw key in the admin-chosen header, no Bearer.
-    assert captured["headers"]["x-api-key"] == "sk-raw"
+    # Raw key in the admin-chosen header (lowercased on the wire), no Bearer.
+    assert captured["headers"]["x-vendor-key"] == "sk-raw"
     assert "authorization" not in {k.lower() for k in captured["headers"]}
-    # Extra static headers reach the wire.
-    assert captured["headers"]["X-Team"] == "platform"
-    assert captured["headers"]["X-Env"] == "prod"
+    # Extra static headers reach the wire (case-folded to lowercase).
+    assert captured["headers"]["x-team"] == "platform"
+    assert captured["headers"]["x-env"] == "prod"
+
+
+@pytest.mark.anyio("asyncio")
+async def test_custom_mixed_case_extras_are_lowercased_on_wire(monkeypatch):
+    """PR 7 review finding 2 — even if a mixed-case key slipped past
+    validation, the transport must lowercase before merging so it
+    can't coexist with the auth header. Publish already refuses these
+    at the schema level; this belt-and-braces test locks the runtime
+    behaviour."""
+    captured: dict = {}
+
+    async def _fake_post(url, headers, content):
+        captured.update(headers=headers)
+        return _FakeResponse(200, {})
+
+    transport = HTTPPassthroughTransport()
+    fake_client = MagicMock()
+    fake_client.post = _fake_post
+    monkeypatch.setattr(transport, "_get_client", AsyncMock(return_value=fake_client))
+
+    await transport.execute(
+        target=_custom_target(provider_options={
+            "protocol":     "openai",
+            "extra_headers": {"X-Custom-Header": "value"},
+        }),
+        operation="openai_chat_completions",
+        payload={"messages": []},
+        credential_resolver=lambda ref: "sk-live",
+    )
+
+    # No mixed-case duplicate on the wire; only lowercase reaches httpx.
+    keys = set(captured["headers"].keys())
+    assert "X-Custom-Header" not in keys
+    assert "x-custom-header" in keys
 
 
 @pytest.mark.anyio("asyncio")

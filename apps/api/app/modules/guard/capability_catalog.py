@@ -75,15 +75,23 @@ _LITELLM_SDK_CERTIFIED: dict[tuple[str, Operation], list[str] | None] = {
 # OpenRouter reference implementation deliberately punts on.
 _HTTP_PASSTHROUGH_CERTIFIED: dict[tuple[Integration, Operation], bool] = {
     ("openrouter", "openai_chat_completions"): True,
-    # PR 7 — Custom is a template, not a preset. Admin supplies
-    # target.endpoint + provider_options (auth_header/bearer_prefix/
-    # extra_headers). Certified for every launch-set operation because
-    # a Custom proxy can front any OpenAI-shape or Anthropic-shape
-    # upstream — the runtime enforces the wire shape at request time.
-    ("custom", "openai_chat_completions"): True,
-    ("custom", "openai_responses"):        True,
-    ("custom", "anthropic_messages"):      True,
-    ("custom", "anthropic_count_tokens"):  True,
+    # PR 7 — Custom certification is per-protocol, not universal.
+    # ``target.provider_options.protocol`` selects the operation set the
+    # target's upstream actually speaks (openai vs anthropic). See
+    # ``_CUSTOM_OPS_BY_PROTOCOL`` + the custom-specific branch in
+    # ``_certified_operations_for_target``.
+}
+
+
+#: PR 7 review finding 6 — per-protocol operation set for
+#: ``integration=custom``. Universal certification advertised
+#: operations the target's upstream might not speak (e.g. a Custom
+#: target on an OpenAI-only proxy claiming ``anthropic_messages``).
+#: Admin now picks a protocol at publish; the catalog limits accepts
+#: to the matching operations for that shape.
+_CUSTOM_OPS_BY_PROTOCOL: dict[str, set[Operation]] = {
+    "openai":    {"openai_chat_completions", "openai_responses"},
+    "anthropic": {"anthropic_messages", "anthropic_count_tokens"},
 }
 
 
@@ -113,6 +121,10 @@ def _certified_operations_for_target(target: Target) -> set[Operation]:
             if prov == target.provider
         }
     if isinstance(target, HTTPPassthroughTarget):
+        # Custom is per-protocol; the standard matrix skips it.
+        if target.integration == "custom":
+            protocol = (getattr(target, "provider_options", None) or {}).get("protocol")
+            return set(_CUSTOM_OPS_BY_PROTOCOL.get(str(protocol), ()))
         return {
             op
             for (integration, op), certified in _HTTP_PASSTHROUGH_CERTIFIED.items()

@@ -636,7 +636,40 @@ function TargetRow({
                 onChange={e => onChange({ endpoint: e.target.value })}
                 style={inputStyle} />
             </FieldLabel>
-            <FieldLabel label="Auth header" hint="Name of the header carrying the API key (default: authorization).">
+            <FieldLabel label="Protocol" hint="Which wire shape your upstream speaks. Determines which operations publish will certify (openai_* vs anthropic_*).">
+              <select
+                value={String((target.provider_options as Record<string, unknown> | undefined)?.protocol ?? "")}
+                disabled={!isAdmin}
+                onChange={e => onChange({
+                  provider_options: {
+                    ...(target.provider_options ?? {}),
+                    protocol: e.target.value || undefined,
+                  },
+                })}
+                style={inputStyle}>
+                <option value="">— pick protocol —</option>
+                <option value="openai">OpenAI-shape</option>
+                <option value="anthropic">Anthropic-shape</option>
+              </select>
+            </FieldLabel>
+            <FieldLabel label="Bearer prefix" hint="Prepend `Bearer ` to the key value. Turn off if your proxy expects the raw key (e.g. x-api-key style).">
+              <select
+                value={((target.provider_options as Record<string, unknown> | undefined)?.bearer_prefix ?? true) ? "yes" : "no"}
+                disabled={!isAdmin}
+                onChange={e => onChange({
+                  provider_options: {
+                    ...(target.provider_options ?? {}),
+                    bearer_prefix: e.target.value === "yes",  // send actual boolean
+                  },
+                })}
+                style={inputStyle}>
+                <option value="yes">Bearer</option>
+                <option value="no">Raw</option>
+              </select>
+            </FieldLabel>
+          </div>
+          <div style={{ gridColumn: "2 / -1", display: "grid", gridTemplateColumns: "1fr", gap: 10 }}>
+            <FieldLabel label="Auth header" hint="Name of the header carrying the API key (default: authorization). Reserved names (authorization is fine as the target; cookie/host/content-*/x-api-key/vendor-key etc. are refused).">
               <input
                 value={String((target.provider_options as Record<string, unknown> | undefined)?.auth_header ?? "")}
                 disabled={!isAdmin}
@@ -649,55 +682,13 @@ function TargetRow({
                 })}
                 style={inputStyle} />
             </FieldLabel>
-            <FieldLabel label="Bearer prefix" hint="Prepend `Bearer ` to the key value. Turn off if your proxy expects the raw key (e.g. x-api-key style).">
-              <select
-                value={((target.provider_options as Record<string, unknown> | undefined)?.bearer_prefix ?? true) ? "yes" : "no"}
-                disabled={!isAdmin}
-                onChange={e => onChange({
-                  provider_options: {
-                    ...(target.provider_options ?? {}),
-                    bearer_prefix: e.target.value === "yes",
-                  },
-                })}
-                style={inputStyle}>
-                <option value="yes">Bearer</option>
-                <option value="no">Raw</option>
-              </select>
-            </FieldLabel>
           </div>
           <div style={{ gridColumn: "2 / -1" }}>
-            <FieldLabel label="Extra headers (JSON)" hint='Optional static headers to send on every request. Must parse as a flat JSON object of strings, e.g. {"X-Team":"platform"}. Merged AFTER auth + client headers.'>
-              <textarea
-                value={(() => {
-                  const eh = (target.provider_options as Record<string, unknown> | undefined)?.extra_headers
-                  return eh && typeof eh === "object" ? JSON.stringify(eh, null, 2) : ""
-                })()}
-                disabled={!isAdmin}
-                placeholder='{"X-Team": "platform"}'
-                onChange={e => {
-                  const text = e.target.value
-                  let parsed: Record<string, string> | undefined
-                  try {
-                    parsed = text.trim() ? JSON.parse(text) : undefined
-                  } catch {
-                    // keep the raw text visible via provider_options.extra_headers_raw
-                    // so the admin can fix the typo without losing their work.
-                    onChange({
-                      provider_options: {
-                        ...(target.provider_options ?? {}),
-                        extra_headers_raw: text,
-                      },
-                    })
-                    return
-                  }
-                  const next = { ...(target.provider_options ?? {}) }
-                  delete (next as Record<string, unknown>).extra_headers_raw
-                  if (parsed) next.extra_headers = parsed
-                  else delete (next as Record<string, unknown>).extra_headers
-                  onChange({ provider_options: next })
-                }}
-                style={{ ...inputStyle, minHeight: 72, fontFamily: "monospace", fontSize: 11 }} />
-            </FieldLabel>
+            <CustomExtraHeadersField
+              value={target.provider_options as Record<string, unknown> | undefined}
+              disabled={!isAdmin}
+              onChange={next => onChange({ provider_options: next })}
+            />
           </div>
         </>
       ) : null}
@@ -721,6 +712,94 @@ function FieldLabel({
       </span>
       {children}
     </label>
+  )
+}
+
+
+// PR 7 review finding 7 — the previous inline textarea bound its
+// ``value`` to the last-valid parsed ``extra_headers`` object. Typing
+// the first ``{`` produced invalid JSON, wrote to ``extra_headers_raw``,
+// and the next render resets the visible text to whatever was last
+// parseable — so users literally couldn't type. This component keeps
+// a local raw string state, seeded from either ``extra_headers_raw``
+// or a pretty-printed ``extra_headers``, parses on every keystroke,
+// and surfaces the error inline without wiping input.
+function CustomExtraHeadersField({
+  value, disabled, onChange,
+}: {
+  value: Record<string, unknown> | undefined
+  disabled: boolean
+  onChange: (next: Record<string, unknown>) => void
+}) {
+  const seed = (() => {
+    if (value && typeof value.extra_headers_raw === "string") return value.extra_headers_raw
+    const eh = value?.extra_headers
+    return eh && typeof eh === "object" ? JSON.stringify(eh, null, 2) : ""
+  })()
+  const [raw, setRaw] = useState(seed)
+  const [error, setError] = useState<string | null>(null)
+
+  return (
+    <FieldLabel
+      label="Extra headers (JSON)"
+      hint='Optional static headers to send on every request. Must parse as a flat JSON object of strings, e.g. {"X-Team":"platform"}. Reserved names (authorization / cookie / content-* / any *api-key*) are refused.'
+    >
+      <textarea
+        value={raw}
+        disabled={disabled}
+        placeholder='{"X-Team": "platform"}'
+        onChange={e => {
+          const text = e.target.value
+          setRaw(text)
+          const trimmed = text.trim()
+          const next: Record<string, unknown> = { ...(value ?? {}) }
+          if (!trimmed) {
+            delete next.extra_headers
+            delete next.extra_headers_raw
+            setError(null)
+            onChange(next)
+            return
+          }
+          try {
+            const parsed = JSON.parse(trimmed)
+            if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+              throw new Error("must be a JSON object")
+            }
+            for (const [k, v] of Object.entries(parsed)) {
+              if (typeof v !== "string") {
+                throw new Error(`value for "${k}" must be a string`)
+              }
+            }
+            next.extra_headers = parsed as Record<string, string>
+            delete next.extra_headers_raw
+            setError(null)
+          } catch (err) {
+            // Keep the raw text alongside a validation error so the
+            // admin can fix without losing keystrokes. Publish still
+            // sees ``extra_headers_raw`` — the server refuses that
+            // key at the schema level, so a broken draft can't ship.
+            delete next.extra_headers
+            next.extra_headers_raw = text
+            setError((err as Error).message || "invalid JSON")
+          }
+          onChange(next)
+        }}
+        style={{
+          padding: 6,
+          borderRadius: 4,
+          border: `1px solid var(${error ? "--err-bd" : "--border"})`,
+          background: "var(--surface)",
+          color: "var(--text)",
+          minHeight: 72,
+          fontFamily: "monospace",
+          fontSize: 11,
+        }} />
+      {error ? (
+        <span style={{ fontSize: 11, color: "var(--err)" }}>
+          {error} — publish will reject until this parses.
+        </span>
+      ) : null}
+    </FieldLabel>
   )
 }
 

@@ -22,11 +22,121 @@ profile behind the ``guard_gateway_profile_v2`` flag.
 """
 from __future__ import annotations
 
+import ipaddress
 import re
 from typing import Any, Literal, Union
+from urllib.parse import urlparse
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+
+def _reject_private_endpoint(url: str) -> None:
+    """Reject endpoints that resolve to loopback / private / link-local
+    literal addresses.
+
+    PR 7 review finding 1 — the transport HTTPX-forwards ``target.endpoint``
+    verbatim for integrations with ``allows_endpoint_override=True``
+    (Azure + Custom). Without this guard a workspace admin can point at
+    any service reachable from the hosted gateway (127.0.0.1, RFC 1918,
+    169.254.169.254 for cloud metadata, ::1). Full network-level egress
+    protection is deployment policy; this schema-level guard blocks the
+    literal-IP cases so a hostile profile can't ship without an
+    operator explicitly disabling the check at the deployment layer.
+
+    Does NOT resolve hostnames — DNS rebinding is deployment policy;
+    this is defense in depth."""
+    try:
+        parsed = urlparse(url)
+    except Exception as exc:
+        raise ValueError(f"endpoint URL malformed: {exc}") from exc
+    host = (parsed.hostname or "").strip()
+    if not host:
+        raise ValueError("endpoint URL has no hostname")
+    try:
+        addr = ipaddress.ip_address(host)
+    except ValueError:
+        if host.lower() in {"localhost", "localhost.localdomain", "ip6-localhost"}:
+            raise ValueError(
+                f"endpoint hostname {host!r} is a loopback alias — refused. "
+                f"Public hostnames only; internal endpoints require a "
+                f"deployment-level egress policy."
+            )
+        return
+    if addr.is_loopback or addr.is_private or addr.is_link_local or addr.is_reserved or addr.is_multicast:
+        raise ValueError(
+            f"endpoint {url!r} resolves to a non-public address "
+            f"({addr}). Refused. Public endpoints only; internal "
+            f"destinations require a deployment-level egress policy."
+        )
+
+
+#: PR 7 review finding 2 — headers we refuse to accept in
+#: ``provider_options.extra_headers``. Split into two categories:
+#: credential-bearing (must live in Vault, never in profile JSON) and
+#: transport-reserved (would collide with the transport's own header
+#: rewrite, potentially spoofing content or hop metadata).
+#: Compared case-insensitively via ``str.casefold``.
+_RESERVED_HEADER_NAMES: frozenset[str] = frozenset({
+    # Credential-bearing — must resolve through the Vault-backed
+    # credential_resolver, not profile JSON.
+    "authorization", "proxy-authorization",
+    "x-api-key", "api-key", "openai-api-key", "anthropic-api-key",
+    "azure-api-key", "azureai-api-key",
+    "helicone-auth",
+    "x-portkey-api-key", "x-portkey-virtual-key",
+    "cookie", "set-cookie",
+    # Transport-reserved — the passthrough transport owns these.
+    "content-type", "content-length", "transfer-encoding", "host",
+    "connection", "keep-alive", "upgrade", "trailer", "te",
+})
+
+
+def _validate_custom_extra_headers(extras: dict[str, Any]) -> dict[str, str]:
+    """Case-insensitive reject reserved / credential-bearing header
+    names in a ``provider_options.extra_headers`` map.
+
+    Also refuses any name containing ``api-key`` / ``api_key`` /
+    ``password`` / ``secret`` / ``token`` as a substring, and any name
+    containing a colon or newline (crlf injection). Returns the
+    filtered dict (values coerced to str). Any rejection raises
+    ``ValueError`` so publish fails loud with the offending name."""
+    if not isinstance(extras, dict):
+        raise ValueError("extra_headers must be a JSON object of strings")
+    clean: dict[str, str] = {}
+    for raw_key, raw_val in extras.items():
+        key = str(raw_key)
+        # CRLF / colon injection defence.
+        if "\r" in key or "\n" in key or ":" in key:
+            raise ValueError(
+                f"extra_headers key {key!r} contains illegal characters (CR/LF/colon)"
+            )
+        folded = key.strip().casefold()
+        if not folded:
+            raise ValueError("extra_headers key must not be empty")
+        if folded in _RESERVED_HEADER_NAMES:
+            raise ValueError(
+                f"extra_headers key {key!r} is reserved — credentials "
+                f"belong in the Vault-backed credential_ref, not in "
+                f"profile JSON. Transport-reserved headers "
+                f"(content-type, host, etc.) are set by the executor."
+            )
+        # Substring guards for the common variations we haven't
+        # explicitly enumerated (custom vendor extensions).
+        for banned in ("api-key", "api_key", "password", "secret", "token", "auth"):
+            if banned in folded:
+                raise ValueError(
+                    f"extra_headers key {key!r} contains reserved substring "
+                    f"{banned!r} — put the value in Vault, then reference "
+                    f"via ``credential_ref``."
+                )
+        val = str(raw_val)
+        if "\r" in val or "\n" in val:
+            raise ValueError(
+                f"extra_headers value for {key!r} contains CR/LF — refused"
+            )
+        clean[key] = val
+    return clean
 
 
 # ─── Schema v1 (legacy — retained for the current resolver path) ────────
@@ -295,14 +405,72 @@ class HTTPPassthroughTarget(BaseModel):
     @field_validator("endpoint")
     @classmethod
     def validate_endpoint(cls, value: str | None) -> str | None:
-        if value is not None and not value.startswith(("https://", "http://")):
+        if value is None:
+            return value
+        if not value.startswith(("https://", "http://")):
             raise ValueError("endpoint must use http:// or https://")
-        return value.rstrip("/") if value else value
+        _reject_private_endpoint(value)
+        return value.rstrip("/")
 
     @field_validator("credential_ref")
     @classmethod
     def validate_credential(cls, value: str) -> str:
         return _validate_credential_ref(value)
+
+    @model_validator(mode="after")
+    def _validate_per_integration_requirements(self):
+        """PR 7 review findings 5 + 6 + 2 (partial):
+
+        - custom: endpoint REQUIRED, ``provider_options.protocol`` REQUIRED
+          in {openai, anthropic} — determines certified operations.
+        - custom: ``bearer_prefix`` must be an actual bool if set
+          (string "false" was being coerced to True previously).
+        - custom: ``extra_headers`` runs through the reserved-name check
+          so credential-bearing or transport-reserved headers can't be
+          smuggled into profile JSON.
+        - custom: ``auth_header`` name itself may not be reserved.
+        """
+        if self.integration != "custom":
+            return self
+
+        if not self.endpoint:
+            raise ValueError(
+                "custom target requires an ``endpoint`` — set the "
+                "full base URL up through /v1 (or equivalent) so the "
+                "operation-suffix paths land on your proxy."
+            )
+        opts = self.provider_options or {}
+
+        protocol = opts.get("protocol")
+        if protocol not in ("openai", "anthropic"):
+            raise ValueError(
+                "custom target requires ``provider_options.protocol`` "
+                "in {'openai', 'anthropic'} — determines which "
+                "operations the capability catalog certifies for this "
+                "target (openai_* vs anthropic_*)."
+            )
+
+        if "bearer_prefix" in opts and not isinstance(opts["bearer_prefix"], bool):
+            raise ValueError(
+                "custom target ``provider_options.bearer_prefix`` must "
+                "be a JSON boolean (true / false), not a string. Got "
+                f"{opts['bearer_prefix']!r}."
+            )
+
+        if "auth_header" in opts:
+            hdr = str(opts["auth_header"]).strip().casefold()
+            if hdr in _RESERVED_HEADER_NAMES or any(b in hdr for b in ("password", "secret", "cookie")):
+                raise ValueError(
+                    f"custom target ``provider_options.auth_header`` "
+                    f"{opts['auth_header']!r} is reserved. Pick a "
+                    f"vendor-documented header name (e.g. "
+                    f"``x-vendor-key``)."
+                )
+
+        if opts.get("extra_headers") is not None:
+            _validate_custom_extra_headers(opts["extra_headers"])
+
+        return self
 
 
 # Discriminated union — target shape depends on ``transport``. Pydantic
