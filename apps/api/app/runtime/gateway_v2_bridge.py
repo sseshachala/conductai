@@ -188,9 +188,11 @@ def build_vendor_credential_resolver(
     indirection when only one-key integrations are in play.
 
     Fail-closed: any Helicone target that can't produce a vendor key
-    from its vault entry raises ``CredentialsUnavailable`` so publish-
-    time validation + resolve-time errors match — an admin can never
-    reach the transport with half-configured Helicone credentials.
+    from its vault entry raises ``CredentialsUnavailable``. Publish
+    also verifies both keys exist ahead of time via
+    ``_verify_credentials_exist`` in ``routers/gateway_profiles_v2.py``
+    (``_TWO_KEY_INTEGRATION_CONTRACT``) so an admin can't slip past
+    validation with a stub credential row.
     """
     resolved: dict[str, str] = {}
     needs_vendor = False

@@ -89,3 +89,21 @@ def test_resolve_vendor_key_returns_none_when_no_candidates_match(monkeypatch):
         None,
     )
     assert key is None
+
+
+def test_helicone_primary_key_uses_shared_alias(monkeypatch):
+    """PR 5 review — helicone_openai / helicone_anthropic both look up
+    ``HELICONE_API_KEY`` from the shared vault entry. Independent of
+    PR 3's alias table so this branch works standalone."""
+    monkeypatch.setattr(
+        "app.modules.guard.gateway_credentials.get_vault_credential",
+        lambda db, ws, env, sel: {"HELICONE_API_KEY": "sk-hel"},
+    )
+    for provider in ("helicone_openai", "helicone_anthropic"):
+        key = resolve_gateway_key(
+            SimpleNamespace(), "workspace-1",
+            f"vault://{VAULT_ID}/helicone",
+            provider,
+            None,
+        )
+        assert key == "sk-hel", provider

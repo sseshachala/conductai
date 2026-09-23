@@ -54,8 +54,17 @@ def resolve_gateway_key(
     if not vault_id:
         return None
     creds = get_vault_credential(db, workspace_id, vault_id, parsed.selector)
+    # PR 5 review — Helicone integrations share ``HELICONE_API_KEY``
+    # across both helicone_openai + helicone_anthropic. The generic
+    # ``{PROVIDER}_API_KEY`` ladder below would look up
+    # ``HELICONE_OPENAI_API_KEY`` (which nobody stores) so we try the
+    # canonical Helicone name first. PR 3 (#2204) generalises this
+    # pattern via ``INTEGRATION_KEY_ALIASES``; this narrower shortcut
+    # keeps PR 5 code-standalone if the batch merges out of order.
+    helicone_alias = "HELICONE_API_KEY" if provider.startswith("helicone_") else None
     key = (
-        creds.get("LLM_UPSTREAM_API_KEY")
+        (helicone_alias and creds.get(helicone_alias))
+        or creds.get("LLM_UPSTREAM_API_KEY")
         or creds.get("api_key")
         or creds.get(f"{provider.upper()}_API_KEY")
         or creds.get(f"{provider.lower()}_api_key")
