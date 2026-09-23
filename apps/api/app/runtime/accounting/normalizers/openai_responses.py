@@ -25,6 +25,8 @@ from app.runtime.accounting.normalizers.base import (
     NORMALIZER_VERSION,
     NormalizedUsage,
     ProviderFamily,
+    openai_style_tokens,
+    unavailable_result,
 )
 from app.runtime.accounting.normalizers.sse import SSEParser
 
@@ -32,32 +34,12 @@ _FAMILY = ProviderFamily.OPENAI_RESPONSES
 
 
 def _tokens_from_usage(usage: Mapping[str, Any]) -> TokenBreakdown:
-    input_tokens = usage.get("input_tokens")
-    output_tokens = usage.get("output_tokens")
-
-    input_details = usage.get("input_tokens_details") or {}
-    cached = input_details.get("cached_tokens") if isinstance(input_details, dict) else None
-
-    output_details = usage.get("output_tokens_details") or {}
-    reasoning = (
-        output_details.get("reasoning_tokens") if isinstance(output_details, dict) else None
-    )
-
-    input_int = int(input_tokens) if isinstance(input_tokens, (int, float)) else None
-    cached_int = int(cached) if isinstance(cached, (int, float)) else None
-    uncached = None
-    if input_int is not None and cached_int is not None:
-        uncached = max(0, input_int - cached_int)
-    elif input_int is not None:
-        uncached = input_int
-
-    return TokenBreakdown(
-        total_input_tokens=input_int,
-        total_output_tokens=int(output_tokens) if isinstance(output_tokens, (int, float)) else None,
-        uncached_input_tokens=uncached,
-        cache_read_tokens=cached_int,
-        cache_write_tokens_by_tier={},
-        reasoning_output_tokens=int(reasoning) if isinstance(reasoning, (int, float)) else None,
+    return openai_style_tokens(
+        usage,
+        input_field="input_tokens",
+        output_field="output_tokens",
+        input_details_field="input_tokens_details",
+        output_details_field="output_tokens_details",
     )
 
 
@@ -132,10 +114,4 @@ class OpenAIResponsesNormalizer:
 
 
 def _unavailable() -> NormalizedUsage:
-    return NormalizedUsage(
-        tokens=TokenBreakdown(),
-        origin=UsageOrigin.MISSING,
-        completeness=UsageCompleteness.UNAVAILABLE,
-        provider_family=_FAMILY,
-        raw_usage={},
-    )
+    return unavailable_result(_FAMILY)

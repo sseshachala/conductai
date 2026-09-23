@@ -30,6 +30,8 @@ from app.runtime.accounting.normalizers.base import (
     NORMALIZER_VERSION,
     NormalizedUsage,
     ProviderFamily,
+    openai_style_tokens,
+    unavailable_result,
 )
 from app.runtime.accounting.normalizers.sse import SSEParser
 
@@ -37,34 +39,12 @@ _FAMILY = ProviderFamily.OPENAI_CHAT
 
 
 def _tokens_from_usage(usage: Mapping[str, Any]) -> TokenBreakdown:
-    prompt = usage.get("prompt_tokens")
-    completion = usage.get("completion_tokens")
-
-    prompt_details = usage.get("prompt_tokens_details") or {}
-    cached = prompt_details.get("cached_tokens") if isinstance(prompt_details, dict) else None
-
-    completion_details = usage.get("completion_tokens_details") or {}
-    reasoning = (
-        completion_details.get("reasoning_tokens")
-        if isinstance(completion_details, dict)
-        else None
-    )
-
-    prompt_int = int(prompt) if isinstance(prompt, (int, float)) else None
-    cached_int = int(cached) if isinstance(cached, (int, float)) else None
-    uncached = None
-    if prompt_int is not None and cached_int is not None:
-        uncached = max(0, prompt_int - cached_int)
-    elif prompt_int is not None:
-        uncached = prompt_int
-
-    return TokenBreakdown(
-        total_input_tokens=prompt_int,
-        total_output_tokens=int(completion) if isinstance(completion, (int, float)) else None,
-        uncached_input_tokens=uncached,
-        cache_read_tokens=cached_int,
-        cache_write_tokens_by_tier={},  # Chat Completions has no cache-write tier
-        reasoning_output_tokens=int(reasoning) if isinstance(reasoning, (int, float)) else None,
+    return openai_style_tokens(
+        usage,
+        input_field="prompt_tokens",
+        output_field="completion_tokens",
+        input_details_field="prompt_tokens_details",
+        output_details_field="completion_tokens_details",
     )
 
 
@@ -131,13 +111,7 @@ class OpenAIChatNormalizer:
             # or provider does not support include_usage. Distinguishable
             # from a truly interrupted stream (which would have neither).
             if saw_any_chunk:
-                return NormalizedUsage(
-                    tokens=TokenBreakdown(),
-                    origin=UsageOrigin.MISSING,
-                    completeness=UsageCompleteness.UNAVAILABLE,
-                    provider_family=_FAMILY,
-                    raw_usage={"reason": "include_usage_not_set"},
-                )
+                return unavailable_result(_FAMILY, reason="include_usage_not_set")
             return _unavailable()
 
         tokens = _tokens_from_usage(last_usage)
@@ -152,10 +126,4 @@ class OpenAIChatNormalizer:
 
 
 def _unavailable() -> NormalizedUsage:
-    return NormalizedUsage(
-        tokens=TokenBreakdown(),
-        origin=UsageOrigin.MISSING,
-        completeness=UsageCompleteness.UNAVAILABLE,
-        provider_family=_FAMILY,
-        raw_usage={},
-    )
+    return unavailable_result(_FAMILY)

@@ -25,6 +25,7 @@ from app.runtime.accounting.normalizers.base import (
     NORMALIZER_VERSION,
     NormalizedUsage,
     ProviderFamily,
+    unavailable_result,
 )
 from app.runtime.accounting.normalizers.sse import SSEParser
 
@@ -183,10 +184,4 @@ class AnthropicMessagesNormalizer:
 
 
 def _unavailable() -> NormalizedUsage:
-    return NormalizedUsage(
-        tokens=TokenBreakdown(),
-        origin=UsageOrigin.MISSING,
-        completeness=UsageCompleteness.UNAVAILABLE,
-        provider_family=_FAMILY,
-        raw_usage={},
-    )
+    return unavailable_result(_FAMILY)
