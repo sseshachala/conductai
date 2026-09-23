@@ -57,6 +57,13 @@ _LITELLM_SDK_CERTIFIED: dict[tuple[str, Operation], list[str] | None] = {
     ("anthropic", "anthropic_count_tokens"): None,
     ("openai", "openai_chat_completions"): None,        # any OpenAI chat model
     ("openai", "openai_responses"): None,               # /v1/responses supported
+    # OpenAI-compatible providers routed through LiteLLM SDK. Each
+    # speaks the OpenAI chat-completions shape, so publish accepts
+    # them with the same operation label. Not certified for
+    # ``openai_responses`` — that endpoint is OpenAI-specific and
+    # LiteLLM's coverage varies.
+    ("perplexity", "openai_chat_completions"): None,
+    ("together",   "openai_chat_completions"): None,
 }
 
 
@@ -108,7 +115,7 @@ _CUSTOM_OPS_BY_PROTOCOL: dict[str, set[Operation]] = {
 }
 
 
-CATALOG_VERSION = "2026.09.22.v2-custom-passthrough"
+CATALOG_VERSION = "2026.09.22.v2-openai-compat-litellm"
 
 
 class CapabilityMismatch(Exception):

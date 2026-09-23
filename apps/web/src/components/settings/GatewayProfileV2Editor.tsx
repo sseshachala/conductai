@@ -17,7 +17,11 @@ import {
 // PUT /working_copy. Matches the styling of the sibling GatewayProfileSettings
 // (v1) component so both settings pages feel like one product.
 
-const KNOWN_LITELLM_PROVIDERS = ["anthropic", "openai"] as const
+// Fallback provider list — used when the workspace has not seeded any
+// LLM Model Primitives (fresh workspace mid-boot). Live workspace
+// primitives are the source of truth; see the ``providers`` computed
+// value in TargetRow that reads ``tierMap`` keys.
+const FALLBACK_PROVIDERS = ["anthropic", "openai"] as const
 
 // Fallback model catalog per provider — used when the workspace's LLM
 // Model Primitives tier_map is missing an entry, or the primitives
@@ -587,6 +591,14 @@ function TargetRow({
     return fromTiers.length ? fromTiers : (MODELS_BY_PROVIDER[provider] ?? [])
   }
   const modelsForCurrent = modelsForProvider(target.provider)
+  // Provider list sourced from workspace LLM Model Primitives keys.
+  // Ensures new providers admins add under Settings show up here
+  // without a code change. Merged with the fallback set so a fresh
+  // workspace with no primitives still sees anthropic + openai.
+  const providers = (() => {
+    const merged = new Set<string>([...FALLBACK_PROVIDERS, ...Object.keys(tierMap)])
+    return [...merged].sort()
+  })()
   return (
     <div className="card" style={{ padding: 12, display: "grid", gridTemplateColumns: "auto 1fr 1fr 1fr 1fr auto", gap: 10, alignItems: "end" }}>
       <div style={{ display: "flex", flexDirection: "column", gap: 3, alignItems: "center" }}>
@@ -633,7 +645,7 @@ function TargetRow({
           </select>
         </FieldLabel>
       ) : (
-        <FieldLabel label="Provider" hint="Upstream provider — Anthropic or OpenAI in the launch matrix. Model list below is sourced from workspace LLM Model Primitives; customize under Settings → LLM Model Primitives.">
+        <FieldLabel label="Provider" hint="Upstream provider — sourced from workspace LLM Model Primitives. Add providers under Settings → LLM Model Primitives. Only anthropic + openai are catalog-certified for native_http / litellm_sdk today; others surface a publish-time capability error.">
           <select value={target.provider} disabled={!isAdmin}
             onChange={e => {
               const provider = e.target.value
@@ -644,7 +656,7 @@ function TargetRow({
                 model: modelStillValid ? target.model : (models[0]?.id ?? ""),
               })
             }} style={inputStyle}>
-            {KNOWN_LITELLM_PROVIDERS.map(p => <option key={p} value={p}>{p}</option>)}
+            {providers.map(p => <option key={p} value={p}>{p}</option>)}
           </select>
         </FieldLabel>
       )}

@@ -5,7 +5,7 @@
 // operation is not certified" before the round-trip. Stale mirror =
 // less-helpful UI, never a bad profile in the DB.
 
-export const CATALOG_VERSION = "2026.09.22.v2-custom-passthrough"
+export const CATALOG_VERSION = "2026.09.22.v2-openai-compat-litellm"
 
 export type Operation =
   | "anthropic_messages"
@@ -41,6 +41,10 @@ const _NATIVE_HTTP: Record<string, Operation[]> = {
 const _LITELLM_SDK: Record<string, Operation[]> = {
   anthropic: ["anthropic_messages", "anthropic_count_tokens"],
   openai: ["openai_chat_completions", "openai_responses"],
+  // OpenAI-compatible providers via LiteLLM SDK. Chat-completions
+  // only; ``openai_responses`` stays OpenAI-native.
+  perplexity: ["openai_chat_completions"],
+  together:   ["openai_chat_completions"],
 }
 
 // HTTP passthrough certified per integration. Keep in sync with
