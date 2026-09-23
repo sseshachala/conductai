@@ -2,7 +2,7 @@
 
 Tracking issue: [#2209](https://github.com/sseshachala/conductai/issues/2209)
 Branch: `feat/accounting-foundation-2209`
-Status: Session 2 shipped (shared pricing + estimator behind compat wrappers)
+Status: Session 3 shipped (protocol-family normalizers with fixtures)
 
 ## Goal
 
@@ -172,8 +172,8 @@ request window but reconciles at commit.
 | Session | Deliverable | Status |
 |---------|-------------|--------|
 | 1 | Inventory confirmation + typed contracts, no behavior change | shipped |
-| 2 | Shared pricing service + unified reservation estimator behind compat wrappers | **shipped** |
-| 3 | Anthropic + OpenAI Chat/Responses + LiteLLM normalizers with fixtures | pending |
+| 2 | Shared pricing service + unified reservation estimator behind compat wrappers | shipped |
+| 3 | Anthropic + OpenAI Chat/Responses + LiteLLM normalizers with fixtures | **shipped** |
 | 4 | Gateway per-attempt persistence + shadow calculation | pending |
 | 5 | Workflow/runtime + Lens integration via receipt references | pending |
 | 6 | Controlled activation + concurrent/failure/reconciliation tests + canary | pending |
