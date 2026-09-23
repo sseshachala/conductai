@@ -181,6 +181,7 @@ class AttemptCoordinator:
         stream: bool = False,
         policy_check: Callable[[Any], "PolicyBlock | None"] | None = None,
         client_headers: dict[str, str] | None = None,
+        vendor_credential_resolver: CredentialResolver | None = None,
     ) -> CoordinatorResult:
         """Walk targets in priority order, honouring max_attempts and
         timeout_seconds. Returns the first successful response.
@@ -282,6 +283,7 @@ class AttemptCoordinator:
                         credential_resolver=credential_resolver,
                         stream=stream,
                         client_headers=client_headers,
+                        vendor_credential_resolver=vendor_credential_resolver,
                     ),
                     timeout=remaining,
                 )
@@ -370,6 +372,7 @@ class AttemptCoordinator:
         credential_resolver: CredentialResolver,
         stream: bool,
         client_headers: dict[str, str] | None = None,
+        vendor_credential_resolver: CredentialResolver | None = None,
     ) -> Any:
         if isinstance(target, NativeHTTPTarget):
             return await self._native.execute(
@@ -401,6 +404,7 @@ class AttemptCoordinator:
                 credential_resolver=credential_resolver,
                 stream=stream,
                 client_headers=client_headers,
+                vendor_credential_resolver=vendor_credential_resolver,
             )
         raise UnsupportedTransport(f"unknown target type: {type(target).__name__}")
 

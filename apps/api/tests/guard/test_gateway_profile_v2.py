@@ -276,11 +276,11 @@ def test_catalog_certifies_openrouter_for_openai_chat_completions():
 
 
 def test_catalog_still_rejects_other_passthrough_integrations():
-    """Helicone / Azure OpenAI stay uncertified until each ships its
-    per-integration auth-header semantics (follow-up PRs). Portkey
-    landed in PR 4. The loud rejection is what stops an admin from
-    believing a Helicone target is live before its executor ships."""
-    for integration in ("helicone_anthropic", "helicone_openai", "azure_openai"):
+    """Azure OpenAI stays uncertified on this branch (PR 6). Portkey
+    (PR 4) + Helicone (PR 5) both landed. Publish rejects the still-
+    uncertified set — the loud rejection is what stops an admin from
+    believing a live target is up before its executor ships."""
+    for integration in ("azure_openai",):
         target = HTTPPassthroughTarget(
             id=f"t-{integration}", transport="http_passthrough",
             integration=integration, model="some-model",
@@ -290,6 +290,28 @@ def test_catalog_still_rejects_other_passthrough_integrations():
             validate_targets_against_accepts(
                 accepts=["openai_chat_completions"], targets=[target],
             )
+
+
+def test_catalog_certifies_helicone_openai_for_chat_completions():
+    target = HTTPPassthroughTarget(
+        id="t-helicone-openai", transport="http_passthrough",
+        integration="helicone_openai", model="gpt-4o",
+        credential_ref=CRED_PORTKEY,
+    )
+    validate_targets_against_accepts(
+        accepts=["openai_chat_completions"], targets=[target],
+    )
+
+
+def test_catalog_certifies_helicone_anthropic_for_messages():
+    target = HTTPPassthroughTarget(
+        id="t-helicone-anthropic", transport="http_passthrough",
+        integration="helicone_anthropic", model="claude-sonnet-4-6",
+        credential_ref=CRED_PORTKEY,
+    )
+    validate_targets_against_accepts(
+        accepts=["anthropic_messages"], targets=[target],
+    )
 
 
 def test_catalog_still_rejects_openrouter_for_uncertified_operation():

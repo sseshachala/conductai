@@ -77,12 +77,19 @@ _HTTP_PASSTHROUGH_CERTIFIED: dict[tuple[Integration, Operation], bool] = {
     ("openrouter", "openai_chat_completions"): True,
     # PR 4 — Portkey certified for OpenAI-compat chat completions.
     # Auth = raw ``x-portkey-api-key`` (see ``_INTEGRATION_ENDPOINTS``);
-    # virtual-key config on the Portkey side selects the upstream.
+    # ``provider_options`` supplies the upstream selector.
     ("portkey", "openai_chat_completions"): True,
+    # PR 5 — Helicone observability proxy. Two-key auth
+    # (Helicone-Auth + upstream vendor auth) is handled in
+    # ``_INTEGRATION_ENDPOINTS`` via ``vendor_auth_header``. Each
+    # integration certifies exactly the operation surface the
+    # underlying vendor exposes on Helicone's mirror URL.
+    ("helicone_openai",    "openai_chat_completions"): True,
+    ("helicone_anthropic", "anthropic_messages"):      True,
 }
 
 
-CATALOG_VERSION = "2026.09.22.v2-portkey-passthrough"
+CATALOG_VERSION = "2026.09.22.v2-helicone-passthrough"
 
 
 class CapabilityMismatch(Exception):

@@ -89,3 +89,32 @@ def resolve_gateway_key(
         return key
     legacy_env = get_vault_credential(db, workspace_id, vault_id, "env_vars")
     return legacy_env.get("PROXY_CONFIG_LLM_UPSTREAM_API_KEY")
+
+
+def resolve_vendor_key(
+    db: Session,
+    workspace_id: str,
+    credential_ref: str | None,
+    vendor_key_names: tuple[str, ...],
+    environment_id: str | None,
+) -> str | None:
+    """Fetch a vendor-side API key from the SAME vault entry as the
+    primary integration key.
+
+    Used for Helicone-style two-key auth where a single vault handle
+    holds ``HELICONE_API_KEY`` (integration/observability key) AND the
+    upstream vendor key (``OPENAI_API_KEY`` or ``ANTHROPIC_API_KEY``)
+    in the same credential blob. Returns the first ``vendor_key_names``
+    match, or ``None`` if none present — the caller decides whether
+    None is a fail-closed 503 (Helicone) or a benign no-op.
+    """
+    if not vendor_key_names:
+        return None
+    parsed = parse_vault_credential_ref(credential_ref)
+    if parsed is None:
+        return None
+    vault_id = parsed.environment_id or environment_id or _default_environment_id(db, workspace_id)
+    if not vault_id:
+        return None
+    creds = get_vault_credential(db, workspace_id, vault_id, parsed.selector)
+    return next((creds.get(name) for name in vendor_key_names if creds.get(name)), None)

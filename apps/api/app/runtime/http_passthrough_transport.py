@@ -60,6 +60,13 @@ class IntegrationConfig:
       flip this on today — the other integrations pin their URL so
       an admin publishing a Portkey target can't accidentally route
       through the wrong host.
+    - ``vendor_auth_header`` / ``vendor_bearer_prefix`` /
+      ``vendor_key_names``: two-key integrations (Helicone) authenticate
+      the observability layer via ``auth_header`` AND the upstream
+      vendor via ``vendor_auth_header``. Both keys live in the SAME
+      vault entry — ``vendor_key_names`` lists the credential-dict
+      names to try when the transport asks the vendor resolver for
+      the upstream key. Empty tuple = one-key integration.
     """
     base_url: str
     auth_header: str
@@ -67,6 +74,9 @@ class IntegrationConfig:
     operation_paths: dict[Operation, str]
     extra_headers: dict[str, str] = field(default_factory=dict)
     allows_endpoint_override: bool = False
+    vendor_auth_header: str | None = None
+    vendor_bearer_prefix: bool = False
+    vendor_key_names: tuple[str, ...] = ()
 
 
 # One entry per supported integration. Adding one here requires a
@@ -96,11 +106,11 @@ _INTEGRATION_ENDPOINTS: dict[Integration, IntegrationConfig] = {
             "X-Title": "Conduct AI Gateway",
         },
     ),
-    # Portkey is OpenAI-compatible on ``/v1/chat/completions``. Auth
+    # PR 4 — Portkey. OpenAI-compat on ``/v1/chat/completions``. Auth
     # uses a raw key in ``x-portkey-api-key`` (NOT ``Authorization:
-    # Bearer``) — Portkey pairs the gateway key with a "virtual key"
-    # that already carries the upstream provider config, so a single
-    # key value is the whole auth story. Model id lives in the body.
+    # Bearer``). ``provider_options`` supplies the upstream selector
+    # (virtual_key / provider / config) — transport injects the
+    # matching ``x-portkey-*`` header at request time.
     "portkey": IntegrationConfig(
         base_url="https://api.portkey.ai/v1",
         auth_header="x-portkey-api-key",
@@ -108,6 +118,42 @@ _INTEGRATION_ENDPOINTS: dict[Integration, IntegrationConfig] = {
         operation_paths={
             "openai_chat_completions": "/chat/completions",
         },
+    ),
+    # PR 5 — Helicone observability proxy for OpenAI. Two-key auth:
+    # ``Helicone-Auth: Bearer <helicone-key>`` for the observability
+    # layer PLUS ``Authorization: Bearer <openai-key>`` for the upstream
+    # vendor. Both keys live in the same vault handle
+    # (HELICONE_API_KEY + OPENAI_API_KEY inside one credential blob).
+    "helicone_openai": IntegrationConfig(
+        base_url="https://oai.helicone.ai/v1",
+        auth_header="Helicone-Auth",
+        bearer_prefix=True,
+        operation_paths={
+            "openai_chat_completions": "/chat/completions",
+        },
+        vendor_auth_header="authorization",
+        vendor_bearer_prefix=True,
+        vendor_key_names=("OPENAI_API_KEY", "openai_api_key", "api_key"),
+    ),
+    # PR 5 — Helicone observability proxy for Anthropic. Same
+    # two-key pattern; vendor uses ``x-api-key`` (no Bearer prefix)
+    # plus the mandatory ``anthropic-version`` static header.
+    "helicone_anthropic": IntegrationConfig(
+        base_url="https://anthropic.helicone.ai/v1",
+        auth_header="Helicone-Auth",
+        bearer_prefix=True,
+        operation_paths={
+            "anthropic_messages": "/messages",
+        },
+        extra_headers={
+            # Anthropic REST requires an explicit API-version pin. The
+            # Anthropic native transport sends this too — Helicone just
+            # forwards it through to Anthropic.
+            "anthropic-version": "2023-06-01",
+        },
+        vendor_auth_header="x-api-key",
+        vendor_bearer_prefix=False,
+        vendor_key_names=("ANTHROPIC_API_KEY", "anthropic_api_key", "api_key"),
     ),
 }
 
@@ -153,6 +199,7 @@ class HTTPPassthroughTransport:
         credential_resolver,
         stream: bool = False,
         client_headers: dict[str, str] | None = None,
+        vendor_credential_resolver=None,
     ) -> Any:
         """Forward the payload to the integration's endpoint.
 
@@ -166,6 +213,11 @@ class HTTPPassthroughTransport:
         original request's vendor headers (``openai-organization``,
         ``anthropic-beta``, etc.). Merged into the outgoing headers
         AFTER the integration's own auth + static headers.
+
+        Two-key integrations (Helicone): ``vendor_credential_resolver``
+        must resolve the upstream vendor key from the SAME vault entry
+        as ``credential_resolver``. Missing when required = fail-closed
+        ValueError before the wire.
         """
         if stream:
             raise NotImplementedError(
@@ -220,12 +272,11 @@ class HTTPPassthroughTransport:
             f"Bearer {api_key}" if config.bearer_prefix else api_key
         )
 
-        # PR 4 review — Portkey routing headers. Per Portkey docs the
-        # gateway key alone doesn't select an upstream; one of
-        # ``x-portkey-virtual-key`` (points at a stored config), plain
-        # ``x-portkey-provider`` (routes by name), or
-        # ``x-portkey-config`` (id of a saved config) MUST accompany
-        # the auth key. Admin supplies via ``provider_options``.
+        # PR 4 — Portkey routing headers. Per Portkey docs the gateway
+        # key alone doesn't select an upstream; one of
+        # ``x-portkey-virtual-key`` / ``x-portkey-provider`` /
+        # ``x-portkey-config`` MUST accompany the auth key. Admin
+        # supplies via ``provider_options``.
         if target.integration == "portkey":
             opts = getattr(target, "provider_options", None) or {}
             if virtual_key := opts.get("virtual_key"):
@@ -243,6 +294,30 @@ class HTTPPassthroughTransport:
                     f"https://portkey.ai/docs/product/ai-gateway/"
                     f"configs for the routing options."
                 )
+
+        # PR 5 — Two-key integrations (Helicone) also send an upstream
+        # vendor auth header. The vendor key lives in the SAME vault
+        # entry as the integration key — the bridge pre-resolved both.
+        if config.vendor_auth_header:
+            if vendor_credential_resolver is None:
+                raise ValueError(
+                    f"integration {target.integration!r} requires a "
+                    f"vendor_credential_resolver but none was supplied "
+                    f"to HTTPPassthroughTransport.execute — the bridge "
+                    f"must pre-resolve the vendor key from the same "
+                    f"vault entry as the integration key."
+                )
+            vendor_key = vendor_credential_resolver(target.credential_ref)
+            if not vendor_key:
+                raise ValueError(
+                    f"vendor_credential_resolver returned empty for "
+                    f"{target.credential_ref!r} on integration "
+                    f"{target.integration!r} — the vault entry must hold "
+                    f"the upstream vendor key alongside the integration key."
+                )
+            headers[config.vendor_auth_header] = (
+                f"Bearer {vendor_key}" if config.vendor_bearer_prefix else vendor_key
+            )
 
         client = await self._get_client()
         try:

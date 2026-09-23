@@ -1491,7 +1491,12 @@ class _V2Plan:
     """
 
     __slots__ = (
-        "resolved", "operation", "credential_resolver", "last_meta",
+        "resolved", "operation", "credential_resolver",
+        # PR 5 — two-key integrations (Helicone) resolve the upstream
+        # vendor key from the same vault entry as the integration key;
+        # None for one-key integrations + native/litellm paths.
+        "vendor_credential_resolver",
+        "last_meta",
         # #2157 wire-in — set True when the caller sent OpenAI-shape
         # canonical body but the profile targets Anthropic. Signals
         # _execute_v2 to run canonical_to_anthropic pre-dispatch and
@@ -1500,10 +1505,11 @@ class _V2Plan:
         "needs_anthropic_conversion",
     )
 
-    def __init__(self, resolved, operation, credential_resolver, needs_anthropic_conversion: bool = False):
+    def __init__(self, resolved, operation, credential_resolver, needs_anthropic_conversion: bool = False, vendor_credential_resolver=None):
         self.resolved = resolved
         self.operation = operation
         self.credential_resolver = credential_resolver
+        self.vendor_credential_resolver = vendor_credential_resolver
         self.last_meta: dict = {}
         self.needs_anthropic_conversion = needs_anthropic_conversion
 
@@ -1625,6 +1631,7 @@ def _build_v2_plan(
     from app.runtime.gateway_v2_bridge import (
         CredentialsUnavailable,
         build_credential_resolver,
+        build_vendor_credential_resolver,
         map_operation,
     )
     from app.modules.guard.gateway_runtime import resolve_v2
@@ -1703,6 +1710,12 @@ def _build_v2_plan(
             provider=provider,
             profile=resolved.profile,
         )
+        vendor_resolver = build_vendor_credential_resolver(
+            db,
+            workspace_id=workspace_id,
+            environment_id=None,
+            profile=resolved.profile,
+        )
     except CredentialsUnavailable as exc:
         raise _HTTPException(
             status_code=503,
@@ -1711,6 +1724,7 @@ def _build_v2_plan(
 
     return _V2Plan(
         resolved=resolved, operation=operation, credential_resolver=resolver,
+        vendor_credential_resolver=vendor_resolver,
         needs_anthropic_conversion=needs_anthropic_conversion,
     )
 
@@ -1909,6 +1923,7 @@ async def _execute_v2(
             operation=plan.operation,
             payload=body,
             credential_resolver=plan.credential_resolver,
+            vendor_credential_resolver=plan.vendor_credential_resolver,
             stream=stream,
             policy_check=policy_check,
             client_headers=client_headers,

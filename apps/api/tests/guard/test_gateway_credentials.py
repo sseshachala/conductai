@@ -3,6 +3,7 @@ from types import SimpleNamespace
 from app.modules.guard.gateway_credentials import (
     parse_vault_credential_ref,
     resolve_gateway_key,
+    resolve_vendor_key,
 )
 
 
@@ -59,11 +60,43 @@ def test_missing_vault_reference_does_not_search_credentials(monkeypatch):
     assert resolve_gateway_key(SimpleNamespace(), "workspace-1", None, "openai", None) is None
 
 
+def test_resolve_vendor_key_finds_first_matching_name(monkeypatch):
+    monkeypatch.setattr(
+        "app.modules.guard.gateway_credentials.get_vault_credential",
+        lambda db, ws, env, sel: {
+            "HELICONE_API_KEY": "sk-hel",
+            "OPENAI_API_KEY":   "sk-openai",
+        },
+    )
+    key = resolve_vendor_key(
+        SimpleNamespace(), "workspace-1",
+        f"vault://{VAULT_ID}/helicone",
+        ("OPENAI_API_KEY", "openai_api_key"),
+        None,
+    )
+    assert key == "sk-openai"
+
+
+def test_resolve_vendor_key_returns_none_when_no_candidates_match(monkeypatch):
+    monkeypatch.setattr(
+        "app.modules.guard.gateway_credentials.get_vault_credential",
+        lambda db, ws, env, sel: {"HELICONE_API_KEY": "sk-hel"},
+    )
+    key = resolve_vendor_key(
+        SimpleNamespace(), "workspace-1",
+        f"vault://{VAULT_ID}/helicone",
+        ("ANTHROPIC_API_KEY",),
+        None,
+    )
+    assert key is None
+
+
 def test_integration_alias_covers_shared_helicone_key(monkeypatch):
     # helicone_anthropic + helicone_openai both use HELICONE_API_KEY.
     # The bridge passes integration name as ``provider``, so the alias
-    # map must be tried before the generic HELICONE_ANTHROPIC_API_KEY
-    # fallback (which the user is intentionally NOT expected to set).
+    # map (PR 3, INTEGRATION_KEY_ALIASES) must be tried before the
+    # generic HELICONE_ANTHROPIC_API_KEY fallback (which the user is
+    # intentionally NOT expected to set).
     monkeypatch.setattr(
         "app.modules.guard.gateway_credentials.get_vault_credential",
         lambda db, ws, env, sel: {"HELICONE_API_KEY": "hkey"},
