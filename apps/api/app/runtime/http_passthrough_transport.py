@@ -208,8 +208,13 @@ class HTTPPassthroughTransport:
         # PR 6 — path templating for per-tenant integrations (Azure).
         # Only ``{model}`` substitution is supported; anything else is
         # a config bug and left in the URL to surface a clear 404.
+        # Review fix — quote the model so slashes / spaces / control
+        # characters in a deployment name can't smuggle path segments
+        # (a name like ``prod/../secret`` shouldn't be able to redirect
+        # the request).
         if "{model}" in upstream_path:
-            upstream_path = upstream_path.replace("{model}", target.model)
+            from urllib.parse import quote
+            upstream_path = upstream_path.replace("{model}", quote(target.model, safe=""))
 
         base_url = self._resolve_base_url(target, config)
 

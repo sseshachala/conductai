@@ -150,6 +150,32 @@ async def test_azure_openai_url_has_deployment_and_api_version(monkeypatch):
 
 
 @pytest.mark.anyio("asyncio")
+async def test_azure_deployment_name_is_url_encoded(monkeypatch):
+    """PR 6 review — a deployment name with slashes / spaces would
+    otherwise smuggle path segments into the Azure URL. Quote per RFC
+    3986 unreserved so the request lands at the literal deployment."""
+    captured: dict = {}
+
+    async def _fake_post(url, headers, content):
+        captured.update(url=url)
+        return _FakeResponse(200, {})
+
+    transport = HTTPPassthroughTransport()
+    fake_client = MagicMock()
+    fake_client.post = _fake_post
+    monkeypatch.setattr(transport, "_get_client", AsyncMock(return_value=fake_client))
+
+    await transport.execute(
+        target=_azure_target(model="my deploy/name+special"),
+        operation="openai_chat_completions",
+        payload={"messages": []},
+        credential_resolver=lambda ref: "az-key",
+    )
+    # Space encoded to %20, slash to %2F, plus to %2B — no raw path segments smuggled in.
+    assert "/openai/deployments/my%20deploy%2Fname%2Bspecial/chat/completions" in captured["url"]
+
+
+@pytest.mark.anyio("asyncio")
 async def test_azure_openai_endpoint_override_does_not_warn(monkeypatch):
     """Azure is per-tenant, so an endpoint override is REQUIRED, not
     accidental. The endpoint-override warning that fires for pinned
