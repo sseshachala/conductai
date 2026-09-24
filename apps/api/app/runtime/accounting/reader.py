@@ -42,7 +42,7 @@ from decimal import Decimal
 from enum import Enum
 from typing import Any, Iterable, Mapping, Optional
 
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
 from app.models.llm_attempt_receipt import LlmAttemptReceipt
@@ -131,6 +131,28 @@ class SpendAggregate:
             PricingCompleteness.UNPRICED.value, 0
         )
         return unpriced > 0
+
+
+@dataclass(frozen=True)
+class SessionSpend:
+    """Per-session accounting rollup for the Lens Sessions list.
+
+    Post-#2221 PR 1 (consumer wiring): AccountingReader
+    ``spend_by_hook_session_ids()`` returns one of these per session so
+    Lens's UI can render both the number AND the caveats (partial /
+    unpriced) — invariants #4 and #9 preserved end-to-end.
+    """
+
+    hook_session_id: uuid.UUID
+    receipt_count: int
+    request_count: int
+    total_cost_microdollars: int
+    has_partial_or_missing: bool
+    has_unpriced_attempts: bool
+
+    @property
+    def total_cost_usd(self) -> Decimal:
+        return Decimal(self.total_cost_microdollars) / Decimal(1_000_000)
 
 
 @dataclass(frozen=True)
@@ -307,6 +329,67 @@ class AccountingReader:
             .scalars()
             .all()
         )
+
+    def spend_by_hook_session_ids(
+        self,
+        *,
+        workspace_id: uuid.UUID,
+        hook_session_ids: list[uuid.UUID],
+    ) -> dict[uuid.UUID, "SessionSpend"]:
+        """Batched spend rollup keyed by hook_session_id.
+
+        Post-#2221 PR 1 (consumer wiring): replaces Lens's direct
+        ``SUM(GuardAuditEvent.cost_usd_after)`` query. One aggregate per
+        session, with the completeness + unpriced flags Lens must render
+        alongside the number. Sessions with no receipts are absent from
+        the returned dict — caller renders those as $0 with no caveat.
+        """
+        if not hook_session_ids:
+            return {}
+        m = LlmAttemptReceipt
+        rows = self._db.execute(
+            select(
+                m.hook_session_id,
+                func.count(m.id).label("receipt_count"),
+                func.count(func.distinct(m.request_id)).label("request_count"),
+                func.coalesce(func.sum(m.calculated_cost_microdollars), 0).label(
+                    "total_cost"
+                ),
+                func.sum(
+                    case(
+                        (
+                            m.usage_completeness != UsageCompleteness.COMPLETE.value,
+                            1,
+                        ),
+                        else_=0,
+                    )
+                ).label("incomplete_count"),
+                func.sum(
+                    case(
+                        (
+                            m.pricing_completeness == PricingCompleteness.UNPRICED.value,
+                            1,
+                        ),
+                        else_=0,
+                    )
+                ).label("unpriced_count"),
+            )
+            .where(m.workspace_id == workspace_id)
+            .where(m.hook_session_id.in_(hook_session_ids))
+            .group_by(m.hook_session_id)
+        ).all()
+        return {
+            row.hook_session_id: SessionSpend(
+                hook_session_id=row.hook_session_id,
+                receipt_count=int(row.receipt_count),
+                request_count=int(row.request_count),
+                total_cost_microdollars=int(row.total_cost),
+                has_partial_or_missing=bool(int(row.incomplete_count or 0) > 0),
+                has_unpriced_attempts=bool(int(row.unpriced_count or 0) > 0),
+            )
+            for row in rows
+            if row.hook_session_id is not None
+        }
 
     def receipts_for_request(
         self,
