@@ -496,6 +496,32 @@ def guarded_client_call(
     except Exception as e:
         log.warning("guarded_client_call.audit_allow_failed", err=str(e))
 
+    # #2209 Session 5 — Lens shadow accounting. Off by default via
+    # settings.guard_accounting_shadow_enabled. shadow_write catches
+    # every exception internally.
+    try:
+        import uuid as _uuid_shadow
+        from app.runtime.accounting.shadow_writer import shadow_write as _shadow_write
+        _shadow_write(
+            workspace_id=workspace_id,
+            request_id=_uuid_shadow.uuid4(),
+            provider=provider,
+            model=model,
+            operation="chat.completions",
+            dispatched=True,
+            response_bytes=synth,
+            legacy_input_tokens=getattr(resp.usage, "input_tokens", None),
+            legacy_output_tokens=getattr(resp.usage, "output_tokens", None),
+            legacy_cost_usd=None,
+            developer_external_id=clerk_user_id,
+            agent_identity_id=agent_identity_id,
+            hook_session_id=hook_session_id,
+            source="lens",
+            client_tool=ai_tool,
+        )
+    except Exception:
+        pass
+
     return resp
 
 
@@ -567,18 +593,111 @@ def guarded_client_stream(
             payload={},
         )
 
+    # #2209 Session 6F reviewer #5 (#2221 review at 1219d734): the
+    # shadow-write MUST happen in a finally block. An upstream exception
+    # mid-stream would otherwise drop the receipt even when
+    # ``client.last_usage`` already holds real billable usage from
+    # message_start / partial delta frames. Capture PARTIAL usage on
+    # failure so provider-side billing is still visible on the row.
     parts: list[str] = []
-    for delta in client.stream(
-        model=model, messages=messages, system=system, max_tokens=max_tokens
-    ):
-        if not delta:
-            continue
-        parts.append(delta)
-        if on_token is not None:
+    _stream_completed_normally = False
+    _stream_exc: BaseException | None = None
+    try:
+        for delta in client.stream(
+            model=model, messages=messages, system=system, max_tokens=max_tokens
+        ):
+            if not delta:
+                continue
+            parts.append(delta)
+            if on_token is not None:
+                try:
+                    on_token(delta)
+                except Exception as e:
+                    log.warning(
+                        "guarded_client_stream.on_token_failed", err=str(e)
+                    )
+        _stream_completed_normally = True
+    except BaseException as _exc:  # noqa: BLE001
+        _stream_exc = _exc
+        raise
+    finally:
+        _last_usage = getattr(client, "last_usage", None)
+        # #2209 Session 6G reviewer #1 (#2221 review at 42d89898):
+        # ``last_usage_final`` distinguishes "captured message_start
+        # only" from "captured the terminal message_delta / OpenAI
+        # usage frame". Without this a mid-stream interruption
+        # synthesizes JSON with input=100, output=0 that the normalizer
+        # correctly marks COMPLETE (invariant #4: zero is legitimate) —
+        # but for streaming context we KNOW that's partial data.
+        _last_usage_final = bool(getattr(client, "last_usage_final", False))
+        _shadow_bytes = None
+        _legacy_in = None
+        _legacy_out = None
+        if isinstance(_last_usage, dict):
             try:
-                on_token(delta)
-            except Exception as e:
-                log.warning("guarded_client_stream.on_token_failed", err=str(e))
+                import json as _json_shadow
+                _shadow_bytes = _json_shadow.dumps(
+                    {"usage": _last_usage}
+                ).encode()
+            except Exception:
+                _shadow_bytes = None
+            _legacy_in = _last_usage.get("input_tokens") or _last_usage.get(
+                "prompt_tokens"
+            )
+            _legacy_out = _last_usage.get("output_tokens") or _last_usage.get(
+                "completion_tokens"
+            )
+        try:
+            import uuid as _uuid_shadow
+            from app.runtime.accounting.shadow_writer import (
+                shadow_write as _shadow_write,
+            )
+            from app.runtime.accounting.contracts import (
+                ExecutionOutcome,
+                UsageCompleteness,
+            )
+            # If the stream completed normally AND we saw the terminal
+            # usage frame → COMPLETE. Any other combination is PARTIAL
+            # (we have some usage but the frame we needed didn't arrive).
+            # UNAVAILABLE stays for the "no usage at all" case which the
+            # writer handles when _shadow_bytes is None.
+            if _shadow_bytes is None:
+                _completeness_override = None  # writer picks UNAVAILABLE
+            elif _stream_completed_normally and _last_usage_final:
+                _completeness_override = UsageCompleteness.COMPLETE.value
+            else:
+                _completeness_override = UsageCompleteness.PARTIAL.value
+            _shadow_write(
+                workspace_id=workspace_id,
+                request_id=_uuid_shadow.uuid4(),
+                provider=provider,
+                model=model,
+                operation="chat.completions",
+                dispatched=True,
+                response_bytes=_shadow_bytes,
+                legacy_input_tokens=_legacy_in,
+                legacy_output_tokens=_legacy_out,
+                legacy_cost_usd=None,
+                developer_external_id=clerk_user_id,
+                agent_identity_id=agent_identity_id,
+                hook_session_id=hook_session_id,
+                source="lens",
+                client_tool=ai_tool,
+                # Reviewer #5 (Session 6F): explicit outcome + succeeded
+                # so usage completeness stays separate from execution
+                # status.
+                succeeded=_stream_completed_normally,
+                execution_outcome=(
+                    ExecutionOutcome.SUCCEEDED.value
+                    if _stream_completed_normally
+                    else ExecutionOutcome.DISCONNECTED.value
+                ),
+                usage_completeness_override=_completeness_override,
+            )
+        except Exception:
+            # Shadow write is best-effort; never re-raise from finally.
+            pass
+
     text = "".join(parts)
 
     try:
@@ -589,7 +708,7 @@ def guarded_client_stream(
             body=body, response_bytes=None,
             prompt_summary=prompt_summary, user_email=user_email,
             hook_session_id=hook_session_id,
-        
+
         agent_identity_id=agent_identity_id,
         )
     except Exception as e:

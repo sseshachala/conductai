@@ -14,23 +14,41 @@ log = structlog.get_logger(__name__)
 # by Perplexity Sonar (~$5 per 1k requests = $0.005/request as of 2026-06).
 _DEFAULT_PRICING: dict[str, dict[str, dict[str, float]]] = {
     "anthropic": {
+        # #2209 Session 6K reviewer #2 (#2221 review at 4d4d3402):
+        # populate tier rates so ``cache_write_by_tier`` requests from the
+        # normalizer are priced honestly. ``cache_write`` remains as the
+        # single-tier fallback for callers that only pass the summed
+        # scalar. Unknown tiers under strict mode now downgrade the
+        # result to INCOMPLETE rather than silently taking the 5m rate.
         "claude-sonnet-4-6": {
             "input": 3.00,
             "output": 15.00,
             "cache_read": 0.30,
             "cache_write": 3.75,
+            "cache_write_by_tier": {
+                "ephemeral_5m": 3.75,
+                "ephemeral_1h": 6.00,
+            },
         },
         "claude-opus-4-7": {
             "input": 15.00,
             "output": 75.00,
             "cache_read": 1.50,
             "cache_write": 18.75,
+            "cache_write_by_tier": {
+                "ephemeral_5m": 18.75,
+                "ephemeral_1h": 30.00,
+            },
         },
         "claude-haiku-4-5-20251001": {
             "input": 1.00,
             "output": 5.00,
             "cache_read": 0.10,
             "cache_write": 1.25,
+            "cache_write_by_tier": {
+                "ephemeral_5m": 1.25,
+                "ephemeral_1h": 2.00,
+            },
         },
     },
     "openai": {

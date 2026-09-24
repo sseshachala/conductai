@@ -172,12 +172,26 @@ class OpenAIClient:
         import httpx as _httpx
 
         oai_messages = [{"role": "system", "content": system}, *messages]
+        # #2209 Session 6E — opt into the terminal usage frame so accounting
+        # shadow writer can record actual token counts. Without this flag
+        # OpenAI SSE never emits usage; receipts land as UNAVAILABLE.
         payload = {
             "model": model,
             "messages": oai_messages,
             "max_tokens": max_tokens,
             "stream": True,
+            "stream_options": {"include_usage": True},
         }
+        # Reset per-call scratch. Populated when we see the terminal
+        # usage chunk; callers read via ``client.last_usage`` after
+        # iteration completes. ``last_usage_final`` distinguishes "saw
+        # the terminal usage frame" from "captured partial usage on the
+        # way" — reviewer #1 (#2221 review at 42d89898) called out that
+        # synthesizing JSON from partial usage lets the normalizer mark
+        # the receipt COMPLETE even though the stream never emitted a
+        # terminal frame.
+        self.last_usage = None
+        self.last_usage_final = False
         headers = {
             "Authorization": f"Bearer {self._api_key}",
             "Content-Type": "application/json",
@@ -203,6 +217,15 @@ class OpenAIClient:
                     obj = json.loads(data)
                 except json.JSONDecodeError:
                     continue
+                # Terminal usage frame — arrives after the last delta when
+                # ``stream_options.include_usage=True``. Has no ``choices``
+                # entries; just ``usage``. Stash for the caller and mark
+                # the frame as final so the Lens hook can tell partial
+                # from complete stream state.
+                usage = obj.get("usage")
+                if isinstance(usage, dict):
+                    self.last_usage = dict(usage)
+                    self.last_usage_final = True
                 choices = obj.get("choices") or []
                 if not choices:
                     continue

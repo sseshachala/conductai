@@ -793,6 +793,7 @@ def _execute_brain(
                              content=user_content[:8000] if user_content else None)
 
             _cached = _cache_get(run_id, block_id, turns)
+            _did_actual_llm_call = False
             if _cached is not None:
                 from app.runtime.llm_client import LLMResponse as _LLMResponse
                 response = _LLMResponse.from_cache_dict(_cached)
@@ -870,6 +871,67 @@ def _execute_brain(
                               run_id=run_id, block_id=block_id)
                     raise
                 _cache_set(run_id, block_id, turns, response.to_cache_dict())
+                _did_actual_llm_call = True
+
+            # #2209 Session 6b — workflow shadow accounting. Skip when the
+            # adapter routes through Gateway (Session 4 hook already wrote
+            # the receipt). Reviewer #6 (#2221): also skip on cache-hit
+            # replay — no actual upstream inference happened, so no receipt.
+            # shadow_write is a no-op when the workspace is not on the
+            # canary allowlist; catches every exception.
+            if _did_actual_llm_call and not getattr(llm, "routes_through_gateway", False):
+                try:
+                    import json as _json_shadow
+                    import uuid as _uuid_shadow
+                    from app.runtime.accounting.shadow_writer import (
+                        shadow_write as _shadow_write,
+                    )
+                    if provider == "anthropic":
+                        _synth = _json_shadow.dumps({
+                            "usage": {
+                                "input_tokens": response.usage.input_tokens,
+                                "output_tokens": response.usage.output_tokens,
+                                "cache_read_input_tokens": (
+                                    response.usage.cache_read_tokens
+                                ),
+                                "cache_creation_input_tokens": (
+                                    response.usage.cache_write_tokens
+                                ),
+                            }
+                        }).encode()
+                    else:
+                        _synth = _json_shadow.dumps({
+                            "usage": {
+                                "prompt_tokens": response.usage.input_tokens,
+                                "completion_tokens": response.usage.output_tokens,
+                            }
+                        }).encode()
+                    # run_id is a Run.id UUID; block_id is a semantic slug.
+                    # Only run_id maps to a UUID column.
+                    _wf_run = None
+                    if run_id:
+                        try:
+                            _wf_run = _uuid_shadow.UUID(str(run_id))
+                        except (ValueError, TypeError):
+                            _wf_run = None
+                    _shadow_write(
+                        workspace_id=workspace_id,
+                        request_id=_uuid_shadow.uuid4(),
+                        provider=provider,
+                        model=model_id,
+                        operation="chat.completions",
+                        dispatched=True,
+                        response_bytes=_synth,
+                        legacy_input_tokens=response.usage.input_tokens,
+                        legacy_output_tokens=response.usage.output_tokens,
+                        legacy_cost_usd=response.cost_usd,
+                        workflow_run_id=_wf_run,
+                        source="workflow_runtime",
+                        client_tool=str(block_id) if block_id else None,
+                    )
+                except Exception:
+                    pass
+
             turns += 1
             total_input_tokens       += response.usage.input_tokens
             total_output_tokens      += response.usage.output_tokens

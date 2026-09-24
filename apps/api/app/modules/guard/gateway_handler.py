@@ -407,6 +407,25 @@ async def handle_gateway_request(
         # alongside #1968) will make this observable per-request.
         _hook_session_id = request.headers.get("x-conduct-session-id") or None
 
+        # #2209 Session 6D — pin the accounting-shadow decision + contract
+        # version at request entry. A rollout that flips
+        # ``guard_accounting_shadow_enabled`` or the workspace allowlist
+        # mid-flight must not re-attribute an in-progress attempt to the
+        # new engine; the pinned values travel with every shadow_write
+        # for this request.
+        try:
+            from app.runtime.accounting.contracts import (
+                CONTRACT_VERSION as _accounting_contract_version,
+            )
+            _pinned_contract_version = _accounting_contract_version
+            _pinned_shadow_enabled = settings.accounting_shadow_enabled_for(
+                str(workspace_id)
+            )
+        except Exception:
+            _pinned_shadow_enabled = False
+            _pinned_contract_version = 1
+
+
         # #1712 Track 1 — trial-plan lookup before policy eval so a BLOCK
         # response can carry an anonymous receipt URL. Cheap indexed read;
         # any failure falls back to workspace-only receipt.
@@ -1174,6 +1193,14 @@ async def handle_gateway_request(
                         # handler returns and bytes still queued).
                         reservations=_reservations,
                         _routing_meta=_routing_meta,
+                        # #2209 Session 6D — attribution + version pin.
+                        conductai_run_id=_run_id,
+                        pinned_shadow_enabled=locals().get(
+                            "_pinned_shadow_enabled"
+                        ),
+                        pinned_contract_version=locals().get(
+                            "_pinned_contract_version"
+                        ),
                         # Wall-clock deadline for the stream body. The
                         # coordinator's ``wait_for`` only guarded header
                         # arrival; the stream body has no timeout of its
@@ -1380,48 +1407,42 @@ async def handle_gateway_request(
             # wrapper (``_wrap_v2_stream_finalize``) owns settlement so
             # actual_cents reflects the drained body. Skip inline here
             # to avoid settling twice.
+            # #2209 review #2 (#2221): compute tokens + cost OUTSIDE the
+            # reservation gate so shadow accounting fires for every settled
+            # attempt, not just reserved ones.
+            _in_tok: int | None = None
+            _out_tok: int | None = None
+            _cost_usd: float | None = None
+            _resp_bytes: bytes | None = None
+            if _dispatched and _response is not None and not isinstance(_response, StreamingResponse):
+                try:
+                    from app.guard.audit import (
+                        _compute_audit_cost as _mk_cost,
+                        _extract_token_counts as _mk_tokens,
+                    )
+                    _snapshot = locals().get("_v2_upstream_body_bytes")
+                    if isinstance(_snapshot, (bytes, bytearray)) and _snapshot:
+                        _resp_bytes = bytes(_snapshot)
+                    elif _response is not None and hasattr(_response, "body"):
+                        try:
+                            _resp_bytes = _response.body
+                        except Exception:
+                            _resp_bytes = None
+                    _in_tok, _out_tok = _mk_tokens(body, _resp_bytes)
+                    _cost_usd = _mk_cost(
+                        provider, model, _in_tok, _out_tok, _routing_meta
+                    )
+                except Exception:
+                    pass
+
+            # Reservation-gated settlement — behavior unchanged.
             if _reservations and not isinstance(_response, StreamingResponse):
                 try:
-                    # Try to derive actual cents from the upstream body
-                    # so a successful dispatch commits promptly. On
-                    # failure, actual_cents stays None -> settle marks
-                    # PENDING_RECONCILER (safe: reconciler handles).
-                    if _dispatched and _actual_cents is None and _response is not None:
-                        try:
-                            from app.guard.audit import (
-                                _compute_audit_cost as _mk_cost,
-                                _extract_token_counts as _mk_tokens,
-                            )
-                            # R4 fix (reviewer P1): the response gate may
-                            # have replaced _response.body with a 4xx
-                            # error envelope. _v2_upstream_body_bytes
-                            # captures the ORIGINAL upstream bytes
-                            # BEFORE the gate ran, so token counts +
-                            # cost still reflect what the provider
-                            # billed us for. Fall back to _response.body
-                            # only when no snapshot exists (non-v2 or
-                            # legacy path).
-                            _resp_bytes = None
-                            _snapshot = locals().get("_v2_upstream_body_bytes")
-                            if isinstance(_snapshot, (bytes, bytearray)) and _snapshot:
-                                _resp_bytes = bytes(_snapshot)
-                            elif _response is not None and hasattr(_response, "body"):
-                                try:
-                                    _resp_bytes = _response.body
-                                except Exception:
-                                    _resp_bytes = None
-                            _in_tok, _out_tok = _mk_tokens(body, _resp_bytes)
-                            _cost_usd = _mk_cost(
-                                provider, model, _in_tok, _out_tok, _routing_meta
-                            )
-                            if _cost_usd:
-                                _actual_cents = int(round(float(_cost_usd) * 100))
-                                _actual_micros = int(round(float(_cost_usd) * 1_000_000))
-                        except Exception:
-                            _actual_cents = None
+                    if _dispatched and _actual_cents is None and _cost_usd:
+                        _actual_cents = int(round(float(_cost_usd) * 100))
+                        _actual_micros = int(round(float(_cost_usd) * 1_000_000))
                     # R3 fix (reviewer P1): settle owns its own session
-                    # inside a threadpool call. No shared session held
-                    # across the upstream lifetime.
+                    # inside a threadpool call.
                     _reservations_snapshot = list(_reservations)
                     _dispatched_snapshot = _dispatched
                     _actual_cents_snapshot = _actual_cents
@@ -1453,6 +1474,73 @@ async def handle_gateway_request(
                         reservation_count=len(_reservations),
                         dispatched=_dispatched,
                     )
+
+            # #2209 reviewer response (#2221):
+            #  - #2: shadow accounting fires REGARDLESS of reservations.
+            #  - #3: write one receipt per attempt via helper.
+            #  - #5: wrap the sync DB write in run_in_threadpool so it
+            #    does not block the async event loop.
+            #  - #9: reserved_microdollars comes from the ledger reservation
+            #    (sum of estimated_micros across active reservations),
+            #    NOT the actual cost. Actual cost lives in
+            #    calculated_cost_microdollars on the row.
+            if not isinstance(_response, StreamingResponse):
+                try:
+                    from app.runtime.accounting.shadow_writer import (
+                        write_receipts_for_attempts as _write_shadow_attempts,
+                    )
+                    _reserved_micros: int | None = None
+                    if _reservations:
+                        try:
+                            _reserved_micros = sum(
+                                int(getattr(r, "estimated_micros", 0) or 0)
+                                for r in _reservations
+                            ) or None
+                        except Exception:
+                            _reserved_micros = None
+                    _attempts_meta = (
+                        _routing_meta.get("attempts")
+                        if isinstance(_routing_meta, dict)
+                        else None
+                    )
+                    # #2209 Session 6D — attribution: when this Gateway
+                    # request originated from a workflow run (brain_block
+                    # via gateway_profile adapter), the caller sent
+                    # x-conductai-run-id — carry it onto the receipt so
+                    # per-run cost aggregations JOIN cleanly.
+                    _wf_run_uuid = None
+                    if _run_id:
+                        try:
+                            import uuid as _uuid_wf
+                            _wf_run_uuid = _uuid_wf.UUID(str(_run_id))
+                        except (ValueError, TypeError):
+                            _wf_run_uuid = None
+                    await run_in_threadpool(
+                        _write_shadow_attempts,
+                        workspace_id=workspace_id,
+                        request_id=_audit_request_id,
+                        provider=provider,
+                        model=model,
+                        operation=request.url.path,
+                        dispatched=_dispatched,
+                        response_bytes=_resp_bytes,
+                        legacy_input_tokens=_in_tok,
+                        legacy_output_tokens=_out_tok,
+                        legacy_cost_usd=_cost_usd,
+                        reserved_microdollars=_reserved_micros,
+                        developer_external_id=clerk_user_id,
+                        agent_identity_id=_agent_identity_id,
+                        source="gateway",
+                        client_tool=ai_tool,
+                        attempts_meta=_attempts_meta,
+                        workflow_run_id=_wf_run_uuid,
+                        hook_session_id=_hook_session_id,
+                        pinned_shadow_enabled=_pinned_shadow_enabled,
+                        pinned_contract_version=_pinned_contract_version,
+                    )
+                except Exception:
+                    # shadow_write catches internally; belt-and-suspenders.
+                    pass
 
         # Streaming lifecycle: transfer admission ticket ownership so the
         # outer finally does not release before ASGI drains the response.
@@ -1932,6 +2020,9 @@ async def _execute_v2(
         plan.last_meta = {
             "winning_target_id": None,
             "attempt_count": len(exc.attempts),
+            # Session 6J reviewer #5: same operation preservation as the
+            # success path.
+            "operation": plan.operation,
             "attempts": [
                 {
                     "target_id": a.target_id,
@@ -1939,6 +2030,13 @@ async def _execute_v2(
                     "provider_or_integration": a.provider_or_integration,
                     "succeeded": a.succeeded,
                     "error_class": a.error_class,
+                    # #2209 Session 6D — carries the failed-attempt provider
+                    # response body (base64) so per-attempt accounting can
+                    # normalize + price it. Absent on success; the winner's
+                    # bytes live in the handler-owned upstream snapshot.
+                    "response_bytes_b64": a.response_bytes_b64,
+                    # Session 6F reviewer #3 — per-attempt model attribution.
+                    "model": getattr(a, "model", None),
                 }
                 for a in exc.attempts
             ],
@@ -1970,6 +2068,12 @@ async def _execute_v2(
     plan.last_meta = {
         "winning_target_id": result.winning_target_id,
         "attempt_count": len(result.attempts),
+        # #2209 Session 6J reviewer #5 (#2221 review at bbcb5388): the
+        # reconciler needs the original operation to pick the right
+        # normalizer family (OpenAI Chat vs Responses). Carrying it in
+        # routing_meta means the audit row already has what the
+        # reconciler needs; no schema change required.
+        "operation": plan.operation,
         "attempts": [
             {
                 "target_id": a.target_id,
@@ -1977,6 +2081,17 @@ async def _execute_v2(
                 "provider_or_integration": a.provider_or_integration,
                 "succeeded": a.succeeded,
                 "error_class": a.error_class,
+                # #2209 Session 6F reviewer #2 (#2221 review at 1219d734):
+                # the failure list already carries response_bytes_b64 for
+                # AllAttemptsFailed; the success list must too. When
+                # attempt A fails and B succeeds, A's captured error
+                # envelope is real usage that per-attempt accounting
+                # needs to price. Prior code dropped it here.
+                "response_bytes_b64": a.response_bytes_b64,
+                # Session 6F reviewer #3: per-attempt model attribution.
+                # AttemptRecord gains ``model`` so a mixed-target profile
+                # can price each receipt against its actual model rates.
+                "model": getattr(a, "model", None),
             }
             for a in result.attempts
         ],
@@ -2181,6 +2296,10 @@ def _wrap_v2_stream_finalize(
     user_email: str | None,
     started_monotonic: float,
     stream_deadline_seconds: float | None = None,
+    # #2209 Session 6D — for accounting shadow write attribution.
+    conductai_run_id: str | None = None,
+    pinned_shadow_enabled: bool | None = None,
+    pinned_contract_version: int | None = None,
     # R4 fix (reviewer P1): reservation ownership transferred from the
     # handler. Wrapper computes actual_cents from the drained body then
     # calls settle_reservations on stream close / cancel / timeout.
@@ -2437,6 +2556,73 @@ def _wrap_v2_stream_finalize(
                         row_id=row_id,
                         reservation_count=len(reservations) if reservations else 0,
                     )
+
+            # #2209 reviewer response (#2221):
+            #  - #2: shadow accounting fires REGARDLESS of reservations (was
+            #    nested inside `if reservations:`).
+            #  - #3: per-attempt via write_receipts_for_attempts helper.
+            #  - #5: wrap sync DB write in threadpool.
+            #  - #9: reserved_microdollars from ledger reservation, not
+            #    actual cost.
+            try:
+                from app.runtime.accounting.shadow_writer import (
+                    write_receipts_for_attempts as _write_shadow_attempts,
+                )
+                from starlette.concurrency import (
+                    run_in_threadpool as _rin_threadpool_shadow,
+                )
+                _stream_meta = _routing_meta if isinstance(_routing_meta, dict) else {}
+                _reserved_micros: int | None = None
+                if reservations:
+                    try:
+                        _reserved_micros = sum(
+                            int(getattr(r, "estimated_micros", 0) or 0)
+                            for r in reservations
+                        ) or None
+                    except Exception:
+                        _reserved_micros = None
+                _stream_resp_bytes = (
+                    bytes(collected) if collected else None
+                )
+                _stream_in_tok = locals().get("_in_tok")
+                _stream_out_tok = locals().get("_out_tok")
+                _stream_cost_usd = locals().get("_cost_usd")
+                # #2209 Session 6D — workflow attribution.
+                _stream_wf_run_uuid = None
+                if conductai_run_id:
+                    try:
+                        import uuid as _uuid_wf_stream
+                        _stream_wf_run_uuid = _uuid_wf_stream.UUID(
+                            str(conductai_run_id)
+                        )
+                    except (ValueError, TypeError):
+                        _stream_wf_run_uuid = None
+                await _rin_threadpool_shadow(
+                    _write_shadow_attempts,
+                    workspace_id=workspace_id,
+                    request_id=(
+                        (durable.request_id if durable is not None else None)
+                        or row_id
+                    ),
+                    provider=provider,
+                    model=model,
+                    operation="chat.completions.stream",
+                    dispatched=True,
+                    response_bytes=_stream_resp_bytes,
+                    legacy_input_tokens=_stream_in_tok,
+                    legacy_output_tokens=_stream_out_tok,
+                    legacy_cost_usd=_stream_cost_usd,
+                    reserved_microdollars=_reserved_micros,
+                    developer_external_id=clerk_user_id,
+                    source="gateway",
+                    client_tool=ai_tool,
+                    attempts_meta=_stream_meta.get("attempts"),
+                    workflow_run_id=_stream_wf_run_uuid,
+                    pinned_shadow_enabled=pinned_shadow_enabled,
+                    pinned_contract_version=pinned_contract_version,
+                )
+            except Exception:
+                pass
 
             # X4 — cancel the renewal task last, AFTER finalize. If we
             # cancelled first, the row would show up as expired to the

@@ -23,72 +23,43 @@ from sqlalchemy import text
 
 from app.core.database import SessionLocal
 from app.core.workspace_context import set_workspace_rls
-from app.runtime.pricing import get_model_rates
 
 log = structlog.get_logger(__name__)
 
 
 # ─── Token / cost helpers (private — audit-internal) ──────────────────────────
+#
+# #2209 Session 2: these are compat shims over
+# ``app.runtime.accounting.estimator`` and ``.pricing``. The extraction and
+# helper logic they used to inline lives in that module now — this file keeps
+# the legacy aggregation semantics (joined-string count for text shapes) so
+# reservations remain byte-identical while the shared engine is behind shadow.
+# Deleted in Session 6/7 once the shared engine is authoritative.
 
 def _estimate_input_tokens(body: dict) -> int:
-    """Rough token estimate from request body (chars/4). Used for blocked calls."""
-    all_text: list[str] = []
-    for msg in body.get("messages") or []:
-        content = msg.get("content")
-        if isinstance(content, str):
-            all_text.append(content)
-        elif isinstance(content, list):
-            for part in content:
-                if isinstance(part, dict):
-                    t = part.get("text") or ""
-                    if t:
-                        all_text.append(t)
-    system = body.get("system")
-    if isinstance(system, str):
-        all_text.append(system)
-    instructions = body.get("instructions")
-    if isinstance(instructions, str):
-        all_text.append(instructions)
-    response_input = body.get("input")
-    if isinstance(response_input, str):
-        all_text.append(response_input)
-    elif isinstance(response_input, list):
-        for item in response_input:
-            if not isinstance(item, dict):
-                continue
-            content = item.get("content")
-            if isinstance(content, str):
-                all_text.append(content)
-            elif isinstance(content, list):
-                for part in content:
-                    if isinstance(part, dict) and isinstance(part.get("text"), str):
-                        all_text.append(part["text"])
-    text_tokens = len(" ".join(all_text)) // 4
-    # #2159 PR 1 — tool schemas contribute real input tokens too.
-    # Under-reserving here is a silent regression of #2154's reservation
-    # hardening (customers exceed their budget by the tool-schema
-    # overhead every request). Conservative fallback via
-    # ``tools_validator.estimate_tools_tokens``; imported inline to
-    # avoid a hard dependency on modules/ from the guard package.
-    tools = body.get("tools") if isinstance(body, dict) else None
-    tools_tokens = 0
-    if tools:
-        try:
-            from app.modules.guard.tools_validator import estimate_tools_tokens
-            tools_tokens = estimate_tools_tokens(tools)
-        except Exception:
-            tools_tokens = 0
-    # #2166 PR 2 — vision content contributes real input tokens too.
-    # Under-reserving silently under-bills a workspace whose traffic
-    # is image-heavy. Conservative constant-per-image estimate; final
-    # settlement uses real ``usage`` from the provider at finalize.
-    vision_tokens = 0
-    try:
-        from app.modules.guard.vision_validator import estimate_vision_tokens
-        vision_tokens = estimate_vision_tokens(body if isinstance(body, dict) else {})
-    except Exception:
-        vision_tokens = 0
-    return max(1, text_tokens + tools_tokens + vision_tokens)
+    """Rough token estimate from request body (chars/4). Used for blocked calls.
+
+    Compat shim over ``runtime.accounting.estimator``. Preserves the legacy
+    joined-string aggregation across text shapes for byte-identical output.
+    """
+    from app.runtime.accounting.estimator import (
+        _extract_response_input,
+        _extract_text,
+        _tool_schema_tokens,
+        _vision_tokens,
+    )
+
+    text_chunks: list[str] = _extract_text(body)
+    if isinstance(body, dict):
+        system = body.get("system")
+        if isinstance(system, str):
+            text_chunks.append(system)
+        instructions = body.get("instructions")
+        if isinstance(instructions, str):
+            text_chunks.append(instructions)
+    text_chunks.extend(_extract_response_input(body))
+    text_tokens = len(" ".join(text_chunks)) // 4
+    return max(1, text_tokens + _tool_schema_tokens(body) + _vision_tokens(body))
 
 
 def _extract_token_counts(body: dict, response_bytes: bytes | None) -> tuple[int | None, int | None]:
@@ -141,22 +112,30 @@ def _extract_token_counts(body: dict, response_bytes: bytes | None) -> tuple[int
 
 
 def _compute_cost(provider: str, model: str, in_tok: int | None, out_tok: int | None, *, strict: bool = False) -> float | None:
-    """USD for this call. Reuses the workspace's pricing registry.
-
-    Token cost  = (in * input + out * output) / 1M
-    Request fee = flat per-call charge (e.g. Perplexity Sonar)
+    """USD for this call. Compat shim over ``runtime.accounting.pricing``.
 
     Returns None only when we couldn't get token counts AND there's no flat
-    request fee — i.e. nothing to charge."""
+    request fee — i.e. nothing to charge. Preserves ``round(_, 6)`` display
+    precision so audit rows remain byte-identical.
+    """
+    from app.runtime.accounting.pricing import default_pricing_service
+
     try:
-        rates, _version = get_model_rates(provider, model, strict=strict)
+        # Legacy path passes input_tokens as-is (no cache breakout) — that's
+        # equivalent to uncached_input_tokens in the new API (all input
+        # priced at input_rate).
+        result = default_pricing_service().price_tokens(
+            provider,
+            model,
+            uncached_input_tokens=in_tok,
+            output_tokens=out_tok,
+            strict=strict,
+        )
     except Exception:
         return None
-    request_fee = rates.get("request_fee_usd", 0.0)
-    if not in_tok and not out_tok and not request_fee:
+    if result.microdollars is None:
         return None
-    token_cost = ((in_tok or 0) * rates["input"] + (out_tok or 0) * rates["output"]) / 1_000_000
-    return round(token_cost + request_fee, 6)
+    return round(result.microdollars / 1_000_000, 6)
 
 
 def _compute_audit_cost(

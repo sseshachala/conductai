@@ -268,15 +268,49 @@ class AnthropicClient:
 
         No retry loop (streaming is fire-and-forget; on failure, the caller
         surfaces the exception via the wrapping error handler). No tools.
+
+        #2209 Session 6E — capture usage from message_start + message_delta
+        events so the accounting shadow writer can record actual token
+        counts. Callers read via ``client.last_usage`` after iteration
+        completes.
         """
+        # Reset per-call scratch. Populated as we see message_start (input
+        # + cache tokens) and message_delta (final output_tokens).
+        # ``last_usage_final`` distinguishes "saw the terminal
+        # message_delta" from "only saw message_start" — reviewer #1
+        # (#2221 review at 42d89898). Without this a mid-stream
+        # interruption gets marked COMPLETE with output=0 even though we
+        # never observed the terminal frame.
+        self.last_usage = None
+        self.last_usage_final = False
         with self._client.messages.stream(
             model=model,
             max_tokens=max_tokens,
             system=system,
             messages=messages,
         ) as stream_obj:
-            for text in stream_obj.text_stream:
-                yield text
+            for event in stream_obj:
+                event_type = getattr(event, "type", None)
+                if event_type == "message_start":
+                    msg = getattr(event, "message", None)
+                    usage = getattr(msg, "usage", None) if msg is not None else None
+                    if usage is not None:
+                        self.last_usage = _usage_to_dict(usage)
+                elif event_type == "message_delta":
+                    usage = getattr(event, "usage", None)
+                    if usage is not None:
+                        merged = dict(self.last_usage or {})
+                        merged.update(_usage_to_dict(usage))
+                        self.last_usage = merged
+                        # message_delta is Anthropic's terminal usage
+                        # event (carries final output_tokens). Seeing it
+                        # means we captured complete usage.
+                        self.last_usage_final = True
+                elif event_type == "content_block_delta":
+                    delta = getattr(event, "delta", None)
+                    text_val = getattr(delta, "text", None) if delta is not None else None
+                    if text_val:
+                        yield text_val
 
     def make_assistant_turn(self, response: LLMResponse) -> list[dict]:
         # Anthropic requires the original content objects (not our normalized types)
@@ -289,3 +323,37 @@ class AnthropicClient:
             {"type": "tool_result", "tool_use_id": tid, "content": content}
             for tid, content in results
         ]}]
+
+
+def _usage_to_dict(usage: Any) -> dict:
+    """Extract usage fields from an Anthropic Usage object (attribute-style).
+
+    Handles both the modern object with typed attrs and the raw dict form
+    some transports may pass through. Used by ``AnthropicClient.stream`` to
+    populate ``last_usage`` for the accounting shadow writer.
+    """
+    if isinstance(usage, dict):
+        return dict(usage)
+    out: dict = {}
+    for name in (
+        "input_tokens",
+        "output_tokens",
+        "cache_read_input_tokens",
+        "cache_creation_input_tokens",
+    ):
+        val = getattr(usage, name, None)
+        if val is not None:
+            out[name] = val
+    # Newer per-tier breakdown lives under ``cache_creation`` — walk if present.
+    cache_creation = getattr(usage, "cache_creation", None)
+    if cache_creation is not None and not isinstance(cache_creation, dict):
+        tiered: dict = {}
+        for tier_field in ("ephemeral_5m_input_tokens", "ephemeral_1h_input_tokens"):
+            val = getattr(cache_creation, tier_field, None)
+            if val is not None:
+                tiered[tier_field] = val
+        if tiered:
+            out["cache_creation"] = tiered
+    elif isinstance(cache_creation, dict):
+        out["cache_creation"] = dict(cache_creation)
+    return out
