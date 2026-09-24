@@ -59,6 +59,11 @@ from app.runtime.accounting.reconciler import (
     ReconciliationResult,
     reconcile_missing_receipts,
 )
+from app.runtime.accounting.flight_recorder_links import (
+    flight_recorder_attempt_url,
+    flight_recorder_enabled,
+    flight_recorder_request_url,
+)
 from app.runtime.accounting.reader import (
     AccountingReader,
     AggregateScope,
@@ -120,4 +125,7 @@ __all__ = [
     "compute_shadow_delta_report",
     "ReconciliationResult",
     "reconcile_missing_receipts",
+    "flight_recorder_attempt_url",
+    "flight_recorder_enabled",
+    "flight_recorder_request_url",
 ]

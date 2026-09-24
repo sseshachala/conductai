@@ -190,6 +190,20 @@ class Settings(BaseSettings):
     # Lets ops enable shadow for a canary set before turning it on globally.
     guard_accounting_shadow_workspace_allowlist: str = ""
 
+    # #2209 PR 3 (Flight Recorder cross-links) — canonical base URL for
+    # the Flight Recorder UI. When set, AccountingReader includes
+    # deep-links on receipts + aggregates so Lens can hyperlink answers
+    # ("this attempt cost $X — see the full request trace"). Blank
+    # disables link generation; consumers render request_ids as plain
+    # text until #2069 publishes its route + subscribes to this contract.
+    #
+    # Contract (owned by #2209, subscribed by #2069):
+    #   {base}/requests/{request_id}
+    #   {base}/requests/{request_id}/attempts/{attempt_ordinal}
+    # Flight Recorder MUST resolve those to the request / attempt
+    # detail pages. No trailing slash on the base.
+    flight_recorder_base_url: str = ""
+
     # #2001 commit 4 — LiteLLM in-process transport switch. When true,
     # v2 profiles whose targets carry transport=litellm_sdk execute
     # through the embedded LiteLLM SDK (anthropic_messages,
