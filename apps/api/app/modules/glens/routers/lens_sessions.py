@@ -11,13 +11,12 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_workspace_id, require_permission
 from app.core.database import get_db
 from app.modules.glens.models import GlensChatSession
-from app.modules.guard.models import GuardAuditEvent
+from app.runtime.accounting import AccountingReader
 
 router = APIRouter(prefix="/glens/lens-sessions", tags=["lens-sessions"])
 
@@ -34,6 +33,12 @@ class LensSessionOut(BaseModel):
     is_idle: bool
     turns: int
     spend_usd: float
+    # Post-#2221 PR 1: caveats Lens's UI must render alongside the number
+    # so users can tell "$X reported" apart from "$X, some tokens missing"
+    # or "$X plus some unpriced attempts we couldn't cost." Invariants
+    # #4 and #9 preserved end-to-end.
+    spend_has_partial_or_missing: bool = False
+    spend_has_unpriced_attempts: bool = False
     # #1252 — session-scoped AgentIdentity linkage. Null on pre-migration
     # sessions that haven't taken a turn since 0090.
     agent_identity_id: str | None
@@ -82,24 +87,19 @@ def list_lens_sessions(
             )
         }
 
-    # Batch spend rollup — one query for all sessions in the returned page.
-    session_ids = [str(s.id) for s in sessions]
-    spend_by_session: dict[str, float] = {}
-    if session_ids:
-        rows = (
-            db.query(
-                GuardAuditEvent.hook_session_id,
-                func.coalesce(func.sum(GuardAuditEvent.cost_usd_after), 0.0),
-            )
-            .filter(
-                GuardAuditEvent.workspace_id == ws_uuid,
-                GuardAuditEvent.ai_tool == "lens",
-                GuardAuditEvent.hook_session_id.in_(session_ids),
-            )
-            .group_by(GuardAuditEvent.hook_session_id)
-            .all()
-        )
-        spend_by_session = {row[0]: float(row[1] or 0.0) for row in rows}
+    # Batch spend rollup via the shared accounting engine.
+    # Post-#2221 PR 1 (consumer wiring): every number comes from
+    # ``llm_attempt_receipts`` via ``AccountingReader.spend_by_hook_session_ids``
+    # so completeness + unpriced flags travel with each figure. Sessions
+    # with no receipts (e.g. shadow was off when they ran, or the workspace
+    # isn't yet on the canary allowlist) simply do not appear in the map —
+    # the fallback below renders them as $0 with no caveat.
+    reader = AccountingReader(db)
+    session_uuids = [s.id for s in sessions]
+    spend_by_session = reader.spend_by_hook_session_ids(
+        workspace_id=ws_uuid,
+        hook_session_ids=session_uuids,
+    )
 
     out: list[LensSessionOut] = []
     for s in sessions:
@@ -115,6 +115,7 @@ def list_lens_sessions(
         is_active = s.token_revoked_at is None and not is_idle
 
         identity = identity_by_id.get(s.agent_identity_id) if s.agent_identity_id else None
+        spend = spend_by_session.get(s.id)
         out.append(LensSessionOut(
             id=str(s.id),
             title=s.title,
@@ -124,7 +125,13 @@ def list_lens_sessions(
             is_active=is_active,
             is_idle=is_idle,
             turns=turns,
-            spend_usd=spend_by_session.get(str(s.id), 0.0),
+            spend_usd=float(spend.total_cost_usd) if spend is not None else 0.0,
+            spend_has_partial_or_missing=(
+                spend.has_partial_or_missing if spend is not None else False
+            ),
+            spend_has_unpriced_attempts=(
+                spend.has_unpriced_attempts if spend is not None else False
+            ),
             agent_identity_id=s.agent_identity_id,
             agent_identity_name=identity.name if identity else None,
             agent_identity_token_prefix=identity.token_prefix if identity else None,
