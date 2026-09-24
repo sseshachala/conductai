@@ -66,12 +66,12 @@ def test_wrap_v2_stream_finalize_computes_actual_cents_from_body():
     from app.modules.guard.gateway_handler import _wrap_v2_stream_finalize
 
     src = inspect.getsource(_wrap_v2_stream_finalize)
-    assert "_extract_token_counts" in src, (
-        "wrapper must extract token counts from the drained stream "
-        "bytes so actual_cents reflects real usage."
-    )
-    assert "_compute_audit_cost" in src, (
-        "wrapper must compute cost from the token counts + provider/model."
+    # #2209 PR 4 (cutover): settlement math now runs through
+    # ``settle_micros_for_attempts`` — sums per-attempt priced micros
+    # from the routing_meta so preceding failed attempts are counted.
+    assert "settle_micros_for_attempts" in src, (
+        "wrapper must call settle_micros_for_attempts so failed "
+        "attempts before the winner are settled too."
     )
     assert "_actual_cents_stream" in src, (
         "wrapper must compute an actual_cents value to pass to "

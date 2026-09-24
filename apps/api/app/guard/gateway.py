@@ -496,9 +496,8 @@ def guarded_client_call(
     except Exception as e:
         log.warning("guarded_client_call.audit_allow_failed", err=str(e))
 
-    # #2209 Session 5 — Lens shadow accounting. Off by default via
-    # settings.guard_accounting_shadow_enabled. shadow_write catches
-    # every exception internally.
+    # #2209 — Lens attempt-receipt write. shadow_write catches every
+    # exception internally so a failed write never breaks the caller.
     try:
         import uuid as _uuid_shadow
         from app.runtime.accounting.shadow_writer import shadow_write as _shadow_write

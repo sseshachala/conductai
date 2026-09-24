@@ -728,55 +728,60 @@ class BudgetLedger:
         flush or cold worker start.
 
         Order:
-        1. Read committed from ``guard_audit_events`` for the current
-           period → SET committed key
+        1. Read committed from ``llm_attempt_receipts`` (authoritative
+           per-attempt cost post-cutover) for the current period → SET
+           committed key.
         2. Read open ``budget_reservations`` rows → SET reserved
            counter + populate res_hash
         3. SET ready flag
 
         Concurrent reconcile calls for the same key overwrite each
         other; the last one wins but they compute the same value from
-        the same durable source, so this is safe."""
+        the same durable source, so this is safe.
+
+        P1-1 (#2209 PR 4): pre-cutover this summed
+        ``guard_audit_events.cost_usd_after`` which used legacy audit-side
+        math (no cache breakout). Live settlement uses the new engine's
+        ``calculated_cost_microdollars`` on ``llm_attempt_receipts``. Reading
+        from the audit table here made a Redis rebuild restore a DIFFERENT
+        total than the live counter — the P1 that gated Option A. Skip
+        receipts with NULL ``calculated_cost_microdollars`` (PENDING /
+        UNPRICED — no defensible number)."""
         period = monthly_period_key()
         period_start = _period_start(period)
 
-        # 1) Committed from audit events.
-        from app.modules.guard.models import GuardAuditEvent, BudgetReservation
+        # 1) Committed from receipts (authoritative post-cutover source).
+        from app.models.llm_attempt_receipt import LlmAttemptReceipt
+        from app.modules.guard.models import BudgetReservation
         try:
             ws_uuid = uuid.UUID(workspace_id) if _looks_like_uuid(workspace_id) else workspace_id
         except (ValueError, AttributeError):
             ws_uuid = workspace_id
 
         q = db.query(
-            func.coalesce(func.sum(GuardAuditEvent.cost_usd_after), 0.0)
+            func.coalesce(func.sum(LlmAttemptReceipt.calculated_cost_microdollars), 0)
         ).filter(
-            GuardAuditEvent.workspace_id == ws_uuid,
-            GuardAuditEvent.ts >= period_start,
+            LlmAttemptReceipt.workspace_id == ws_uuid,
+            LlmAttemptReceipt.finalized_at >= period_start,
+            LlmAttemptReceipt.calculated_cost_microdollars.isnot(None),
         )
         if ai_tool is not None:
-            # R11 fix (reviewer P1): a transport-scoped budget
-            # (ai_tool in {'gateway','mcp',...}) must aggregate every
-            # audit event routed through that surface regardless of
-            # the caller's client_tool. Filter by ``source`` instead
-            # of ``ai_tool`` for those rows. Non-transport (client
-            # tool) budgets keep the ai_tool filter.
+            # R11 fix (reviewer P1) — carries over: transport-scoped
+            # budget aggregates every receipt routed through that surface;
+            # client-tool budget filters by ``client_tool``. Same column
+            # semantics as ``GuardAuditEvent.source`` / ``ai_tool``.
             if _is_transport(ai_tool):
-                q = q.filter(GuardAuditEvent.source == ai_tool)
+                q = q.filter(LlmAttemptReceipt.source == ai_tool)
             else:
-                q = q.filter(GuardAuditEvent.ai_tool == ai_tool)
-        # Fix 1 (P1 #1): scope this budget's committed total by the same
-        # null-or-matches predicate as per-request applicability. A
-        # workspace-default budget (user=agent=tool=None) aggregates
-        # every event; an agent-scoped budget aggregates only that
-        # agent's spend.
+                q = q.filter(LlmAttemptReceipt.client_tool == ai_tool)
+        # Fix 1 (P1 #1) carries over: scope by identity when the budget
+        # is user- or agent-scoped. ``developer_external_id`` is the
+        # Clerk ID (text); ``agent_identity_id`` is the UUID FK.
         if clerk_user_id is not None:
-            q = q.filter(GuardAuditEvent.clerk_user_id == clerk_user_id)
+            q = q.filter(LlmAttemptReceipt.developer_external_id == clerk_user_id)
         if agent_identity_id is not None:
-            q = q.filter(GuardAuditEvent.agent_identity_id == agent_identity_id)
-        committed_usd = float(q.scalar() or 0.0)
-        # R9: reconciler writes Redis in micros so cents-mode and
-        # micros-mode traffic converge on the same counter.
-        committed_micros = int(round(committed_usd * 1_000_000))
+            q = q.filter(LlmAttemptReceipt.agent_identity_id == agent_identity_id)
+        committed_micros = int(q.scalar() or 0)
         committed_cents = committed_micros // 10_000  # for legacy log lines
 
         # 2) Open reservations from durable log.

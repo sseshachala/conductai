@@ -17,9 +17,9 @@ from app.runtime.accounting.contracts import (
 
 
 @pytest.fixture
-def _shadow_on(monkeypatch):
-    monkeypatch.setattr(settings, "guard_accounting_shadow_enabled", True)
-    monkeypatch.setattr(settings, "guard_accounting_shadow_workspace_allowlist", "*")
+def _shadow_on():
+    # Cutover: writer always on. Fixture kept as a no-op for existing callers.
+    yield
 
 
 # ─── #1 shadow_write returns the persisted ID (not a fresh UUID) ────────

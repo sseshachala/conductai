@@ -1,27 +1,33 @@
-"""PR 4 self-checks — new-engine settlement cutover.
+"""PR 4 self-checks — new-engine settlement cutover (Option A).
 
 The settlement flip is the atomic behavior change that retires legacy
-accounting. Tests here cover the compute_settlement_micros helper (the
-shared math) + the per-workspace canary decision. gateway_handler
-wiring is tested end-to-end in tests/guard/.
+accounting. Tests cover:
+
+- ``compute_settlement_micros`` (single-attempt math + completeness gates)
+- ``settle_micros_for_attempts`` (per-attempt aggregation + fail-to-pending)
+- gateway_handler + wrapper source-pins so refactors cannot silently drop
+  the new-engine call sites
+- The four P1 scenarios that gated Option A: recovery-vs-live drift,
+  fallback-ignores-attempts, partial-usage-becomes-final, streaming
+  responses uses chat normalizer
 """
 
 from __future__ import annotations
 
-from decimal import Decimal
+import base64
 
-import pytest
-
-from app.core.config import settings
-from app.runtime.accounting.settlement import compute_settlement_micros
+from app.runtime.accounting.settlement import (
+    compute_settlement_micros,
+    settle_micros_for_attempts,
+)
 
 
 # ─── compute_settlement_micros — same math as shadow_write ─────────────
 
 
 def test_returns_none_when_no_response_bytes():
-    """Nothing to normalize ⇒ nothing to price. Caller falls back to
-    legacy path OR leaves settlement PENDING_RECONCILER."""
+    """Nothing to normalize ⇒ nothing to price. Caller records the
+    settlement as PENDING_RECONCILER."""
     result = compute_settlement_micros(
         provider="anthropic",
         model="claude-sonnet-4-6",
@@ -81,7 +87,7 @@ def test_openai_responses_uses_responses_normalizer():
 
 def test_strict_unknown_model_returns_none():
     """Invariant #9 preserved into the settlement path. Unknown model
-    ⇒ no calculation ⇒ caller falls back or marks PENDING_RECONCILER."""
+    ⇒ no calculation ⇒ caller marks PENDING_RECONCILER."""
     result = compute_settlement_micros(
         provider="anthropic",
         model="claude-something-that-doesnt-exist",
@@ -112,74 +118,278 @@ def test_anthropic_sse_stream_body_handled():
     assert result == 1_050
 
 
-# ─── Canary allowlist ─────────────────────────────────────────────────
-
-
-def test_new_engine_settles_disabled_when_global_flag_off(monkeypatch):
-    monkeypatch.setattr(settings, "guard_accounting_new_engine_settles", False)
-    monkeypatch.setattr(
-        settings, "guard_accounting_new_engine_workspace_allowlist", "*"
-    )
-    assert settings.new_engine_settles_for_workspace("ws-a") is False
-
-
-def test_new_engine_settles_all_workspaces_when_wildcard(monkeypatch):
-    monkeypatch.setattr(settings, "guard_accounting_new_engine_settles", True)
-    monkeypatch.setattr(
-        settings, "guard_accounting_new_engine_workspace_allowlist", "*"
-    )
-    assert settings.new_engine_settles_for_workspace("ws-a") is True
-    assert settings.new_engine_settles_for_workspace("ws-b") is True
-
-
-def test_new_engine_settles_all_workspaces_when_empty_allowlist(monkeypatch):
-    """Empty and wildcard both mean 'all' — matches the shadow flag semantics."""
-    monkeypatch.setattr(settings, "guard_accounting_new_engine_settles", True)
-    monkeypatch.setattr(
-        settings, "guard_accounting_new_engine_workspace_allowlist", ""
-    )
-    assert settings.new_engine_settles_for_workspace("ws-a") is True
-
-
-def test_new_engine_settles_only_allowlisted_workspaces(monkeypatch):
-    monkeypatch.setattr(settings, "guard_accounting_new_engine_settles", True)
-    monkeypatch.setattr(
-        settings,
-        "guard_accounting_new_engine_workspace_allowlist",
-        "ws-canary-1, ws-canary-2",
-    )
-    assert settings.new_engine_settles_for_workspace("ws-canary-1") is True
-    assert settings.new_engine_settles_for_workspace("ws-canary-2") is True
-    assert settings.new_engine_settles_for_workspace("ws-not-listed") is False
-
-
 # ─── gateway_handler wiring pin ────────────────────────────────────────
 
 
-def test_gateway_handler_calls_compute_settlement_micros_behind_flag():
+def test_gateway_handler_calls_settle_micros_for_attempts_unconditionally():
     """Pin the wiring: source-string check so a future refactor cannot
-    silently drop the new-engine settlement call from gateway_handler."""
+    silently drop the new-engine settlement call from gateway_handler.
+
+    Cutover invariant (Option A): no flag, no
+    ``new_engine_settles_for_workspace`` branch. The handler always
+    routes settlement through the new engine, and it sums per-attempt
+    (not winner-only) so preceding failed attempts are counted.
+    """
     import inspect
     from app.modules.guard import gateway_handler
 
     src = inspect.getsource(gateway_handler)
-    assert "compute_settlement_micros" in src
-    assert "new_engine_settles_for_workspace" in src
+    # P1-2: per-attempt aggregation, not winner-only.
+    assert "settle_micros_for_attempts" in src
+    # No flag machinery — this is the whole point of Option A.
+    assert "new_engine_settles_for_workspace" not in src
+    assert "guard_accounting_new_engine_settles" not in src
 
 
-def test_settlement_helper_deltas_match_shadow_writer_exactly():
+def test_settlement_helper_and_writer_use_same_pricing_service():
     """Both call the same normalizer + pricing service, so a settled
-    request must produce the same number as its shadow row's
+    request must produce the same number as its receipt's
     calculated_cost_microdollars. This is what makes the cutover safe:
-    the shadow-vs-legacy delta report has already validated the answer."""
+    settlement and audit both read from one source of truth."""
     import inspect
-    from app.runtime.accounting import settlement
-    from app.runtime.accounting import shadow_writer
+    from app.runtime.accounting import settlement, shadow_writer
 
     settle_src = inspect.getsource(settlement)
     writer_src = inspect.getsource(shadow_writer)
-    # Both use price_tokens on the same rate card. If either drifts,
-    # the shadow delta report catches it — this test just ensures both
-    # point at the same PricingService entry.
     assert "default_pricing_service()" in settle_src
     assert "default_pricing_service()" in writer_src
+
+
+# ─── P1-3 — partial usage + incomplete pricing become PENDING, not
+# a final charge ──────────────────────────────────────────────────────
+
+
+def test_partial_stream_settles_pending_not_lower_bound():
+    """Interrupted Anthropic stream (only message_start, no message_stop)
+    → PARTIAL usage → return None (PENDING_RECONCILER). The buggy
+    pre-fix behavior charged for the partial output."""
+    partial_sse = (
+        b"event: message_start\n"
+        b'data: {"type":"message_start","message":{"usage":{"input_tokens":100,"output_tokens":1}}}\n\n'
+        b"event: content_block_delta\n"
+        b'data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"hi"}}\n\n'
+        # NO message_delta with final usage, NO message_stop — stream cut.
+    )
+    result = compute_settlement_micros(
+        provider="anthropic",
+        model="claude-sonnet-4-6",
+        operation="messages.create",
+        response_bytes=partial_sse,
+    )
+    assert result is None, (
+        "PARTIAL usage must return None so settlement waits for the "
+        "reconciler; charging on a lower bound is unsafe."
+    )
+
+
+def test_unknown_cache_write_tier_settles_pending_not_lower_bound():
+    """Anthropic response with ephemeral_30d cache-write tier that isn't
+    in the rate card → INCOMPLETE pricing (unknown tier dropped from
+    total) → return None. The buggy pre-fix behavior settled the
+    remaining priced tokens as a definite charge."""
+    # 100 input + 50 output — those price to 1_050 μUSD. But the
+    # 200 cache-write tokens live in an unknown tier that strict pricing
+    # cannot honor, so the whole result must be PENDING, not 1_050.
+    payload = (
+        b'{"usage":{"input_tokens":100,"output_tokens":50,'
+        b'"cache_creation_input_tokens":200,'
+        b'"cache_creation":{"ephemeral_30d_input_tokens":200}}}'
+    )
+    result = compute_settlement_micros(
+        provider="anthropic",
+        model="claude-sonnet-4-6",
+        operation="messages.create",
+        response_bytes=payload,
+    )
+    assert result is None, (
+        "INCOMPLETE pricing (unknown cache tier) must return None; "
+        "silently dropping unpriced tokens understates spend."
+    )
+
+
+# ─── P1-2 — settlement sums across every attempt, not winner-only ──────
+
+
+def test_settle_micros_for_attempts_sums_per_attempt():
+    """A failed attempt on Anthropic (rate-limited after 100/50 tokens)
+    followed by a winning attempt on OpenAI (200/100 tokens) → the
+    settlement charge is the SUM, not just the winner's."""
+    failed_anthropic_bytes = b'{"usage":{"input_tokens":100,"output_tokens":50}}'
+    winner_openai_bytes = b'{"usage":{"prompt_tokens":200,"completion_tokens":100}}'
+    attempts_meta = [
+        {
+            "provider_or_integration": "anthropic",
+            "model": "claude-sonnet-4-6",
+            "succeeded": False,
+            "response_bytes_b64": base64.b64encode(failed_anthropic_bytes).decode(),
+        },
+        {
+            "provider_or_integration": "openai",
+            "model": "gpt-4.1",
+            "succeeded": True,
+        },
+    ]
+    total = settle_micros_for_attempts(
+        attempts_meta=attempts_meta,
+        request_provider="openai",  # request-level model — the winner
+        request_model="gpt-4.1",
+        operation="chat.completions",
+        winner_response_bytes=winner_openai_bytes,
+    )
+    # Anthropic 100 in + 50 out at sonnet-4-6 rates: 100*3 + 50*15 = 1_050
+    # OpenAI 200 in + 100 out at gpt-4.1: 200*2 + 100*8 = 1_200
+    # Total: 2_250. Winner-only would have missed the 1_050.
+    assert total == 2_250
+
+
+def test_settle_micros_for_attempts_uses_per_attempt_pricing_identity():
+    """Failed attempt was cheap model, winner was expensive — settlement
+    must price each with its OWN provider/model."""
+    cheap_failed = b'{"usage":{"input_tokens":1000,"output_tokens":0}}'
+    expensive_winner = b'{"usage":{"input_tokens":100,"output_tokens":50}}'
+    attempts_meta = [
+        {
+            "provider_or_integration": "anthropic",
+            "model": "claude-haiku-4-5-20251001",  # $1/1M input
+            "succeeded": False,
+            "response_bytes_b64": base64.b64encode(cheap_failed).decode(),
+        },
+        {
+            "provider_or_integration": "anthropic",
+            "model": "claude-opus-4-7",  # $15/1M input, $75/1M output
+            "succeeded": True,
+        },
+    ]
+    total = settle_micros_for_attempts(
+        attempts_meta=attempts_meta,
+        request_provider="anthropic",
+        request_model="claude-opus-4-7",
+        operation="messages.create",
+        winner_response_bytes=expensive_winner,
+    )
+    # haiku: 1000 * 1 = 1_000. Opus: 100*15 + 50*75 = 1_500 + 3_750 = 5_250.
+    # If we (wrongly) priced everything at opus rates it would be
+    # 1000*15 + 5_250 = 20_250 — nearly 4× overcharge.
+    assert total == 6_250
+
+
+def test_settle_micros_for_attempts_returns_none_when_failed_attempt_missing_bytes():
+    """Failed attempt with no captured response bytes — provider may
+    have billed anyway. Force PENDING_RECONCILER, do not settle."""
+    winner_bytes = b'{"usage":{"input_tokens":100,"output_tokens":50}}'
+    attempts_meta = [
+        {
+            "provider_or_integration": "anthropic",
+            "model": "claude-sonnet-4-6",
+            "succeeded": False,
+            # No response_bytes_b64 — coordinator saw the connection error
+            # but didn't capture the upstream response body.
+        },
+        {
+            "provider_or_integration": "anthropic",
+            "model": "claude-sonnet-4-6",
+            "succeeded": True,
+        },
+    ]
+    result = settle_micros_for_attempts(
+        attempts_meta=attempts_meta,
+        request_provider="anthropic",
+        request_model="claude-sonnet-4-6",
+        operation="messages.create",
+        winner_response_bytes=winner_bytes,
+    )
+    assert result is None
+
+
+def test_settle_micros_for_attempts_returns_none_if_any_attempt_is_partial():
+    """One PARTIAL attempt (interrupted stream captured on failure)
+    poisons the whole aggregate — cannot definitively charge."""
+    partial_failed = (
+        b"event: message_start\n"
+        b'data: {"type":"message_start","message":{"usage":{"input_tokens":100,"output_tokens":1}}}\n\n'
+    )
+    winner = b'{"usage":{"input_tokens":50,"output_tokens":25}}'
+    attempts_meta = [
+        {
+            "provider_or_integration": "anthropic",
+            "model": "claude-sonnet-4-6",
+            "succeeded": False,
+            "response_bytes_b64": base64.b64encode(partial_failed).decode(),
+        },
+        {
+            "provider_or_integration": "anthropic",
+            "model": "claude-sonnet-4-6",
+            "succeeded": True,
+        },
+    ]
+    result = settle_micros_for_attempts(
+        attempts_meta=attempts_meta,
+        request_provider="anthropic",
+        request_model="claude-sonnet-4-6",
+        operation="messages.create",
+        winner_response_bytes=winner,
+    )
+    assert result is None
+
+
+def test_settle_micros_for_attempts_empty_falls_back_to_winner_only():
+    """No attempts_meta (legacy single-dispatch path) → winner-only
+    settlement, same result as compute_settlement_micros directly."""
+    winner = b'{"usage":{"input_tokens":100,"output_tokens":50}}'
+    result = settle_micros_for_attempts(
+        attempts_meta=None,
+        request_provider="anthropic",
+        request_model="claude-sonnet-4-6",
+        operation="messages.create",
+        winner_response_bytes=winner,
+    )
+    assert result == 1_050
+
+
+# ─── P1-4 — streaming Responses uses OPENAI_RESPONSES normalizer ──────
+
+
+def test_settlement_picks_responses_family_when_operation_contains_responses():
+    """Streaming wrapper threads the actual request path (e.g.
+    /gateway/v1/openai/v1/responses) — settlement family follows.
+    Pre-fix the wrapper hardcoded 'chat.completions.stream' and
+    responses-shape usage was parsed under the Chat normalizer."""
+    responses_shape_bytes = (
+        b'{"usage":{"input_tokens":100,"output_tokens":50}}'
+    )
+    # As Chat family, this JSON has no prompt_tokens/completion_tokens
+    # so extraction would be UNAVAILABLE → None. As Responses family,
+    # input_tokens/output_tokens are the correct fields → priced.
+    responses_result = compute_settlement_micros(
+        provider="openai",
+        model="gpt-4.1",
+        operation="/gateway/v1/openai/v1/responses",
+        response_bytes=responses_shape_bytes,
+    )
+    chat_result = compute_settlement_micros(
+        provider="openai",
+        model="gpt-4.1",
+        operation="chat.completions.stream",
+        response_bytes=responses_shape_bytes,
+    )
+    assert responses_result == 600  # 100*2 + 50*8 = 600
+    assert chat_result is None      # different field names — not extractable
+
+
+# ─── P1-1 — recovery reads from receipts (authoritative) not audit ────
+
+
+def test_reconciler_reads_committed_from_llm_attempt_receipts_not_audit():
+    """budget_ledger.reconcile() must sum from
+    ``LlmAttemptReceipt.calculated_cost_microdollars`` post-cutover.
+    Pre-fix it summed ``GuardAuditEvent.cost_usd_after`` — legacy
+    audit-side math without cache breakout — so a Redis rebuild
+    restored a DIFFERENT total than the live counter."""
+    import inspect
+    from app.core import budget_ledger
+
+    reconcile_src = inspect.getsource(budget_ledger.BudgetLedger.reconcile)
+    assert "LlmAttemptReceipt" in reconcile_src
+    assert "calculated_cost_microdollars" in reconcile_src
+    # And crucially — no longer reads from the audit table for spend.
+    assert "GuardAuditEvent.cost_usd_after" not in reconcile_src

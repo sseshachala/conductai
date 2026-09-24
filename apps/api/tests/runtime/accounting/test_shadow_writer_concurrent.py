@@ -24,9 +24,9 @@ from app.runtime.accounting.shadow_writer import shadow_write
 
 
 @pytest.fixture
-def _shadow_on(monkeypatch):
-    monkeypatch.setattr(settings, "guard_accounting_shadow_enabled", True)
-    monkeypatch.setattr(settings, "guard_accounting_shadow_workspace_allowlist", "*")
+def _shadow_on():
+    # Cutover: writer always on. Fixture kept as a no-op for existing callers.
+    yield
 
 
 def _write(workspace_id=None):

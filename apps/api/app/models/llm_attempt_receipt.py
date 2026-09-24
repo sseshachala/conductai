@@ -89,7 +89,16 @@ class LlmAttemptReceipt(Base):
     estimated_input_tokens = Column(Integer, nullable=True)
     reserved_microdollars = Column(BigInteger, nullable=True)
     calculated_cost_microdollars = Column(BigInteger, nullable=True)
-    currency = Column(Text, nullable=False, server_default=sa.text("'USD'"))
+    # Python-side default in addition to server_default: the writer builds
+    # ``values = {c.name: getattr(row, c.name) for c in table.columns}`` for
+    # its atomic upsert, so an unset column serializes as an explicit NULL
+    # that overrides the server default. Python default fills it in on row
+    # construction so INSERTs carry the concrete value. Uncovered by the
+    # #2209 PR 4 real-DB run — pre-existing model bug never hit by mocked
+    # tests (they patch ``_persist_atomic``).
+    currency = Column(
+        Text, nullable=False, default="USD", server_default=sa.text("'USD'")
+    )
     pricing_version = Column(Text, nullable=True)
     pricing_completeness = Column(Text, nullable=False)
 

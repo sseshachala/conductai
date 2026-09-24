@@ -407,25 +407,6 @@ async def handle_gateway_request(
         # alongside #1968) will make this observable per-request.
         _hook_session_id = request.headers.get("x-conduct-session-id") or None
 
-        # #2209 Session 6D — pin the accounting-shadow decision + contract
-        # version at request entry. A rollout that flips
-        # ``guard_accounting_shadow_enabled`` or the workspace allowlist
-        # mid-flight must not re-attribute an in-progress attempt to the
-        # new engine; the pinned values travel with every shadow_write
-        # for this request.
-        try:
-            from app.runtime.accounting.contracts import (
-                CONTRACT_VERSION as _accounting_contract_version,
-            )
-            _pinned_contract_version = _accounting_contract_version
-            _pinned_shadow_enabled = settings.accounting_shadow_enabled_for(
-                str(workspace_id)
-            )
-        except Exception:
-            _pinned_shadow_enabled = False
-            _pinned_contract_version = 1
-
-
         # #1712 Track 1 — trial-plan lookup before policy eval so a BLOCK
         # response can carry an anonymous receipt URL. Cheap indexed read;
         # any failure falls back to workspace-only receipt.
@@ -1179,6 +1160,7 @@ async def handle_gateway_request(
                         workspace_id=workspace_id,
                         provider=provider,
                         model=model,
+                        operation=request.url.path,  # P1-4: real op for normalizer family
                         body=body,
                         ingress_decision=_audit_decision,
                         ingress_rule_id=_audit_rule_id,
@@ -1193,14 +1175,8 @@ async def handle_gateway_request(
                         # handler returns and bytes still queued).
                         reservations=_reservations,
                         _routing_meta=_routing_meta,
-                        # #2209 Session 6D — attribution + version pin.
+                        # #2209 Session 6D — attribution.
                         conductai_run_id=_run_id,
-                        pinned_shadow_enabled=locals().get(
-                            "_pinned_shadow_enabled"
-                        ),
-                        pinned_contract_version=locals().get(
-                            "_pinned_contract_version"
-                        ),
                         # Wall-clock deadline for the stream body. The
                         # coordinator's ``wait_for`` only guarded header
                         # arrival; the stream body has no timeout of its
@@ -1407,77 +1383,58 @@ async def handle_gateway_request(
             # wrapper (``_wrap_v2_stream_finalize``) owns settlement so
             # actual_cents reflects the drained body. Skip inline here
             # to avoid settling twice.
-            # #2209 review #2 (#2221): compute tokens + cost OUTSIDE the
-            # reservation gate so shadow accounting fires for every settled
-            # attempt, not just reserved ones.
-            _in_tok: int | None = None
-            _out_tok: int | None = None
-            _cost_usd: float | None = None
+            # #2209 review #2 (#2221): compute cost OUTSIDE the reservation
+            # gate so per-attempt receipts fire for every settled attempt,
+            # not just reserved ones.
             _resp_bytes: bytes | None = None
-            if _dispatched and _response is not None and not isinstance(_response, StreamingResponse):
-                try:
-                    from app.guard.audit import (
-                        _compute_audit_cost as _mk_cost,
-                        _extract_token_counts as _mk_tokens,
-                    )
-                    _snapshot = locals().get("_v2_upstream_body_bytes")
-                    if isinstance(_snapshot, (bytes, bytearray)) and _snapshot:
-                        _resp_bytes = bytes(_snapshot)
-                    elif _response is not None and hasattr(_response, "body"):
-                        try:
-                            _resp_bytes = _response.body
-                        except Exception:
-                            _resp_bytes = None
-                    _in_tok, _out_tok = _mk_tokens(body, _resp_bytes)
-                    _cost_usd = _mk_cost(
-                        provider, model, _in_tok, _out_tok, _routing_meta
-                    )
-                except Exception:
-                    pass
-
-            # #2209 PR 4 (settlement cutover) — new engine settles when
-            # settings.new_engine_settles_for_workspace(workspace_id) is
-            # True. Same normalizer + pricing service that populates
-            # calculated_cost_microdollars on shadow receipts. Legacy
-            # _extract_token_counts + _compute_audit_cost path stays as
-            # the fallback until PR 5 deletes it.
             _new_engine_micros: int | None = None
-            if (
-                _dispatched
-                and _resp_bytes is not None
-                and settings.new_engine_settles_for_workspace(str(workspace_id))
-            ):
-                try:
-                    from app.runtime.accounting.settlement import (
-                        compute_settlement_micros,
-                    )
-                    _new_engine_micros = compute_settlement_micros(
-                        provider=provider,
-                        model=model,
-                        operation=request.url.path,
-                        response_bytes=_resp_bytes,
-                        strict=True,
-                    )
-                except Exception:
-                    log.exception(
-                        "guard.gateway.new_engine_settle_compute_failed",
-                        workspace_id=str(workspace_id),
-                        provider=provider,
-                        model=model,
-                    )
+            if _dispatched and _response is not None and not isinstance(_response, StreamingResponse):
+                _snapshot = locals().get("_v2_upstream_body_bytes")
+                if isinstance(_snapshot, (bytes, bytearray)) and _snapshot:
+                    _resp_bytes = bytes(_snapshot)
+                elif _response is not None and hasattr(_response, "body"):
+                    try:
+                        _resp_bytes = _response.body
+                    except Exception:
+                        _resp_bytes = None
+                if _resp_bytes is not None and (_routing_meta or {}).get("billable", True) is not False:
+                    try:
+                        from app.runtime.accounting.settlement import (
+                            settle_micros_for_attempts,
+                        )
+                        _attempts_for_settle = (
+                            _routing_meta.get("attempts")
+                            if isinstance(_routing_meta, dict)
+                            else None
+                        )
+                        # P1-2: sum per-attempt priced micros using each
+                        # attempt's actual provider/model + captured bytes.
+                        # Falls back to winner-only when no attempts_meta.
+                        _new_engine_micros = settle_micros_for_attempts(
+                            attempts_meta=_attempts_for_settle,
+                            request_provider=provider,
+                            request_model=model,
+                            operation=request.url.path,
+                            winner_response_bytes=_resp_bytes,
+                            strict=True,
+                        )
+                    except Exception:
+                        log.exception(
+                            "guard.gateway.settle_compute_failed",
+                            workspace_id=str(workspace_id),
+                            provider=provider,
+                            model=model,
+                        )
 
-            # Reservation-gated settlement — behavior unchanged for the
-            # legacy path; PR 4 injects the new-engine microdollars when
-            # the workspace is on the cutover allowlist.
+            # Reservation-gated settlement — actual cost from the new engine.
+            # When the response can't be priced (unknown model under strict,
+            # partial usage, or no usage extractable), _new_engine_micros is
+            # None and the ledger records the reservation as PENDING_RECONCILER.
             if _reservations and not isinstance(_response, StreamingResponse):
                 try:
-                    if _dispatched and _actual_cents is None:
-                        if _new_engine_micros is not None:
-                            _actual_micros = _new_engine_micros
-                            _actual_cents = int(round(_new_engine_micros / 10_000))
-                        elif _cost_usd:
-                            _actual_cents = int(round(float(_cost_usd) * 100))
-                            _actual_micros = int(round(float(_cost_usd) * 1_000_000))
+                    if _dispatched and _actual_cents is None and _new_engine_micros is not None:
+                        _actual_micros = _new_engine_micros
+                        _actual_cents = int(round(_new_engine_micros / 10_000))
                     # R3 fix (reviewer P1): settle owns its own session
                     # inside a threadpool call.
                     _reservations_snapshot = list(_reservations)
@@ -1561,9 +1518,9 @@ async def handle_gateway_request(
                         operation=request.url.path,
                         dispatched=_dispatched,
                         response_bytes=_resp_bytes,
-                        legacy_input_tokens=_in_tok,
-                        legacy_output_tokens=_out_tok,
-                        legacy_cost_usd=_cost_usd,
+                        legacy_input_tokens=None,
+                        legacy_output_tokens=None,
+                        legacy_cost_usd=None,
                         reserved_microdollars=_reserved_micros,
                         developer_external_id=clerk_user_id,
                         agent_identity_id=_agent_identity_id,
@@ -1572,8 +1529,6 @@ async def handle_gateway_request(
                         attempts_meta=_attempts_meta,
                         workflow_run_id=_wf_run_uuid,
                         hook_session_id=_hook_session_id,
-                        pinned_shadow_enabled=_pinned_shadow_enabled,
-                        pinned_contract_version=_pinned_contract_version,
                     )
                 except Exception:
                     # shadow_write catches internally; belt-and-suspenders.
@@ -2324,6 +2279,7 @@ def _wrap_v2_stream_finalize(
     workspace_id: str,
     provider: str,
     model: str,
+    operation: str,  # P1-4: real request path (e.g. /gateway/v1/openai/v1/responses)
     body: dict,
     ingress_decision: str,
     ingress_rule_id: str | None,
@@ -2335,8 +2291,6 @@ def _wrap_v2_stream_finalize(
     stream_deadline_seconds: float | None = None,
     # #2209 Session 6D — for accounting shadow write attribution.
     conductai_run_id: str | None = None,
-    pinned_shadow_enabled: bool | None = None,
-    pinned_contract_version: int | None = None,
     # R4 fix (reviewer P1): reservation ownership transferred from the
     # handler. Wrapper computes actual_cents from the drained body then
     # calls settle_reservations on stream close / cancel / timeout.
@@ -2544,25 +2498,48 @@ def _wrap_v2_stream_finalize(
             # R4 fix (reviewer P1): settle reservations from the
             # drained upstream body. Runs on success, cancel, and
             # timeout — same finally as finalize.
+            _stream_resp_bytes = bytes(collected) if collected else None
+            _stream_new_engine_micros: int | None = None
+            if (
+                _stream_resp_bytes is not None
+                and (_routing_meta or {}).get("billable", True) is not False
+            ):
+                try:
+                    from app.runtime.accounting.settlement import (
+                        settle_micros_for_attempts,
+                    )
+                    _stream_attempts_for_settle = (
+                        _routing_meta.get("attempts")
+                        if isinstance(_routing_meta, dict)
+                        else None
+                    )
+                    _stream_new_engine_micros = settle_micros_for_attempts(
+                        attempts_meta=_stream_attempts_for_settle,
+                        request_provider=provider,
+                        request_model=model,
+                        operation=operation,  # P1-4: real path picks the right family
+                        winner_response_bytes=_stream_resp_bytes,
+                        strict=True,
+                    )
+                except Exception:
+                    log.exception(
+                        "guard.gateway.v2.stream_settle_compute_failed",
+                        row_id=row_id,
+                        provider=provider,
+                        model=model,
+                    )
             if reservations:
                 try:
-                    from app.guard.audit import (
-                        _compute_audit_cost as _mk_cost,
-                        _extract_token_counts as _mk_tokens,
-                    )
                     from app.modules.guard.gateway_lifecycle import (
                         settle_reservations as _settle_reservations,
                     )
                     from app.core.database import SessionLocal
                     _dispatched_stream = True
                     _actual_cents_stream: int | None = None
-                    _resp_bytes = bytes(collected) if collected else None
-                    _in_tok, _out_tok = _mk_tokens(body, _resp_bytes)
-                    _cost_usd = _mk_cost(
-                        provider, model, _in_tok, _out_tok, _routing_meta
-                    )
-                    if _cost_usd:
-                        _actual_cents_stream = int(round(float(_cost_usd) * 100))
+                    _actual_micros_stream: int | None = None
+                    if _stream_new_engine_micros is not None:
+                        _actual_micros_stream = _stream_new_engine_micros
+                        _actual_cents_stream = int(round(_stream_new_engine_micros / 10_000))
                     # R3 pattern: offload the sync settle to a threadpool
                     # so the ASGI drain path stays responsive.
                     def _settle_stream_owned():
@@ -2573,6 +2550,7 @@ def _wrap_v2_stream_finalize(
                                 reservations=reservations,
                                 dispatched=_dispatched_stream,
                                 actual_cents=_actual_cents_stream,
+                                actual_micros=_actual_micros_stream,
                             )
                             try:
                                 _db.commit()
@@ -2618,12 +2596,6 @@ def _wrap_v2_stream_finalize(
                         ) or None
                     except Exception:
                         _reserved_micros = None
-                _stream_resp_bytes = (
-                    bytes(collected) if collected else None
-                )
-                _stream_in_tok = locals().get("_in_tok")
-                _stream_out_tok = locals().get("_out_tok")
-                _stream_cost_usd = locals().get("_cost_usd")
                 # #2209 Session 6D — workflow attribution.
                 _stream_wf_run_uuid = None
                 if conductai_run_id:
@@ -2643,20 +2615,18 @@ def _wrap_v2_stream_finalize(
                     ),
                     provider=provider,
                     model=model,
-                    operation="chat.completions.stream",
+                    operation=operation,  # P1-4: real op flows to receipt normalizer too
                     dispatched=True,
                     response_bytes=_stream_resp_bytes,
-                    legacy_input_tokens=_stream_in_tok,
-                    legacy_output_tokens=_stream_out_tok,
-                    legacy_cost_usd=_stream_cost_usd,
+                    legacy_input_tokens=None,
+                    legacy_output_tokens=None,
+                    legacy_cost_usd=None,
                     reserved_microdollars=_reserved_micros,
                     developer_external_id=clerk_user_id,
                     source="gateway",
                     client_tool=ai_tool,
                     attempts_meta=_stream_meta.get("attempts"),
                     workflow_run_id=_stream_wf_run_uuid,
-                    pinned_shadow_enabled=pinned_shadow_enabled,
-                    pinned_contract_version=pinned_contract_version,
                 )
             except Exception:
                 pass

@@ -175,21 +175,6 @@ class Settings(BaseSettings):
     # our own caps do (should be rare — ours are strictly tighter).
     guard_gateway_vision_enabled: bool = True
 
-    # #2209 Session 4 — Unified accounting shadow writer. When ON, every
-    # settled gateway attempt also writes a row to ``llm_attempt_receipts``
-    # via ``runtime.accounting.shadow_writer``. Old settlement to
-    # ``guard_audit_events`` remains authoritative — the shadow row exists
-    # only for Session 6 delta metrics. Session 7 flips authority + retires.
-    # Default OFF: no traffic touches the new path until ops enables it.
-    guard_accounting_shadow_enabled: bool = False
-
-    # #2209 Session 6 — per-workspace canary allowlist. When
-    # guard_accounting_shadow_enabled is ON:
-    #   - empty / "*" → all workspaces write shadow receipts
-    #   - "ws1,ws2" → only listed workspaces write shadow receipts
-    # Lets ops enable shadow for a canary set before turning it on globally.
-    guard_accounting_shadow_workspace_allowlist: str = ""
-
     # #2209 PR 3 (Flight Recorder cross-links) — canonical base URL for
     # the Flight Recorder UI. When set, AccountingReader includes
     # deep-links on receipts + aggregates so Lens can hyperlink answers
@@ -203,21 +188,6 @@ class Settings(BaseSettings):
     # Flight Recorder MUST resolve those to the request / attempt
     # detail pages. No trailing slash on the base.
     flight_recorder_base_url: str = ""
-
-    # #2209 PR 4 (cutover) — flip settlement to the new engine.
-    # When True, gateway_handler reads calculated_cost_microdollars from
-    # the shared accounting engine (via compute_settlement_micros)
-    # instead of the legacy _extract_token_counts + _compute_audit_cost
-    # pair. Deploys behind this flag so ops can toggle during the
-    # maintenance window without a config-change roundtrip; PR 5
-    # deletes both the flag and the legacy helpers once prod is stable.
-    guard_accounting_new_engine_settles: bool = False
-
-    # PR 4 canary allowlist (parallels the shadow allowlist). When
-    # guard_accounting_new_engine_settles is True and this list is
-    # non-empty, only listed workspaces settle via the new engine —
-    # other workspaces stay on legacy. Empty / "*" ⇒ all workspaces.
-    guard_accounting_new_engine_workspace_allowlist: str = ""
 
     # #2001 commit 4 — LiteLLM in-process transport switch. When true,
     # v2 profiles whose targets carry transport=litellm_sdk execute
@@ -386,55 +356,6 @@ class Settings(BaseSettings):
         digest = hashlib.sha256(workspace_id.encode("utf-8")).digest()
         bucket = int.from_bytes(digest[:4], "big") % 100
         return bucket < pct
-
-    def accounting_shadow_enabled_for(self, workspace_id: str) -> bool:
-        """#2209 Session 6 — per-workspace canary for the shadow writer.
-
-        Precedence:
-        1. Global kill switch — ``guard_accounting_shadow_enabled=False``
-           disables the whole feature regardless of allowlist.
-        2. Empty allowlist OR ``*`` — all workspaces write shadow receipts.
-        3. Explicit allowlist — only listed workspace IDs write.
-
-        No percentage rollout by design: shadow rows are cheap and idempotent
-        (unique on request_id, attempt_ordinal), so ops can enable + disable
-        per-workspace freely without partial-canary aliasing.
-        """
-        if not self.guard_accounting_shadow_enabled:
-            return False
-        allowlist = (self.guard_accounting_shadow_workspace_allowlist or "").strip()
-        if not allowlist or allowlist == "*":
-            return True
-        allowed = {w.strip() for w in allowlist.split(",") if w.strip()}
-        return workspace_id in allowed
-
-    def new_engine_settles_for_workspace(self, workspace_id: str) -> bool:
-        """#2209 PR 4 — per-workspace canary for the new-engine settlement flip.
-
-        Same precedence shape as ``accounting_shadow_enabled_for``:
-
-        1. Global switch — ``guard_accounting_new_engine_settles=False``
-           disables regardless of allowlist. Legacy path settles every
-           request.
-        2. Empty allowlist OR ``*`` — new engine settles for every
-           workspace.
-        3. Explicit allowlist — only listed workspaces settle via new
-           engine; others stay on legacy.
-
-        Ops enables the global flag + allowlists a canary, watches
-        results, expands the list, then removes the allowlist for
-        global cutover. PR 5 deletes both this method and the flag
-        once prod has been stable long enough.
-        """
-        if not self.guard_accounting_new_engine_settles:
-            return False
-        allowlist = (
-            self.guard_accounting_new_engine_workspace_allowlist or ""
-        ).strip()
-        if not allowlist or allowlist == "*":
-            return True
-        allowed = {w.strip() for w in allowlist.split(",") if w.strip()}
-        return workspace_id in allowed
 
     class Config:
         env_file = ".env"

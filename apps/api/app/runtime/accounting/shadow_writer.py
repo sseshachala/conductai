@@ -1,18 +1,14 @@
-"""Shadow writer for LlmAttemptReceipt (#2209 Session 4).
+"""Writer for LlmAttemptReceipt — the unified accounting engine (#2209).
 
-Runs alongside the legacy settlement path. Old ``GuardAuditEvent`` remains
-authoritative — this writer only PERSISTS the shadow calculation for later
-comparison. Session 6 metrics quantify the delta; Session 7 activates.
+Cutover (PR 4, Option A): this writer is authoritative for the per-attempt
+cost record. GuardAuditEvent still lands per-request rows for the audit
+timeline, but settlement math comes from ``settlement.compute_settlement_micros``
+which shares the same normalizer + pricing path used here.
 
 Design invariants:
 
-1. **Never fails the request.** Every exception is caught and logged. A
-   corrupt shadow row is preferable to a broken settlement path.
-2. **Additive only.** Legacy audit rows are untouched; shadow rows are a
-   parallel append.
-3. **Kill-switch.** Off by default (``settings.guard_accounting_shadow_enabled``).
-   Ops flips it on per environment during Session 6 canary.
-4. **Contract-versioned rows.** Each row records the writer version + the
+1. **Never fails the request.** Every exception is caught and logged.
+2. **Contract-versioned rows.** Each row records the writer version + the
    pricing snapshot version + the normalizer version so historical rows can
    be reinterpreted after schema evolution.
 """
@@ -25,7 +21,6 @@ from typing import Any, Optional
 
 import structlog
 
-from app.core.config import settings
 from app.core.database import SessionLocal
 from app.models.llm_attempt_receipt import LlmAttemptReceipt
 from app.runtime.accounting.contracts import (
@@ -117,34 +112,13 @@ def shadow_write(
     receipt_id: Optional[uuid.UUID] = None,
     execution_outcome: Optional[str] = None,
     succeeded: Optional[bool] = None,
-    pinned_shadow_enabled: Optional[bool] = None,
-    pinned_contract_version: Optional[int] = None,
     usage_completeness_override: Optional[str] = None,
 ) -> Optional[uuid.UUID]:
-    """Persist one shadow receipt for a gateway attempt.
+    """Persist one attempt receipt. Returns the receipt_id, or None on error.
 
-    Returns the receipt_id when written, None when disabled or on any error.
-    Never raises.
+    Never raises — the writer catches everything so a corrupt row cannot
+    break the request path.
     """
-    # Session 6D: accounting-version pin. Handlers snapshot the
-    # shadow-enabled decision at request entry so a mid-flight flag flip
-    # cannot re-attribute an in-progress attempt to the new engine. If
-    # the caller pinned False, we drop the write; if pinned True, we
-    # skip the settings re-check. Absent pin → fall through to the
-    # Session 6 per-workspace canary check.
-    if pinned_shadow_enabled is False:
-        return None
-    if pinned_shadow_enabled is None:
-        _check = getattr(settings, "accounting_shadow_enabled_for", None)
-        if _check is not None:
-            try:
-                if not _check(str(workspace_id)):
-                    return None
-            except Exception:
-                return None
-        elif not getattr(settings, "guard_accounting_shadow_enabled", False):
-            return None
-
     try:
         return _shadow_write_impl(
             workspace_id=workspace_id,
@@ -171,7 +145,6 @@ def shadow_write(
             model_alias=model_alias,
             execution_outcome=execution_outcome,
             succeeded=succeeded,
-            pinned_contract_version=pinned_contract_version,
             usage_completeness_override=usage_completeness_override,
             attempts_meta=attempts_meta or [],
             started_at=started_at,
@@ -232,7 +205,14 @@ def _shadow_write_impl(**kw: Any) -> uuid.UUID:
             usage_completeness = UsageCompleteness(override)
     else:
         normalized_tokens = None
-        usage_origin = UsageOrigin.MISSING
+        # Reconciler backfills without captured bytes get RECONCILED so
+        # downstream analytics can tell "no provider response ever" from
+        # "audit-only backfill after the fact".
+        usage_origin = (
+            UsageOrigin.RECONCILED
+            if kw.get("source") == "reconciler"
+            else UsageOrigin.MISSING
+        )
         usage_completeness = UsageCompleteness.UNAVAILABLE
         normalizer_version = NORMALIZER_VERSION
         provenance = {"reason": "no_response_bytes"}
@@ -311,9 +291,7 @@ def _shadow_write_impl(**kw: Any) -> uuid.UUID:
         request_id=kw["request_id"],
         attempt_ordinal=int(kw.get("attempt_ordinal") or 0),
         parent_receipt_id=kw.get("parent_receipt_id"),
-        contract_version=(
-            kw.get("pinned_contract_version") or CONTRACT_VERSION
-        ),
+        contract_version=CONTRACT_VERSION,
         developer_user_id=dev_user_uuid,
         developer_external_id=dev_external_id,
         agent_identity_id=_to_uuid_or_none(kw.get("agent_identity_id")),
@@ -419,7 +397,19 @@ def _persist_atomic(db, row, *, is_reconciler: bool) -> "Optional[uuid.UUID]":
     from app.models.llm_attempt_receipt import LlmAttemptReceipt
 
     table = LlmAttemptReceipt.__table__
-    values = {c.name: getattr(row, c.name) for c in table.columns}
+    # #2209 PR 4 real-DB fix: build the VALUES dict from the row's
+    # dict, so unset columns are omitted. Sending an explicit ``NULL``
+    # for a server-default column (``currency='USD'`` etc.) would
+    # override the default and violate the NOT NULL constraint.
+    # Omitted columns pick up their server defaults; nullable columns
+    # we intentionally set to None still serialize as NULL because
+    # they'd be in the row's __dict__ with that value.
+    _row_state = row.__dict__
+    values = {
+        c.name: _row_state[c.name]
+        for c in table.columns
+        if c.name in _row_state
+    }
 
     stmt = pg_insert(table).values(**values)
     if is_reconciler:
@@ -467,8 +457,6 @@ def write_receipts_for_attempts(
     client_tool: Optional[str] = None,
     transport: Optional[str] = None,
     attempts_meta: Optional[list[dict]] = None,
-    pinned_shadow_enabled: Optional[bool] = None,
-    pinned_contract_version: Optional[int] = None,
 ) -> list[uuid.UUID]:
     """Reviewer #3 (#2221): write one receipt per actual upstream attempt.
 
@@ -504,8 +492,6 @@ def write_receipts_for_attempts(
         hook_session_id=hook_session_id,
         source=source,
         client_tool=client_tool,
-        pinned_shadow_enabled=pinned_shadow_enabled,
-        pinned_contract_version=pinned_contract_version,
     )
 
     if not attempts:
