@@ -2301,7 +2301,13 @@ def _wrap_v2_stream_finalize(
     workspace_id: str,
     provider: str,
     model: str,
-    operation: str,  # P1-4: real request path (e.g. /gateway/v1/openai/v1/responses)
+    # P1-4: real request path (e.g. /gateway/v1/openai/v1/responses) — the
+    # production caller (``handle_gateway_request``) always passes
+    # ``request.url.path`` so the normalizer picks the right family
+    # (Responses vs Chat). Default is only for legacy test scaffolding;
+    # a source-string pin in tests/runtime/accounting/test_pr4_settlement_cutover
+    # asserts the handler passes an explicit operation on both call sites.
+    operation: str = "chat.completions.stream",
     body: dict,
     ingress_decision: str,
     ingress_rule_id: str | None,

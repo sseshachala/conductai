@@ -349,6 +349,22 @@ def test_settle_micros_for_attempts_empty_falls_back_to_winner_only():
 # ─── P1-4 — streaming Responses uses OPENAI_RESPONSES normalizer ──────
 
 
+def test_handler_passes_request_url_path_as_operation_to_stream_wrapper():
+    """P1-4 pin: handler must pass ``operation=request.url.path`` when
+    invoking ``_wrap_v2_stream_finalize`` so the normalizer picks the
+    right family (Responses vs Chat). The wrapper has a default for
+    legacy test scaffolding — this test locks the production wiring."""
+    import inspect
+    from app.modules.guard import gateway_handler
+
+    src = inspect.getsource(gateway_handler)
+    assert "operation=request.url.path" in src, (
+        "P1-4 regressed: handler no longer threads request.url.path into "
+        "_wrap_v2_stream_finalize. Responses-shape usage will be parsed "
+        "under the Chat normalizer and settle to None."
+    )
+
+
 def test_settlement_picks_responses_family_when_operation_contains_responses():
     """Streaming wrapper threads the actual request path (e.g.
     /gateway/v1/openai/v1/responses) — settlement family follows.
