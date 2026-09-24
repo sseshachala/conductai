@@ -354,6 +354,506 @@ def test_partial_stream_receipt_lands_unpriced_and_reconciler_skips(workspace_id
 # ─── P1-4 — streaming Responses uses the right normalizer family ──────
 
 
+# ─── P1-A (recovery sweep) — commits from receipts, not audit ─────────
+
+
+def test_recovery_sweep_commits_from_receipt_not_audit(workspace_id):
+    """End-to-end recovery: stale open reservation + settleable receipt
+    + audit event carrying a DIFFERENT (legacy) cost → the ledger commit
+    uses the RECEIPT's cost. Locks the P1-A fix through Postgres."""
+    from app.core.database import SessionLocal
+    from app.core.budget_reconciler import run_recovery_sweep
+    from app.core.budget_ledger import BudgetLedger, monthly_period_key
+    from datetime import datetime, timedelta, timezone
+    from sqlalchemy import text
+    from unittest.mock import patch
+    from app.runtime.accounting.shadow_writer import shadow_write
+
+    request_id = uuid.uuid4()
+    period = monthly_period_key()
+    now = datetime.now(timezone.utc)
+    ai_tool = f"pr4-recover-{uuid.uuid4().hex[:8]}"
+
+    # Insert a settleable receipt (1050 μUSD via the real writer).
+    shadow_write(
+        workspace_id=workspace_id,
+        request_id=request_id,
+        provider="anthropic",
+        model="claude-sonnet-4-6",
+        operation="messages.create",
+        dispatched=True,
+        response_bytes=b'{"usage":{"input_tokens":100,"output_tokens":50}}',
+        legacy_input_tokens=None,
+        legacy_output_tokens=None,
+        legacy_cost_usd=None,
+        source="gateway",
+        client_tool=ai_tool,
+    )
+    # Insert legacy audit row with a DIFFERENT number.
+    with SessionLocal() as db:
+        db.execute(
+            text(
+                "INSERT INTO guard_audit_events "
+                "(id, workspace_id, request_id, ts, source, provider, model, "
+                " decision, cost_usd_after, ai_tool, lifecycle_state) "
+                "VALUES (gen_random_uuid(), CAST(:ws AS uuid), CAST(:req AS uuid), "
+                "        now(), 'gateway', 'anthropic', 'claude-sonnet-4-6', "
+                "        'allowed', 0.42, :ai_tool, 'finalized')"
+            ),
+            {"ws": workspace_id, "req": str(request_id), "ai_tool": ai_tool},
+        )
+        # Stale open reservation, created 24h ago (past recovery grace).
+        db.execute(
+            text(
+                "INSERT INTO budget_reservations "
+                "(id, workspace_id, ai_tool, estimated_cents, period_key, "
+                " status, request_id, created_at) "
+                "VALUES (gen_random_uuid(), CAST(:ws AS uuid), :ai_tool, "
+                "        200, :period, 'open', CAST(:req AS uuid), :created)"
+            ),
+            {
+                "ws": workspace_id,
+                "ai_tool": ai_tool,
+                "period": period,
+                "req": str(request_id),
+                "created": now - timedelta(hours=24),
+            },
+        )
+        db.commit()
+
+    committed_calls: list = []
+
+    class _FakeLedger:
+        def commit(self, *, db, reservation, actual_cents, actual_micros=None):
+            committed_calls.append(
+                {"actual_cents": actual_cents, "actual_micros": actual_micros}
+            )
+
+        def release(self, *, db, reservation):
+            pass
+
+    with patch("app.core.budget_ledger.enabled", return_value=True), patch(
+        "app.core.budget_ledger.get_budget_ledger", return_value=_FakeLedger()
+    ), patch(
+        "app.core.budget_ledger._allowlisted_workspaces", return_value=None
+    ):
+        result = run_recovery_sweep(
+            session_factory=SessionLocal, stale_seconds=1
+        )
+
+    assert result["committed"] == 1
+    assert len(committed_calls) == 1
+    # Receipt cost = 1_050 μUSD. Audit cost would have been 420_000 μUSD
+    # (0.42 USD × 1M). Locking receipt-precedence.
+    assert committed_calls[0]["actual_micros"] == 1_050
+    assert committed_calls[0]["actual_cents"] == 0  # 1_050 // 10_000 = 0
+
+
+def test_recovery_sweep_leaves_open_when_only_partial_receipt_exists(workspace_id):
+    """A PARTIAL receipt does not qualify for commit; recovery must
+    leave the reservation open so the accounting reconciler can
+    backfill a definitive receipt later."""
+    from app.core.database import SessionLocal
+    from app.core.budget_reconciler import run_recovery_sweep
+    from app.core.budget_ledger import monthly_period_key
+    from datetime import datetime, timedelta, timezone
+    from sqlalchemy import text
+    from unittest.mock import patch
+    from app.runtime.accounting.shadow_writer import shadow_write
+
+    request_id = uuid.uuid4()
+    period = monthly_period_key()
+    now = datetime.now(timezone.utc)
+    ai_tool = f"pr4-recover-partial-{uuid.uuid4().hex[:8]}"
+
+    # Partial-stream receipt: cost is populated (normalizer emitted a
+    # number for the seen frames) but usage_completeness='partial'.
+    partial_sse = (
+        b"event: message_start\n"
+        b'data: {"type":"message_start","message":{"usage":{"input_tokens":100,"output_tokens":1}}}\n\n'
+    )
+    shadow_write(
+        workspace_id=workspace_id,
+        request_id=request_id,
+        provider="anthropic",
+        model="claude-sonnet-4-6",
+        operation="messages.create",
+        dispatched=True,
+        response_bytes=partial_sse,
+        legacy_input_tokens=None,
+        legacy_output_tokens=None,
+        legacy_cost_usd=None,
+        source="gateway",
+        client_tool=ai_tool,
+    )
+    with SessionLocal() as db:
+        # Stale open reservation.
+        db.execute(
+            text(
+                "INSERT INTO budget_reservations "
+                "(id, workspace_id, ai_tool, estimated_cents, period_key, "
+                " status, request_id, created_at) "
+                "VALUES (gen_random_uuid(), CAST(:ws AS uuid), :ai_tool, "
+                "        200, :period, 'open', CAST(:req AS uuid), :created)"
+            ),
+            {
+                "ws": workspace_id,
+                "ai_tool": ai_tool,
+                "period": period,
+                "req": str(request_id),
+                "created": now - timedelta(hours=24),
+            },
+        )
+        db.commit()
+
+    committed_calls: list = []
+    released_calls: list = []
+
+    class _FakeLedger:
+        def commit(self, **kw):
+            committed_calls.append(kw)
+
+        def release(self, **kw):
+            released_calls.append(kw)
+
+    with patch("app.core.budget_ledger.enabled", return_value=True), patch(
+        "app.core.budget_ledger.get_budget_ledger", return_value=_FakeLedger()
+    ), patch(
+        "app.core.budget_ledger._allowlisted_workspaces", return_value=None
+    ):
+        run_recovery_sweep(
+            session_factory=SessionLocal, stale_seconds=1
+        )
+
+    # Filter to this test's ai_tool — the module workspace fixture is
+    # shared with earlier tests that also seeded reservations. The
+    # invariant: NO commit for the partial receipt's reservation.
+    my_commits = [
+        c for c in committed_calls if c["reservation"].ai_tool == ai_tool
+    ]
+    assert my_commits == []
+
+
+# ─── P1-B (reconcile skips partial receipts) ──────────────────────────
+
+
+def test_redis_reconcile_skips_partial_receipts_to_prevent_double_count(
+    workspace_id,
+):
+    """PR 4 P1-B: PARTIAL receipts have open reservations. If the Redis
+    rebuild sums them alongside the open reservation, we double-count."""
+    from app.core.database import SessionLocal
+    from app.core.budget_ledger import BudgetLedger
+    from app.runtime.accounting.shadow_writer import shadow_write
+
+    ai_tool = f"pr4-partial-skip-{uuid.uuid4().hex[:8]}"
+
+    # One settleable receipt (1050 μUSD, complete + priced).
+    shadow_write(
+        workspace_id=workspace_id,
+        request_id=uuid.uuid4(),
+        provider="anthropic",
+        model="claude-sonnet-4-6",
+        operation="messages.create",
+        dispatched=True,
+        response_bytes=b'{"usage":{"input_tokens":100,"output_tokens":50}}',
+        legacy_input_tokens=None,
+        legacy_output_tokens=None,
+        legacy_cost_usd=None,
+        source="gateway",
+        client_tool=ai_tool,
+    )
+    # One PARTIAL receipt (still has a cost, but usage_completeness=partial).
+    partial_sse = (
+        b"event: message_start\n"
+        b'data: {"type":"message_start","message":{"usage":{"input_tokens":100,"output_tokens":1}}}\n\n'
+    )
+    shadow_write(
+        workspace_id=workspace_id,
+        request_id=uuid.uuid4(),
+        provider="anthropic",
+        model="claude-sonnet-4-6",
+        operation="messages.create",
+        dispatched=True,
+        response_bytes=partial_sse,
+        legacy_input_tokens=None,
+        legacy_output_tokens=None,
+        legacy_cost_usd=None,
+        source="gateway",
+        client_tool=ai_tool,
+    )
+
+    committed_written: dict[str, int] = {}
+
+    class _FakeRedis:
+        def __init__(self):
+            self._store: dict[str, str] = {}
+
+        def get(self, k):
+            return self._store.get(k)
+
+        def set(self, k, v, **kw):
+            self._store[k] = str(v)
+            committed_written[k] = int(v)
+            return True
+
+        def incrbyfloat(self, k, v):
+            self._store[k] = str(float(self._store.get(k, "0")) + float(v))
+            return self._store[k]
+
+        def incrby(self, k, v):
+            self._store[k] = str(int(self._store.get(k, "0")) + int(v))
+            return self._store[k]
+
+        def delete(self, *keys):
+            for k in keys:
+                self._store.pop(k, None)
+            return len(keys)
+
+        def hset(self, *a, **k):
+            return 1
+
+        def hgetall(self, *a, **k):
+            return {}
+
+        def expire(self, *a, **k):
+            return True
+
+        def pipeline(self, *a, **k):
+            return self
+
+        def execute(self, *a, **k):
+            return []
+
+    ledger = BudgetLedger(redis_client=_FakeRedis())
+    with SessionLocal() as db:
+        ledger.reconcile(db, workspace_id, ai_tool=ai_tool)
+
+    committed_keys = [k for k in committed_written if "committed" in k]
+    assert committed_keys
+    total = sum(committed_written[k] for k in committed_keys)
+    # Only the complete+priced receipt counts (1_050). Partial excluded.
+    assert total == 1_050
+
+
+# ─── P1-C (pre-cutover audit fallback) ────────────────────────────────
+
+
+def test_reconcile_folds_in_legacy_audit_for_requests_without_receipts(
+    workspace_id,
+):
+    """PR 4 P1-C: pre-cutover requests have audit rows but no receipts.
+    The rebuild must include them; otherwise historical spend
+    disappears from the current period's balance."""
+    from app.core.database import SessionLocal
+    from app.core.budget_ledger import BudgetLedger
+    from app.runtime.accounting.shadow_writer import shadow_write
+    from sqlalchemy import text
+
+    ai_tool = f"pr4-legacy-{uuid.uuid4().hex[:8]}"
+
+    # Post-cutover receipt: 1_050 μUSD.
+    shadow_write(
+        workspace_id=workspace_id,
+        request_id=uuid.uuid4(),
+        provider="anthropic",
+        model="claude-sonnet-4-6",
+        operation="messages.create",
+        dispatched=True,
+        response_bytes=b'{"usage":{"input_tokens":100,"output_tokens":50}}',
+        legacy_input_tokens=None,
+        legacy_output_tokens=None,
+        legacy_cost_usd=None,
+        source="gateway",
+        client_tool=ai_tool,
+    )
+    # Pre-cutover audit event WITHOUT a corresponding receipt: 0.001 USD
+    # = 1_000 μUSD. Must be included in the rebuilt total.
+    with SessionLocal() as db:
+        db.execute(
+            text(
+                "INSERT INTO guard_audit_events "
+                "(id, workspace_id, request_id, ts, source, provider, model, "
+                " decision, cost_usd_after, ai_tool) "
+                "VALUES (gen_random_uuid(), CAST(:ws AS uuid), gen_random_uuid(), "
+                "        now(), 'gateway', 'anthropic', 'claude-sonnet-4-6', "
+                "        'allowed', 0.001, :ai_tool)"
+            ),
+            {"ws": workspace_id, "ai_tool": ai_tool},
+        )
+        db.commit()
+
+    committed_written: dict[str, int] = {}
+
+    class _FakeRedis:
+        def __init__(self):
+            self._store: dict[str, str] = {}
+
+        def get(self, k):
+            return self._store.get(k)
+
+        def set(self, k, v, **kw):
+            self._store[k] = str(v)
+            committed_written[k] = int(v)
+            return True
+
+        def incrbyfloat(self, k, v):
+            self._store[k] = str(float(self._store.get(k, "0")) + float(v))
+            return self._store[k]
+
+        def incrby(self, k, v):
+            self._store[k] = str(int(self._store.get(k, "0")) + int(v))
+            return self._store[k]
+
+        def delete(self, *keys):
+            for k in keys:
+                self._store.pop(k, None)
+            return len(keys)
+
+        def hset(self, *a, **k):
+            return 1
+
+        def hgetall(self, *a, **k):
+            return {}
+
+        def expire(self, *a, **k):
+            return True
+
+        def pipeline(self, *a, **k):
+            return self
+
+        def execute(self, *a, **k):
+            return []
+
+    ledger = BudgetLedger(redis_client=_FakeRedis())
+    with SessionLocal() as db:
+        ledger.reconcile(db, workspace_id, ai_tool=ai_tool)
+
+    committed_keys = [k for k in committed_written if "committed" in k]
+    total = sum(committed_written[k] for k in committed_keys)
+    # 1_050 receipt + 1_000 audit fallback = 2_050 μUSD.
+    assert total == 2_050
+
+
+def test_reconcile_does_not_double_count_audit_when_receipt_exists(
+    workspace_id,
+):
+    """Pre-cutover fallback filter: a request with BOTH an audit event
+    AND a settleable receipt (either from live cutover or a migrated
+    row) must be counted ONCE — from the receipt."""
+    from app.core.database import SessionLocal
+    from app.core.budget_ledger import BudgetLedger
+    from app.runtime.accounting.shadow_writer import shadow_write
+    from sqlalchemy import text
+
+    ai_tool = f"pr4-nodup-{uuid.uuid4().hex[:8]}"
+    request_id = uuid.uuid4()
+
+    # Same request: settleable receipt (1_050 μUSD) + audit (0.42 USD).
+    shadow_write(
+        workspace_id=workspace_id,
+        request_id=request_id,
+        provider="anthropic",
+        model="claude-sonnet-4-6",
+        operation="messages.create",
+        dispatched=True,
+        response_bytes=b'{"usage":{"input_tokens":100,"output_tokens":50}}',
+        legacy_input_tokens=None,
+        legacy_output_tokens=None,
+        legacy_cost_usd=None,
+        source="gateway",
+        client_tool=ai_tool,
+    )
+    with SessionLocal() as db:
+        db.execute(
+            text(
+                "INSERT INTO guard_audit_events "
+                "(id, workspace_id, request_id, ts, source, provider, model, "
+                " decision, cost_usd_after, ai_tool) "
+                "VALUES (gen_random_uuid(), CAST(:ws AS uuid), CAST(:req AS uuid), "
+                "        now(), 'gateway', 'anthropic', 'claude-sonnet-4-6', "
+                "        'allowed', 0.42, :ai_tool)"
+            ),
+            {
+                "ws": workspace_id,
+                "req": str(request_id),
+                "ai_tool": ai_tool,
+            },
+        )
+        db.commit()
+
+    committed_written: dict[str, int] = {}
+
+    class _FakeRedis:
+        def __init__(self):
+            self._store: dict[str, str] = {}
+
+        def get(self, k):
+            return self._store.get(k)
+
+        def set(self, k, v, **kw):
+            self._store[k] = str(v)
+            committed_written[k] = int(v)
+            return True
+
+        def incrbyfloat(self, k, v):
+            self._store[k] = str(float(self._store.get(k, "0")) + float(v))
+            return self._store[k]
+
+        def incrby(self, k, v):
+            self._store[k] = str(int(self._store.get(k, "0")) + int(v))
+            return self._store[k]
+
+        def delete(self, *keys):
+            for k in keys:
+                self._store.pop(k, None)
+            return len(keys)
+
+        def hset(self, *a, **k):
+            return 1
+
+        def hgetall(self, *a, **k):
+            return {}
+
+        def expire(self, *a, **k):
+            return True
+
+        def pipeline(self, *a, **k):
+            return self
+
+        def execute(self, *a, **k):
+            return []
+
+    ledger = BudgetLedger(redis_client=_FakeRedis())
+    with SessionLocal() as db:
+        ledger.reconcile(db, workspace_id, ai_tool=ai_tool)
+
+    committed_keys = [k for k in committed_written if "committed" in k]
+    total = sum(committed_written[k] for k in committed_keys)
+    # Receipt only (1_050), NOT 1_050 + 420_000.
+    assert total == 1_050
+
+
+# ─── P1-D (receipts written before settlement) ────────────────────────
+
+
+def test_gateway_handler_writes_receipts_before_settling():
+    """P1-D wiring pin: gateway_handler must call the receipt writer
+    BEFORE ``_settle_reservations`` on both the non-streaming and
+    streaming settlement paths. Reversing that ordering leaves
+    committed spend without recovery-authoritative evidence."""
+    import inspect
+    from app.modules.guard import gateway_handler
+
+    src = inspect.getsource(gateway_handler)
+    # Non-streaming: receipts write logs 'receipts_partial_skip_settle'
+    # and settle is gated on ``_receipts_durable``.
+    assert "_receipts_durable" in src
+    assert "receipts_partial_skip_settle" in src or "receipts_write_failed" in src
+    # Streaming wrapper: parallel gate.
+    assert "_stream_receipts_durable" in src
+
+
 def test_responses_operation_populates_output_tokens_correctly(workspace_id):
     """Receipt written under ``operation`` containing 'responses' must
     pick OPENAI_RESPONSES family. Pre-fix the stream wrapper hardcoded

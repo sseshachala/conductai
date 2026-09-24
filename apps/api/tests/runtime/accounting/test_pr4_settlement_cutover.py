@@ -391,5 +391,9 @@ def test_reconciler_reads_committed_from_llm_attempt_receipts_not_audit():
     reconcile_src = inspect.getsource(budget_ledger.BudgetLedger.reconcile)
     assert "LlmAttemptReceipt" in reconcile_src
     assert "calculated_cost_microdollars" in reconcile_src
-    # And crucially — no longer reads from the audit table for spend.
-    assert "GuardAuditEvent.cost_usd_after" not in reconcile_src
+    # P1-C: the reconciler MAY read audit rows as a pre-cutover fallback,
+    # but ONLY under a NOT EXISTS predicate that excludes any request
+    # already represented by a settleable receipt. Assert the completeness
+    # gate is present so partial receipts never contribute to the sum.
+    assert "usage_completeness" in reconcile_src
+    assert "pricing_completeness" in reconcile_src

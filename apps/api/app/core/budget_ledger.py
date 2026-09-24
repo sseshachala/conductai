@@ -744,15 +744,30 @@ class BudgetLedger:
         math (no cache breakout). Live settlement uses the new engine's
         ``calculated_cost_microdollars`` on ``llm_attempt_receipts``. Reading
         from the audit table here made a Redis rebuild restore a DIFFERENT
-        total than the live counter — the P1 that gated Option A. Skip
-        receipts with NULL ``calculated_cost_microdollars`` (PENDING /
-        UNPRICED — no defensible number)."""
+        total than the live counter.
+
+        P1-B (post-review): filter by ``usage_completeness='complete'``
+        AND ``pricing_completeness in {'priced','override_applied'}``.
+        A PARTIAL receipt CAN carry a non-null cost (the normalizer
+        emits a number for the frames it saw), but the settlement path
+        returns None → the reservation for that request STAYS OPEN.
+        If Redis rebuild sums that non-null cost AND also sums the open
+        reservation, we double-count. Only "definitively settleable"
+        receipts contribute to the committed counter.
+
+        P1-C (post-review): pre-cutover requests only exist in
+        ``guard_audit_events`` (no receipts were being written when they
+        settled). Add a fallback sum over audit rows whose request_id
+        has NO settleable receipt — their ``cost_usd_after`` is the
+        authoritative number the ledger already committed at settle
+        time. This preserves the current period's historical balance
+        without keeping the old engine on the live path."""
         period = monthly_period_key()
         period_start = _period_start(period)
 
         # 1) Committed from receipts (authoritative post-cutover source).
         from app.models.llm_attempt_receipt import LlmAttemptReceipt
-        from app.modules.guard.models import BudgetReservation
+        from app.modules.guard.models import BudgetReservation, GuardAuditEvent
         try:
             ws_uuid = uuid.UUID(workspace_id) if _looks_like_uuid(workspace_id) else workspace_id
         except (ValueError, AttributeError):
@@ -764,6 +779,12 @@ class BudgetLedger:
             LlmAttemptReceipt.workspace_id == ws_uuid,
             LlmAttemptReceipt.finalized_at >= period_start,
             LlmAttemptReceipt.calculated_cost_microdollars.isnot(None),
+            # P1-B: partial/incomplete receipts still have open reservations;
+            # counting them here + the reservation would double-charge.
+            LlmAttemptReceipt.usage_completeness == "complete",
+            LlmAttemptReceipt.pricing_completeness.in_(
+                ("priced", "override_applied")
+            ),
         )
         if ai_tool is not None:
             # R11 fix (reviewer P1) — carries over: transport-scoped
@@ -782,6 +803,46 @@ class BudgetLedger:
         if agent_identity_id is not None:
             q = q.filter(LlmAttemptReceipt.agent_identity_id == agent_identity_id)
         committed_micros = int(q.scalar() or 0)
+
+        # 1b) P1-C legacy fallback: audit rows whose request_id has NO
+        # settleable receipt. These are pre-cutover settlements where
+        # ``cost_usd_after`` was the authoritative commit number under
+        # the old engine. Excluding request_ids with a receipt prevents
+        # double-counting a request that migrated from legacy → new
+        # (never happens for a single request, but keeps the query
+        # self-consistent).
+        legacy_q = db.query(
+            func.coalesce(
+                func.sum(GuardAuditEvent.cost_usd_after), 0.0
+            )
+        ).filter(
+            GuardAuditEvent.workspace_id == ws_uuid,
+            GuardAuditEvent.ts >= period_start,
+            GuardAuditEvent.cost_usd_after.isnot(None),
+            ~db.query(LlmAttemptReceipt.request_id)
+            .filter(
+                LlmAttemptReceipt.request_id == GuardAuditEvent.request_id,
+                LlmAttemptReceipt.calculated_cost_microdollars.isnot(None),
+                LlmAttemptReceipt.usage_completeness == "complete",
+                LlmAttemptReceipt.pricing_completeness.in_(
+                    ("priced", "override_applied")
+                ),
+            )
+            .exists(),
+        )
+        if ai_tool is not None:
+            if _is_transport(ai_tool):
+                legacy_q = legacy_q.filter(GuardAuditEvent.source == ai_tool)
+            else:
+                legacy_q = legacy_q.filter(GuardAuditEvent.ai_tool == ai_tool)
+        if clerk_user_id is not None:
+            legacy_q = legacy_q.filter(GuardAuditEvent.clerk_user_id == clerk_user_id)
+        if agent_identity_id is not None:
+            legacy_q = legacy_q.filter(
+                GuardAuditEvent.agent_identity_id == agent_identity_id
+            )
+        legacy_usd = float(legacy_q.scalar() or 0.0)
+        committed_micros += int(round(legacy_usd * 1_000_000))
         committed_cents = committed_micros // 10_000  # for legacy log lines
 
         # 2) Open reservations from durable log.

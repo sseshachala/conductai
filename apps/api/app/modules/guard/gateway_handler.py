@@ -1426,11 +1426,98 @@ async def handle_gateway_request(
                             model=model,
                         )
 
+            # P1-D (post-review): persist per-attempt receipts BEFORE
+            # settling reservations. Receipts are the durable, idempotent
+            # authoritative record recovery reads (P1-1, P1-A). Settling
+            # first and losing the write leaves committed spend with no
+            # evidence to reconstruct from. Failure to persist any
+            # expected receipt ⇒ skip settle; the reservation stays open
+            # and the recovery sweep re-classifies from the receipt(s)
+            # that eventually land.
+            _receipts_durable = False
+            _attempts_meta = (
+                _routing_meta.get("attempts")
+                if isinstance(_routing_meta, dict)
+                else None
+            )
+            _expected_receipts = (
+                len(_attempts_meta) if _attempts_meta else 1
+            )
+            if not isinstance(_response, StreamingResponse):
+                try:
+                    from app.runtime.accounting.shadow_writer import (
+                        write_receipts_for_attempts as _write_shadow_attempts,
+                    )
+                    _reserved_micros: int | None = None
+                    if _reservations:
+                        try:
+                            _reserved_micros = sum(
+                                int(getattr(r, "estimated_micros", 0) or 0)
+                                for r in _reservations
+                            ) or None
+                        except Exception:
+                            _reserved_micros = None
+                    # #2209 Session 6D — attribution: when this Gateway
+                    # request originated from a workflow run (brain_block
+                    # via gateway_profile adapter), the caller sent
+                    # x-conductai-run-id — carry it onto the receipt so
+                    # per-run cost aggregations JOIN cleanly.
+                    _wf_run_uuid = None
+                    if _run_id:
+                        try:
+                            import uuid as _uuid_wf
+                            _wf_run_uuid = _uuid_wf.UUID(str(_run_id))
+                        except (ValueError, TypeError):
+                            _wf_run_uuid = None
+                    _receipt_ids = await run_in_threadpool(
+                        _write_shadow_attempts,
+                        workspace_id=workspace_id,
+                        request_id=_audit_request_id,
+                        provider=provider,
+                        model=model,
+                        operation=request.url.path,
+                        dispatched=_dispatched,
+                        response_bytes=_resp_bytes,
+                        legacy_input_tokens=None,
+                        legacy_output_tokens=None,
+                        legacy_cost_usd=None,
+                        reserved_microdollars=_reserved_micros,
+                        developer_external_id=clerk_user_id,
+                        agent_identity_id=_agent_identity_id,
+                        source="gateway",
+                        client_tool=ai_tool,
+                        attempts_meta=_attempts_meta,
+                        workflow_run_id=_wf_run_uuid,
+                        hook_session_id=_hook_session_id,
+                    )
+                    _receipts_durable = (
+                        _receipt_ids is not None
+                        and len(_receipt_ids) >= _expected_receipts
+                    )
+                    if not _receipts_durable:
+                        log.warning(
+                            "guard.gateway.receipts_partial_skip_settle",
+                            request_id=str(_audit_request_id),
+                            written=len(_receipt_ids) if _receipt_ids else 0,
+                            expected=_expected_receipts,
+                        )
+                except Exception:
+                    log.exception(
+                        "guard.gateway.receipts_write_failed",
+                        request_id=str(_audit_request_id),
+                    )
+                    _receipts_durable = False
+
             # Reservation-gated settlement — actual cost from the new engine.
-            # When the response can't be priced (unknown model under strict,
-            # partial usage, or no usage extractable), _new_engine_micros is
-            # None and the ledger records the reservation as PENDING_RECONCILER.
-            if _reservations and not isinstance(_response, StreamingResponse):
+            # Gated on ``_receipts_durable`` (P1-D): if the receipts didn't
+            # persist, leave the reservation open so the recovery sweep can
+            # reconstruct authoritative cost from the receipt(s) that
+            # eventually land. Never commit spend without durable evidence.
+            if (
+                _reservations
+                and not isinstance(_response, StreamingResponse)
+                and _receipts_durable
+            ):
                 try:
                     if _dispatched and _actual_cents is None and _new_engine_micros is not None:
                         _actual_micros = _new_engine_micros
@@ -1468,71 +1555,6 @@ async def handle_gateway_request(
                         reservation_count=len(_reservations),
                         dispatched=_dispatched,
                     )
-
-            # #2209 reviewer response (#2221):
-            #  - #2: shadow accounting fires REGARDLESS of reservations.
-            #  - #3: write one receipt per attempt via helper.
-            #  - #5: wrap the sync DB write in run_in_threadpool so it
-            #    does not block the async event loop.
-            #  - #9: reserved_microdollars comes from the ledger reservation
-            #    (sum of estimated_micros across active reservations),
-            #    NOT the actual cost. Actual cost lives in
-            #    calculated_cost_microdollars on the row.
-            if not isinstance(_response, StreamingResponse):
-                try:
-                    from app.runtime.accounting.shadow_writer import (
-                        write_receipts_for_attempts as _write_shadow_attempts,
-                    )
-                    _reserved_micros: int | None = None
-                    if _reservations:
-                        try:
-                            _reserved_micros = sum(
-                                int(getattr(r, "estimated_micros", 0) or 0)
-                                for r in _reservations
-                            ) or None
-                        except Exception:
-                            _reserved_micros = None
-                    _attempts_meta = (
-                        _routing_meta.get("attempts")
-                        if isinstance(_routing_meta, dict)
-                        else None
-                    )
-                    # #2209 Session 6D — attribution: when this Gateway
-                    # request originated from a workflow run (brain_block
-                    # via gateway_profile adapter), the caller sent
-                    # x-conductai-run-id — carry it onto the receipt so
-                    # per-run cost aggregations JOIN cleanly.
-                    _wf_run_uuid = None
-                    if _run_id:
-                        try:
-                            import uuid as _uuid_wf
-                            _wf_run_uuid = _uuid_wf.UUID(str(_run_id))
-                        except (ValueError, TypeError):
-                            _wf_run_uuid = None
-                    await run_in_threadpool(
-                        _write_shadow_attempts,
-                        workspace_id=workspace_id,
-                        request_id=_audit_request_id,
-                        provider=provider,
-                        model=model,
-                        operation=request.url.path,
-                        dispatched=_dispatched,
-                        response_bytes=_resp_bytes,
-                        legacy_input_tokens=None,
-                        legacy_output_tokens=None,
-                        legacy_cost_usd=None,
-                        reserved_microdollars=_reserved_micros,
-                        developer_external_id=clerk_user_id,
-                        agent_identity_id=_agent_identity_id,
-                        source="gateway",
-                        client_tool=ai_tool,
-                        attempts_meta=_attempts_meta,
-                        workflow_run_id=_wf_run_uuid,
-                        hook_session_id=_hook_session_id,
-                    )
-                except Exception:
-                    # shadow_write catches internally; belt-and-suspenders.
-                    pass
 
         # Streaming lifecycle: transfer admission ticket ownership so the
         # outer finally does not release before ASGI drains the response.
@@ -2528,7 +2550,87 @@ def _wrap_v2_stream_finalize(
                         provider=provider,
                         model=model,
                     )
-            if reservations:
+            # P1-D (post-review): persist per-attempt receipts BEFORE
+            # settling reservations. Same ordering invariant as the
+            # non-streaming path. Failure to persist any expected receipt
+            # ⇒ skip settle; recovery sweep reconstructs from whatever
+            # eventually lands.
+            _stream_receipts_durable = False
+            _stream_meta = _routing_meta if isinstance(_routing_meta, dict) else {}
+            _stream_attempts_meta = _stream_meta.get("attempts")
+            _stream_expected_receipts = (
+                len(_stream_attempts_meta) if _stream_attempts_meta else 1
+            )
+            try:
+                from app.runtime.accounting.shadow_writer import (
+                    write_receipts_for_attempts as _write_shadow_attempts,
+                )
+                from starlette.concurrency import (
+                    run_in_threadpool as _rin_threadpool_shadow,
+                )
+                _reserved_micros: int | None = None
+                if reservations:
+                    try:
+                        _reserved_micros = sum(
+                            int(getattr(r, "estimated_micros", 0) or 0)
+                            for r in reservations
+                        ) or None
+                    except Exception:
+                        _reserved_micros = None
+                # #2209 Session 6D — workflow attribution.
+                _stream_wf_run_uuid = None
+                if conductai_run_id:
+                    try:
+                        import uuid as _uuid_wf_stream
+                        _stream_wf_run_uuid = _uuid_wf_stream.UUID(
+                            str(conductai_run_id)
+                        )
+                    except (ValueError, TypeError):
+                        _stream_wf_run_uuid = None
+                _stream_receipt_ids = await _rin_threadpool_shadow(
+                    _write_shadow_attempts,
+                    workspace_id=workspace_id,
+                    request_id=(
+                        (durable.request_id if durable is not None else None)
+                        or row_id
+                    ),
+                    provider=provider,
+                    model=model,
+                    operation=operation,  # P1-4: real op flows to receipt normalizer too
+                    dispatched=True,
+                    response_bytes=_stream_resp_bytes,
+                    legacy_input_tokens=None,
+                    legacy_output_tokens=None,
+                    legacy_cost_usd=None,
+                    reserved_microdollars=_reserved_micros,
+                    developer_external_id=clerk_user_id,
+                    source="gateway",
+                    client_tool=ai_tool,
+                    attempts_meta=_stream_attempts_meta,
+                    workflow_run_id=_stream_wf_run_uuid,
+                )
+                _stream_receipts_durable = (
+                    _stream_receipt_ids is not None
+                    and len(_stream_receipt_ids) >= _stream_expected_receipts
+                )
+                if not _stream_receipts_durable:
+                    log.warning(
+                        "guard.gateway.v2.stream_receipts_partial_skip_settle",
+                        row_id=row_id,
+                        written=(
+                            len(_stream_receipt_ids)
+                            if _stream_receipt_ids else 0
+                        ),
+                        expected=_stream_expected_receipts,
+                    )
+            except Exception:
+                log.exception(
+                    "guard.gateway.v2.stream_receipts_write_failed",
+                    row_id=row_id,
+                )
+                _stream_receipts_durable = False
+
+            if reservations and _stream_receipts_durable:
                 try:
                     from app.modules.guard.gateway_lifecycle import (
                         settle_reservations as _settle_reservations,
@@ -2571,65 +2673,6 @@ def _wrap_v2_stream_finalize(
                         row_id=row_id,
                         reservation_count=len(reservations) if reservations else 0,
                     )
-
-            # #2209 reviewer response (#2221):
-            #  - #2: shadow accounting fires REGARDLESS of reservations (was
-            #    nested inside `if reservations:`).
-            #  - #3: per-attempt via write_receipts_for_attempts helper.
-            #  - #5: wrap sync DB write in threadpool.
-            #  - #9: reserved_microdollars from ledger reservation, not
-            #    actual cost.
-            try:
-                from app.runtime.accounting.shadow_writer import (
-                    write_receipts_for_attempts as _write_shadow_attempts,
-                )
-                from starlette.concurrency import (
-                    run_in_threadpool as _rin_threadpool_shadow,
-                )
-                _stream_meta = _routing_meta if isinstance(_routing_meta, dict) else {}
-                _reserved_micros: int | None = None
-                if reservations:
-                    try:
-                        _reserved_micros = sum(
-                            int(getattr(r, "estimated_micros", 0) or 0)
-                            for r in reservations
-                        ) or None
-                    except Exception:
-                        _reserved_micros = None
-                # #2209 Session 6D — workflow attribution.
-                _stream_wf_run_uuid = None
-                if conductai_run_id:
-                    try:
-                        import uuid as _uuid_wf_stream
-                        _stream_wf_run_uuid = _uuid_wf_stream.UUID(
-                            str(conductai_run_id)
-                        )
-                    except (ValueError, TypeError):
-                        _stream_wf_run_uuid = None
-                await _rin_threadpool_shadow(
-                    _write_shadow_attempts,
-                    workspace_id=workspace_id,
-                    request_id=(
-                        (durable.request_id if durable is not None else None)
-                        or row_id
-                    ),
-                    provider=provider,
-                    model=model,
-                    operation=operation,  # P1-4: real op flows to receipt normalizer too
-                    dispatched=True,
-                    response_bytes=_stream_resp_bytes,
-                    legacy_input_tokens=None,
-                    legacy_output_tokens=None,
-                    legacy_cost_usd=None,
-                    reserved_microdollars=_reserved_micros,
-                    developer_external_id=clerk_user_id,
-                    source="gateway",
-                    client_tool=ai_tool,
-                    attempts_meta=_stream_meta.get("attempts"),
-                    workflow_run_id=_stream_wf_run_uuid,
-                )
-            except Exception:
-                pass
 
             # X4 — cancel the renewal task last, AFTER finalize. If we
             # cancelled first, the row would show up as expired to the

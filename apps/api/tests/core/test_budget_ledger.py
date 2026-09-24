@@ -88,6 +88,22 @@ class _StubQuery:
         # narrowed them via other means.
         return list(self._rows)
 
+    def exists(self):
+        # PR 4 P1-C: budget_ledger.reconcile builds a NOT EXISTS
+        # subquery against the receipts table to skip pre-cutover audit
+        # rows that already have a settleable receipt. The stub
+        # returns a marker object with ``~`` support so the SQLA
+        # negation ``~q.exists()`` keeps working under the reconcile
+        # path in tests that don't exercise the reconcile query.
+        class _Exists:
+            def __invert__(self):
+                return self
+
+            def __bool__(self):
+                return False
+
+        return _Exists()
+
 
 class _StubSession:
     def __init__(self):

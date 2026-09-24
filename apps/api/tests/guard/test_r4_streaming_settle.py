@@ -86,9 +86,16 @@ def test_handler_skips_inline_settle_for_streaming_responses():
     import app.modules.guard.gateway_handler as gh
 
     src = inspect.getsource(gh)
-    assert "_reservations and not isinstance(_response, StreamingResponse)" in src, (
+    # P1-D reordered + added ``_receipts_durable`` gate — the condition
+    # now spans multiple lines. The invariant is: settle body is gated on
+    # ``not isinstance(_response, StreamingResponse)``.
+    assert "not isinstance(_response, StreamingResponse)" in src, (
         "R4 regressed: handler settles inline for streaming responses. "
         "The wrapper owns settlement post-drain."
+    )
+    assert "_receipts_durable" in src, (
+        "P1-D regressed: settle is no longer gated on receipts being "
+        "written first. Recovery cannot reconstruct authoritative spend."
     )
 
 

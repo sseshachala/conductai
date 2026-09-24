@@ -222,24 +222,40 @@ def run_startup_reconciliation(session_factory=None) -> dict:
 def _classify_stale_reservation(db, row) -> str:
     """Return the recovery action for a stale open reservation.
 
-    Rules:
+    Rules (post-cutover — #2209 PR 4 P1-A):
 
-    - If the correlated audit row (via ``request_id``) is finalized
-      with a real cost, the reservation should be ``committed``
-      (settle now).
-    - If the audit row is orphaned/expired/absent, the reservation
-      is either a phantom (R8's Redis-exception path) or genuinely
-      abandoned. Either way ``released`` is safe: released Redis
-      capacity, and the reconciler rebuilds it from the durable log
-      on next run if Redis had actually applied.
-    - If neither condition holds cleanly (audit row still in
-      ``accepted``), leave open — the audit's own lease-expiry sweep
-      will resolve it eventually.
+    - Cost source of truth is ``llm_attempt_receipts.calculated_cost_microdollars``.
+      Commit only when the receipt exists AND is a definitive settle
+      (usage_completeness='complete' + pricing_completeness in
+      {'priced','override_applied'}). Anything else must NOT be
+      auto-committed — settling a partial/unpriced number here would
+      release the reservation on a lower bound. Leave open; the
+      accounting reconciler backfills a definitive receipt later.
+    - Audit ``lifecycle_state`` still governs release-vs-leave for the
+      no-cost cases: orphaned/expired ⇒ release (upstream never
+      accepted bytes); accepted ⇒ leave_open (audit's own lease sweep
+      will resolve).
     """
+    from app.models.llm_attempt_receipt import LlmAttemptReceipt
     from app.modules.guard.models import GuardAuditEvent
 
     if row.request_id is None:
         return "released"
+
+    receipt = (
+        db.query(LlmAttemptReceipt)
+        .filter(
+            LlmAttemptReceipt.request_id == row.request_id,
+            LlmAttemptReceipt.calculated_cost_microdollars.isnot(None),
+            LlmAttemptReceipt.usage_completeness == "complete",
+            LlmAttemptReceipt.pricing_completeness.in_(
+                ("priced", "override_applied")
+            ),
+        )
+        .first()
+    )
+    if receipt is not None:
+        return "committed"
 
     ev = (
         db.query(GuardAuditEvent)
@@ -248,10 +264,12 @@ def _classify_stale_reservation(db, row) -> str:
     )
     if ev is None:
         return "released"
-    if ev.lifecycle_state == "finalized" and ev.cost_usd_after is not None:
-        return "committed"
     if ev.lifecycle_state in ("orphaned", "expired"):
         return "released"
+    # accepted or finalized-but-no-settleable-receipt → leave open so the
+    # accounting reconciler can backfill a definitive receipt. NEVER
+    # commit from audit cost post-cutover: legacy math has no cache
+    # breakout and would understate the ledger.
     return "left_open"
 
 
@@ -334,16 +352,37 @@ def run_recovery_sweep(session_factory=None, *, stale_seconds: int | None = None
 
         try:
             if action == "committed":
-                # Best-effort actual cost from the correlated audit row.
-                from app.modules.guard.models import GuardAuditEvent
-                ev = (
-                    db.query(GuardAuditEvent)
-                    .filter(GuardAuditEvent.request_id == row.request_id)
+                # #2209 PR 4 P1-A: authoritative cost from the settleable
+                # receipt, not the legacy audit row. ``_classify_stale_reservation``
+                # only returns "committed" when a definitive receipt exists,
+                # so this query MUST find it.
+                from app.models.llm_attempt_receipt import LlmAttemptReceipt
+
+                receipt = (
+                    db.query(LlmAttemptReceipt)
+                    .filter(
+                        LlmAttemptReceipt.request_id == row.request_id,
+                        LlmAttemptReceipt.calculated_cost_microdollars.isnot(None),
+                        LlmAttemptReceipt.usage_completeness == "complete",
+                        LlmAttemptReceipt.pricing_completeness.in_(
+                            ("priced", "override_applied")
+                        ),
+                    )
                     .first()
                 )
-                actual_usd = float(ev.cost_usd_after or 0.0) if ev else 0.0
-                actual_cents = int(round(actual_usd * 100))
-                ledger.commit(db=db, reservation=res, actual_cents=actual_cents)
+                if receipt is None:
+                    # Race: receipt was retracted between classify and
+                    # commit. Leave open — the next sweep re-classifies.
+                    actions["left_open"] += 1
+                    continue
+                actual_micros = int(receipt.calculated_cost_microdollars)
+                actual_cents = actual_micros // 10_000
+                ledger.commit(
+                    db=db,
+                    reservation=res,
+                    actual_cents=actual_cents,
+                    actual_micros=actual_micros,
+                )
             elif action == "released":
                 ledger.release(db=db, reservation=res)
             actions[action] += 1
