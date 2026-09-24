@@ -23,22 +23,6 @@ from app.runtime.accounting.shadow_writer import shadow_write
 
 
 @pytest.fixture
-def _shadow_on(monkeypatch):
-    from app.core.config import settings
-
-    monkeypatch.setattr(settings, "guard_accounting_shadow_enabled", True)
-    yield
-
-
-@pytest.fixture
-def _shadow_off(monkeypatch):
-    from app.core.config import settings
-
-    monkeypatch.setattr(settings, "guard_accounting_shadow_enabled", False)
-    yield
-
-
-@pytest.fixture
 def _captured_row(monkeypatch):
     """Intercept _persist_atomic and return whatever row was persisted.
 
@@ -66,24 +50,7 @@ def _captured_row(monkeypatch):
     return captured
 
 
-def test_shadow_off_never_writes(_shadow_off, _captured_row):
-    result = shadow_write(
-        workspace_id=uuid.uuid4(),
-        request_id=uuid.uuid4(),
-        provider="anthropic",
-        model="claude-sonnet-4-6",
-        operation="messages.create",
-        dispatched=True,
-        response_bytes=b'{"usage":{"input_tokens":10,"output_tokens":5}}',
-        legacy_input_tokens=10,
-        legacy_output_tokens=5,
-        legacy_cost_usd=0.0001,
-    )
-    assert result is None
-    assert "row" not in _captured_row
-
-
-def test_shadow_on_writes_anthropic_json(_shadow_on, _captured_row):
+def test_shadow_writes_anthropic_json(_captured_row):
     ws_id = uuid.uuid4()
     req_id = uuid.uuid4()
     result = shadow_write(
@@ -117,7 +84,7 @@ def test_shadow_on_writes_anthropic_json(_shadow_on, _captured_row):
     assert row.usage_completeness == UsageCompleteness.COMPLETE.value
 
 
-def test_shadow_on_writes_openai_json(_shadow_on, _captured_row):
+def test_shadow_writes_openai_json(_captured_row):
     result = shadow_write(
         workspace_id=uuid.uuid4(),
         request_id=uuid.uuid4(),
@@ -138,7 +105,7 @@ def test_shadow_on_writes_openai_json(_shadow_on, _captured_row):
     assert row.total_output_tokens == 50
 
 
-def test_shadow_uses_responses_normalizer_when_operation_matches(_shadow_on, _captured_row):
+def test_shadow_uses_responses_normalizer_when_operation_matches(_captured_row):
     """Responses API uses input_tokens/output_tokens (different from prompt/completion)."""
     shadow_write(
         workspace_id=uuid.uuid4(),
@@ -157,7 +124,7 @@ def test_shadow_uses_responses_normalizer_when_operation_matches(_shadow_on, _ca
     assert row.total_output_tokens == 30
 
 
-def test_shadow_on_writes_anthropic_sse(_shadow_on, _captured_row):
+def test_shadow_writes_anthropic_sse(_captured_row):
     sse = (
         b"event: message_start\n"
         b'data: {"type":"message_start","message":{"usage":{"input_tokens":100,"cache_read_input_tokens":20,"output_tokens":1}}}\n\n'
@@ -184,7 +151,7 @@ def test_shadow_on_writes_anthropic_sse(_shadow_on, _captured_row):
     assert row.cache_read_tokens == 20
 
 
-def test_shadow_captures_not_dispatched_as_preflight_reject(_shadow_on, _captured_row):
+def test_shadow_captures_not_dispatched_as_preflight_reject(_captured_row):
     """A request rejected before dispatch has no usage but should still write a
     receipt row so ops can see the reservation activity."""
     shadow_write(
@@ -206,7 +173,7 @@ def test_shadow_captures_not_dispatched_as_preflight_reject(_shadow_on, _capture
     assert row.total_output_tokens is None
 
 
-def test_shadow_captures_dispatched_with_no_bytes_as_failed(_shadow_on, _captured_row):
+def test_shadow_captures_dispatched_with_no_bytes_as_failed(_captured_row):
     shadow_write(
         workspace_id=uuid.uuid4(),
         request_id=uuid.uuid4(),
@@ -224,7 +191,7 @@ def test_shadow_captures_dispatched_with_no_bytes_as_failed(_shadow_on, _capture
     assert row.usage_completeness == UsageCompleteness.UNAVAILABLE.value
 
 
-def test_shadow_never_raises_on_bad_input(_shadow_on, _captured_row):
+def test_shadow_never_raises_on_bad_input(_captured_row):
     """Corrupt UUID, non-dict response, garbage bytes — never raises."""
     result = shadow_write(
         workspace_id="not-a-uuid",  # type: ignore[arg-type]
@@ -243,7 +210,7 @@ def test_shadow_never_raises_on_bad_input(_shadow_on, _captured_row):
     assert result is None or result is not None
 
 
-def test_shadow_records_attempts_meta_in_provenance(_shadow_on, _captured_row):
+def test_shadow_records_attempts_meta_in_provenance(_captured_row):
     """The routing_meta.attempts array is preserved in provenance so per-
     attempt cost breakdowns are available for Session 5+ analysis."""
     shadow_write(
@@ -266,7 +233,7 @@ def test_shadow_records_attempts_meta_in_provenance(_shadow_on, _captured_row):
     assert row.calculation_provenance["attempts"][0]["target_id"] == "primary"
 
 
-def test_shadow_swallows_db_error(_shadow_on, monkeypatch):
+def test_shadow_swallows_db_error(monkeypatch):
     """Even if the DB throws, shadow_write returns None and does not propagate."""
     def _boom(*_a, **_kw):
         raise RuntimeError("db exploded")
@@ -292,7 +259,7 @@ def test_shadow_swallows_db_error(_shadow_on, monkeypatch):
     assert result is None
 
 
-def test_contract_version_recorded_on_row(_shadow_on, _captured_row):
+def test_contract_version_recorded_on_row(_captured_row):
     from app.runtime.accounting.contracts import CONTRACT_VERSION
 
     shadow_write(

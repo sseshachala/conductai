@@ -8,8 +8,7 @@ request with a real receipt at ordinal 0 and a missing placeholder at
 ordinal 1 (fallback that never got a receipt) is now detected and
 backfilled.
 
-Reconciler writes go through ``shadow_write(source="reconciler",
-pinned_shadow_enabled=True)`` so:
+Reconciler writes go through ``shadow_write(source="reconciler")`` so:
 
 - Normalization + pricing run over any per-attempt
   ``response_bytes_b64`` the coordinator captured (failed attempts
@@ -17,7 +16,6 @@ pinned_shadow_enabled=True)`` so:
   usage on the placeholder).
 - ``_persist_atomic`` idempotency + placeholder-vs-real supersession
   invariants are preserved on this path too.
-- Canary flag is bypassed — reconciler is manual/opt-in already.
 
 Not wired to any scheduler in this session; invoked by ops or a future
 background job. Fully idempotent thanks to
@@ -381,16 +379,12 @@ def _write_placeholder(
 ) -> bool:
     """Write one reconciler-sourced placeholder for a missing attempt.
 
-    Uses ``shadow_write(source="reconciler", pinned_shadow_enabled=True)``
-    so it goes through the same normalization + pricing + atomic upsert
-    path as live writes. Returns True if the shadow_write returned a
-    receipt id (row inserted), False if it was a no-op (unique
-    constraint via ON CONFLICT DO NOTHING, or shadow disabled).
+    Uses ``shadow_write(source="reconciler")`` so it goes through the
+    same normalization + pricing + atomic upsert path as live writes.
+    Returns True if the shadow_write returned a receipt id (row inserted),
+    False if it was a no-op (unique constraint via ON CONFLICT DO NOTHING).
     """
-    from app.runtime.accounting.contracts import (
-        CONTRACT_VERSION,
-        ExecutionOutcome,
-    )
+    from app.runtime.accounting.contracts import ExecutionOutcome
     from app.runtime.accounting.shadow_writer import shadow_write
 
     attempt_meta = attempt_meta or {}
@@ -456,8 +450,5 @@ def _write_placeholder(
         attempt_ordinal=ordinal,
         succeeded=succeeded,
         execution_outcome=execution_outcome,
-        # Bypass the canary — reconciliation is manual/opt-in already.
-        pinned_shadow_enabled=True,
-        pinned_contract_version=CONTRACT_VERSION,
     )
     return result is not None

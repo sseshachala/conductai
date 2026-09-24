@@ -175,21 +175,6 @@ class Settings(BaseSettings):
     # our own caps do (should be rare — ours are strictly tighter).
     guard_gateway_vision_enabled: bool = True
 
-    # #2209 Session 4 — Unified accounting shadow writer. When ON, every
-    # settled gateway attempt also writes a row to ``llm_attempt_receipts``
-    # via ``runtime.accounting.shadow_writer``. Old settlement to
-    # ``guard_audit_events`` remains authoritative — the shadow row exists
-    # only for Session 6 delta metrics. Session 7 flips authority + retires.
-    # Default OFF: no traffic touches the new path until ops enables it.
-    guard_accounting_shadow_enabled: bool = False
-
-    # #2209 Session 6 — per-workspace canary allowlist. When
-    # guard_accounting_shadow_enabled is ON:
-    #   - empty / "*" → all workspaces write shadow receipts
-    #   - "ws1,ws2" → only listed workspaces write shadow receipts
-    # Lets ops enable shadow for a canary set before turning it on globally.
-    guard_accounting_shadow_workspace_allowlist: str = ""
-
     # #2209 PR 3 (Flight Recorder cross-links) — canonical base URL for
     # the Flight Recorder UI. When set, AccountingReader includes
     # deep-links on receipts + aggregates so Lens can hyperlink answers
@@ -371,27 +356,6 @@ class Settings(BaseSettings):
         digest = hashlib.sha256(workspace_id.encode("utf-8")).digest()
         bucket = int.from_bytes(digest[:4], "big") % 100
         return bucket < pct
-
-    def accounting_shadow_enabled_for(self, workspace_id: str) -> bool:
-        """#2209 Session 6 — per-workspace canary for the shadow writer.
-
-        Precedence:
-        1. Global kill switch — ``guard_accounting_shadow_enabled=False``
-           disables the whole feature regardless of allowlist.
-        2. Empty allowlist OR ``*`` — all workspaces write shadow receipts.
-        3. Explicit allowlist — only listed workspace IDs write.
-
-        No percentage rollout by design: shadow rows are cheap and idempotent
-        (unique on request_id, attempt_ordinal), so ops can enable + disable
-        per-workspace freely without partial-canary aliasing.
-        """
-        if not self.guard_accounting_shadow_enabled:
-            return False
-        allowlist = (self.guard_accounting_shadow_workspace_allowlist or "").strip()
-        if not allowlist or allowlist == "*":
-            return True
-        allowed = {w.strip() for w in allowlist.split(",") if w.strip()}
-        return workspace_id in allowed
 
     class Config:
         env_file = ".env"

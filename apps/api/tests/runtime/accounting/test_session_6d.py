@@ -23,9 +23,9 @@ from app.runtime.accounting.contracts import (
 
 
 @pytest.fixture
-def _shadow_on(monkeypatch):
-    monkeypatch.setattr(settings, "guard_accounting_shadow_enabled", True)
-    monkeypatch.setattr(settings, "guard_accounting_shadow_workspace_allowlist", "*")
+def _shadow_on():
+    # Cutover: writer always on. Fixture kept as a no-op for existing callers.
+    yield
 
 
 @pytest.fixture
@@ -162,74 +162,10 @@ def test_response_bytes_b64_is_stripped_from_stored_provenance(_shadow_on, _capt
 
 
 # ─── #2 accounting-version pin ────────────────────────────────────────────
-
-
-def test_pinned_shadow_enabled_false_blocks_write_even_when_settings_are_on(
-    _shadow_on, _captured
-):
-    """Handler pinned False at request entry → row not written even if
-    ops flipped the flag on mid-flight."""
-    from app.runtime.accounting.shadow_writer import shadow_write
-
-    result = shadow_write(
-        workspace_id=uuid.uuid4(),
-        request_id=uuid.uuid4(),
-        provider="anthropic",
-        model="claude-sonnet-4-6",
-        operation="messages.create",
-        dispatched=True,
-        response_bytes=b'{"usage":{"input_tokens":10,"output_tokens":5}}',
-        legacy_input_tokens=10,
-        legacy_output_tokens=5,
-        legacy_cost_usd=0.0001,
-        pinned_shadow_enabled=False,
-    )
-    assert result is None
-    assert len(_captured) == 0
-
-
-def test_pinned_shadow_enabled_true_skips_settings_check(monkeypatch, _captured):
-    """Handler pinned True at request entry → row written even if
-    ops flipped the flag off mid-flight."""
-    monkeypatch.setattr(settings, "guard_accounting_shadow_enabled", False)
-    from app.runtime.accounting.shadow_writer import shadow_write
-
-    result = shadow_write(
-        workspace_id=uuid.uuid4(),
-        request_id=uuid.uuid4(),
-        provider="anthropic",
-        model="claude-sonnet-4-6",
-        operation="messages.create",
-        dispatched=True,
-        response_bytes=b'{"usage":{"input_tokens":10,"output_tokens":5}}',
-        legacy_input_tokens=10,
-        legacy_output_tokens=5,
-        legacy_cost_usd=0.0001,
-        pinned_shadow_enabled=True,
-    )
-    assert result is not None
-    assert len(_captured) == 1
-
-
-def test_pinned_contract_version_wins_over_module_constant(_shadow_on, _captured):
-    """A row started under contract v1 stays v1 even if the codebase
-    later ships contract v2."""
-    from app.runtime.accounting.shadow_writer import shadow_write
-
-    shadow_write(
-        workspace_id=uuid.uuid4(),
-        request_id=uuid.uuid4(),
-        provider="anthropic",
-        model="claude-sonnet-4-6",
-        operation="messages.create",
-        dispatched=True,
-        response_bytes=b'{"usage":{"input_tokens":10,"output_tokens":5}}',
-        legacy_input_tokens=10,
-        legacy_output_tokens=5,
-        legacy_cost_usd=0.0001,
-        pinned_contract_version=99,
-    )
-    assert _captured[0].contract_version == 99
+# Removed at cutover (PR 4): the writer is always on and always writes at
+# ``CONTRACT_VERSION``. Handler-side pinning of a request's contract
+# version at entry made sense while dual-engine machinery lived in the
+# writer; with only one engine, mid-flight flag flips do not exist.
 
 
 # ─── #4 workflow linkage ──────────────────────────────────────────────────

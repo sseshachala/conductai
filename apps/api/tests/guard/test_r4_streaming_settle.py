@@ -66,12 +66,12 @@ def test_wrap_v2_stream_finalize_computes_actual_cents_from_body():
     from app.modules.guard.gateway_handler import _wrap_v2_stream_finalize
 
     src = inspect.getsource(_wrap_v2_stream_finalize)
-    assert "_extract_token_counts" in src, (
-        "wrapper must extract token counts from the drained stream "
-        "bytes so actual_cents reflects real usage."
-    )
-    assert "_compute_audit_cost" in src, (
-        "wrapper must compute cost from the token counts + provider/model."
+    # #2209 PR 4 (cutover): settlement math now runs through
+    # ``settle_micros_for_attempts`` — sums per-attempt priced micros
+    # from the routing_meta so preceding failed attempts are counted.
+    assert "settle_micros_for_attempts" in src, (
+        "wrapper must call settle_micros_for_attempts so failed "
+        "attempts before the winner are settled too."
     )
     assert "_actual_cents_stream" in src, (
         "wrapper must compute an actual_cents value to pass to "
@@ -86,9 +86,16 @@ def test_handler_skips_inline_settle_for_streaming_responses():
     import app.modules.guard.gateway_handler as gh
 
     src = inspect.getsource(gh)
-    assert "_reservations and not isinstance(_response, StreamingResponse)" in src, (
+    # P1-D reordered + added ``_receipts_durable`` gate — the condition
+    # now spans multiple lines. The invariant is: settle body is gated on
+    # ``not isinstance(_response, StreamingResponse)``.
+    assert "not isinstance(_response, StreamingResponse)" in src, (
         "R4 regressed: handler settles inline for streaming responses. "
         "The wrapper owns settlement post-drain."
+    )
+    assert "_receipts_durable" in src, (
+        "P1-D regressed: settle is no longer gated on receipts being "
+        "written first. Recovery cannot reconstruct authoritative spend."
     )
 
 

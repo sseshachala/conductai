@@ -104,16 +104,6 @@ def _fake_audit_row(**overrides):
     return SimpleNamespace(**base)
 
 
-def test_placeholder_write_bypasses_canary_via_pinned_flag(_captured_shadow_calls):
-    """Reconciler is manual/opt-in — it MUST pass
-    pinned_shadow_enabled=True so the write happens regardless of the
-    workspace allowlist."""
-    from app.runtime.accounting.reconciler import _write_placeholder
-
-    _write_placeholder(_fake_audit_row(), 0, {"succeeded": True})
-    assert _captured_shadow_calls[0]["pinned_shadow_enabled"] is True
-
-
 def test_placeholder_carries_source_reconciler(_captured_shadow_calls):
     from app.runtime.accounting.reconciler import _write_placeholder
 
