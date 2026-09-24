@@ -1435,12 +1435,49 @@ async def handle_gateway_request(
                 except Exception:
                     pass
 
-            # Reservation-gated settlement — behavior unchanged.
+            # #2209 PR 4 (settlement cutover) — new engine settles when
+            # settings.new_engine_settles_for_workspace(workspace_id) is
+            # True. Same normalizer + pricing service that populates
+            # calculated_cost_microdollars on shadow receipts. Legacy
+            # _extract_token_counts + _compute_audit_cost path stays as
+            # the fallback until PR 5 deletes it.
+            _new_engine_micros: int | None = None
+            if (
+                _dispatched
+                and _resp_bytes is not None
+                and settings.new_engine_settles_for_workspace(str(workspace_id))
+            ):
+                try:
+                    from app.runtime.accounting.settlement import (
+                        compute_settlement_micros,
+                    )
+                    _new_engine_micros = compute_settlement_micros(
+                        provider=provider,
+                        model=model,
+                        operation=request.url.path,
+                        response_bytes=_resp_bytes,
+                        strict=True,
+                    )
+                except Exception:
+                    log.exception(
+                        "guard.gateway.new_engine_settle_compute_failed",
+                        workspace_id=str(workspace_id),
+                        provider=provider,
+                        model=model,
+                    )
+
+            # Reservation-gated settlement — behavior unchanged for the
+            # legacy path; PR 4 injects the new-engine microdollars when
+            # the workspace is on the cutover allowlist.
             if _reservations and not isinstance(_response, StreamingResponse):
                 try:
-                    if _dispatched and _actual_cents is None and _cost_usd:
-                        _actual_cents = int(round(float(_cost_usd) * 100))
-                        _actual_micros = int(round(float(_cost_usd) * 1_000_000))
+                    if _dispatched and _actual_cents is None:
+                        if _new_engine_micros is not None:
+                            _actual_micros = _new_engine_micros
+                            _actual_cents = int(round(_new_engine_micros / 10_000))
+                        elif _cost_usd:
+                            _actual_cents = int(round(float(_cost_usd) * 100))
+                            _actual_micros = int(round(float(_cost_usd) * 1_000_000))
                     # R3 fix (reviewer P1): settle owns its own session
                     # inside a threadpool call.
                     _reservations_snapshot = list(_reservations)
