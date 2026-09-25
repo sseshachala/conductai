@@ -77,11 +77,11 @@ def test_link_repair_updates_only_eligible_rows(scenario, expected):
             "CREATE TABLE workspaces (id TEXT, owner_id TEXT)",
             "CREATE TABLE workspace_users (workspace_id TEXT, clerk_user_id TEXT)",
             "CREATE TABLE guard_member_config (workspace_id TEXT, clerk_user_id TEXT, active BOOLEAN, agent_identity_id TEXT)",
-            "CREATE TABLE agent_identities (id TEXT, workspace_id TEXT, source TEXT, lifecycle_state TEXT, expires_at TEXT)",
+            "CREATE TABLE agent_identities (id TEXT, workspace_id TEXT, source TEXT, lifecycle_state TEXT, expires_at TEXT, owner_user_id TEXT)",
             "INSERT INTO workspaces VALUES ('ws', 'owner')",
             "INSERT INTO workspace_users VALUES ('ws', 'owner')",
             "INSERT INTO guard_member_config VALUES ('ws', 'owner', true, NULL)",
-            "INSERT INTO agent_identities VALUES ('trial', 'ws', 'conduct_trial', 'active', '2027-01-01')",
+            "INSERT INTO agent_identities VALUES ('trial', 'ws', 'conduct_trial', 'active', '2027-01-01', NULL)",
         ):
             conn.execute(text(sql))
         changes = {
@@ -97,4 +97,34 @@ def test_link_repair_updates_only_eligible_rows(scenario, expected):
             link_trial_owner(db, "ws", "trial")
             link_trial_owner(db, "ws", "trial")
             assert db.execute(text("SELECT agent_identity_id FROM guard_member_config")).scalar() == expected
+            from app.core.auth import _trial_member
+            owner = db.execute(text("SELECT owner_user_id FROM agent_identities")).scalar()
+            identity = SimpleNamespace(source="conduct_trial", owner_user_id=owner, workspace_id="ws")
+            assert _trial_member(db, identity) == ("owner" if scenario in ("new", "already_linked") else None)
     engine.dispose()
+
+
+@pytest.mark.parametrize("resolver", ["_resolve_agent_token", "resolve_agent_token"])
+@pytest.mark.parametrize("active_member", [True, False])
+def test_trial_token_auth_uses_owner_binding(monkeypatch, resolver, active_member):
+    from fastapi import HTTPException
+    from app.core import auth
+
+    token = "cond_agt_test_only_credential"
+    identity = SimpleNamespace(
+        id="trial", workspace_id="ws", source="conduct_trial", owner_user_id="owner",
+        token_encrypted="fixture", token_type="cli", lifecycle_state="active",
+        expires_at=datetime.now(timezone.utc) + timedelta(days=1),
+    )
+    db = MagicMock()
+    db.query.return_value.filter.return_value.all.return_value = [identity]
+    db.execute.return_value.fetchone.return_value = SimpleNamespace(clerk_user_id="owner") if active_member else None
+    monkeypatch.setattr("app.core.crypto.decrypt", lambda value: {"token": token})
+    if not active_member and resolver == "_resolve_agent_token":
+        with pytest.raises(HTTPException) as exc:
+            auth._resolve_agent_token(token, db)
+        assert exc.value.status_code == 401
+    else:
+        result = getattr(auth, resolver)(token, db)
+        expected = (identity, "owner") if resolver == "_resolve_agent_token" else ("ws", "owner")
+        assert result == (expected if active_member else None)
