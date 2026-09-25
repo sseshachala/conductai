@@ -803,6 +803,48 @@ def test_commit_all_moves_every_reservation_to_committed(ledger, db):
     assert r1 in (b"0", "0", None), r1
 
 
+# ── R9 microdollar precision — the smoking-gun test the epic asked for.
+#
+# Pre-R9 the Redis counter incremented in cents; sub-cent requests
+# rounded to zero and slipped past the cap. Post-R9 the counter is
+# micros-native (10 000 micros = 1 cent), so 400-micro ($0.004) requests
+# accumulate faithfully. 10 000 attempts against a $10 cap MUST block at
+# exactly 2 500 (2 500 * $0.004 = $10 exact).
+
+def test_r9_sub_cent_reservations_block_at_exact_cap(ledger, db):
+    from app.core.budget_ledger import BudgetDecision
+
+    ws = str(uuid.uuid4())
+    _reconcile(ledger, db, ws, None, _current_period())
+
+    cap_micros = 10 * 1_000_000        # $10.00
+    per_request_micros = 4_000          # $0.004  = 0.4 cent
+    expected_accepts = cap_micros // per_request_micros  # 2 500 exactly
+
+    accepted = 0
+    exceeded = 0
+    for _ in range(10_000):
+        decision, res = ledger.reserve(
+            db=db, workspace_id=ws, ai_tool=None,
+            estimated_micros=per_request_micros, cap_micros=cap_micros,
+        )
+        if decision == BudgetDecision.ACCEPTED:
+            accepted += 1
+            ledger.commit(db, res, actual_micros=per_request_micros)
+        elif decision == BudgetDecision.EXCEEDED:
+            exceeded += 1
+        else:
+            raise AssertionError(f"unexpected decision {decision}")
+
+    assert accepted == expected_accepts, (
+        f"cent-mode regression: accepted={accepted}, expected {expected_accepts}. "
+        "Sub-cent requests are rounding to zero at the Redis counter."
+    )
+    assert exceeded == 10_000 - expected_accepts
+    # Committed counter matches the cap exactly — no drift from integer math.
+    assert ledger.current_committed_micros(ws, None) == cap_micros
+
+
 def test_reservation_row_carries_new_scope_columns(ledger, db):
     """The durable row must include agent_identity_id / source /
     client_tool / request_id when the caller supplies them, so the
