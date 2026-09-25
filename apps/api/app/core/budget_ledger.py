@@ -805,12 +805,14 @@ class BudgetLedger:
         committed_micros = int(q.scalar() or 0)
 
         # 1b) P1-C legacy fallback: audit rows whose request_id has NO
-        # settleable receipt. These are pre-cutover settlements where
-        # ``cost_usd_after`` was the authoritative commit number under
-        # the old engine. Excluding request_ids with a receipt prevents
-        # double-counting a request that migrated from legacy → new
-        # (never happens for a single request, but keeps the query
-        # self-consistent).
+        # receipt AT ALL. Post-review fix: was ``no settleable receipt``,
+        # which meant a post-cutover request with a PARTIAL / UNPRICED
+        # receipt would fall back to its legacy audit cost — double-
+        # counting the excluded partial and reintroducing the inaccurate
+        # number the completeness gate was there to exclude. The
+        # correct semantic is "genuinely pre-cutover" = no receipt at
+        # all. Requests with non-settleable receipts stay unresolved
+        # until the reconciler backfills a definitive one.
         legacy_q = db.query(
             func.coalesce(
                 func.sum(GuardAuditEvent.cost_usd_after), 0.0
@@ -822,11 +824,6 @@ class BudgetLedger:
             ~db.query(LlmAttemptReceipt.request_id)
             .filter(
                 LlmAttemptReceipt.request_id == GuardAuditEvent.request_id,
-                LlmAttemptReceipt.calculated_cost_microdollars.isnot(None),
-                LlmAttemptReceipt.usage_completeness == "complete",
-                LlmAttemptReceipt.pricing_completeness.in_(
-                    ("priced", "override_applied")
-                ),
             )
             .exists(),
         )

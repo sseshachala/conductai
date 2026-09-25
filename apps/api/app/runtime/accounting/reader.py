@@ -391,6 +391,236 @@ class AccountingReader:
             if row.hook_session_id is not None
         }
 
+    def spend_micros_by_workspace(
+        self,
+        *,
+        workspace_id: uuid.UUID,
+        since: datetime,
+        group_by_clerk: bool = False,
+        ai_tool: Optional[str] = None,
+        clerk_user_id: Optional[str] = None,
+    ) -> dict[Optional[str], int]:
+        """Workspace-scoped spend rollup post-cutover.
+
+        Returns ``{None: total_micros}`` when ``group_by_clerk`` is False,
+        or ``{clerk_user_id: micros_per_user}`` when True. Rows for users
+        with no spend are absent (caller renders zero).
+
+        Sums two sources under a SINGLE aggregate statement so both see
+        the same snapshot (Postgres MVCC guarantees intra-statement
+        snapshot consistency — a receipt inserted between two separate
+        queries under READ COMMITTED can be absent from the receipts
+        sum AND simultaneously suppress its audit row, temporarily
+        losing that request's spend):
+
+        1. ``LlmAttemptReceipt.calculated_cost_microdollars`` gated on
+           ``usage_completeness='complete'`` AND ``pricing_completeness
+           IN ('priced','override_applied')``. PARTIAL / UNPRICED
+           receipts are NOT counted — they are not defensible numbers.
+        2. ``GuardAuditEvent.cost_usd_after`` for requests with **no
+           receipt at all** (post-review P1: was ``no settleable
+           receipt`` which reintroduced audit cost for post-cutover
+           partial-receipt requests → same request contributed the
+           excluded partial receipt AND the audit row). Requests with a
+           non-settleable receipt are shown as unresolved via the
+           companion ``unresolved_request_count_by_workspace`` helper.
+
+        Filters:
+
+        - ``ai_tool`` — transport-scoped ("gateway", "mcp", "workflow",
+          "runtime") filters by ``source``; anything else filters by
+          ``client_tool`` on receipts and ``ai_tool`` on audit rows.
+        - ``clerk_user_id`` — exact-match scope (receipts use
+          ``developer_external_id``, audit uses ``clerk_user_id``).
+        - ``group_by_clerk=True`` — one row per user; skips
+          NULL identities (system callers, guard-mt-* tokens).
+        """
+        from sqlalchemy import text
+        from app.core.budget_ledger import _is_transport
+
+        # Build the ai_tool / clerk filters once for each side.
+        params: dict[str, Any] = {
+            "ws": str(workspace_id),
+            "since": since,
+        }
+        receipt_where = []
+        audit_where = []
+        if ai_tool is not None:
+            params["ai_tool"] = ai_tool
+            if _is_transport(ai_tool):
+                receipt_where.append("r.source = :ai_tool")
+                audit_where.append("a.source = :ai_tool")
+            else:
+                receipt_where.append("r.client_tool = :ai_tool")
+                audit_where.append("a.ai_tool = :ai_tool")
+        if clerk_user_id is not None:
+            params["clerk"] = clerk_user_id
+            receipt_where.append("r.developer_external_id = :clerk")
+            audit_where.append("a.clerk_user_id = :clerk")
+        receipt_extra = ("AND " + " AND ".join(receipt_where)) if receipt_where else ""
+        audit_extra = ("AND " + " AND ".join(audit_where)) if audit_where else ""
+
+        if group_by_clerk:
+            # Exclude NULL scopes from BOTH sides. UNION ALL + outer
+            # GROUP BY so the same clerk in receipts + audit adds.
+            sql = text(
+                f"""
+                SELECT scope, SUM(micros)::BIGINT AS total FROM (
+                  SELECT
+                    r.developer_external_id AS scope,
+                    COALESCE(r.calculated_cost_microdollars, 0) AS micros
+                  FROM llm_attempt_receipts r
+                  WHERE r.workspace_id = CAST(:ws AS uuid)
+                    AND r.finalized_at >= :since
+                    AND r.calculated_cost_microdollars IS NOT NULL
+                    AND r.usage_completeness = 'complete'
+                    AND r.pricing_completeness IN ('priced', 'override_applied')
+                    AND r.developer_external_id IS NOT NULL
+                    {receipt_extra}
+                  UNION ALL
+                  SELECT
+                    a.clerk_user_id AS scope,
+                    CAST(ROUND(a.cost_usd_after * 1000000) AS BIGINT) AS micros
+                  FROM guard_audit_events a
+                  WHERE a.workspace_id = CAST(:ws AS uuid)
+                    AND a.ts >= :since
+                    AND a.cost_usd_after IS NOT NULL
+                    AND a.clerk_user_id IS NOT NULL
+                    AND NOT EXISTS (
+                      SELECT 1 FROM llm_attempt_receipts rr
+                      WHERE rr.request_id = a.request_id
+                    )
+                    {audit_extra}
+                ) combined
+                GROUP BY scope
+                """
+            )
+            rows = self._db.execute(sql, params).all()
+            return {row.scope: int(row.total or 0) for row in rows}
+
+        # Scalar total. Same UNION ALL, no outer grouping.
+        sql = text(
+            f"""
+            SELECT COALESCE(SUM(micros), 0)::BIGINT AS total FROM (
+              SELECT
+                COALESCE(r.calculated_cost_microdollars, 0) AS micros
+              FROM llm_attempt_receipts r
+              WHERE r.workspace_id = CAST(:ws AS uuid)
+                AND r.finalized_at >= :since
+                AND r.calculated_cost_microdollars IS NOT NULL
+                AND r.usage_completeness = 'complete'
+                AND r.pricing_completeness IN ('priced', 'override_applied')
+                {receipt_extra}
+              UNION ALL
+              SELECT
+                CAST(ROUND(a.cost_usd_after * 1000000) AS BIGINT) AS micros
+              FROM guard_audit_events a
+              WHERE a.workspace_id = CAST(:ws AS uuid)
+                AND a.ts >= :since
+                AND a.cost_usd_after IS NOT NULL
+                AND NOT EXISTS (
+                  SELECT 1 FROM llm_attempt_receipts rr
+                  WHERE rr.request_id = a.request_id
+                )
+                {audit_extra}
+            ) combined
+            """
+        )
+        row = self._db.execute(sql, params).scalar()
+        return {None: int(row or 0)}
+
+    def unresolved_request_count_by_workspace(
+        self,
+        *,
+        workspace_id: uuid.UUID,
+        since: datetime,
+        group_by_clerk: bool = False,
+        ai_tool: Optional[str] = None,
+        clerk_user_id: Optional[str] = None,
+    ) -> dict[Optional[str], int]:
+        """Companion to ``spend_micros_by_workspace``.
+
+        Counts distinct request_ids whose ONLY receipts are non-settleable
+        (PARTIAL usage or UNPRICED / INCOMPLETE pricing). These are
+        real requests the enforcement counter will eventually charge
+        for once the reconciler backfills a definitive receipt — but
+        they're intentionally excluded from ``spend_micros_by_workspace``
+        so the reported number is a defensible amount.
+
+        Consumers can surface "$X, N in-progress" tags without inflating
+        the priced total.
+        """
+        from sqlalchemy import text
+        from app.core.budget_ledger import _is_transport
+
+        params: dict[str, Any] = {
+            "ws": str(workspace_id),
+            "since": since,
+        }
+        where = []
+        if ai_tool is not None:
+            params["ai_tool"] = ai_tool
+            if _is_transport(ai_tool):
+                where.append("r.source = :ai_tool")
+            else:
+                where.append("r.client_tool = :ai_tool")
+        if clerk_user_id is not None:
+            params["clerk"] = clerk_user_id
+            where.append("r.developer_external_id = :clerk")
+        extra = ("AND " + " AND ".join(where)) if where else ""
+
+        if group_by_clerk:
+            sql = text(
+                f"""
+                SELECT r.developer_external_id AS scope,
+                       COUNT(DISTINCT r.request_id) AS n
+                FROM llm_attempt_receipts r
+                WHERE r.workspace_id = CAST(:ws AS uuid)
+                  AND r.finalized_at >= :since
+                  AND r.developer_external_id IS NOT NULL
+                  AND (
+                    r.usage_completeness <> 'complete'
+                    OR r.pricing_completeness NOT IN ('priced', 'override_applied')
+                    OR r.calculated_cost_microdollars IS NULL
+                  )
+                  AND NOT EXISTS (
+                    SELECT 1 FROM llm_attempt_receipts s
+                    WHERE s.request_id = r.request_id
+                      AND s.calculated_cost_microdollars IS NOT NULL
+                      AND s.usage_completeness = 'complete'
+                      AND s.pricing_completeness IN ('priced', 'override_applied')
+                  )
+                  {extra}
+                GROUP BY scope
+                """
+            )
+            rows = self._db.execute(sql, params).all()
+            return {row.scope: int(row.n or 0) for row in rows}
+
+        sql = text(
+            f"""
+            SELECT COUNT(DISTINCT r.request_id) AS n
+            FROM llm_attempt_receipts r
+            WHERE r.workspace_id = CAST(:ws AS uuid)
+              AND r.finalized_at >= :since
+              AND (
+                r.usage_completeness <> 'complete'
+                OR r.pricing_completeness NOT IN ('priced', 'override_applied')
+                OR r.calculated_cost_microdollars IS NULL
+              )
+              AND NOT EXISTS (
+                SELECT 1 FROM llm_attempt_receipts s
+                WHERE s.request_id = r.request_id
+                  AND s.calculated_cost_microdollars IS NOT NULL
+                  AND s.usage_completeness = 'complete'
+                  AND s.pricing_completeness IN ('priced', 'override_applied')
+              )
+              {extra}
+            """
+        )
+        row = self._db.execute(sql, params).scalar()
+        return {None: int(row or 0)}
+
     def receipts_for_request(
         self,
         *,

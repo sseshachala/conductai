@@ -234,6 +234,16 @@ class StubDB:
         self._query_map = query_map or (lambda *a, **kw: StubQuery())
     def query(self, *a, **kw): return self._query_map(*a, **kw)
     def close(self): pass
+    def execute(self, *_a, **_k):
+        # AccountingReader.spend_micros_by_workspace + friends run raw
+        # ``text()`` CTEs via ``.execute`` (single-statement snapshot,
+        # #2227 P2 fix). Return an empty result stub so tool smoke tests
+        # that don't seed receipts still get past this path.
+        class _R:
+            def scalar(self): return 0
+            def all(self): return []
+            def __iter__(self): return iter([])
+        return _R()
 
 
 @contextmanager

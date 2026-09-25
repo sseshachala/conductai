@@ -52,6 +52,12 @@ class _FakeGuardAuditEvent:
     ts = _FakeCol()
     cost_usd_after = _FakeCol()
     agent_identity_id = _FakeCol()
+    # Post-PR-4 spend consumer wiring: AccountingReader.spend_micros_by_workspace
+    # references these on the NOT EXISTS predicate + optional group_by.
+    request_id = _FakeCol()
+    source = _FakeCol()
+    ai_tool = _FakeCol()
+    clerk_user_id = _FakeCol()
 
 
 def test_get_workspace_kpis_returns_expected_shape():
@@ -61,10 +67,26 @@ def test_get_workspace_kpis_returns_expected_shape():
         def distinct(self): return self
         def count(self): return 0
         def all(self): return []
+        def scalar(self): return 0
+        def group_by(self, *_a, **_k): return self
+        def exists(self):
+            class _E:
+                def __invert__(self): return self
+            return _E()
 
     class _DB:
         def query(self, *_a, **_k): return _Q()
         def close(self): pass
+        def execute(self, *_a, **_k):
+            # AccountingReader.spend_micros_by_workspace uses a raw
+            # text() CTE and reads via .execute → return a result stub
+            # that supports .scalar() / .all() (empty spend for tests
+            # that don't seed receipts).
+            class _R:
+                def scalar(self): return 0
+                def all(self): return []
+                def __iter__(self): return iter([])
+            return _R()
 
     with patch("app.core.database.SessionLocal", return_value=_DB()), \
          patch("app.models.run.Run", _FakeRun), \
@@ -89,10 +111,26 @@ def test_get_workspace_kpis_window_last_7d():
         def distinct(self): return self
         def count(self): return 0
         def all(self): return []
+        def scalar(self): return 0
+        def group_by(self, *_a, **_k): return self
+        def exists(self):
+            class _E:
+                def __invert__(self): return self
+            return _E()
 
     class _DB:
         def query(self, *_a, **_k): return _Q()
         def close(self): pass
+        def execute(self, *_a, **_k):
+            # AccountingReader.spend_micros_by_workspace uses a raw
+            # text() CTE and reads via .execute → return a result stub
+            # that supports .scalar() / .all() (empty spend for tests
+            # that don't seed receipts).
+            class _R:
+                def scalar(self): return 0
+                def all(self): return []
+                def __iter__(self): return iter([])
+            return _R()
 
     with patch("app.core.database.SessionLocal", return_value=_DB()), \
          patch("app.models.run.Run", _FakeRun), \
@@ -114,6 +152,16 @@ def test_list_discovered_agents_empty():
     class _DB:
         def query(self, *_a, **_k): return _Q()
         def close(self): pass
+        def execute(self, *_a, **_k):
+            # AccountingReader.spend_micros_by_workspace uses a raw
+            # text() CTE and reads via .execute → return a result stub
+            # that supports .scalar() / .all() (empty spend for tests
+            # that don't seed receipts).
+            class _R:
+                def scalar(self): return 0
+                def all(self): return []
+                def __iter__(self): return iter([])
+            return _R()
 
     with patch("app.core.database.SessionLocal", return_value=_DB()):
         from app.tools.registrations.lens import list_discovered_agents
@@ -143,6 +191,16 @@ def test_list_discovered_agents_returns_shape():
     class _DB:
         def query(self, *_a, **_k): return _Q()
         def close(self): pass
+        def execute(self, *_a, **_k):
+            # AccountingReader.spend_micros_by_workspace uses a raw
+            # text() CTE and reads via .execute → return a result stub
+            # that supports .scalar() / .all() (empty spend for tests
+            # that don't seed receipts).
+            class _R:
+                def scalar(self): return 0
+                def all(self): return []
+                def __iter__(self): return iter([])
+            return _R()
 
     with patch("app.core.database.SessionLocal", return_value=_DB()):
         from app.tools.registrations.lens import list_discovered_agents
@@ -178,6 +236,16 @@ def test_list_credentials_never_returns_encrypted_credentials():
     class _DB:
         def query(self, *_a, **_k): return _Q()
         def close(self): pass
+        def execute(self, *_a, **_k):
+            # AccountingReader.spend_micros_by_workspace uses a raw
+            # text() CTE and reads via .execute → return a result stub
+            # that supports .scalar() / .all() (empty spend for tests
+            # that don't seed receipts).
+            class _R:
+                def scalar(self): return 0
+                def all(self): return []
+                def __iter__(self): return iter([])
+            return _R()
 
     with patch("app.core.database.SessionLocal", return_value=_DB()):
         from app.tools.registrations.lens import list_credentials
@@ -220,6 +288,16 @@ def test_list_credentials_returns_metadata():
     class _DB:
         def query(self, *_a, **_k): return _Q()
         def close(self): pass
+        def execute(self, *_a, **_k):
+            # AccountingReader.spend_micros_by_workspace uses a raw
+            # text() CTE and reads via .execute → return a result stub
+            # that supports .scalar() / .all() (empty spend for tests
+            # that don't seed receipts).
+            class _R:
+                def scalar(self): return 0
+                def all(self): return []
+                def __iter__(self): return iter([])
+            return _R()
 
     with patch("app.core.database.SessionLocal", return_value=_DB()):
         from app.tools.registrations.lens import list_credentials

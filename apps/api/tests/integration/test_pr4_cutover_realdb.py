@@ -735,6 +735,92 @@ def test_reconcile_folds_in_legacy_audit_for_requests_without_receipts(
     assert total == 2_050
 
 
+def test_reconcile_suppresses_audit_when_partial_receipt_exists(
+    workspace_id,
+):
+    """PR 4 review P1 (post-cutover): a request with BOTH a PARTIAL
+    receipt AND an audit row must NOT contribute to the committed
+    counter — otherwise the enforcement counter reintroduces the legacy
+    audit cost the completeness gate was there to exclude. Reconciler
+    fallback fires only for requests with NO receipt at all."""
+    from app.core.database import SessionLocal
+    from app.core.budget_ledger import BudgetLedger
+    from app.runtime.accounting.shadow_writer import shadow_write
+    from sqlalchemy import text
+
+    ai_tool = f"pr4-partial-audit-{uuid.uuid4().hex[:8]}"
+    request_id = uuid.uuid4()
+
+    partial_sse = (
+        b"event: message_start\n"
+        b'data: {"type":"message_start","message":{"usage":{"input_tokens":100,"output_tokens":1}}}\n\n'
+    )
+    shadow_write(
+        workspace_id=workspace_id,
+        request_id=request_id,
+        provider="anthropic",
+        model="claude-sonnet-4-6",
+        operation="messages.create",
+        dispatched=True,
+        response_bytes=partial_sse,
+        legacy_input_tokens=None,
+        legacy_output_tokens=None,
+        legacy_cost_usd=None,
+        source="gateway",
+        client_tool=ai_tool,
+    )
+    with SessionLocal() as db:
+        db.execute(
+            text(
+                "INSERT INTO guard_audit_events "
+                "(id, workspace_id, request_id, ts, source, provider, model, "
+                " decision, cost_usd_after, ai_tool) "
+                "VALUES (gen_random_uuid(), CAST(:ws AS uuid), CAST(:req AS uuid), "
+                "        now(), 'gateway', 'anthropic', 'claude-sonnet-4-6', "
+                "        'allowed', 0.42, :ai_tool)"
+            ),
+            {
+                "ws": workspace_id,
+                "req": str(request_id),
+                "ai_tool": ai_tool,
+            },
+        )
+        db.commit()
+
+    committed_written: dict[str, int] = {}
+
+    class _FakeRedis:
+        def __init__(self):
+            self._store: dict[str, str] = {}
+        def get(self, k): return self._store.get(k)
+        def set(self, k, v, **kw):
+            self._store[k] = str(v); committed_written[k] = int(v); return True
+        def incrbyfloat(self, k, v):
+            self._store[k] = str(float(self._store.get(k, "0")) + float(v)); return self._store[k]
+        def incrby(self, k, v):
+            self._store[k] = str(int(self._store.get(k, "0")) + int(v)); return self._store[k]
+        def delete(self, *keys):
+            for k in keys: self._store.pop(k, None)
+            return len(keys)
+        def hset(self, *a, **k): return 1
+        def hgetall(self, *a, **k): return {}
+        def expire(self, *a, **k): return True
+        def pipeline(self, *a, **k): return self
+        def execute(self, *a, **k): return []
+
+    ledger = BudgetLedger(redis_client=_FakeRedis())
+    with SessionLocal() as db:
+        ledger.reconcile(db, workspace_id, ai_tool=ai_tool)
+
+    committed_keys = [k for k in committed_written if "committed" in k]
+    total = sum(committed_written[k] for k in committed_keys)
+    # Neither the partial receipt (1 μUSD or so) nor the audit fallback
+    # (420_000 μUSD) contributes. Pre-fix, ``NOT EXISTS settleable
+    # receipt`` matched the partial → audit fallback fired → total
+    # would be 420_000.
+    assert total == 0
+
+
 def test_reconcile_does_not_double_count_audit_when_receipt_exists(
     workspace_id,
 ):
