@@ -192,10 +192,10 @@ def test_audit_only_by_workspace_returns_only_dirty_workspaces(workspace_id):
 
 
 def test_run_startup_gate_posts_single_platform_alert_for_dirty_fleet(workspace_id):
-    """Gate emits ONE platform-operator alert to #conduct-alerts (via
-    ``post_platform_alert``), not per-workspace spam to customer
-    channels. The signal is "our own accounting code is still
-    load-bearing across the fleet"; audience is the Conduct team."""
+    """Gate emits ONE platform-operator alert via ``post_platform_alert``,
+    which reads ``CONDUCT_INTERNAL_ALERT_SLACK_CHANNEL`` (``#conduct-alerts``
+    in prod) — no per-workspace spam. Fleet-wide signal, Conduct team is
+    the audience."""
     from app.core.database import SessionLocal
     from app.runtime.accounting import audit_fallback_gate as gate_mod
 
@@ -209,22 +209,16 @@ def test_run_startup_gate_posts_single_platform_alert_for_dirty_fleet(workspace_
         calls.append({"surface": surface, "text": text})
         return True
 
+    # ``post_platform_alert`` is imported inside ``report_gate_to_slack``;
+    # patch at the origin so the local import picks it up.
     with patch(
-        "app.runtime.accounting.audit_fallback_gate.post_platform_alert",
+        "app.modules.guard.observability.platform_slack.post_platform_alert",
         _fake_platform_alert,
-        create=True,
     ):
-        # ``post_platform_alert`` is imported inside ``report_gate_to_slack``
-        # to avoid a circular import; patch at the origin instead.
-        with patch(
-            "app.modules.guard.observability.platform_slack.post_platform_alert",
-            _fake_platform_alert,
-        ):
-            result = gate_mod.run_startup_gate(SessionLocal)
+        result = gate_mod.run_startup_gate(SessionLocal)
 
     assert result["workspaces_with_audit_only"] >= 1
     assert result["slack_alert_sent"] is True
-    # Exactly one platform alert per gate run, listing dirty workspaces.
     assert len(calls) == 1
     assert calls[0]["surface"] == "audit_fallback_gate"
     assert "audit-fallback still load-bearing" in calls[0]["text"]

@@ -114,20 +114,19 @@ def report_gate_to_slack(
     _db: Session,
     entries: list[WorkspaceAuditOnlyCount],
 ) -> bool:
-    """Post one platform-operator alert summarizing every dirty
-    workspace to Conduct's own Slack (``#conduct-alerts`` via
-    ``CONDUCT_INTERNAL_ALERT_SLACK_CHANNEL``). Returns True if the
-    post landed, False on log-only (env unset) or on Slack failure.
+    """Post one alert summarizing every dirty workspace to Conduct's
+    ops channel — ``CONDUCT_INTERNAL_ALERT_SLACK_CHANNEL`` (which is
+    ``#conduct-alerts`` in prod). Returns True if the post landed,
+    False on missing config or Slack failure.
 
-    Uses ``post_platform_alert`` because this signal is for the
-    Conduct team — "our own accounting code is still load-bearing
-    somewhere across the fleet". Per-workspace `_send_guard_slack`
-    would spam customer channels with our internal migration state,
-    which is the wrong audience.
+    Signal audience: the Conduct team. Fleet-wide "our own accounting
+    code is still load-bearing somewhere". Per-workspace notifications
+    would spam customer channels with our internal migration state.
 
-    ``_db`` is unused (the helper reads its own credentials from
-    ``settings``) but kept in the signature for parity with the
-    workspace-alert helper it replaced during Tier 2 review.
+    Routes through ``post_platform_alert`` — same platform-operator
+    credential path as the durable-audit + fail-open + trial-spend
+    alerters. ``_db`` is unused; kept in the signature to match the
+    workspace-alert protocol callers used earlier in review.
     """
     if not entries:
         return False
