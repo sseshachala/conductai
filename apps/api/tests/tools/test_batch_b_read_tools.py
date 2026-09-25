@@ -52,6 +52,12 @@ class _FakeGuardAuditEvent:
     ts = _FakeCol()
     cost_usd_after = _FakeCol()
     agent_identity_id = _FakeCol()
+    # Post-PR-4 spend consumer wiring: AccountingReader.spend_micros_by_workspace
+    # references these on the NOT EXISTS predicate + optional group_by.
+    request_id = _FakeCol()
+    source = _FakeCol()
+    ai_tool = _FakeCol()
+    clerk_user_id = _FakeCol()
 
 
 def test_get_workspace_kpis_returns_expected_shape():
@@ -61,6 +67,12 @@ def test_get_workspace_kpis_returns_expected_shape():
         def distinct(self): return self
         def count(self): return 0
         def all(self): return []
+        def scalar(self): return 0
+        def group_by(self, *_a, **_k): return self
+        def exists(self):
+            class _E:
+                def __invert__(self): return self
+            return _E()
 
     class _DB:
         def query(self, *_a, **_k): return _Q()
@@ -89,6 +101,12 @@ def test_get_workspace_kpis_window_last_7d():
         def distinct(self): return self
         def count(self): return 0
         def all(self): return []
+        def scalar(self): return 0
+        def group_by(self, *_a, **_k): return self
+        def exists(self):
+            class _E:
+                def __invert__(self): return self
+            return _E()
 
     class _DB:
         def query(self, *_a, **_k): return _Q()

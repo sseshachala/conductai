@@ -437,21 +437,24 @@ def get_dashboard(
     )
     top_policy_hits = [PolicyHit(policy_name=row.rule_id, count=row.cnt) for row in policy_hit_rows]
 
-    # ── Developers near spend limit (>80% of monthly_limit_usd) — single JOIN query ──
+    # ── Developers near spend limit (>80% of monthly_limit_usd) ──
+    # Post-cutover: read authoritative per-attempt cost from
+    # ``AccountingReader.spend_micros_by_workspace``. Direct
+    # ``SUM(GuardAuditEvent.cost_usd_after)`` under-counts Anthropic
+    # cache_read + cache_write tokens because audit-side math has no
+    # cache breakout. The reader folds in pre-cutover audit rows under
+    # a NOT EXISTS predicate so historical spend is preserved.
     period_start = today_midnight.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    from app.runtime.accounting.reader import AccountingReader
+    spend_by_user_micros = AccountingReader(db).spend_micros_by_workspace(
+        workspace_id=ws_uuid,
+        since=period_start,
+        group_by_clerk=True,
+    )
     spend_by_user: dict[str, float] = {
-        row.clerk_user_id: float(row.spent)
-        for row in db.query(
-            GuardAuditEvent.clerk_user_id,
-            func.coalesce(func.sum(GuardAuditEvent.cost_usd_after), 0.0).label("spent"),
-        )
-        .filter(
-            GuardAuditEvent.workspace_id == ws_uuid,
-            GuardAuditEvent.clerk_user_id.isnot(None),
-            GuardAuditEvent.ts >= period_start,
-        )
-        .group_by(GuardAuditEvent.clerk_user_id)
-        .all()
+        clerk_id: micros / 1_000_000.0
+        for clerk_id, micros in spend_by_user_micros.items()
+        if clerk_id is not None
     }
     budgets = (
         db.query(GuardSpendBudget)

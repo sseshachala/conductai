@@ -53,16 +53,18 @@ def get_workspace_kpis(ctx, time_window: str = "last_24h"):
             .count()
         )
 
-        spend_rows = (
-            db.query(GuardAuditEvent.cost_usd_after)
-            .filter(
-                GuardAuditEvent.workspace_id == ws_uuid,
-                GuardAuditEvent.ts >= since,
-                GuardAuditEvent.cost_usd_after.isnot(None),
-            )
-            .all()
+        # Post-cutover spend read from the authoritative per-attempt
+        # receipts (via AccountingReader), with a NOT EXISTS audit
+        # fallback for pre-cutover history. Direct
+        # ``SUM(GuardAuditEvent.cost_usd_after)`` under-counts Anthropic
+        # cache_read + cache_write tokens (legacy audit math has no
+        # cache breakout) and would disagree with the enforcement counter.
+        from app.runtime.accounting.reader import AccountingReader
+        _spend = AccountingReader(db).spend_micros_by_workspace(
+            workspace_id=ws_uuid,
+            since=since,
         )
-        spend_total = sum((r[0] or 0.0) for r in spend_rows)
+        spend_total = _spend.get(None, 0) / 1_000_000.0
 
         runs = (
             db.query(Run)

@@ -391,6 +391,126 @@ class AccountingReader:
             if row.hook_session_id is not None
         }
 
+    def spend_micros_by_workspace(
+        self,
+        *,
+        workspace_id: uuid.UUID,
+        since: datetime,
+        group_by_clerk: bool = False,
+        ai_tool: Optional[str] = None,
+        clerk_user_id: Optional[str] = None,
+    ) -> dict[Optional[str], int]:
+        """Workspace-scoped spend rollup post-cutover.
+
+        Returns ``{None: total_micros}`` when ``group_by_clerk`` is False,
+        or ``{clerk_user_id: micros_per_user}`` when True. Rows for users
+        with no spend are absent (caller renders zero).
+
+        Reads the SAME two sources as ``BudgetLedger.reconcile`` so any
+        spend UI cannot disagree with the enforcement counter:
+
+        - ``LlmAttemptReceipt.calculated_cost_microdollars`` for post-
+          cutover requests, gated on ``usage_completeness='complete'``
+          AND ``pricing_completeness IN ('priced','override_applied')``.
+          A PARTIAL / UNPRICED receipt is not a defensible number.
+        - ``GuardAuditEvent.cost_usd_after`` under a NOT EXISTS predicate
+          against settleable receipts for pre-cutover history. Legacy
+          audit math is authoritative for the numbers we already
+          committed under the old engine.
+
+        Filters:
+
+        - ``ai_tool`` — transport-scoped ("gateway", "mcp", "workflow",
+          "runtime") filters by ``source``; anything else filters by
+          ``client_tool`` on receipts and ``ai_tool`` on audit rows.
+        - ``clerk_user_id`` — exact-match scope (receipts use
+          ``developer_external_id``, audit uses ``clerk_user_id``).
+        - ``group_by_clerk=True`` — one row per user; skips
+          NULL identities (system callers, guard-mt-* tokens).
+        """
+        from app.modules.guard.models import GuardAuditEvent
+        from app.core.budget_ledger import _is_transport
+
+        m = LlmAttemptReceipt
+
+        # Receipts side.
+        receipt_cols = [
+            func.coalesce(func.sum(m.calculated_cost_microdollars), 0).label(
+                "total_micros"
+            ),
+        ]
+        if group_by_clerk:
+            receipt_cols.insert(0, m.developer_external_id.label("scope"))
+        rq = self._db.query(*receipt_cols).filter(
+            m.workspace_id == workspace_id,
+            m.finalized_at >= since,
+            m.calculated_cost_microdollars.isnot(None),
+            m.usage_completeness == "complete",
+            m.pricing_completeness.in_(("priced", "override_applied")),
+        )
+        if ai_tool is not None:
+            if _is_transport(ai_tool):
+                rq = rq.filter(m.source == ai_tool)
+            else:
+                rq = rq.filter(m.client_tool == ai_tool)
+        if clerk_user_id is not None:
+            rq = rq.filter(m.developer_external_id == clerk_user_id)
+        if group_by_clerk:
+            rq = rq.filter(m.developer_external_id.isnot(None)).group_by(
+                m.developer_external_id
+            )
+
+        # Audit fallback — NOT EXISTS a settleable receipt for the request.
+        # Sum ``cost_usd_after`` in USD; convert the aggregate to micros
+        # in Python so the SQL doesn't multiply a Numeric column (some
+        # test doubles wrap columns and don't support column-side
+        # arithmetic).
+        audit_cols = [
+            func.coalesce(func.sum(GuardAuditEvent.cost_usd_after), 0.0).label(
+                "total_usd"
+            ),
+        ]
+        if group_by_clerk:
+            audit_cols.insert(0, GuardAuditEvent.clerk_user_id.label("scope"))
+        aq = self._db.query(*audit_cols).filter(
+            GuardAuditEvent.workspace_id == workspace_id,
+            GuardAuditEvent.ts >= since,
+            GuardAuditEvent.cost_usd_after.isnot(None),
+            ~self._db.query(m.request_id)
+            .filter(
+                m.request_id == GuardAuditEvent.request_id,
+                m.calculated_cost_microdollars.isnot(None),
+                m.usage_completeness == "complete",
+                m.pricing_completeness.in_(("priced", "override_applied")),
+            )
+            .exists(),
+        )
+        if ai_tool is not None:
+            if _is_transport(ai_tool):
+                aq = aq.filter(GuardAuditEvent.source == ai_tool)
+            else:
+                aq = aq.filter(GuardAuditEvent.ai_tool == ai_tool)
+        if clerk_user_id is not None:
+            aq = aq.filter(GuardAuditEvent.clerk_user_id == clerk_user_id)
+        if group_by_clerk:
+            aq = aq.filter(GuardAuditEvent.clerk_user_id.isnot(None)).group_by(
+                GuardAuditEvent.clerk_user_id
+            )
+
+        totals: dict[Optional[str], int] = {}
+        if group_by_clerk:
+            for row in rq.all():
+                totals[row.scope] = int(row.total_micros or 0)
+            for row in aq.all():
+                totals[row.scope] = totals.get(row.scope, 0) + int(
+                    round(float(row.total_usd or 0.0) * 1_000_000)
+                )
+        else:
+            r_total = int(rq.scalar() or 0)
+            a_total = int(round(float(aq.scalar() or 0.0) * 1_000_000))
+            totals[None] = r_total + a_total
+        return totals
+
     def receipts_for_request(
         self,
         *,
