@@ -380,7 +380,7 @@ def _startup() -> None:
                 "accounting.audit_fallback_gate_result",
                 workspaces_with_audit_only=r["workspaces_with_audit_only"],
                 total_audit_only_rows=r["total_audit_only_rows"],
-                slack_posts_fired=r["slack_posts_fired"],
+                slack_alert_sent=r["slack_alert_sent"],
                 errors=r["errors"],
             )
         except Exception as exc:  # noqa: BLE001

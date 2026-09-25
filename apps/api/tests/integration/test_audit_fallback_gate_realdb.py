@@ -191,64 +191,42 @@ def test_audit_only_by_workspace_returns_only_dirty_workspaces(workspace_id):
 # ─── run_startup_gate ─────────────────────────────────────────────────
 
 
-def test_run_startup_gate_reports_dirty_workspace_and_attempts_slack(workspace_id):
-    """Gate emits Slack alert for dirty workspaces via _send_guard_slack.
-    We patch the sender to observe the call, without actually posting."""
+def test_run_startup_gate_posts_single_platform_alert_for_dirty_fleet(workspace_id):
+    """Gate emits ONE platform-operator alert to #conduct-alerts (via
+    ``post_platform_alert``), not per-workspace spam to customer
+    channels. The signal is "our own accounting code is still
+    load-bearing across the fleet"; audience is the Conduct team."""
     from app.core.database import SessionLocal
     from app.runtime.accounting import audit_fallback_gate as gate_mod
 
     _insert_audit_only(
-        workspace_id, ai_tool=f"gate-slack-{uuid.uuid4().hex[:8]}"
+        workspace_id, ai_tool=f"gate-platform-{uuid.uuid4().hex[:8]}"
     )
 
     calls: list = []
 
-    def _fake_send(db, cfg, text_msg):
-        calls.append(
-            {
-                "workspace_id": str(cfg.workspace_id),
-                "channel": cfg.alert_channel,
-                "text": text_msg,
-            }
-        )
-
-    # Fake a GuardConfig for the workspace with an alert_channel set so
-    # the notifier tries to send.
-    from sqlalchemy import text as _text
-
-    with SessionLocal() as db:
-        db.execute(
-            _text(
-                "INSERT INTO guard_config (workspace_id, alert_channel) "
-                "VALUES (CAST(:ws AS uuid), '#test-audit-fallback-gate') "
-                "ON CONFLICT (workspace_id) DO UPDATE SET "
-                "  alert_channel = EXCLUDED.alert_channel"
-            ),
-            {"ws": workspace_id},
-        )
-        db.commit()
+    def _fake_platform_alert(*, surface: str, text: str, blocks=None):
+        calls.append({"surface": surface, "text": text})
+        return True
 
     with patch(
-        "app.modules.guard.routers.events._send_guard_slack", _fake_send
+        "app.runtime.accounting.audit_fallback_gate.post_platform_alert",
+        _fake_platform_alert,
+        create=True,
     ):
-        result = gate_mod.run_startup_gate(SessionLocal)
+        # ``post_platform_alert`` is imported inside ``report_gate_to_slack``
+        # to avoid a circular import; patch at the origin instead.
+        with patch(
+            "app.modules.guard.observability.platform_slack.post_platform_alert",
+            _fake_platform_alert,
+        ):
+            result = gate_mod.run_startup_gate(SessionLocal)
 
     assert result["workspaces_with_audit_only"] >= 1
-    # This workspace had an alert_channel so it must have fired at least
-    # one Slack post.
-    workspaces_notified = {c["workspace_id"] for c in calls}
-    assert workspace_id in workspaces_notified
-    for c in calls:
-        if c["workspace_id"] == workspace_id:
-            assert "audit-fallback still load-bearing" in c["text"]
-            assert "#2229" in c["text"]
-
-    # Cleanup guard_config for isolation.
-    with SessionLocal() as db:
-        db.execute(
-            _text(
-                "DELETE FROM guard_config WHERE workspace_id = CAST(:ws AS uuid)"
-            ),
-            {"ws": workspace_id},
-        )
-        db.commit()
+    assert result["slack_alert_sent"] is True
+    # Exactly one platform alert per gate run, listing dirty workspaces.
+    assert len(calls) == 1
+    assert calls[0]["surface"] == "audit_fallback_gate"
+    assert "audit-fallback still load-bearing" in calls[0]["text"]
+    assert "#2229" in calls[0]["text"]
+    assert workspace_id in calls[0]["text"]
