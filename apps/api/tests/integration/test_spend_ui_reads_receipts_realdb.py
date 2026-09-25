@@ -223,14 +223,18 @@ def test_spend_micros_group_by_clerk_returns_per_user_totals(workspace_id):
     assert f"nobody-{uuid.uuid4().hex[:8]}" not in totals
 
 
-def test_spend_micros_skips_partial_receipts(workspace_id):
-    """PARTIAL usage → not settleable → excluded from spend total.
-    Otherwise UI would show a lower-bound number the enforcement counter
-    ignores."""
+def test_spend_micros_excludes_partial_receipt_for_its_own_developer(
+    workspace_id,
+):
+    """PR 4 review P3: a partial receipt written FOR a specific developer
+    must NOT appear in that developer's spend total. Previous test
+    queried an UNRELATED developer and would have passed even if the
+    exclusion were broken."""
     from app.core.database import SessionLocal
     from app.runtime.accounting.reader import AccountingReader
     from app.runtime.accounting.shadow_writer import shadow_write
 
+    clerk = f"partial-owner-{uuid.uuid4().hex[:8]}"
     partial_sse = (
         b"event: message_start\n"
         b'data: {"type":"message_start","message":{"usage":{"input_tokens":100,"output_tokens":1}}}\n\n'
@@ -247,28 +251,156 @@ def test_spend_micros_skips_partial_receipts(workspace_id):
         legacy_output_tokens=None,
         legacy_cost_usd=None,
         source="gateway",
+        developer_external_id=clerk,
     )
+
     since = datetime.now(timezone.utc) - timedelta(hours=1)
     with SessionLocal() as db:
-        # Isolate this test's contribution by grouping by clerk and
-        # asserting no partial-receipt clerk shows up (this test's
-        # write had clerk=None).
+        # Query THIS developer — if the partial receipt were included,
+        # this would be > 0.
         totals = AccountingReader(db).spend_micros_by_workspace(
+            workspace_id=uuid.UUID(workspace_id),
+            since=since,
+            clerk_user_id=clerk,
+        )
+    assert totals == {None: 0}
+
+    with SessionLocal() as db:
+        # group_by_clerk variant — this developer must be absent from
+        # the grouped result (no settleable spend of any kind).
+        grouped = AccountingReader(db).spend_micros_by_workspace(
             workspace_id=uuid.UUID(workspace_id),
             since=since,
             group_by_clerk=True,
         )
-    # Absent clerk means the partial write didn't contribute; if it had,
-    # its clerk (None) would map to > 0 in a non-grouped variant.
-    # group_by_clerk filters out None developers, so we assert on the
-    # scalar variant with clerk_user_id filter for an unused clerk:
+    assert grouped.get(clerk) is None or grouped.get(clerk) == 0
+
+
+def test_partial_receipt_does_not_reintroduce_legacy_audit_cost(workspace_id):
+    """PR 4 review P1 (post-cutover): a request with BOTH a PARTIAL
+    receipt AND an audit row must count NEITHER in the spend total.
+
+    Pre-fix, ``NOT EXISTS settleable receipt`` matched a post-cutover
+    partial-receipt request → its legacy audit ``cost_usd_after`` was
+    added back to the total, reintroducing the exact inaccurate amount
+    the completeness gate was there to exclude.
+
+    Post-fix, the fallback fires only when NO receipt exists at all —
+    a partial receipt IS a receipt, so the audit row is suppressed too.
+    Both signals are "unresolved"; the companion
+    ``unresolved_request_count_by_workspace`` surfaces the count.
+    """
+    from app.core.database import SessionLocal
+    from app.runtime.accounting.reader import AccountingReader
+    from app.runtime.accounting.shadow_writer import shadow_write
+    from sqlalchemy import text
+
+    clerk = f"double-count-{uuid.uuid4().hex[:8]}"
+    request_id = uuid.uuid4()
+    partial_sse = (
+        b"event: message_start\n"
+        b'data: {"type":"message_start","message":{"usage":{"input_tokens":100,"output_tokens":1}}}\n\n'
+    )
+    shadow_write(
+        workspace_id=workspace_id,
+        request_id=request_id,
+        provider="anthropic",
+        model="claude-sonnet-4-6",
+        operation="messages.create",
+        dispatched=True,
+        response_bytes=partial_sse,
+        legacy_input_tokens=None,
+        legacy_output_tokens=None,
+        legacy_cost_usd=None,
+        source="gateway",
+        developer_external_id=clerk,
+    )
+    # Legacy audit row for the SAME request (post-cutover, audit still
+    # lands via audit.record()).
     with SessionLocal() as db:
-        scalar = AccountingReader(db).spend_micros_by_workspace(
+        db.execute(
+            text(
+                "INSERT INTO guard_audit_events "
+                "(id, workspace_id, request_id, ts, source, provider, model, "
+                " decision, cost_usd_after, clerk_user_id, ai_tool) "
+                "VALUES (gen_random_uuid(), CAST(:ws AS uuid), CAST(:req AS uuid), "
+                "        now(), 'gateway', 'anthropic', 'claude-sonnet-4-6', "
+                "        'allowed', 0.42, :clerk, 'partial-with-audit')"
+            ),
+            {
+                "ws": workspace_id,
+                "req": str(request_id),
+                "clerk": clerk,
+            },
+        )
+        db.commit()
+
+    since = datetime.now(timezone.utc) - timedelta(hours=1)
+    with SessionLocal() as db:
+        totals = AccountingReader(db).spend_micros_by_workspace(
             workspace_id=uuid.UUID(workspace_id),
             since=since,
-            clerk_user_id=f"absent-{uuid.uuid4().hex[:8]}",
+            clerk_user_id=clerk,
         )
-    assert scalar == {None: 0}
+    # Both excluded. If the audit fallback fired on "no settleable
+    # receipt" (old bug), we'd see 420_000 μUSD (0.42 × 1M).
+    assert totals == {None: 0}
+
+    # And the request shows up in the unresolved count so consumers can
+    # tag it "in-progress".
+    with SessionLocal() as db:
+        unresolved = AccountingReader(db).unresolved_request_count_by_workspace(
+            workspace_id=uuid.UUID(workspace_id),
+            since=since,
+            clerk_user_id=clerk,
+        )
+    assert unresolved == {None: 1}
+
+
+def test_unresolved_count_does_not_double_count_multi_attempt_partial(
+    workspace_id,
+):
+    """A request that wrote MULTIPLE partial receipts (multi-attempt
+    stream disconnect) counts as ONE unresolved request, not N."""
+    from app.core.database import SessionLocal
+    from app.runtime.accounting.reader import AccountingReader
+    from app.runtime.accounting.shadow_writer import write_receipts_for_attempts
+
+    clerk = f"multi-partial-{uuid.uuid4().hex[:8]}"
+    partial_sse = (
+        b"event: message_start\n"
+        b'data: {"type":"message_start","message":{"usage":{"input_tokens":100,"output_tokens":1}}}\n\n'
+    )
+    request_id = uuid.uuid4()
+    write_receipts_for_attempts(
+        workspace_id=workspace_id,
+        request_id=request_id,
+        provider="anthropic",
+        model="claude-sonnet-4-6",
+        operation="messages.create",
+        dispatched=True,
+        response_bytes=partial_sse,
+        legacy_input_tokens=None,
+        legacy_output_tokens=None,
+        legacy_cost_usd=None,
+        source="gateway",
+        developer_external_id=clerk,
+        attempts_meta=[
+            {"provider_or_integration": "anthropic", "model": "claude-sonnet-4-6", "succeeded": False, "response_bytes_b64": ""},
+            {"provider_or_integration": "anthropic", "model": "claude-sonnet-4-6", "succeeded": True},
+        ],
+    )
+
+    since = datetime.now(timezone.utc) - timedelta(hours=1)
+    with SessionLocal() as db:
+        unresolved = AccountingReader(db).unresolved_request_count_by_workspace(
+            workspace_id=uuid.UUID(workspace_id),
+            since=since,
+            clerk_user_id=clerk,
+        )
+    # Even if 2 non-settleable receipts landed for this request_id, it
+    # counts as 1 unresolved request.
+    assert unresolved.get(None, 0) <= 1
 
 
 # ─── Consumer wiring pins ─────────────────────────────────────────────
