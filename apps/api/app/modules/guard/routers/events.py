@@ -680,11 +680,24 @@ def _bg_slack_notify(
             _action = "block" if decision == "blocked" else "warn"
             if not _resolve_channels(db, ws_uuid, _action):
                 return
+        # Resolve Clerk user id to a real email before it lands in the
+        # Slack card — otherwise the "User:" line renders as the raw
+        # `user_xxx` Clerk id. Same pattern as the MCP writer at
+        # routers/mcp.py:717 and the durable-audit path at guard/audit.py:585.
+        # get_clerk_user_email() is LRU-cached, so no extra Clerk hits after
+        # the first per user.
+        _display_email = user_email
+        if not _display_email and clerk_user_id:
+            try:
+                from app.core.auth import get_clerk_user_email as _get_email
+                _display_email = _get_email(clerk_user_id)
+            except Exception:
+                pass
         notify_guard_block(
             db, ws_uuid,
             decision=decision,
             rule_id=rule_id,
-            user_email=user_email or clerk_user_id,
+            user_email=_display_email or clerk_user_id,
             tool=ai_tool,
             source="hook",
         )

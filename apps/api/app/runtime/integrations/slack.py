@@ -2,6 +2,9 @@
 Slack integration — tool implementations.
 """
 import httpx
+import structlog
+
+log = structlog.get_logger(__name__)
 
 BASE = "https://slack.com/api"
 
@@ -110,7 +113,20 @@ def update_approval_message(
         timeout=15,
     )
     d = r.json()
-    return {"ok": d.get("ok"), "ts": ts}
+    if not d.get("ok"):
+        # Approve/Reject button "does nothing" from user's POV = this
+        # chat.update failed but nothing surfaces the reason. Log the
+        # Slack error field so ops can classify (missing_scope /
+        # not_in_channel / token_revoked / channel_not_found).
+        log.warning(
+            "slack.chat_update_failed",
+            channel=channel,
+            ts=ts,
+            error=d.get("error"),
+            needed=d.get("needed"),
+            provided=d.get("provided"),
+        )
+    return {"ok": d.get("ok"), "ts": ts, "error": d.get("error")}
 
 
 TOOL_MAP = {
