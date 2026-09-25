@@ -9,9 +9,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-
 # ─── Pure helper coverage (no DB needed) ────────────────────────────────
-
 
 def test_extract_attempts_from_dict_meta():
     from app.runtime.accounting.reconciler import _extract_attempts_from_meta
@@ -26,7 +24,6 @@ def test_extract_attempts_from_dict_meta():
     assert total == 2
     assert keyed[1]["provider_or_integration"] == "openai"
 
-
 def test_extract_attempts_from_stringified_meta():
     """Some DB drivers return JSONB as a string. Handle that."""
     import json
@@ -37,7 +34,6 @@ def test_extract_attempts_from_stringified_meta():
     assert total == 1
     assert 0 in keyed
 
-
 def test_extract_attempts_from_missing_meta_returns_empty():
     """Legacy audit rows without routing_meta.attempts return (0, {}) so
     the caller defaults to a single expected ordinal {0}."""
@@ -47,7 +43,6 @@ def test_extract_attempts_from_missing_meta_returns_empty():
     assert _extract_attempts_from_meta({}) == (0, {})
     assert _extract_attempts_from_meta({"other_field": "x"}) == (0, {})
     assert _extract_attempts_from_meta("not-json{{") == (0, {})
-
 
 def test_extract_attempts_preserves_ordinals_around_bad_entries():
     """Session 6J reviewer #6 (#2221 review at bbcb5388): non-dict
@@ -65,9 +60,7 @@ def test_extract_attempts_preserves_ordinals_around_bad_entries():
     assert keyed[0]["provider_or_integration"] == "a"
     assert keyed[4]["provider_or_integration"] == "e"
 
-
 # ─── Placeholder writer per-attempt behavior ─────────────────────────────
-
 
 @pytest.fixture
 def _captured_shadow_calls(monkeypatch):
@@ -83,7 +76,6 @@ def _captured_shadow_calls(monkeypatch):
         "app.runtime.accounting.shadow_writer.shadow_write", _fake_shadow_write
     )
     return calls
-
 
 def _fake_audit_row(**overrides):
     """Build a duck-typed audit row for the placeholder writer."""
@@ -103,13 +95,11 @@ def _fake_audit_row(**overrides):
     base.update(overrides)
     return SimpleNamespace(**base)
 
-
 def test_placeholder_carries_source_reconciler(_captured_shadow_calls):
     from app.runtime.accounting.reconciler import _write_placeholder
 
     _write_placeholder(_fake_audit_row(), 0, {"succeeded": True})
     assert _captured_shadow_calls[0]["source"] == "reconciler"
-
 
 def test_placeholder_decodes_failed_attempt_bytes(_captured_shadow_calls):
     """Failed attempts with response_bytes_b64 → placeholder gets the
@@ -128,19 +118,9 @@ def test_placeholder_decodes_failed_attempt_bytes(_captured_shadow_calls):
     )
     assert _captured_shadow_calls[0]["response_bytes"] == envelope
 
-
-def test_placeholder_legacy_tokens_only_on_winning_attempt(_captured_shadow_calls):
-    """Audit tokens_after / cost_usd_after belong to the WINNING attempt.
-    Failed-attempt placeholders must NOT inherit them."""
-    from app.runtime.accounting.reconciler import _write_placeholder
-
-    _write_placeholder(_fake_audit_row(), 0, {"succeeded": False})
-    _write_placeholder(_fake_audit_row(), 1, {"succeeded": True})
-    assert _captured_shadow_calls[0]["legacy_output_tokens"] is None
-    assert _captured_shadow_calls[0]["legacy_cost_usd"] is None
-    assert _captured_shadow_calls[1]["legacy_output_tokens"] == 42
-    assert _captured_shadow_calls[1]["legacy_cost_usd"] == 0.001
-
+# #2209 Tier 1: ``test_placeholder_legacy_tokens_only_on_winning_attempt``
+# retired. The reconciler no longer passes ``legacy_output_tokens`` /
+# ``legacy_cost_usd`` to ``shadow_write`` — the columns have been dropped.
 
 def test_placeholder_per_attempt_provider_and_model_override_audit_defaults(
     _captured_shadow_calls,
@@ -162,7 +142,6 @@ def test_placeholder_per_attempt_provider_and_model_override_audit_defaults(
     assert _captured_shadow_calls[0]["provider"] == "openai"
     assert _captured_shadow_calls[0]["model"] == "gpt-4.1"
 
-
 def test_placeholder_uses_reconciled_late_outcome_for_succeeded_attempts(
     _captured_shadow_calls,
 ):
@@ -176,7 +155,6 @@ def test_placeholder_uses_reconciled_late_outcome_for_succeeded_attempts(
         _captured_shadow_calls[0]["execution_outcome"]
         == ExecutionOutcome.RECONCILED_LATE.value
     )
-
 
 def test_placeholder_failed_attempts_keep_failed_outcome(
     _captured_shadow_calls,
@@ -192,9 +170,7 @@ def test_placeholder_failed_attempts_keep_failed_outcome(
         == ExecutionOutcome.FAILED.value
     )
 
-
 # ─── Existing-ordinals lookup + missing-set logic ───────────────────────
-
 
 def test_existing_ordinals_batched_query_shape():
     """Pin the batched-query SQL — one round-trip per reconcile pass,
@@ -206,7 +182,6 @@ def test_existing_ordinals_batched_query_shape():
     assert "request_id = ANY(:ids)" in src
     assert "SELECT request_id, attempt_ordinal" in src
 
-
 def test_result_dataclass_carries_attempts_expected_field():
     """New field lets ops see attempt-level coverage, not just
     request-level."""
@@ -215,7 +190,6 @@ def test_result_dataclass_carries_attempts_expected_field():
 
     names = {f.name for f in fields(ReconciliationResult)}
     assert "attempts_expected" in names
-
 
 def test_scan_no_longer_left_joins_receipts():
     """Session 6H moved gap detection from LEFT JOIN (request-grain) to
@@ -227,9 +201,7 @@ def test_scan_no_longer_left_joins_receipts():
     src = inspect.getsource(reconciler._fetch_audit_rows)
     assert "LEFT JOIN llm_attempt_receipts" not in src
 
-
 # ─── High-level: reconcile function skips requests with all ordinals present ─
-
 
 def test_reconcile_writes_nothing_when_all_expected_ordinals_present(monkeypatch):
     """When every expected ordinal already has a receipt, reconciler

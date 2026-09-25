@@ -16,12 +16,10 @@ from datetime import datetime, timezone
 
 import pytest
 
-
 pytestmark = pytest.mark.skipif(
     os.environ.get("RUN_ACCOUNTING_REALDB") != "1",
     reason="Real-DB test — set RUN_ACCOUNTING_REALDB=1 (nightly only).",
 )
-
 
 @pytest.fixture(scope="module")
 def workspace_id() -> str:
@@ -54,7 +52,6 @@ def workspace_id() -> str:
         )
         db.commit()
 
-
 def _receipt_exists(request_id: uuid.UUID) -> bool:
     from app.core.database import SessionLocal
     from sqlalchemy import text
@@ -69,7 +66,6 @@ def _receipt_exists(request_id: uuid.UUID) -> bool:
                 {"r": str(request_id)},
             ).first()
         )
-
 
 def test_shadow_write_succeeds_when_redis_client_import_fails(
     monkeypatch, workspace_id
@@ -98,13 +94,10 @@ def test_shadow_write_succeeds_when_redis_client_import_fails(
         operation="messages.create",
         dispatched=True,
         response_bytes=b'{"usage":{"input_tokens":100,"output_tokens":50}}',
-        legacy_input_tokens=100,
-        legacy_output_tokens=50,
-        legacy_cost_usd=0.001,
+
     )
     assert rid is not None
     assert _receipt_exists(req_id)
-
 
 def test_shadow_write_survives_redis_connect_timeout(monkeypatch, workspace_id):
     """Simulate a Redis TCP connect timeout during the request path. The
@@ -133,9 +126,7 @@ def test_shadow_write_survives_redis_connect_timeout(monkeypatch, workspace_id):
         operation="messages.create",
         dispatched=True,
         response_bytes=b'{"usage":{"input_tokens":10,"output_tokens":5}}',
-        legacy_input_tokens=10,
-        legacy_output_tokens=5,
-        legacy_cost_usd=0.0001,
+
     )
     assert rid is not None
     assert _receipt_exists(req_id)

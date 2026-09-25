@@ -509,9 +509,6 @@ def guarded_client_call(
             operation="chat.completions",
             dispatched=True,
             response_bytes=synth,
-            legacy_input_tokens=getattr(resp.usage, "input_tokens", None),
-            legacy_output_tokens=getattr(resp.usage, "output_tokens", None),
-            legacy_cost_usd=None,
             developer_external_id=clerk_user_id,
             agent_identity_id=agent_identity_id,
             hook_session_id=hook_session_id,
@@ -630,8 +627,6 @@ def guarded_client_stream(
         # but for streaming context we KNOW that's partial data.
         _last_usage_final = bool(getattr(client, "last_usage_final", False))
         _shadow_bytes = None
-        _legacy_in = None
-        _legacy_out = None
         if isinstance(_last_usage, dict):
             try:
                 import json as _json_shadow
@@ -640,12 +635,6 @@ def guarded_client_stream(
                 ).encode()
             except Exception:
                 _shadow_bytes = None
-            _legacy_in = _last_usage.get("input_tokens") or _last_usage.get(
-                "prompt_tokens"
-            )
-            _legacy_out = _last_usage.get("output_tokens") or _last_usage.get(
-                "completion_tokens"
-            )
         try:
             import uuid as _uuid_shadow
             from app.runtime.accounting.shadow_writer import (
@@ -674,9 +663,6 @@ def guarded_client_stream(
                 operation="chat.completions",
                 dispatched=True,
                 response_bytes=_shadow_bytes,
-                legacy_input_tokens=_legacy_in,
-                legacy_output_tokens=_legacy_out,
-                legacy_cost_usd=None,
                 developer_external_id=clerk_user_id,
                 agent_identity_id=agent_identity_id,
                 hook_session_id=hook_session_id,

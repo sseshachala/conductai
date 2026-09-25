@@ -404,19 +404,6 @@ def _write_placeholder(
         except Exception:
             response_bytes = None
 
-    # Legacy tokens + cost only apply to the winning attempt (audit
-    # tokens_after are per-request and reflect the winning path).
-    legacy_input: Optional[int] = None
-    legacy_output: Optional[int] = None
-    legacy_cost_usd: Optional[float] = None
-    if is_winner:
-        legacy_output = (
-            int(row.tokens_after) if row.tokens_after is not None else None
-        )
-        legacy_cost_usd = (
-            float(row.cost_usd_after) if row.cost_usd_after is not None else None
-        )
-
     execution_outcome = (
         ExecutionOutcome.SUCCEEDED.value if succeeded else ExecutionOutcome.FAILED.value
     )
@@ -439,9 +426,6 @@ def _write_placeholder(
         operation=operation,
         dispatched=True,
         response_bytes=response_bytes,
-        legacy_input_tokens=legacy_input,
-        legacy_output_tokens=legacy_output,
-        legacy_cost_usd=legacy_cost_usd,
         developer_external_id=(
             str(row.clerk_user_id) if row.clerk_user_id else None
         ),

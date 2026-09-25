@@ -9,7 +9,6 @@ from app.modules.guard.routers.proxy import (
     MEMBER_TOKEN_PREFIX,
     VENDOR_DEFAULTS,
     _extract_member_token,
-    _extract_token_counts,
     _inject_guidance,
     _safe_json,
 )
@@ -44,22 +43,10 @@ def test_safe_json_parses_clean_json():
     assert _safe_json(b'{"a": 1}', fallback={}) == {"a": 1}
 
 
-def test_extract_token_counts_from_anthropic_non_stream():
-    body = b'{"usage": {"input_tokens": 100, "output_tokens": 250}}'
-    assert _extract_token_counts({}, body) == (100, 250)
-
-
-def test_extract_token_counts_from_anthropic_sse():
-    sse = (
-        b'data: {"type":"message_start","message":{"usage":{"input_tokens":42}}}\n'
-        b'data: {"type":"content_block_delta","delta":{"text":"hi"}}\n'
-        b'data: {"type":"message_delta","usage":{"output_tokens":17}}\n'
-    )
-    assert _extract_token_counts({}, sse) == (42, 17)
-
-
-def test_extract_token_counts_returns_none_on_garbage():
-    assert _extract_token_counts({}, b"completely not parseable") == (None, None)
+# #2209 Tier 1: token extraction from proxy responses now goes through
+# ``runtime.accounting.normalizers``. See
+# ``tests/runtime/accounting/test_normalizers_families.py`` for
+# provider-family unit coverage.
 
 
 def test_vendor_defaults_cover_v1_providers():

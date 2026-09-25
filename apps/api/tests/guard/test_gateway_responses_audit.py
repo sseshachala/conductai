@@ -7,7 +7,8 @@ import time
 import httpx
 from fastapi import BackgroundTasks
 
-from app.guard.audit import _compute_audit_cost, _extract_token_counts
+from app.guard.audit import _audit_tokens_and_cost
+from app.runtime.accounting.normalizers import ProviderFamily, normalize_sse
 from app.guard.router import _stream_chunks, upstream
 from app.modules.guard.routers.proxy import _redact_body
 
@@ -45,26 +46,33 @@ def _audit_args():
 
 
 def test_openai_responses_stream_usage_is_accounted():
+    """Post-#2209 Tier 1: audit-side token extraction goes through the
+    shared accounting normalizer. The OPENAI_RESPONSES family reads
+    input_tokens/output_tokens (not prompt/completion)."""
     payload = (
         b'data: {"type":"response.completed","response":{"usage":'
         b'{"input_tokens":12,"output_tokens":7}}}\n\n'
     )
-    assert _extract_token_counts({}, payload) == (12, 7)
+    norm = normalize_sse(ProviderFamily.OPENAI_RESPONSES, payload)
+    assert norm.tokens.total_input_tokens == 12
+    assert norm.tokens.total_output_tokens == 7
 
 
-def test_gateway_utility_operations_never_compute_inference_cost(monkeypatch):
-    monkeypatch.setattr(
-        "app.guard.audit._compute_cost",
-        lambda *args: (_ for _ in ()).throw(AssertionError("must not bill")),
+def test_gateway_utility_operations_never_compute_inference_cost():
+    """``routing_meta.billable == False`` (utility operations like
+    token_count) → cost stays None even when tokens are extractable.
+    Rewired to the shared audit helper post-Tier-1."""
+    in_tok, out_tok, cost_usd = _audit_tokens_and_cost(
+        provider="anthropic",
+        model="claude-sonnet-4-6",
+        body={"model": "claude-sonnet-4-6"},
+        response_bytes=b'{"usage":{"input_tokens":100,"output_tokens":0}}',
+        routing_meta={"operation": "token_count", "billable": False},
+        execution_status=None,
     )
-
-    assert _compute_audit_cost(
-        "anthropic",
-        "claude-test",
-        100,
-        0,
-        {"operation": "token_count", "billable": False},
-    ) is None
+    assert in_tok == 100
+    assert out_tok == 0
+    assert cost_usd is None
 
 
 def test_responses_input_is_redacted_before_forwarding():

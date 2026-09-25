@@ -19,12 +19,10 @@ from app.runtime.accounting.contracts import (
     UsageCompleteness,
 )
 
-
 @pytest.fixture
 def _shadow_on():
     # Cutover: writer always on. Fixture kept as a no-op for existing callers.
     yield
-
 
 @pytest.fixture
 def _captured_rows(monkeypatch):
@@ -41,9 +39,7 @@ def _captured_rows(monkeypatch):
     )
     return captured
 
-
 # ─── Finding #1: developer_external_id accepts non-UUID identifiers ─────────
-
 
 def test_clerk_id_no_longer_drops_receipt(_shadow_on, _captured_rows):
     """Passing 'user_2abcXYZ' or 'system:lens' used to fail the UUID cast
@@ -60,9 +56,7 @@ def test_clerk_id_no_longer_drops_receipt(_shadow_on, _captured_rows):
             operation="messages.create",
             dispatched=True,
             response_bytes=b'{"usage":{"input_tokens":10,"output_tokens":5}}',
-            legacy_input_tokens=10,
-            legacy_output_tokens=5,
-            legacy_cost_usd=0.0001,
+
             developer_user_id=external,  # legacy call site: passes non-UUID
         )
         assert rid is not None
@@ -70,7 +64,6 @@ def test_clerk_id_no_longer_drops_receipt(_shadow_on, _captured_rows):
     externals = [r.developer_external_id for r in _captured_rows]
     assert externals == ["user_2abcXYZ", "system:lens", "someone@example.com"]
     assert all(r.developer_user_id is None for r in _captured_rows)
-
 
 def test_real_uuid_still_lands_in_developer_user_id(_shadow_on, _captured_rows):
     from app.runtime.accounting.shadow_writer import shadow_write
@@ -84,18 +77,14 @@ def test_real_uuid_still_lands_in_developer_user_id(_shadow_on, _captured_rows):
         operation="messages.create",
         dispatched=True,
         response_bytes=b'{"usage":{"input_tokens":10,"output_tokens":5}}',
-        legacy_input_tokens=10,
-        legacy_output_tokens=5,
-        legacy_cost_usd=0.0001,
+
         developer_user_id=user_uuid,
     )
     row = _captured_rows[0]
     assert row.developer_user_id == user_uuid
     assert row.developer_external_id is None
 
-
 # ─── Finding #3: per-attempt receipts via helper ─────────────────────────────
-
 
 def test_write_receipts_for_attempts_writes_one_per_attempt(_shadow_on, _captured_rows):
     """Multi-attempt request produces N receipts, one per attempt in
@@ -114,9 +103,7 @@ def test_write_receipts_for_attempts_writes_one_per_attempt(_shadow_on, _capture
         operation="messages.create",
         dispatched=True,
         response_bytes=b'{"usage":{"input_tokens":10,"output_tokens":5}}',
-        legacy_input_tokens=10,
-        legacy_output_tokens=5,
-        legacy_cost_usd=0.0001,
+
         attempts_meta=attempts_meta,
     )
     assert len(rids) == 2
@@ -129,7 +116,6 @@ def test_write_receipts_for_attempts_writes_one_per_attempt(_shadow_on, _capture
     assert _captured_rows[1].provider == "openai"
     # Chain
     assert _captured_rows[1].parent_receipt_id == _captured_rows[0].id
-
 
 def test_write_receipts_for_attempts_falls_back_to_single_when_no_meta(
     _shadow_on, _captured_rows
@@ -144,17 +130,13 @@ def test_write_receipts_for_attempts_falls_back_to_single_when_no_meta(
         operation="messages.create",
         dispatched=True,
         response_bytes=b'{"usage":{"input_tokens":10,"output_tokens":5}}',
-        legacy_input_tokens=10,
-        legacy_output_tokens=5,
-        legacy_cost_usd=0.0001,
+
         attempts_meta=None,
     )
     assert len(rids) == 1
     assert _captured_rows[0].attempt_ordinal == 0
 
-
 # ─── Finding #4: cache pricing double-subtract (reviewer's exact repro) ─────
-
 
 def test_reviewer_pricing_repro_no_double_subtract():
     """Sudhi's exact repro: 100 fresh + 900 cache reads + 200 output at
@@ -169,9 +151,7 @@ def test_reviewer_pricing_repro_no_double_subtract():
     )
     assert result.microdollars == 3_570
 
-
 # ─── Finding #7: strict pricing surfaces UNPRICED for unknown models ────────
-
 
 def test_shadow_writer_unknown_model_reports_unpriced(_shadow_on, _captured_rows):
     """Legacy silent-fallback contaminated shadow comparison. Writer now uses
@@ -186,19 +166,14 @@ def test_shadow_writer_unknown_model_reports_unpriced(_shadow_on, _captured_rows
         operation="messages.create",
         dispatched=True,
         response_bytes=b'{"usage":{"input_tokens":100,"output_tokens":50}}',
-        legacy_input_tokens=100,
-        legacy_output_tokens=50,
-        legacy_cost_usd=0.0009,
+
     )
     row = _captured_rows[0]
     assert row.pricing_completeness == PricingCompleteness.UNPRICED.value
     assert row.calculated_cost_microdollars is None
     # Legacy comparison column still populated (untouched by strict flip)
-    assert row.legacy_cost_microdollars == 900
-
 
 # ─── Finding #8: Anthropic empty usage dict → UNAVAILABLE ───────────────────
-
 
 def test_anthropic_empty_usage_dict_is_unavailable():
     """Empty usage {} used to be marked COMPLETE with zero input, silently
@@ -207,7 +182,6 @@ def test_anthropic_empty_usage_dict_is_unavailable():
 
     result = normalize_json(ProviderFamily.ANTHROPIC_MESSAGES, {"usage": {}})
     assert result.completeness is UsageCompleteness.UNAVAILABLE
-
 
 def test_anthropic_explicit_zero_still_complete():
     """{"usage": {"input_tokens": 0, "output_tokens": 0}} is legitimate zero,
@@ -220,7 +194,6 @@ def test_anthropic_explicit_zero_still_complete():
     )
     assert result.completeness is UsageCompleteness.COMPLETE
     assert result.tokens.total_output_tokens == 0
-
 
 def test_shadow_writer_explicit_execution_outcome_wins(_shadow_on, _captured_rows):
     """Caller can pass execution_outcome directly. Writer no longer infers
@@ -235,16 +208,12 @@ def test_shadow_writer_explicit_execution_outcome_wins(_shadow_on, _captured_row
         operation="messages.create",
         dispatched=True,
         response_bytes=None,  # would default to FAILED
-        legacy_input_tokens=None,
-        legacy_output_tokens=None,
-        legacy_cost_usd=None,
+
         execution_outcome=ExecutionOutcome.DISCONNECTED.value,
     )
     assert _captured_rows[0].execution_outcome == ExecutionOutcome.DISCONNECTED.value
 
-
 # ─── Finding #9b: estimator covers tool-call args + max_output_tokens ───────
-
 
 def test_estimator_counts_openai_tool_call_arguments():
     from app.runtime.accounting.estimator import InputShape, estimate_tokens
@@ -271,7 +240,6 @@ def test_estimator_counts_openai_tool_call_arguments():
     with_tools = estimate_tokens(body_with_tools, include=frozenset([InputShape.MESSAGES]))
     assert with_tools.input_tokens > base.input_tokens
 
-
 def test_estimator_counts_anthropic_tool_use_input():
     from app.runtime.accounting.estimator import InputShape, estimate_tokens
 
@@ -289,7 +257,6 @@ def test_estimator_counts_anthropic_tool_use_input():
     result = estimate_tokens(body, include=frozenset([InputShape.MESSAGES]))
     # 400+ chars from tool_use.input serialized as JSON
     assert result.input_tokens > 100
-
 
 def test_estimator_recognizes_max_output_tokens_responses_api():
     from app.runtime.accounting.estimator import estimate_tokens

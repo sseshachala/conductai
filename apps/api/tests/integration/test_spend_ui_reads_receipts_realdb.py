@@ -77,9 +77,6 @@ def _write_receipt(workspace_id: str, *, clerk: str | None = None) -> None:
         operation="messages.create",
         dispatched=True,
         response_bytes=b'{"usage":{"input_tokens":100,"output_tokens":50}}',
-        legacy_input_tokens=None,
-        legacy_output_tokens=None,
-        legacy_cost_usd=None,
         source="gateway",
         developer_external_id=clerk,
     )
@@ -158,9 +155,6 @@ def test_spend_micros_skips_audit_when_receipt_exists(workspace_id):
         operation="messages.create",
         dispatched=True,
         response_bytes=b'{"usage":{"input_tokens":100,"output_tokens":50}}',
-        legacy_input_tokens=None,
-        legacy_output_tokens=None,
-        legacy_cost_usd=None,
         source="gateway",
         developer_external_id=clerk,
     )
@@ -247,9 +241,6 @@ def test_spend_micros_excludes_partial_receipt_for_its_own_developer(
         operation="messages.create",
         dispatched=True,
         response_bytes=partial_sse,
-        legacy_input_tokens=None,
-        legacy_output_tokens=None,
-        legacy_cost_usd=None,
         source="gateway",
         developer_external_id=clerk,
     )
@@ -309,9 +300,6 @@ def test_partial_receipt_does_not_reintroduce_legacy_audit_cost(workspace_id):
         operation="messages.create",
         dispatched=True,
         response_bytes=partial_sse,
-        legacy_input_tokens=None,
-        legacy_output_tokens=None,
-        legacy_cost_usd=None,
         source="gateway",
         developer_external_id=clerk,
     )
@@ -380,9 +368,6 @@ def test_unresolved_count_does_not_double_count_multi_attempt_partial(
         operation="messages.create",
         dispatched=True,
         response_bytes=partial_sse,
-        legacy_input_tokens=None,
-        legacy_output_tokens=None,
-        legacy_cost_usd=None,
         source="gateway",
         developer_external_id=clerk,
         attempts_meta=[

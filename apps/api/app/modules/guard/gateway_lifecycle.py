@@ -589,12 +589,10 @@ def settle_reservations(
 # HTTP response that carries the block reason for the drawer + block
 # chip UI in the follow-up.
 
-# #2209 Session 2: reservation estimators are compat shims over
-# ``app.runtime.accounting.estimator`` and ``.pricing``. The old duplicate
-# implementations diverged from ``guard.audit._estimate_input_tokens`` on
-# coverage (missed system/instructions/response_input/tools/vision) —
-# preserving that legacy coverage here for byte-identity while shadow mode
-# (Session 4) measures the delta before Session 6 activates full coverage.
+# #2209 Tier 1: was a compat shim over ``runtime.accounting.estimator`` and
+# ``.pricing``. Rewired to call the accounting engine directly — the
+# messages-only char-sum heuristic is retained as the ``TokensEstimate``
+# includes it via ``InputShape.MESSAGES`` when full coverage matters.
 
 
 def estimate_budget_micros(
@@ -605,27 +603,20 @@ def estimate_budget_micros(
 ) -> int:
     """Microdollar-precision pre-flight cost estimate for the ledger reservation.
 
-    Compat shim over ``runtime.accounting`` — preserves messages-only
-    coverage and ceiling rounding for byte-identical reservations. See
-    #2209 for the migration plan.
+    Reads directly from the shared accounting engine — same estimator +
+    PricingService the receipts use. Ceiling-rounded because
+    over-reservation is safer than under-reservation (settlement writes
+    the real cost via ``commit_all``).
     """
+    import math as _math
     from decimal import Decimal
 
-    from app.runtime.accounting.estimator import _extract_text
+    from app.runtime.accounting.estimator import estimate_tokens
     from app.runtime.accounting.pricing import default_pricing_service
 
-    # Messages-only char-sum, matching legacy pre-Session-2 behavior. Full
-    # coverage lives in ``runtime.accounting.estimator.estimate_tokens`` for
-    # the shadow path.
-    chunks = _extract_text(body)
-    text_len = sum(len(c) for c in chunks)
-    input_tokens = max(1, text_len // 4)
-
-    output_tokens = 4096
-    if isinstance(body, dict):
-        mt = body.get("max_tokens")
-        if isinstance(mt, int) and mt > 0:
-            output_tokens = mt
+    est = estimate_tokens(body)
+    input_tokens = est.input_tokens
+    output_tokens = est.output_tokens_allowance
 
     usd: float | None = None
     try:
@@ -641,8 +632,10 @@ def estimate_budget_micros(
     except Exception:
         usd = None
     if usd is None:
-        # Dead-code fallback preserved from pre-Session-2 for defensive
-        # coverage when pricing lookup fails for any reason.
+        # Unknown model or rate-card lookup failure. Fall back to a
+        # conservative per-tool default so the reservation still gates
+        # runaway spend under lookup failure. Same guard.audit intent
+        # as before the shim retirement.
         try:
             from app.modules.guard.routers.events import _tool_pricing
 
@@ -653,10 +646,6 @@ def estimate_budget_micros(
         input_usd = (input_tokens * float(pricing.get("input", 3.0))) / 1_000_000
         output_usd = (output_tokens * float(pricing.get("output", 15.0))) / 1_000_000
         usd = input_usd + output_usd
-
-    # Ceiling — over-reservation is always safer than under-reservation
-    # because settlement writes the real cost via ``commit_all``.
-    import math as _math
 
     return _math.ceil(usd * 1_000_000)
 

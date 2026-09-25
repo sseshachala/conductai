@@ -74,13 +74,9 @@ from app.guard.policy import (
     flatten_prompt as _flatten_prompt,
 )
 
-# Re-exported from app.guard.audit — #1218 Step 1b.
-from app.guard.audit import (
-    _compute_cost,
-    _estimate_input_tokens,
-    _extract_token_counts,
-    record as _record_audit,
-)
+# Re-exported from app.guard.audit — #1218 Step 1b. #2209 Tier 1
+# removed the legacy compat shims; proxy only needed ``record`` anyway.
+from app.guard.audit import record as _record_audit
 
 # Re-exported from app.guard.router — #1218 Step 1c.
 from app.guard.router import (

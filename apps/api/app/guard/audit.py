@@ -1,22 +1,28 @@
-"""Guard audit sink — records every proxy decision to guard_audit_events.
+"""Guard audit sink — records every proxy/gateway decision to
+``guard_audit_events``.
 
-Single source of truth for \"what decision was made and by whom.\"
+Single source of truth for "what decision was made and by whom." Numbers
+(``tokens_before``, ``tokens_after``, ``cost_usd_after``) come from the
+shared accounting engine (``app.runtime.accounting``) — no local math.
 
 Public API:
-- record(...)                — background-safe DB write of one audit event
+- record(...)              — background-safe DB write of one audit event
+- insert_accepted(...)     — durable pre-inference audit row (Phase 1)
+- finalize(...)            — flip accepted → finalized after inference
+- renew_lease(...)         — stream heartbeat
 
-Callers:
-- HTTP proxy handler (app/modules/guard/routers/proxy.py) — external agents
-- Lens LLM client (planned, #1218 Step 3) — in-process, dogfood
-
-Extracted from proxy.py in #1218 Step 1b. Behavior byte-identical to the
-pre-refactor implementation; regression harness (tests/regression/) locks
-that in.
+#2209 Tier 1 (post-cutover): removed the legacy compat shims
+(``_estimate_input_tokens``, ``_extract_token_counts``, ``_compute_cost``,
+``_compute_audit_cost``). The audit numbers now match the receipts on
+``llm_attempt_receipts`` exactly — cache_read + cache_write tokens are
+included where they were silently dropped before. Spend UIs, ledger
+enforcement, and the Redis rebuild counter now all agree.
 """
 from __future__ import annotations
 
 import json
 from datetime import datetime, timedelta, timezone
+from typing import Optional
 
 import structlog
 from sqlalchemy import text
@@ -27,127 +33,124 @@ from app.core.workspace_context import set_workspace_rls
 log = structlog.get_logger(__name__)
 
 
-# ─── Token / cost helpers (private — audit-internal) ──────────────────────────
+# ─── Shared accounting helpers ────────────────────────────────────────────────
 #
-# #2209 Session 2: these are compat shims over
-# ``app.runtime.accounting.estimator`` and ``.pricing``. The extraction and
-# helper logic they used to inline lives in that module now — this file keeps
-# the legacy aggregation semantics (joined-string count for text shapes) so
-# reservations remain byte-identical while the shared engine is behind shadow.
-# Deleted in Session 6/7 once the shared engine is authoritative.
-
-def _estimate_input_tokens(body: dict) -> int:
-    """Rough token estimate from request body (chars/4). Used for blocked calls.
-
-    Compat shim over ``runtime.accounting.estimator``. Preserves the legacy
-    joined-string aggregation across text shapes for byte-identical output.
-    """
-    from app.runtime.accounting.estimator import (
-        _extract_response_input,
-        _extract_text,
-        _tool_schema_tokens,
-        _vision_tokens,
-    )
-
-    text_chunks: list[str] = _extract_text(body)
-    if isinstance(body, dict):
-        system = body.get("system")
-        if isinstance(system, str):
-            text_chunks.append(system)
-        instructions = body.get("instructions")
-        if isinstance(instructions, str):
-            text_chunks.append(instructions)
-    text_chunks.extend(_extract_response_input(body))
-    text_tokens = len(" ".join(text_chunks)) // 4
-    return max(1, text_tokens + _tool_schema_tokens(body) + _vision_tokens(body))
+# One-stop token extraction + pricing for the audit path. Same normalizer +
+# PricingService the receipts use, so audit and receipts can never disagree.
 
 
-def _extract_token_counts(body: dict, response_bytes: bytes | None) -> tuple[int | None, int | None]:
-    """Best-effort token extraction across all 3 providers.
+def _family_for(provider: str, operation: str | None = None):
+    """Pick the normalizer family for an audit call."""
+    from app.runtime.accounting.normalizers import ProviderFamily
 
-    Anthropic:        usage.input_tokens   / usage.output_tokens
-    OpenAI/Perplexity: usage.prompt_tokens / usage.completion_tokens
+    if operation and "responses" in operation.lower():
+        return ProviderFamily.OPENAI_RESPONSES
+    return {
+        "anthropic": ProviderFamily.ANTHROPIC_MESSAGES,
+        "openai": ProviderFamily.OPENAI_CHAT,
+        "perplexity": ProviderFamily.OPENAI_CHAT,
+        "litellm": ProviderFamily.LITELLM,
+    }.get((provider or "").lower(), ProviderFamily.OPENAI_CHAT)
 
-    Works on both streaming (SSE) and non-streaming responses. Returns
-    (None, None) on parse failures so the row still lands.
-    """
-    def _pair(usage: dict) -> tuple[int | None, int | None]:
-        if not isinstance(usage, dict):
-            return None, None
-        return (
-            usage.get("input_tokens") or usage.get("prompt_tokens"),
-            usage.get("output_tokens") or usage.get("completion_tokens"),
-        )
 
+def _looks_like_sse(response_bytes: bytes) -> bool:
     if not response_bytes:
-        return None, None
-    try:
-        try:
-            obj = json.loads(response_bytes)
-            return _pair(obj.get("usage") or {})
-        except json.JSONDecodeError:
-            pass
-        in_tok, out_tok = None, None
-        for line in response_bytes.splitlines():
-            if not line.startswith(b"data: "):
-                continue
-            try:
-                evt = json.loads(line[6:])
-            except json.JSONDecodeError:
-                continue
-            usage = (
-                evt.get("message", {}).get("usage")
-                or evt.get("response", {}).get("usage")
-                or evt.get("usage")
-                or {}
-            )
-            i, o = _pair(usage)
-            if i is not None:
-                in_tok = i
-            if o is not None:
-                out_tok = o
-        return in_tok, out_tok
-    except Exception:
-        return None, None
+        return False
+    head = response_bytes[:64].lstrip()
+    return head.startswith((b"event:", b"data:", b":"))
 
 
-def _compute_cost(provider: str, model: str, in_tok: int | None, out_tok: int | None, *, strict: bool = False) -> float | None:
-    """USD for this call. Compat shim over ``runtime.accounting.pricing``.
-
-    Returns None only when we couldn't get token counts AND there's no flat
-    request fee — i.e. nothing to charge. Preserves ``round(_, 6)`` display
-    precision so audit rows remain byte-identical.
-    """
-    from app.runtime.accounting.pricing import default_pricing_service
-
-    try:
-        # Legacy path passes input_tokens as-is (no cache breakout) — that's
-        # equivalent to uncached_input_tokens in the new API (all input
-        # priced at input_rate).
-        result = default_pricing_service().price_tokens(
-            provider,
-            model,
-            uncached_input_tokens=in_tok,
-            output_tokens=out_tok,
-            strict=strict,
-        )
-    except Exception:
-        return None
-    if result.microdollars is None:
-        return None
-    return round(result.microdollars / 1_000_000, 6)
-
-
-def _compute_audit_cost(
+def _audit_tokens_and_cost(
+    *,
     provider: str,
     model: str,
-    in_tok: int | None,
-    out_tok: int | None,
+    body: dict,
+    response_bytes: bytes | None,
     routing_meta: dict | None,
-) -> float | None:
-    if (routing_meta or {}).get("billable", True) is False:
+    execution_status: str | None,
+    operation: str | None = None,
+) -> tuple[Optional[int], Optional[int], Optional[float]]:
+    """Return ``(input_tokens, output_tokens, cost_usd)`` for one audit row.
+
+    Rules:
+    - ``routing_meta.billable == False`` ⇒ cost is None (still record tokens
+      when known).
+    - Response bytes present ⇒ normalize + price via the accounting engine.
+      ``uncached_input_tokens`` + ``cache_read`` + tier'd ``cache_write``
+      all contribute to the priced total; cache costs no longer silently
+      disappear as they did under legacy audit math.
+    - No response bytes and ``execution_status != 'error'`` ⇒ blocked call
+      that never dispatched. Estimate input from the request body (bounded
+      heuristic). Output is 0.
+    - Otherwise return (None, None, None).
+
+    Pricing uses ``strict=False`` — an unknown model returns cost=None but
+    the row still lands so ops can see the event.
+    """
+    from app.runtime.accounting.estimator import estimate_tokens
+    from app.runtime.accounting.normalizers import normalize_json, normalize_sse
+    from app.runtime.accounting.pricing import default_pricing_service
+
+    billable = True
+    if isinstance(routing_meta, dict) and routing_meta.get("billable") is False:
+        billable = False
+
+    if response_bytes:
+        try:
+            family = _family_for(provider, operation)
+            if _looks_like_sse(response_bytes):
+                norm = normalize_sse(family, response_bytes)
+            else:
+                norm = normalize_json(family, response_bytes)
+            tokens = norm.tokens
+            in_tok = tokens.total_input_tokens
+            out_tok = tokens.total_output_tokens
+            if not billable:
+                return in_tok, out_tok, None
+            price = default_pricing_service().price_tokens(
+                provider,
+                model,
+                uncached_input_tokens=tokens.uncached_input_tokens,
+                output_tokens=tokens.total_output_tokens,
+                cache_read_tokens=tokens.cache_read_tokens,
+                cache_write_tokens_by_tier=(
+                    dict(tokens.cache_write_tokens_by_tier or {}) or None
+                ),
+                strict=False,
+            )
+            cost_usd = (
+                round(price.microdollars / 1_000_000, 6)
+                if price.microdollars is not None
+                else None
+            )
+            return in_tok, out_tok, cost_usd
+        except Exception:  # noqa: BLE001 — audit path never raises
+            return None, None, None
+
+    if execution_status != "error":
+        try:
+            est = estimate_tokens(body) if body else None
+            return (est.input_tokens if est else None), 0, None
+        except Exception:
+            return None, 0, None
+
+    return None, None, None
+
+
+def _estimate_input_tokens_bounded(body: dict) -> int | None:
+    """Pre-inference input-token estimate for ``insert_accepted``.
+
+    Thin wrapper over the accounting estimator — kept named because
+    ``insert_accepted`` writes it into ``tokens_before`` before any
+    response bytes exist.
+    """
+    from app.runtime.accounting.estimator import estimate_tokens
+
+    try:
+        est = estimate_tokens(body) if body else None
+    except Exception:
         return None
-    return _compute_cost(provider, model, in_tok, out_tok)
+    return est.input_tokens if est else None
 
 
 # ─── Public API ───────────────────────────────────────────────────────────────
@@ -204,16 +207,13 @@ def record(
     db = SessionLocal()
     try:
         set_workspace_rls(db, workspace_id)
-        in_tokens, out_tokens = _extract_token_counts(body, response_bytes)
-        if in_tokens is None and response_bytes is None and execution_status != "error":
-            # ponytail: blocked call — estimate what vendor would have consumed
-            in_tokens, out_tokens = _estimate_input_tokens(body), 0
-        cost_usd = _compute_audit_cost(
-            provider,
-            model,
-            in_tokens,
-            out_tokens,
-            routing_meta,
+        in_tokens, out_tokens, cost_usd = _audit_tokens_and_cost(
+            provider=provider,
+            model=model,
+            body=body,
+            response_bytes=response_bytes,
+            routing_meta=routing_meta,
+            execution_status=execution_status,
         )
         # Mint id in Python — pgcrypto/gen_random_uuid isn't guaranteed to be
         # loaded on every deploy, so we don't rely on it. Caller may pre-mint
@@ -373,7 +373,7 @@ def insert_accepted(
     lease = lease_seconds if lease_seconds is not None else settings.guard_durable_audit_lease_seconds
     now = datetime.now(timezone.utc)
     row_id = receipt_id or str(_uuid.uuid4())
-    input_tokens = _estimate_input_tokens(body) if body else None
+    input_tokens = _estimate_input_tokens_bounded(body) if body else None
 
     if agent_identity_id is None:
         # PR-0.5b invariant — same as record(): source='gateway' hardcoded,
@@ -509,10 +509,14 @@ def finalize(
     the reconciler doesn't treat the row as orphaned; downstream analytics
     read tokens as NULL for those rows.
     """
-    in_tokens, out_tokens = _extract_token_counts(body, response_bytes)
-    if in_tokens is None and response_bytes is None and execution_status != "error":
-        in_tokens, out_tokens = _estimate_input_tokens(body) if body else None, 0
-    cost_usd = _compute_audit_cost(provider, model, in_tokens, out_tokens, routing_meta)
+    in_tokens, out_tokens, cost_usd = _audit_tokens_and_cost(
+        provider=provider,
+        model=model,
+        body=body,
+        response_bytes=response_bytes,
+        routing_meta=routing_meta,
+        execution_status=execution_status,
+    )
 
     now = datetime.now(timezone.utc)
     db = SessionLocal()

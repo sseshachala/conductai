@@ -357,7 +357,7 @@ def test_db_outage_returns_503_and_never_forwards_upstream():
             "app.guard.policy.flatten_prompt",
             lambda body: "hello",
         ), patch(
-            "app.guard.audit._estimate_input_tokens",
+            "app.guard.audit._estimate_input_tokens_bounded",
             lambda body: 10,
         ):
             client = TestClient(app, raise_server_exceptions=False)
@@ -517,7 +517,7 @@ def test_forward_exception_stops_heartbeat_and_finalizes_error():
             "app.guard.policy.flatten_prompt",
             lambda body: "hello",
         ), patch(
-            "app.guard.audit._estimate_input_tokens",
+            "app.guard.audit._estimate_input_tokens_bounded",
             lambda body: 10,
         ):
             client = TestClient(app, raise_server_exceptions=False)

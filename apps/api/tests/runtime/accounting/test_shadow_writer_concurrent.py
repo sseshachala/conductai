@@ -22,12 +22,10 @@ import pytest
 from app.core.config import settings
 from app.runtime.accounting.shadow_writer import shadow_write
 
-
 @pytest.fixture
 def _shadow_on():
     # Cutover: writer always on. Fixture kept as a no-op for existing callers.
     yield
-
 
 def _write(workspace_id=None):
     return shadow_write(
@@ -38,11 +36,8 @@ def _write(workspace_id=None):
         operation="messages.create",
         dispatched=True,
         response_bytes=b'{"usage":{"input_tokens":10,"output_tokens":5}}',
-        legacy_input_tokens=10,
-        legacy_output_tokens=5,
-        legacy_cost_usd=0.0001,
-    )
 
+    )
 
 def test_concurrent_writes_do_not_share_state(_shadow_on, monkeypatch):
     """Fire 50 shadow writes from 10 threads and verify they all succeed
@@ -78,7 +73,6 @@ def test_concurrent_writes_do_not_share_state(_shadow_on, monkeypatch):
     receipt_ids = {row.id for row in written}
     assert len(receipt_ids) == 50
 
-
 def test_db_integrity_error_never_raises(_shadow_on, monkeypatch):
     """Simulates the unique-constraint duplicate case."""
     class _Integrity(Exception):
@@ -97,7 +91,6 @@ def test_db_integrity_error_never_raises(_shadow_on, monkeypatch):
     result = _write()
     assert result is None
 
-
 def test_session_close_failure_never_raises(_shadow_on, monkeypatch):
     """If db.close() throws, the writer swallows it — the outer request
     is unaffected."""
@@ -111,7 +104,6 @@ def test_session_close_failure_never_raises(_shadow_on, monkeypatch):
     result = _write()
     # Either succeeded before close, or swallowed the close error — both fine.
     assert result is None or isinstance(result, uuid.UUID)
-
 
 def test_normalizer_exception_never_raises(_shadow_on, monkeypatch):
     """Corrupt response_bytes must not crash the settlement path."""
@@ -133,7 +125,6 @@ def test_normalizer_exception_never_raises(_shadow_on, monkeypatch):
     result = _write()
     assert result is None
 
-
 def test_pricing_service_exception_never_raises(_shadow_on, monkeypatch):
     """If the pricing service throws inside the writer, we still get a
     receipt with UNPRICED completeness rather than a dropped write."""
@@ -154,7 +145,6 @@ def test_pricing_service_exception_never_raises(_shadow_on, monkeypatch):
     result = _write()
     # Writer catches, returns None. Row NOT persisted for this call.
     assert result is None
-
 
 def test_duplicate_write_for_same_request_attempt_is_idempotent(_shadow_on, monkeypatch):
     """Calling shadow_write twice with the same receipt_id + attempt_ordinal
@@ -190,9 +180,7 @@ def test_duplicate_write_for_same_request_attempt_is_idempotent(_shadow_on, monk
             operation="messages.create",
             dispatched=True,
             response_bytes=b'{"usage":{"input_tokens":10,"output_tokens":5}}',
-            legacy_input_tokens=10,
-            legacy_output_tokens=5,
-            legacy_cost_usd=0.0001,
+
             receipt_id=receipt_id,
             attempt_ordinal=0,
         )

@@ -23,15 +23,12 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-
 pytestmark = pytest.mark.skipif(
     os.environ.get("RUN_ACCOUNTING_REALDB") != "1",
     reason="Real-DB test — set RUN_ACCOUNTING_REALDB=1 (nightly only).",
 )
 
-
 # ─── Fixtures ─────────────────────────────────────────────────────────────
-
 
 @pytest.fixture(scope="module")
 def workspace_id() -> str:
@@ -65,11 +62,9 @@ def workspace_id() -> str:
         )
         db.commit()
 
-
 def _shadow_on(monkeypatch):
     # Cutover: writer always on. Helper kept as a no-op for existing callers.
     return
-
 
 def _receipt_count(request_id: uuid.UUID) -> int:
     from app.core.database import SessionLocal
@@ -81,9 +76,7 @@ def _receipt_count(request_id: uuid.UUID) -> int:
             {"r": str(request_id)},
         ).scalar_one()
 
-
 # ─── Tests ────────────────────────────────────────────────────────────────
-
 
 def test_shadow_write_persists_row(monkeypatch, workspace_id):
     _shadow_on(monkeypatch)
@@ -98,13 +91,10 @@ def test_shadow_write_persists_row(monkeypatch, workspace_id):
         operation="messages.create",
         dispatched=True,
         response_bytes=b'{"usage":{"input_tokens":100,"output_tokens":50}}',
-        legacy_input_tokens=100,
-        legacy_output_tokens=50,
-        legacy_cost_usd=0.001,
+
     )
     assert rid is not None
     assert _receipt_count(req_id) == 1
-
 
 def test_unique_constraint_on_request_id_attempt_ordinal(monkeypatch, workspace_id):
     """Second insert at the same (request_id, attempt_ordinal) is swallowed."""
@@ -120,9 +110,7 @@ def test_unique_constraint_on_request_id_attempt_ordinal(monkeypatch, workspace_
         operation="messages.create",
         dispatched=True,
         response_bytes=b'{"usage":{"input_tokens":10,"output_tokens":5}}',
-        legacy_input_tokens=10,
-        legacy_output_tokens=5,
-        legacy_cost_usd=0.0001,
+
         attempt_ordinal=0,
     )
     rid2 = shadow_write(
@@ -133,15 +121,12 @@ def test_unique_constraint_on_request_id_attempt_ordinal(monkeypatch, workspace_
         operation="messages.create",
         dispatched=True,
         response_bytes=b'{"usage":{"input_tokens":20,"output_tokens":10}}',
-        legacy_input_tokens=20,
-        legacy_output_tokens=10,
-        legacy_cost_usd=0.0002,
+
         attempt_ordinal=0,  # SAME ordinal — must be rejected
     )
     assert rid1 is not None
     assert rid2 is None  # unique constraint fired, writer swallowed
     assert _receipt_count(req_id) == 1
-
 
 def test_concurrent_duplicate_inserts_produce_one_row(monkeypatch, workspace_id):
     """Two threads racing on the same (request_id, ordinal) → one wins."""
@@ -162,9 +147,7 @@ def test_concurrent_duplicate_inserts_produce_one_row(monkeypatch, workspace_id)
             operation="messages.create",
             dispatched=True,
             response_bytes=b'{"usage":{"input_tokens":10,"output_tokens":5}}',
-            legacy_input_tokens=10,
-            legacy_output_tokens=5,
-            legacy_cost_usd=0.0001,
+
             attempt_ordinal=0,
         )
         results.append(rid)
@@ -179,7 +162,6 @@ def test_concurrent_duplicate_inserts_produce_one_row(monkeypatch, workspace_id)
     non_none = [r for r in results if r is not None]
     assert len(non_none) == 1
     assert _receipt_count(req_id) == 1
-
 
 def test_reconciler_backfills_missing_receipt(monkeypatch, workspace_id):
     """Insert a guard_audit_events row with no matching receipt, run
@@ -231,7 +213,6 @@ def test_reconciler_backfills_missing_receipt(monkeypatch, workspace_id):
         assert row.usage_origin == "reconciled"
         assert row.execution_outcome == "reconciled_late"
 
-
 def test_reconciler_idempotent_on_repeat(monkeypatch, workspace_id):
     """Second reconciler pass on the same period writes nothing new."""
     from app.core.database import SessionLocal
@@ -273,7 +254,6 @@ def test_reconciler_idempotent_on_repeat(monkeypatch, workspace_id):
     assert r2.receipts_written == 0
     assert _receipt_count(req_id) == 1
 
-
 def test_atomic_placeholder_promotion_survives_race(monkeypatch, workspace_id):
     """#2209 Session 6G reviewer #2 (#2221 review at 42d89898):
     reproduces the DELETE-then-INSERT race with two threads.
@@ -310,9 +290,7 @@ def test_atomic_placeholder_promotion_survives_race(monkeypatch, workspace_id):
             operation="reconciled",
             dispatched=True,
             response_bytes=None,
-            legacy_input_tokens=None,
-            legacy_output_tokens=None,
-            legacy_cost_usd=None,
+
             attempt_ordinal=0,
             source="reconciler",
         )
@@ -327,9 +305,7 @@ def test_atomic_placeholder_promotion_survives_race(monkeypatch, workspace_id):
             operation="messages.create",
             dispatched=True,
             response_bytes=b'{"usage":{"input_tokens":10,"output_tokens":5}}',
-            legacy_input_tokens=10,
-            legacy_output_tokens=5,
-            legacy_cost_usd=0.0001,
+
             attempt_ordinal=0,
             source="gateway",
         )
@@ -354,7 +330,6 @@ def test_atomic_placeholder_promotion_survives_race(monkeypatch, workspace_id):
     # Promoted row has the real tokens, not the placeholder's None.
     assert row.total_input_tokens == 10
 
-
 def test_reconciler_placeholder_never_overwrites_real_receipt(monkeypatch, workspace_id):
     """The reverse race: a real receipt exists; a concurrent reconciler
     pass must NOT overwrite it. ``ON CONFLICT DO NOTHING`` guarantees
@@ -374,9 +349,7 @@ def test_reconciler_placeholder_never_overwrites_real_receipt(monkeypatch, works
         operation="messages.create",
         dispatched=True,
         response_bytes=b'{"usage":{"input_tokens":42,"output_tokens":17}}',
-        legacy_input_tokens=42,
-        legacy_output_tokens=17,
-        legacy_cost_usd=0.0002,
+
         attempt_ordinal=0,
         source="gateway",
     )
@@ -389,9 +362,7 @@ def test_reconciler_placeholder_never_overwrites_real_receipt(monkeypatch, works
         operation="reconciled",
         dispatched=True,
         response_bytes=None,
-        legacy_input_tokens=None,
-        legacy_output_tokens=None,
-        legacy_cost_usd=None,
+
         attempt_ordinal=0,
         source="reconciler",
     )
@@ -405,7 +376,6 @@ def test_reconciler_placeholder_never_overwrites_real_receipt(monkeypatch, works
         ).one()
     assert row.source == "gateway"
     assert row.total_input_tokens == 42
-
 
 def test_reconciler_backfills_missing_fallback_ordinal(monkeypatch, workspace_id):
     """#2209 Session 6H: audit row for a 3-attempt request has receipts
@@ -476,9 +446,7 @@ def test_reconciler_backfills_missing_fallback_ordinal(monkeypatch, workspace_id
         operation="messages.create",
         dispatched=True,
         response_bytes=failed_bytes,
-        legacy_input_tokens=50,
-        legacy_output_tokens=0,
-        legacy_cost_usd=None,
+
         attempt_ordinal=0,
         source="gateway",
         succeeded=False,
@@ -491,9 +459,7 @@ def test_reconciler_backfills_missing_fallback_ordinal(monkeypatch, workspace_id
         operation="chat.completions",
         dispatched=True,
         response_bytes=b'{"usage":{"prompt_tokens":100,"completion_tokens":25}}',
-        legacy_input_tokens=100,
-        legacy_output_tokens=25,
-        legacy_cost_usd=0.001,
+
         attempt_ordinal=2,
         source="gateway",
         succeeded=True,
@@ -554,7 +520,6 @@ def test_reconciler_backfills_missing_fallback_ordinal(monkeypatch, workspace_id
     # Failed-attempt placeholder → FAILED outcome.
     assert placeholder.execution_outcome == "failed"
 
-
 def test_workspace_delete_cascades_to_receipts(monkeypatch):
     """Verify the FK CASCADE on migration 0148 fires — orphan receipts
     would leak otherwise when a workspace is deleted."""
@@ -583,9 +548,7 @@ def test_workspace_delete_cascades_to_receipts(monkeypatch):
         operation="messages.create",
         dispatched=True,
         response_bytes=b'{"usage":{"input_tokens":10,"output_tokens":5}}',
-        legacy_input_tokens=10,
-        legacy_output_tokens=5,
-        legacy_cost_usd=0.0001,
+
     )
     assert _receipt_count(req_id) == 1
 

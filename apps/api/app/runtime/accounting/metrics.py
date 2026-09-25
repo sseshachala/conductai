@@ -133,19 +133,14 @@ def compute_shadow_delta_report(
         m.finalized_at < period_end,
     )
 
-    # Top-line totals + abs delta computed via SQL when possible.
-    abs_delta_expr = func.abs(
-        func.coalesce(m.calculated_cost_microdollars, 0)
-        - func.coalesce(m.legacy_cost_microdollars, 0)
-    ).label("abs_delta")
-
+    # #2209 Tier 1: legacy_cost_microdollars column dropped. Delta
+    # arithmetic is trivially zero post-cutover — the new engine IS the
+    # source of truth. Report zeros for backward-compat with the
+    # ShadowDeltaReport dataclass shape (callers just render "no delta").
     totals_row = db.execute(
         select(
             func.count(m.id).label("receipt_count"),
             func.coalesce(func.sum(m.calculated_cost_microdollars), 0).label("new_cost"),
-            func.coalesce(func.sum(m.legacy_cost_microdollars), 0).label("legacy_cost"),
-            func.coalesce(func.sum(abs_delta_expr), 0).label("sum_abs_delta"),
-            func.coalesce(func.max(abs_delta_expr), 0).label("max_abs_delta"),
         ).where(period_where)
     ).one()
 
@@ -175,9 +170,6 @@ def compute_shadow_delta_report(
             m.model,
             func.count(m.id).label("cnt"),
             func.coalesce(func.sum(m.calculated_cost_microdollars), 0).label("new_c"),
-            func.coalesce(func.sum(m.legacy_cost_microdollars), 0).label("legacy_c"),
-            func.coalesce(func.sum(abs_delta_expr), 0).label("sum_abs"),
-            func.coalesce(func.max(abs_delta_expr), 0).label("max_abs"),
         )
         .where(period_where)
         .group_by(m.provider, m.model)
@@ -191,9 +183,9 @@ def compute_shadow_delta_report(
                 model=row.model,
                 receipt_count=int(row.cnt),
                 new_cost_microdollars=int(row.new_c),
-                legacy_cost_microdollars=int(row.legacy_c),
-                abs_delta_microdollars=int(row.sum_abs),
-                max_delta_microdollars=int(row.max_abs),
+                legacy_cost_microdollars=0,
+                abs_delta_microdollars=0,
+                max_delta_microdollars=0,
                 unpriced_count=_count_within_bucket(
                     db, period_where, m, row.provider, row.model,
                     m.pricing_completeness, PricingCompleteness.UNPRICED.value,
@@ -225,9 +217,9 @@ def compute_shadow_delta_report(
         receipt_count=int(totals_row.receipt_count),
         dispatched_count=int(dispatched_count),
         new_cost_microdollars=int(totals_row.new_cost),
-        legacy_cost_microdollars=int(totals_row.legacy_cost),
-        sum_abs_delta_microdollars=int(totals_row.sum_abs_delta),
-        max_abs_delta_microdollars=int(totals_row.max_abs_delta),
+        legacy_cost_microdollars=0,
+        sum_abs_delta_microdollars=0,
+        max_abs_delta_microdollars=0,
         missing_usage_count=missing_usage,
         partial_usage_count=partial_usage,
         pending_usage_count=pending_usage,

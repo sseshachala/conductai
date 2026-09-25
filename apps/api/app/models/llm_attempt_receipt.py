@@ -102,13 +102,11 @@ class LlmAttemptReceipt(Base):
     pricing_version = Column(Text, nullable=True)
     pricing_completeness = Column(Text, nullable=False)
 
-    # Shadow-comparison columns. Populated with what the legacy code path
-    # computed for the same attempt so Session 6 metrics can quantify the
-    # delta by provider / model / cache / outcome before Session 7 activation.
-    legacy_input_tokens = Column(Integer, nullable=True)
-    legacy_output_tokens = Column(Integer, nullable=True)
-    legacy_cost_microdollars = Column(BigInteger, nullable=True)
-
+    # #2209 Tier 1 removal — dropped ``legacy_input_tokens``,
+    # ``legacy_output_tokens``, ``legacy_cost_microdollars`` columns.
+    # They existed for Session 6 shadow-vs-legacy delta metrics; post-
+    # cutover the delta-metrics module is authoritative-vs-authoritative
+    # (nothing to compare against). Migration 0151 drops them.
     normalizer_version = Column(Text, nullable=True)
     calculation_provenance = Column(
         JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")

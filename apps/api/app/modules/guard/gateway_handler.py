@@ -150,7 +150,8 @@ async def handle_gateway_request(
     from app.core.database import SessionLocal
     from app.core.workspace_context import set_workspace_rls
     from app.runtime.provider_transport import get_provider_transport_registry
-    from app.guard.audit import _estimate_input_tokens, record as _record_audit
+    from app.guard.audit import record as _record_audit
+    from app.runtime.accounting.estimator import estimate_tokens as _estimate_tokens
     from app.guard.policy import flatten_prompt as _flatten_prompt
     from app.guard.router import fail_closed as _fail_closed, upstream as _forward
     from app.modules.guard.gateway_helpers import (
@@ -455,7 +456,7 @@ async def handle_gateway_request(
                     provider=provider,
                     model=model,
                     body=body,
-                    input_tokens=_estimate_input_tokens(body),
+                    input_tokens=_estimate_tokens(body).input_tokens,
                     db=_db_local,
                     gate="prompt",
                     risk_tier=_agent_risk_tier,
@@ -540,7 +541,7 @@ async def handle_gateway_request(
                     _db_local,
                     workspace_id=workspace_id,
                     agent_identity_id=str(_agent_identity_id) if _agent_identity_id else None,
-                    input_tokens=_estimate_input_tokens(body),
+                    input_tokens=_estimate_tokens(body).input_tokens,
                     fail_closed=canonical_profile and settings.environment == "production",
                 )
             finally:
@@ -1478,9 +1479,6 @@ async def handle_gateway_request(
                         operation=request.url.path,
                         dispatched=_dispatched,
                         response_bytes=_resp_bytes,
-                        legacy_input_tokens=None,
-                        legacy_output_tokens=None,
-                        legacy_cost_usd=None,
                         reserved_microdollars=_reserved_micros,
                         developer_external_id=clerk_user_id,
                         agent_identity_id=_agent_identity_id,
@@ -1855,7 +1853,7 @@ def _build_policy_check(
     """
     from app.core.database import SessionLocal
     from app.core.workspace_context import set_workspace_rls
-    from app.guard.audit import _estimate_input_tokens
+    from app.runtime.accounting.estimator import estimate_tokens as _estimate_tokens
     from app.runtime.attempt_coordinator import PolicyBlock
 
     def _check_sync(target) -> PolicyBlock | None:
@@ -1893,7 +1891,7 @@ def _build_policy_check(
                 provider=target_provider,
                 model=target_model,   # <-- key: re-eval against target model
                 body=body,
-                input_tokens=_estimate_input_tokens(body),
+                input_tokens=_estimate_tokens(body).input_tokens,
                 db=_db,
                 gate="prompt",
                 risk_tier=risk_tier,
@@ -2215,7 +2213,7 @@ def _build_stream_tool_policy_check(
     from fastapi.concurrency import run_in_threadpool
     from app.core.database import SessionLocal as _SL
     from app.core.workspace_context import set_workspace_rls
-    from app.guard.audit import _estimate_input_tokens
+    from app.runtime.accounting.estimator import estimate_tokens as _estimate_tokens
     from app.guard.policy import evaluate_composed as _eval_composed
     from app.guard.policy_types import PolicyAction as _PA, PolicyContext as _PolicyContext
 
@@ -2261,7 +2259,7 @@ def _build_stream_tool_policy_check(
                     provider=provider,
                     model=model,
                     body=body,
-                    input_tokens=_estimate_input_tokens(body),
+                    input_tokens=_estimate_tokens(body).input_tokens,
                     db=_db_local,
                     gate="response",
                     risk_tier=agent_risk_tier,
@@ -2605,9 +2603,6 @@ def _wrap_v2_stream_finalize(
                     operation=operation,  # P1-4: real op flows to receipt normalizer too
                     dispatched=True,
                     response_bytes=_stream_resp_bytes,
-                    legacy_input_tokens=None,
-                    legacy_output_tokens=None,
-                    legacy_cost_usd=None,
                     reserved_microdollars=_reserved_micros,
                     developer_external_id=clerk_user_id,
                     source="gateway",
