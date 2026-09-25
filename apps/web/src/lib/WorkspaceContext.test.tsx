@@ -6,6 +6,8 @@ const auth = vi.hoisted(() => ({
   isLoaded: false, isSignedIn: false, sessionId: 'session-a',
   getToken: vi.fn(), status: 'pending',
 }))
+const navigation = vi.hoisted(() => ({ pathname: '/theguard/try' }))
+vi.mock('next/navigation', () => ({ usePathname: () => navigation.pathname }))
 vi.mock('@clerk/nextjs', () => ({
   useAuth: () => auth,
   useSession: () => ({ session: { status: auth.status } }),
@@ -17,11 +19,40 @@ function Probe() {
 }
 function tree() { return <WorkspaceProvider clerkEnabled><Probe /></WorkspaceProvider> }
 beforeEach(() => {
+  navigation.pathname = '/theguard/try'
+  vi.stubEnv('NEXT_PUBLIC_API_URL', 'https://api.example')
   Object.assign(auth, { isLoaded: false, isSignedIn: false, sessionId: 'session-a', status: 'pending' })
   auth.getToken.mockReset().mockResolvedValue('test-token')
   document.cookie = 'delegator_project_id=stale; path=/'
 })
-afterEach(() => { cleanup(); vi.unstubAllGlobals() })
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.unstubAllEnvs() })
+
+it('offers login and signup without fetching workspaces when signed out', () => {
+  Object.assign(auth, { isLoaded: true, isSignedIn: false })
+  const fetcher = vi.fn()
+  vi.stubGlobal('fetch', fetcher)
+  render(tree())
+  expect(screen.getByRole('link', { name: 'Sign in' })).toHaveAttribute('href', '/sign-in')
+  expect(screen.getByRole('link', { name: 'Create account' })).toHaveAttribute('href', '/sign-up')
+  expect(fetcher).not.toHaveBeenCalled()
+})
+
+it('does not replace the sign-in page with the signed-out gate', () => {
+  Object.assign(auth, { isLoaded: true, isSignedIn: false })
+  navigation.pathname = '/sign-in'
+  render(<WorkspaceProvider clerkEnabled><div>Login form</div></WorkspaceProvider>)
+  expect(screen.getByText('Login form')).toBeInTheDocument()
+})
+
+it('reports missing API configuration without requesting undefined/projects', async () => {
+  vi.stubEnv('NEXT_PUBLIC_API_URL', undefined)
+  Object.assign(auth, { isLoaded: true, isSignedIn: true, status: 'active' })
+  const fetcher = vi.fn()
+  vi.stubGlobal('fetch', fetcher)
+  render(tree())
+  expect(await screen.findByText(/Workspace API is not configured/)).toBeInTheDocument()
+  expect(fetcher).not.toHaveBeenCalled()
+})
 
 it('waits for an active Clerk session and validates the saved workspace', async () => {
   const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify([{ id: 'allowed', name: 'Allowed' }])))

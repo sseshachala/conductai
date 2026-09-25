@@ -2,6 +2,8 @@
 
 import { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from "react"
 import { useAuth, useSession } from "@clerk/nextjs"
+import Link from "next/link"
+import { usePathname } from "next/navigation"
 import { sessionFetch, type GetSessionToken } from "./sessionFetch"
 
 export interface Workspace {
@@ -56,6 +58,18 @@ export function WorkspaceProvider({ children, clerkEnabled }: Props) {
 function WorkspaceProviderWithAuth({ children }: { children: ReactNode }) {
   const { getToken, isLoaded, isSignedIn, sessionId } = useAuth()
   const { session } = useSession()
+  const pathname = usePathname()
+  const authPage = /^\/(sign-in|sign-up|accept-invite)(\/|$)/.test(pathname)
+  if (isLoaded && !isSignedIn && !authPage) return (
+    <section className="mx-auto max-w-md p-8 space-y-4">
+      <h1 className="text-xl font-semibold">Sign in to Conduct</h1>
+      <p>Sign in or create an account to access your workspace.</p>
+      <div className="flex gap-4">
+        <Link href="/sign-in" className="underline">Sign in</Link>
+        <Link href="/sign-up" className="underline">Create account</Link>
+      </div>
+    </section>
+  )
   return <WorkspaceProviderInner key={sessionId ?? 'signed-out'} getToken={getToken} ready={isLoaded && !!isSignedIn && session?.status === 'active'}>{children}</WorkspaceProviderInner>
 }
 
@@ -80,7 +94,12 @@ function WorkspaceProviderInner({
     setLoading(true)
     setError(null)
     try {
-      const res = await sessionFetch(`${process.env.NEXT_PUBLIC_API_URL}/projects`, {}, getToken)
+      const api = process.env.NEXT_PUBLIC_API_URL
+      if (api === undefined) {
+        setError("Workspace API is not configured. Set NEXT_PUBLIC_API_URL and restart the web server.")
+        return
+      }
+      const res = await sessionFetch(`${api}/projects`, {}, getToken)
       if (version !== requestVersion.current) return
       if (!res.ok) {
         setError(`Failed to load workspaces (${res.status})`)
