@@ -179,13 +179,54 @@ def _handle_guard_slack_decision(
         msg_container = payload.get("container", {})
         msg_channel = msg_container.get("channel_id") or payload.get("channel", {}).get("id")
         msg_ts = msg_container.get("message_ts") or payload.get("message", {}).get("ts")
-        if msg_channel and msg_ts:
+        if not (msg_channel and msg_ts):
+            # Slack normally includes container.{channel_id,message_ts} on
+            # every button click; this only fires on a malformed payload.
+            log.warning(
+                "slack.guard_update_skipped_no_channel_or_ts",
+                request_id=str(row.id),
+                has_channel=bool(msg_channel),
+                has_ts=bool(msg_ts),
+            )
+        else:
             try:
-                token = (ws_creds or {}).get("token") or (ws_creds or {}).get("bot_token", "")
-                if token:
+                # Regression fix: the initial approval post uses
+                # slack_token_for_channel() so a per-channel integration
+                # can carry its own bot token (see approval.py ->
+                # _fanout_slack). This update path used to only look at
+                # the workspace-default `slack` credential — if the
+                # approval was posted via a per-channel token the update
+                # silently no-oped (empty token) and buttons stayed on
+                # the message. Mirror the initial lookup by resolving
+                # the notification-channel row for msg_channel first.
+                default_token = (ws_creds or {}).get("token") or (ws_creds or {}).get("bot_token", "")
+                token = default_token
+                try:
+                    from app.modules.guard.models import GuardNotificationChannel as _GNC
+                    from app.modules.guard.routers.notifications import slack_token_for_channel as _tok_for
+                    _ch_row = (
+                        db.query(_GNC)
+                        .filter(
+                            _GNC.workspace_id == row.workspace_id,
+                            _GNC.channel_type == "slack",
+                            _GNC.channel_ref == msg_channel,
+                        )
+                        .first()
+                    )
+                    if _ch_row is not None:
+                        token = _tok_for(db, row.workspace_id, _ch_row.integration_id, default_token) or default_token
+                except Exception as _exc:  # noqa: BLE001 — cred lookup must never block the ack
+                    log.warning("slack.guard_update_token_lookup_failed", request_id=str(row.id), err=str(_exc))
+                if not token:
+                    log.warning(
+                        "slack.guard_update_skipped_no_token",
+                        request_id=str(row.id),
+                        channel=msg_channel,
+                    )
+                else:
                     update_approval_message(token, msg_channel, msg_ts, row.status, approver, rule_id=row.rule_id)
             except Exception as e:
-                log.warning("slack.guard_update_message_failed", error=str(e))
+                log.warning("slack.guard_update_message_failed", request_id=str(row.id), error=str(e))
     except Exception as _exc:
         import traceback as _tb
         log.error(
