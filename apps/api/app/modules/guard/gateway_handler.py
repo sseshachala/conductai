@@ -284,6 +284,10 @@ async def handle_gateway_request(
         model, _routing_meta = await run_in_threadpool(
             _apply_tier_resolution_owned, workspace_id, provider, body,
         )
+        # Keep the wire operation for audit normalization even without a
+        # v2 profile. The generic "inference" label cannot distinguish
+        # Chat Completions from Responses usage.
+        _routing_meta = {**(_routing_meta or {}), "operation": upstream_path}
         if operation != "inference":
             _routing_meta = {
                 **(_routing_meta or {}),

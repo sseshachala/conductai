@@ -97,6 +97,10 @@ def _audit_tokens_and_cost(
 
     if response_bytes:
         try:
+            # Durable finalization has no route argument; Gateway carries
+            # the operation in routing metadata for both audit writers.
+            meta = routing_meta if isinstance(routing_meta, dict) else {}
+            operation = meta.get("operation") or meta.get("v2_operation") or operation
             family = _family_for(provider, operation)
             if _looks_like_sse(response_bytes):
                 norm = normalize_sse(family, response_bytes)
@@ -214,6 +218,7 @@ def record(
             response_bytes=response_bytes,
             routing_meta=routing_meta,
             execution_status=execution_status,
+            operation=route,
         )
         # Mint id in Python — pgcrypto/gen_random_uuid isn't guaranteed to be
         # loaded on every deploy, so we don't rely on it. Caller may pre-mint
