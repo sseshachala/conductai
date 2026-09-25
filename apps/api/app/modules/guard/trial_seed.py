@@ -30,6 +30,23 @@ TRIAL_IDENTITY_NAME = "Trial (7 days)"
 
 def link_trial_owner(db: Session, workspace_id: str, identity_id: str) -> None:
     """Repair only an unlinked, active owner membership; never undo revocation."""
+    # A member may already have a normal CLI identity. Bind the trial
+    # independently rather than replacing that identity or its sessions.
+    db.execute(text("""
+        UPDATE agent_identities AS identity
+        SET owner_user_id = workspace.owner_id
+        FROM workspaces AS workspace, workspace_users AS membership,
+             guard_member_config AS member
+        WHERE workspace.id = :ws
+          AND identity.id = :aid AND identity.workspace_id = workspace.id
+          AND identity.source = 'conduct_trial'
+          AND identity.owner_user_id IS NULL
+          AND identity.lifecycle_state = 'active' AND identity.expires_at > now()
+          AND membership.workspace_id = workspace.id
+          AND membership.clerk_user_id = workspace.owner_id
+          AND member.workspace_id = workspace.id
+          AND member.clerk_user_id = workspace.owner_id AND member.active = true
+    """), {"ws": str(workspace_id), "aid": str(identity_id)})
     db.execute(text("""
         UPDATE guard_member_config AS member
         SET agent_identity_id = :aid

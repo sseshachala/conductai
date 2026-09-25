@@ -217,6 +217,28 @@ def get_clerk_user_info(user_id: str) -> dict:
         return {"email": None, "name": None}
 
 
+def _trial_member(db: Session, identity):
+    """Trial identities have a separate owner binding, never a CLI-link takeover."""
+    if getattr(identity, "source", None) != "conduct_trial":
+        return None
+    owner = getattr(identity, "owner_user_id", None)
+    if not isinstance(owner, str) or not owner:
+        return None
+    from sqlalchemy import text
+    row = db.execute(text("""
+        SELECT member.clerk_user_id
+        FROM guard_member_config member
+        JOIN workspace_users membership
+          ON membership.workspace_id = member.workspace_id
+         AND membership.clerk_user_id = member.clerk_user_id
+        JOIN workspaces workspace ON workspace.id = member.workspace_id
+        WHERE member.workspace_id = :ws AND member.clerk_user_id = :uid
+          AND member.active = true AND workspace.owner_id = :uid
+        LIMIT 1
+    """), {"ws": str(identity.workspace_id), "uid": owner}).fetchone()
+    return row.clerk_user_id if row else None
+
+
 def _resolve_agent_token(token: str, db: Session):
     """Validate a cond_agt_* or cond_api_* token and return (AgentIdentity, clerk_user_id).
     Raises HTTPException on invalid/expired token or missing GMC link.
@@ -270,6 +292,11 @@ def _resolve_agent_token(token: str, db: Session):
                 # workspace credentials rather than a user's login session.
                 if token_type == 'api':
                     return ai, None
+                if getattr(ai, "source", None) == "conduct_trial":
+                    owner = _trial_member(db, ai)
+                    if not owner:
+                        raise HTTPException(status_code=401, detail="Agent token membership revoked")
+                    return ai, owner
                 row = db.execute(
                     _t("SELECT clerk_user_id FROM guard_member_config WHERE agent_identity_id = :aid LIMIT 1"),
                     {"aid": ai.id},
@@ -995,6 +1022,10 @@ def resolve_agent_token(token: str, db: Session) -> tuple[str, str] | None:
             _lifecycle = getattr(ai_row, "lifecycle_state", None)
             if _lifecycle in ("deactivated", "expired"):
                 return None
+
+            if getattr(ai_row, "source", None) == "conduct_trial":
+                owner = _trial_member(db, ai_row)
+                return (str(ai_row.workspace_id), owner) if owner else None
 
             # Try guard_member_config link first (session tokens always have this)
             member = db.execute(
