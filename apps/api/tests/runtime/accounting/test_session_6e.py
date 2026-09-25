@@ -143,7 +143,6 @@ def _agg(**overrides) -> SpendAggregate:
         request_count=1,
         total_cost_microdollars=0,
         total_reserved_microdollars=0,
-        legacy_cost_microdollars=0,
         total_input_tokens=0,
         total_output_tokens=0,
         total_uncached_input_tokens=0,

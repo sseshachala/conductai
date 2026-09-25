@@ -15,15 +15,12 @@ from app.runtime.accounting.contracts import (
     UsageCompleteness,
 )
 
-
 @pytest.fixture
 def _shadow_on():
     # Cutover: writer always on. Fixture kept as a no-op for existing callers.
     yield
 
-
 # ─── #1 shadow_write returns the persisted ID (not a fresh UUID) ────────
-
 
 def test_shadow_write_returns_persisted_id_from_persist_atomic(
     _shadow_on, monkeypatch
@@ -54,12 +51,9 @@ def test_shadow_write_returns_persisted_id_from_persist_atomic(
         operation="messages.create",
         dispatched=True,
         response_bytes=b'{"usage":{"input_tokens":10,"output_tokens":5}}',
-        legacy_input_tokens=10,
-        legacy_output_tokens=5,
-        legacy_cost_usd=0.0001,
+
     )
     assert got == fake_persisted
-
 
 def test_shadow_write_returns_none_on_upsert_noop(_shadow_on, monkeypatch):
     """When _persist_atomic returns None (real row already existed, or
@@ -83,13 +77,10 @@ def test_shadow_write_returns_none_on_upsert_noop(_shadow_on, monkeypatch):
         operation="messages.create",
         dispatched=True,
         response_bytes=None,
-        legacy_input_tokens=None,
-        legacy_output_tokens=None,
-        legacy_cost_usd=None,
+
         source="reconciler",
     )
     assert got is None
-
 
 def test_persist_atomic_uses_returning_clause():
     """Pin the SQL construction so a future refactor cannot drop the
@@ -100,9 +91,7 @@ def test_persist_atomic_uses_returning_clause():
     src = inspect.getsource(shadow_writer._persist_atomic)
     assert "stmt.returning" in src or ".returning(" in src
 
-
 # ─── #2 keyset pagination ───────────────────────────────────────────────
-
 
 def test_reconcile_result_carries_next_cursor():
     """ReconciliationResult exposes ``next_cursor`` so ops can loop
@@ -112,7 +101,6 @@ def test_reconcile_result_carries_next_cursor():
 
     names = {f.name for f in fields(ReconciliationResult)}
     assert "next_cursor" in names
-
 
 def test_reconciler_fetch_uses_keyset_pagination():
     """Pin the (ts, request_id) tuple comparison — cursor semantics
@@ -126,7 +114,6 @@ def test_reconciler_fetch_uses_keyset_pagination():
     # ORDER BY must include request_id for the tuple compare to be
     # deterministic when two rows share a ts.
     assert "ORDER BY gae.ts ASC, gae.request_id ASC" in src
-
 
 def test_reconcile_next_cursor_none_when_period_exhausted(monkeypatch):
     """When the scan returns fewer rows than the limit, next_cursor is
@@ -147,9 +134,7 @@ def test_reconcile_next_cursor_none_when_period_exhausted(monkeypatch):
     )
     assert result.next_cursor is None
 
-
 # ─── #3 cache-write tier pricing ────────────────────────────────────────
-
 
 def test_pricing_uses_per_tier_rate_when_declared():
     """Reviewer #3 (#2221 review at bbcb5388): each cache-write tier is
@@ -191,7 +176,6 @@ def test_pricing_uses_per_tier_rate_when_declared():
     )
     assert result.microdollars == 9_750
 
-
 def test_unknown_cache_write_tier_marks_incomplete_pricing_under_strict():
     """Reviewer #3: unknown tiers MUST NOT silently take the single-tier
     default rate under strict mode. Cost stays a lower bound and
@@ -231,7 +215,6 @@ def test_unknown_cache_write_tier_marks_incomplete_pricing_under_strict():
     provenance_tiers = result.provenance.get("cache_write_tiers", {})
     assert "tier_unknown_tier_9000_unpriced" in provenance_tiers
 
-
 def test_writer_passes_tier_breakdown_to_pricing():
     """Pin the writer's call so the tier breakdown reaches PricingService
     instead of being summed away."""
@@ -241,9 +224,7 @@ def test_writer_passes_tier_breakdown_to_pricing():
     src = inspect.getsource(shadow_writer._shadow_write_impl)
     assert "cache_write_tokens_by_tier" in src
 
-
 # ─── #4 developer_external_id in DEVELOPER scope ────────────────────────
-
 
 def test_developer_scope_coalesces_external_id_when_uuid_null():
     """Reviewer #4 (#2221 review at bbcb5388): DEVELOPER scope must
@@ -257,9 +238,7 @@ def test_developer_scope_coalesces_external_id_when_uuid_null():
     assert "coalesce" in src.lower()
     assert "developer_external_id" in src
 
-
 # ─── #5 original operation preserved via routing_meta ───────────────────
-
 
 def test_extract_operation_from_meta_returns_string_when_present():
     from app.runtime.accounting.reconciler import _extract_operation_from_meta
@@ -269,7 +248,6 @@ def test_extract_operation_from_meta_returns_string_when_present():
         == "/v1/responses"
     )
 
-
 def test_extract_operation_from_meta_handles_missing_and_malformed():
     from app.runtime.accounting.reconciler import _extract_operation_from_meta
 
@@ -278,7 +256,6 @@ def test_extract_operation_from_meta_handles_missing_and_malformed():
     assert _extract_operation_from_meta({"operation": ""}) is None
     assert _extract_operation_from_meta({"operation": 42}) is None
     assert _extract_operation_from_meta("garbage{{") is None
-
 
 def test_write_placeholder_preserves_original_operation(monkeypatch):
     """The reconciler passes the original operation through so the
@@ -310,7 +287,6 @@ def test_write_placeholder_preserves_original_operation(monkeypatch):
     )
     assert calls[0]["operation"] == "/v1/responses"
 
-
 def test_write_placeholder_falls_back_to_reconciled_when_no_operation(monkeypatch):
     """Legacy audit rows written before Session 6J don't have
     routing_meta.operation. Fallback string is 'reconciled'."""
@@ -338,7 +314,6 @@ def test_write_placeholder_falls_back_to_reconciled_when_no_operation(monkeypatc
     _write_placeholder(audit_row, 0, {"succeeded": True}, original_operation=None)
     assert calls[0]["operation"] == "reconciled"
 
-
 def test_gateway_handler_stores_operation_in_routing_meta():
     """Pin the gateway_handler write so future refactors don't drop the
     operation field from routing_meta. Both success + failure paths
@@ -350,9 +325,7 @@ def test_gateway_handler_stores_operation_in_routing_meta():
     src = inspect.getsource(gateway_handler)
     assert src.count('"operation": plan.operation') >= 2
 
-
 # ─── #7 OpenAI empty usage → UNAVAILABLE ────────────────────────────────
-
 
 def test_openai_chat_empty_usage_dict_is_unavailable():
     from app.runtime.accounting import normalize_json, ProviderFamily
@@ -360,13 +333,11 @@ def test_openai_chat_empty_usage_dict_is_unavailable():
     result = normalize_json(ProviderFamily.OPENAI_CHAT, {"usage": {}})
     assert result.completeness is UsageCompleteness.UNAVAILABLE
 
-
 def test_openai_responses_empty_usage_dict_is_unavailable():
     from app.runtime.accounting import normalize_json, ProviderFamily
 
     result = normalize_json(ProviderFamily.OPENAI_RESPONSES, {"usage": {}})
     assert result.completeness is UsageCompleteness.UNAVAILABLE
-
 
 def test_openai_chat_explicit_zero_still_complete():
     """Reported zero is legitimate (invariant #4) — completeness stays

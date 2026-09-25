@@ -294,10 +294,13 @@ class TestEstimateVisionTokens:
 
 
 class TestVisionTokensInInputEstimator:
-    """Regression: _estimate_input_tokens must now include vision tokens."""
+    """Regression: the pre-flight input-token estimator (used by
+    reservations + blocked-call audit rows) must include vision
+    tokens. Post-#2209 Tier 1 the estimator moved to
+    ``runtime.accounting.estimator.estimate_tokens``."""
 
     def test_input_estimator_includes_vision(self) -> None:
-        from app.guard.audit import _estimate_input_tokens
+        from app.runtime.accounting.estimator import estimate_tokens
 
         # Use text long enough that the ``max(1, ...)`` floor on the
         # baseline doesn't confuse the delta comparison.
@@ -310,8 +313,8 @@ class TestVisionTokensInInputEstimator:
                 {"type": "image_url", "image_url": {"url": "https://x/y.png"}},
             ],
         }]}
-        text_tokens = _estimate_input_tokens(body_text_only)
-        multi_tokens = _estimate_input_tokens(body_with_image)
+        text_tokens = estimate_tokens(body_text_only).input_tokens
+        multi_tokens = estimate_tokens(body_with_image).input_tokens
         # Adding one image adds ~1000 tokens to the estimate on top of
         # the same text baseline.
         assert multi_tokens - text_tokens == 1000

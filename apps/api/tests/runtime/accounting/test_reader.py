@@ -31,7 +31,6 @@ class _FakeReceipt:
     request_id: uuid.UUID
     calculated_cost_microdollars: int
     reserved_microdollars: int
-    legacy_cost_microdollars: int
     total_input_tokens: int
     total_output_tokens: int
     uncached_input_tokens: int
@@ -51,7 +50,6 @@ def _receipt(**overrides) -> _FakeReceipt:
         request_id=uuid.uuid4(),
         calculated_cost_microdollars=1_000,
         reserved_microdollars=1_500,
-        legacy_cost_microdollars=1_000,
         total_input_tokens=100,
         total_output_tokens=50,
         uncached_input_tokens=100,
@@ -236,16 +234,7 @@ def test_aggregate_is_frozen():
         agg.total_cost_microdollars = 999  # type: ignore[misc]
 
 
-def test_legacy_cost_summed_for_shadow_delta():
-    """Session 6 metrics: compare legacy vs new cost totals per aggregate."""
-    start = _now()
-    end = start + timedelta(hours=1)
-    rows = [
-        _receipt(calculated_cost_microdollars=1000, legacy_cost_microdollars=1050),
-        _receipt(calculated_cost_microdollars=2000, legacy_cost_microdollars=2100),
-    ]
-    agg = aggregate_from_rows(
-        rows, scope=AggregateScope.WORKSPACE, period_start=start, period_end=end
-    )
-    assert agg.total_cost_microdollars == 3000
-    assert agg.legacy_cost_microdollars == 3150
+# #2209 Tier 1: ``test_legacy_cost_summed_for_shadow_delta`` was
+# retired with the ``legacy_cost_microdollars`` column. The new engine
+# is authoritative post-cutover; there is no legacy total to compare
+# against.

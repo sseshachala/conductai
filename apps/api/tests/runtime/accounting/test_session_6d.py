@@ -21,12 +21,10 @@ from app.runtime.accounting.contracts import (
     UsageOrigin,
 )
 
-
 @pytest.fixture
 def _shadow_on():
     # Cutover: writer always on. Fixture kept as a no-op for existing callers.
     yield
-
 
 @pytest.fixture
 def _captured(monkeypatch):
@@ -43,9 +41,7 @@ def _captured(monkeypatch):
     )
     return rows
 
-
 # ─── #1 coordinator captures per-attempt response bytes ───────────────────
-
 
 def test_coordinator_captures_failed_response_bytes_from_httpx_error():
     """When httpx.HTTPStatusError.response.content carries the provider
@@ -64,7 +60,6 @@ def test_coordinator_captures_failed_response_bytes_from_httpx_error():
     decoded = base64.b64decode(b64)
     assert b"rate_limit" in decoded
 
-
 def test_coordinator_returns_none_for_exceptions_without_response():
     from app.runtime.attempt_coordinator import _capture_failed_response_bytes
 
@@ -72,7 +67,6 @@ def test_coordinator_returns_none_for_exceptions_without_response():
         pass
 
     assert _capture_failed_response_bytes(_NakedError("boom")) is None
-
 
 def test_coordinator_caps_captured_bytes_at_64kib():
     """A runaway provider error page must not bloat the audit row unbounded."""
@@ -88,7 +82,6 @@ def test_coordinator_caps_captured_bytes_at_64kib():
     assert b64 is not None
     decoded = base64.b64decode(b64)
     assert len(decoded) == 65_536
-
 
 def test_shadow_writer_uses_per_attempt_response_bytes_b64_from_meta(_shadow_on, _captured):
     """When attempts_meta carries response_bytes_b64 for a failed attempt,
@@ -118,9 +111,7 @@ def test_shadow_writer_uses_per_attempt_response_bytes_b64_from_meta(_shadow_on,
         operation="messages.create",
         dispatched=True,
         response_bytes=b'{"usage":{"input_tokens":50,"output_tokens":25}}',
-        legacy_input_tokens=50,
-        legacy_output_tokens=25,
-        legacy_cost_usd=0.001,
+
         attempts_meta=attempts_meta,
     )
     assert len(_captured) == 2
@@ -129,7 +120,6 @@ def test_shadow_writer_uses_per_attempt_response_bytes_b64_from_meta(_shadow_on,
     assert _captured[0].execution_outcome == ExecutionOutcome.FAILED.value
     # Winner (1) got the handler's response_bytes.
     assert _captured[1].total_input_tokens == 50
-
 
 def test_response_bytes_b64_is_stripped_from_stored_provenance(_shadow_on, _captured):
     """The raw base64 payload is already normalized into the row's own
@@ -145,9 +135,7 @@ def test_response_bytes_b64_is_stripped_from_stored_provenance(_shadow_on, _capt
         operation="messages.create",
         dispatched=True,
         response_bytes=None,
-        legacy_input_tokens=None,
-        legacy_output_tokens=None,
-        legacy_cost_usd=None,
+
         attempts_meta=[
             {
                 "provider_or_integration": "anthropic",
@@ -160,16 +148,13 @@ def test_response_bytes_b64_is_stripped_from_stored_provenance(_shadow_on, _capt
     assert stored_attempts
     assert "response_bytes_b64" not in stored_attempts[0]
 
-
 # ─── #2 accounting-version pin ────────────────────────────────────────────
 # Removed at cutover (PR 4): the writer is always on and always writes at
 # ``CONTRACT_VERSION``. Handler-side pinning of a request's contract
 # version at entry made sense while dual-engine machinery lived in the
 # writer; with only one engine, mid-flight flag flips do not exist.
 
-
 # ─── #4 workflow linkage ──────────────────────────────────────────────────
-
 
 def test_workflow_run_id_uuid_populated_on_receipt(_shadow_on, _captured):
     from app.runtime.accounting.shadow_writer import shadow_write
@@ -183,13 +168,10 @@ def test_workflow_run_id_uuid_populated_on_receipt(_shadow_on, _captured):
         operation="messages.create",
         dispatched=True,
         response_bytes=b'{"usage":{"input_tokens":10,"output_tokens":5}}',
-        legacy_input_tokens=10,
-        legacy_output_tokens=5,
-        legacy_cost_usd=0.0001,
+
         workflow_run_id=wf_run,
     )
     assert _captured[0].workflow_run_id == wf_run
-
 
 def test_workflow_run_id_string_form_parsed(_shadow_on, _captured):
     """Headers arrive as strings — the writer parses to UUID."""
@@ -204,13 +186,10 @@ def test_workflow_run_id_string_form_parsed(_shadow_on, _captured):
         operation="messages.create",
         dispatched=True,
         response_bytes=b'{"usage":{"input_tokens":10,"output_tokens":5}}',
-        legacy_input_tokens=10,
-        legacy_output_tokens=5,
-        legacy_cost_usd=0.0001,
+
         workflow_run_id=str(wf_run),
     )
     assert _captured[0].workflow_run_id == wf_run
-
 
 def test_workflow_run_id_non_uuid_ignored(_shadow_on, _captured):
     """A garbage header value must not fail the write — column stays NULL."""
@@ -224,16 +203,12 @@ def test_workflow_run_id_non_uuid_ignored(_shadow_on, _captured):
         operation="messages.create",
         dispatched=True,
         response_bytes=b'{"usage":{"input_tokens":10,"output_tokens":5}}',
-        legacy_input_tokens=10,
-        legacy_output_tokens=5,
-        legacy_cost_usd=0.0001,
+
         workflow_run_id="not-a-uuid",
     )
     assert _captured[0].workflow_run_id is None
 
-
 # ─── #3 reconciler ────────────────────────────────────────────────────────
-
 
 def test_reconciler_returns_zero_result_on_scan_error(monkeypatch):
     """A malformed audit table (schema drift, dropped column) must return
@@ -256,7 +231,6 @@ def test_reconciler_returns_zero_result_on_scan_error(monkeypatch):
     assert result.errors == 1
     assert result.audit_rows_scanned == 0
     assert result.receipts_written == 0
-
 
 def test_reconciler_result_dataclass_frozen():
     from app.runtime.accounting import ReconciliationResult

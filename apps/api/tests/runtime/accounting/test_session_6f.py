@@ -18,12 +18,10 @@ from app.runtime.accounting.contracts import (
     UsageOrigin,
 )
 
-
 @pytest.fixture
 def _shadow_on():
     # Cutover: writer always on. Fixture kept as a no-op for existing callers.
     yield
-
 
 @pytest.fixture
 def _captured(monkeypatch):
@@ -40,9 +38,7 @@ def _captured(monkeypatch):
     )
     return rows
 
-
 # ─── #1 SQL column name — the metric no longer swallows the failure ─────
-
 
 def test_missing_shadow_metric_reraises_on_query_failure(monkeypatch):
     """Prior code masked the ts-vs-timestamp bug by returning 0. Now
@@ -62,7 +58,6 @@ def test_missing_shadow_metric_reraises_on_query_failure(monkeypatch):
             period_end=datetime.now(timezone.utc) + timedelta(hours=1),
         )
 
-
 def test_reconciler_query_uses_ts_column():
     """Pin the column name in source so a rename can't silently
     reintroduce the ts-vs-timestamp bug."""
@@ -75,7 +70,6 @@ def test_reconciler_query_uses_ts_column():
     # 'gae.timestamp' MUST NOT appear (prior bug).
     assert "gae.timestamp" not in src
 
-
 def test_metric_query_uses_ts_column():
     """Same pin for the metric side."""
     import inspect
@@ -85,9 +79,7 @@ def test_metric_query_uses_ts_column():
     assert "gae.ts >=" in src
     assert "gae.timestamp" not in src
 
-
 # ─── #2 fallback success carries preceding failure usage ───────────────
-
 
 def test_success_meta_includes_failure_response_bytes_b64(_shadow_on, _captured):
     """The success attempts_meta list must carry response_bytes_b64 from
@@ -119,17 +111,13 @@ def test_success_meta_includes_failure_response_bytes_b64(_shadow_on, _captured)
         operation="messages.create",
         dispatched=True,
         response_bytes=b'{"usage":{"input_tokens":30,"output_tokens":10}}',
-        legacy_input_tokens=30,
-        legacy_output_tokens=10,
-        legacy_cost_usd=0.0001,
+
         attempts_meta=attempts_meta,
     )
     assert _captured[0].total_input_tokens == 200  # from failed attempt bytes
     assert _captured[1].total_input_tokens == 30   # from winner
 
-
 # ─── #3 per-attempt model ──────────────────────────────────────────────
-
 
 def test_per_attempt_model_flows_to_receipt(_shadow_on, _captured):
     """AttemptRecord.model is written into the corresponding receipt row.
@@ -157,15 +145,12 @@ def test_per_attempt_model_flows_to_receipt(_shadow_on, _captured):
         operation="chat.completions",
         dispatched=True,
         response_bytes=b'{"usage":{"prompt_tokens":30,"completion_tokens":10}}',
-        legacy_input_tokens=30,
-        legacy_output_tokens=10,
-        legacy_cost_usd=0.0001,
+
         attempts_meta=attempts_meta,
     )
     assert _captured[0].model == "claude-opus-4-7"
     assert _captured[1].model == "gpt-4.1"
     assert _captured[1].provider == "openai"
-
 
 def test_attempt_record_model_field_present():
     """Pin AttemptRecord.model so a coordinator refactor can't silently
@@ -176,9 +161,7 @@ def test_attempt_record_model_field_present():
     names = {f.name for f in fields(AttemptRecord)}
     assert "model" in names
 
-
 # ─── #4 reconciler placeholder promotion ───────────────────────────────
-
 
 def test_non_reconciler_write_flags_atomic_promotion(_shadow_on, monkeypatch):
     """Session 6G moved placeholder promotion from DELETE-then-INSERT to
@@ -205,13 +188,10 @@ def test_non_reconciler_write_flags_atomic_promotion(_shadow_on, monkeypatch):
         operation="messages.create",
         dispatched=True,
         response_bytes=b'{"usage":{"input_tokens":10,"output_tokens":5}}',
-        legacy_input_tokens=10,
-        legacy_output_tokens=5,
-        legacy_cost_usd=0.0001,
+
         source="gateway",
     )
     assert calls == [False]
-
 
 def test_reconciler_write_flags_placeholder_mode(_shadow_on, monkeypatch):
     """Reconciler writes MUST pass ``is_reconciler=True`` so ``_persist_atomic``
@@ -237,13 +217,10 @@ def test_reconciler_write_flags_placeholder_mode(_shadow_on, monkeypatch):
         operation="reconciled",
         dispatched=True,
         response_bytes=None,
-        legacy_input_tokens=None,
-        legacy_output_tokens=None,
-        legacy_cost_usd=None,
+
         source="reconciler",
     )
     assert calls == [True]
-
 
 def test_persist_atomic_builds_on_conflict_do_update_for_real_writes():
     """Pin the SQL construction: non-reconciler → DO UPDATE with the
@@ -256,7 +233,6 @@ def test_persist_atomic_builds_on_conflict_do_update_for_real_writes():
     assert "on_conflict_do_update" in src
     assert "table.c.source == \"reconciler\"" in src
     assert "on_conflict_do_nothing" in src
-
 
 def test_reconciler_join_matches_any_receipt():
     """Session 6G reviewer #3 REVERSED Session 6F's LEFT JOIN filter. The
@@ -272,9 +248,7 @@ def test_reconciler_join_matches_any_receipt():
     # The scan is ORDER BY ts so pagination is deterministic.
     assert "ORDER BY gae.ts" in src
 
-
 # ─── #6 cache-savings helper honest scope ──────────────────────────────
-
 
 def test_cache_read_savings_narrow_scope_helper_present():
     """The narrow per-receipt helper exists so Lens can honestly aggregate
@@ -282,7 +256,6 @@ def test_cache_read_savings_narrow_scope_helper_present():
     from app.runtime.accounting import compute_cache_read_savings_for_receipt
 
     assert callable(compute_cache_read_savings_for_receipt)
-
 
 def test_cache_savings_dataclass_no_longer_hardcodes_write_tokens():
     """Prior CacheSavings hardcoded ``cache_write_tokens=0`` in the

@@ -24,12 +24,10 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-
 pytestmark = pytest.mark.skipif(
     os.environ.get("RUN_ACCOUNTING_REALDB") != "1",
     reason="Real-DB test — set RUN_ACCOUNTING_REALDB=1 (nightly only).",
 )
-
 
 @pytest.fixture(scope="module")
 def workspace_id() -> str:
@@ -68,7 +66,6 @@ def workspace_id() -> str:
         )
         db.commit()
 
-
 def _insert_receipt(
     workspace_id: str,
     calculated_micros: int | None,
@@ -94,18 +91,14 @@ def _insert_receipt(
         operation="messages.create",
         dispatched=True,
         response_bytes=body,
-        legacy_input_tokens=None,
-        legacy_output_tokens=None,
-        legacy_cost_usd=None,
+
         source=source,
         client_tool=ai_tool,
     )
     assert result is not None
     return request_id
 
-
 # ─── P1-1 — recovery from receipts, not audit ─────────────────────────
-
 
 def test_reconciler_sums_from_receipts_and_ignores_stale_audit_cost(workspace_id):
     """Insert receipts with the NEW engine's number AND audit events
@@ -207,7 +200,6 @@ def test_reconciler_sums_from_receipts_and_ignores_stale_audit_cost(workspace_id
         f"Reconciler is still summing legacy audit costs."
     )
 
-
 def test_reconciler_skips_receipts_with_null_calculated_cost(workspace_id):
     """PENDING/UNPRICED receipts have NULL ``calculated_cost_microdollars``.
     The reconciler must skip them — a NULL is not a defensible 0."""
@@ -298,9 +290,7 @@ def test_reconciler_skips_receipts_with_null_calculated_cost(workspace_id):
     # should count only the priced row.
     assert total == 1_050, f"Expected 1_050 (NULL row skipped), got {total}"
 
-
 # ─── P1-3 — partial usage settles PENDING, not lower bound ────────────
-
 
 def test_partial_stream_receipt_lands_unpriced_and_reconciler_skips(workspace_id):
     """A PARTIAL usage receipt lands with ``calculated_cost_microdollars=NULL``.
@@ -324,9 +314,7 @@ def test_partial_stream_receipt_lands_unpriced_and_reconciler_skips(workspace_id
         operation="messages.create",
         dispatched=True,
         response_bytes=partial_sse,
-        legacy_input_tokens=None,
-        legacy_output_tokens=None,
-        legacy_cost_usd=None,
+
         source="gateway",
         client_tool=ai_tool,
     )
@@ -350,12 +338,9 @@ def test_partial_stream_receipt_lands_unpriced_and_reconciler_skips(workspace_id
         # bug: partial usage with a NULL cost is the safe combo.
         # This test documents current behavior for a future tightening.
 
-
 # ─── P1-4 — streaming Responses uses the right normalizer family ──────
 
-
 # ─── P1-A (recovery sweep) — commits from receipts, not audit ─────────
-
 
 def test_recovery_sweep_commits_from_receipt_not_audit(workspace_id):
     """End-to-end recovery: stale open reservation + settleable receipt
@@ -383,9 +368,7 @@ def test_recovery_sweep_commits_from_receipt_not_audit(workspace_id):
         operation="messages.create",
         dispatched=True,
         response_bytes=b'{"usage":{"input_tokens":100,"output_tokens":50}}',
-        legacy_input_tokens=None,
-        legacy_output_tokens=None,
-        legacy_cost_usd=None,
+
         source="gateway",
         client_tool=ai_tool,
     )
@@ -448,7 +431,6 @@ def test_recovery_sweep_commits_from_receipt_not_audit(workspace_id):
     assert committed_calls[0]["actual_micros"] == 1_050
     assert committed_calls[0]["actual_cents"] == 0  # 1_050 // 10_000 = 0
 
-
 def test_recovery_sweep_leaves_open_when_only_partial_receipt_exists(workspace_id):
     """A PARTIAL receipt does not qualify for commit; recovery must
     leave the reservation open so the accounting reconciler can
@@ -480,9 +462,7 @@ def test_recovery_sweep_leaves_open_when_only_partial_receipt_exists(workspace_i
         operation="messages.create",
         dispatched=True,
         response_bytes=partial_sse,
-        legacy_input_tokens=None,
-        legacy_output_tokens=None,
-        legacy_cost_usd=None,
+
         source="gateway",
         client_tool=ai_tool,
     )
@@ -533,9 +513,7 @@ def test_recovery_sweep_leaves_open_when_only_partial_receipt_exists(workspace_i
     ]
     assert my_commits == []
 
-
 # ─── P1-B (reconcile skips partial receipts) ──────────────────────────
-
 
 def test_redis_reconcile_skips_partial_receipts_to_prevent_double_count(
     workspace_id,
@@ -557,9 +535,7 @@ def test_redis_reconcile_skips_partial_receipts_to_prevent_double_count(
         operation="messages.create",
         dispatched=True,
         response_bytes=b'{"usage":{"input_tokens":100,"output_tokens":50}}',
-        legacy_input_tokens=None,
-        legacy_output_tokens=None,
-        legacy_cost_usd=None,
+
         source="gateway",
         client_tool=ai_tool,
     )
@@ -576,9 +552,7 @@ def test_redis_reconcile_skips_partial_receipts_to_prevent_double_count(
         operation="messages.create",
         dispatched=True,
         response_bytes=partial_sse,
-        legacy_input_tokens=None,
-        legacy_output_tokens=None,
-        legacy_cost_usd=None,
+
         source="gateway",
         client_tool=ai_tool,
     )
@@ -635,9 +609,7 @@ def test_redis_reconcile_skips_partial_receipts_to_prevent_double_count(
     # Only the complete+priced receipt counts (1_050). Partial excluded.
     assert total == 1_050
 
-
 # ─── P1-C (pre-cutover audit fallback) ────────────────────────────────
-
 
 def test_reconcile_folds_in_legacy_audit_for_requests_without_receipts(
     workspace_id,
@@ -661,9 +633,7 @@ def test_reconcile_folds_in_legacy_audit_for_requests_without_receipts(
         operation="messages.create",
         dispatched=True,
         response_bytes=b'{"usage":{"input_tokens":100,"output_tokens":50}}',
-        legacy_input_tokens=None,
-        legacy_output_tokens=None,
-        legacy_cost_usd=None,
+
         source="gateway",
         client_tool=ai_tool,
     )
@@ -734,7 +704,6 @@ def test_reconcile_folds_in_legacy_audit_for_requests_without_receipts(
     # 1_050 receipt + 1_000 audit fallback = 2_050 μUSD.
     assert total == 2_050
 
-
 def test_reconcile_suppresses_audit_when_partial_receipt_exists(
     workspace_id,
 ):
@@ -763,9 +732,6 @@ def test_reconcile_suppresses_audit_when_partial_receipt_exists(
         operation="messages.create",
         dispatched=True,
         response_bytes=partial_sse,
-        legacy_input_tokens=None,
-        legacy_output_tokens=None,
-        legacy_cost_usd=None,
         source="gateway",
         client_tool=ai_tool,
     )
@@ -821,6 +787,7 @@ def test_reconcile_suppresses_audit_when_partial_receipt_exists(
     assert total == 0
 
 
+
 def test_reconcile_does_not_double_count_audit_when_receipt_exists(
     workspace_id,
 ):
@@ -844,9 +811,7 @@ def test_reconcile_does_not_double_count_audit_when_receipt_exists(
         operation="messages.create",
         dispatched=True,
         response_bytes=b'{"usage":{"input_tokens":100,"output_tokens":50}}',
-        legacy_input_tokens=None,
-        legacy_output_tokens=None,
-        legacy_cost_usd=None,
+
         source="gateway",
         client_tool=ai_tool,
     )
@@ -919,9 +884,7 @@ def test_reconcile_does_not_double_count_audit_when_receipt_exists(
     # Receipt only (1_050), NOT 1_050 + 420_000.
     assert total == 1_050
 
-
 # ─── P1-D (receipts written before settlement) ────────────────────────
-
 
 def test_gateway_handler_writes_receipts_before_settling():
     """P1-D wiring pin: gateway_handler must call the receipt writer
@@ -938,7 +901,6 @@ def test_gateway_handler_writes_receipts_before_settling():
     assert "receipts_partial_skip_settle" in src or "receipts_write_failed" in src
     # Streaming wrapper: parallel gate.
     assert "_stream_receipts_durable" in src
-
 
 def test_responses_operation_populates_output_tokens_correctly(workspace_id):
     """Receipt written under ``operation`` containing 'responses' must
@@ -959,9 +921,7 @@ def test_responses_operation_populates_output_tokens_correctly(workspace_id):
         operation="/gateway/v1/openai/v1/responses",  # P1-4 real path
         dispatched=True,
         response_bytes=responses_bytes,
-        legacy_input_tokens=None,
-        legacy_output_tokens=None,
-        legacy_cost_usd=None,
+
         source="gateway",
         client_tool=ai_tool,
     )

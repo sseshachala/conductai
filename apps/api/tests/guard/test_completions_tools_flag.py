@@ -288,13 +288,17 @@ class TestFlagOn:
 
 class TestEstimatorTools:
     def test_body_without_tools_unchanged(self) -> None:
-        from app.guard.audit import _estimate_input_tokens
+        from app.runtime.accounting.estimator import estimate_tokens as _et
+        def _estimate_input_tokens(body):
+            return _et(body).input_tokens
         base = {"messages": [{"role": "user", "content": "hello world"}]}
         assert _estimate_input_tokens(base) >= 1
 
     def test_body_with_tools_bigger_than_without(self) -> None:
         # Reservation must NOT under-bill by omitting tool schemas.
-        from app.guard.audit import _estimate_input_tokens
+        from app.runtime.accounting.estimator import estimate_tokens as _et
+        def _estimate_input_tokens(body):
+            return _et(body).input_tokens
         base = {"messages": [{"role": "user", "content": "hello world"}]}
         with_tools = {
             **base,
@@ -316,7 +320,9 @@ class TestEstimatorTools:
     def test_empty_tools_list_no_bonus(self) -> None:
         # An empty tools list contributes zero (validator catches this
         # earlier, but the estimator must be robust).
-        from app.guard.audit import _estimate_input_tokens
+        from app.runtime.accounting.estimator import estimate_tokens as _et
+        def _estimate_input_tokens(body):
+            return _et(body).input_tokens
         base = {"messages": [{"role": "user", "content": "hi"}]}
         with_empty = {**base, "tools": []}
         assert _estimate_input_tokens(with_empty) == _estimate_input_tokens(base)

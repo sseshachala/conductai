@@ -192,7 +192,7 @@ def proxy_client(monkeypatch):
     monkeypatch.setattr("app.guard.router.upstream", fake_forward)
     monkeypatch.setattr("app.modules.guard.gateway_helpers._infer_ai_tool", lambda req: "test-suite")
     monkeypatch.setattr("app.guard.policy.flatten_prompt", lambda body: "hello")
-    monkeypatch.setattr("app.guard.audit._estimate_input_tokens", lambda body: 10)
+    monkeypatch.setattr("app.guard.audit._estimate_input_tokens_bounded", lambda body: 10)
     monkeypatch.setattr("app.runtime.model_router.resolve_for_workspace",
                         lambda **kwargs: ("anthropic", "claude-opus-4-7", "test-resolver"))
 

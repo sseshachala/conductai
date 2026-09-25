@@ -90,9 +90,6 @@ def shadow_write(
     operation: str,
     dispatched: bool,
     response_bytes: Optional[bytes],
-    legacy_input_tokens: Optional[int],
-    legacy_output_tokens: Optional[int],
-    legacy_cost_usd: Optional[float],
     reserved_microdollars: Optional[int] = None,
     estimated_input_tokens: Optional[int] = None,
     developer_external_id: Optional[str] = None,
@@ -128,9 +125,6 @@ def shadow_write(
             operation=operation,
             dispatched=dispatched,
             response_bytes=response_bytes,
-            legacy_input_tokens=legacy_input_tokens,
-            legacy_output_tokens=legacy_output_tokens,
-            legacy_cost_usd=legacy_cost_usd,
             reserved_microdollars=reserved_microdollars,
             estimated_input_tokens=estimated_input_tokens,
             developer_external_id=developer_external_id,
@@ -268,10 +262,6 @@ def _shadow_write_impl(**kw: Any) -> uuid.UUID:
     if kw.get("attempts_meta"):
         provenance["attempts"] = kw["attempts_meta"]
 
-    legacy_cost_micros = None
-    if kw.get("legacy_cost_usd") is not None:
-        legacy_cost_micros = int(round(float(kw["legacy_cost_usd"]) * 1_000_000))
-
     receipt_id = kw.get("receipt_id") or uuid.uuid4()
     now = datetime.now(timezone.utc)
 
@@ -326,9 +316,6 @@ def _shadow_write_impl(**kw: Any) -> uuid.UUID:
         calculated_cost_microdollars=priced_microdollars,
         pricing_version=pricing_version,
         pricing_completeness=pricing_completeness_val,
-        legacy_input_tokens=kw.get("legacy_input_tokens"),
-        legacy_output_tokens=kw.get("legacy_output_tokens"),
-        legacy_cost_microdollars=legacy_cost_micros,
         normalizer_version=normalizer_version,
         calculation_provenance=provenance,
         started_at=kw.get("started_at"),
@@ -443,9 +430,6 @@ def write_receipts_for_attempts(
     operation: str,
     dispatched: bool,
     response_bytes: Optional[bytes],
-    legacy_input_tokens: Optional[int],
-    legacy_output_tokens: Optional[int],
-    legacy_cost_usd: Optional[float],
     reserved_microdollars: Optional[int] = None,
     developer_external_id: Optional[str] = None,
     developer_user_id=None,
@@ -501,9 +485,6 @@ def write_receipts_for_attempts(
             model=model,
             transport=transport,
             response_bytes=response_bytes,
-            legacy_input_tokens=legacy_input_tokens,
-            legacy_output_tokens=legacy_output_tokens,
-            legacy_cost_usd=legacy_cost_usd,
             attempt_ordinal=0,
         )
         if rid is not None:
@@ -545,9 +526,6 @@ def write_receipts_for_attempts(
             model=attempt_model,
             transport=attempt_transport,
             response_bytes=attempt_bytes,
-            legacy_input_tokens=legacy_input_tokens if succeeded else None,
-            legacy_output_tokens=legacy_output_tokens if succeeded else None,
-            legacy_cost_usd=legacy_cost_usd if succeeded else None,
             attempts_meta=[
                 # Drop the base64 payload from the stored provenance —
                 # it's already been normalized into the row's own columns.
