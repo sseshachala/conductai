@@ -111,48 +111,50 @@ def audit_only_by_workspace(
 
 
 def report_gate_to_slack(
-    db: Session,
+    _db: Session,
     entries: list[WorkspaceAuditOnlyCount],
-) -> int:
-    """For every workspace with audit-only requests, post one alert to
-    that workspace's Guard Slack channel. Returns the count of Slack
-    posts fired (silently zero when no workspace has an ``alert_channel``
-    configured).
+) -> bool:
+    """Post one alert summarizing every dirty workspace to Conduct's
+    ops channel — ``CONDUCT_INTERNAL_ALERT_SLACK_CHANNEL`` (which is
+    ``#conduct-alerts`` in prod). Returns True if the post landed,
+    False on missing config or Slack failure.
 
-    Uses the existing ``_send_guard_slack`` helper so the message flows
-    through the same rate-limiting + auth path as guard block
-    notifications. Failure is swallowed per-workspace.
+    Signal audience: the Conduct team. Fleet-wide "our own accounting
+    code is still load-bearing somewhere". Per-workspace notifications
+    would spam customer channels with our internal migration state.
+
+    Routes through ``post_platform_alert`` — same platform-operator
+    credential path as the durable-audit + fail-open + trial-spend
+    alerters. ``_db`` is unused; kept in the signature to match the
+    workspace-alert protocol callers used earlier in review.
     """
     if not entries:
-        return 0
-    from app.modules.guard.models import GuardConfig
-    from app.modules.guard.routers.events import _send_guard_slack
+        return False
+    from app.modules.guard.observability.platform_slack import (
+        post_platform_alert,
+    )
 
-    posted = 0
-    for entry in entries:
-        try:
-            cfg = (
-                db.query(GuardConfig)
-                .filter(GuardConfig.workspace_id == entry.workspace_id)
-                .first()
-            )
-            if cfg is None or not cfg.alert_channel:
-                continue
-            msg = (
-                f":warning: accounting audit-fallback still load-bearing "
-                f"— workspace `{entry.workspace_id}` has "
-                f"{entry.audit_only_count} audit rows without matching "
-                f"receipts in the current window. Tier 2 deletion (#2229) "
-                f"is not safe to ship yet."
-            )
-            _send_guard_slack(db, cfg, msg)
-            posted += 1
-        except Exception:  # noqa: BLE001 — observability never crashes
-            log.exception(
-                "accounting.audit_fallback_gate.slack_notify_failed",
-                workspace_id=entry.workspace_id,
-            )
-    return posted
+    top = entries[:10]  # keep the message readable
+    lines = [
+        f"• `{e.workspace_id}` — {e.audit_only_count} audit-only requests"
+        for e in top
+    ]
+    more = ""
+    if len(entries) > len(top):
+        more = f"\n… and {len(entries) - len(top)} more workspaces"
+    text = (
+        ":warning: *accounting audit-fallback still load-bearing*\n"
+        f"{len(entries)} workspace(s) have audit rows without matching "
+        f"receipts in the current window. Tier 2 deletion (#2229) is not "
+        f"safe to ship yet.\n\n"
+        + "\n".join(lines)
+        + more
+    )
+    try:
+        return post_platform_alert(surface="audit_fallback_gate", text=text)
+    except Exception:  # noqa: BLE001 — observability never crashes
+        log.exception("accounting.audit_fallback_gate.slack_notify_failed")
+        return False
 
 
 def run_startup_gate(
@@ -172,16 +174,14 @@ def run_startup_gate(
         day=1, hour=0, minute=0, second=0, microsecond=0
     )
     result = {
-        "workspaces_scanned": 0,
         "workspaces_with_audit_only": 0,
         "total_audit_only_rows": 0,
-        "slack_posts_fired": 0,
+        "slack_alert_sent": False,
         "errors": 0,
     }
     db = session_factory()
     try:
         entries = audit_only_by_workspace(db, since=since)
-        result["workspaces_scanned"] = 1  # scan is global; per-workspace count comes from entries
         result["workspaces_with_audit_only"] = len(entries)
         result["total_audit_only_rows"] = sum(e.audit_only_count for e in entries)
         if entries:
@@ -190,7 +190,7 @@ def run_startup_gate(
                 workspace_count=len(entries),
                 total_audit_only_rows=result["total_audit_only_rows"],
             )
-            result["slack_posts_fired"] = report_gate_to_slack(db, entries)
+            result["slack_alert_sent"] = report_gate_to_slack(db, entries)
         else:
             log.info(
                 "accounting.audit_fallback_gate_clean",
