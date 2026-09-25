@@ -661,6 +661,7 @@ export interface ReservationScope {
   workspace_id: string
   clerk_user_id: string | null
   agent_identity_id: string | null
+  deleted_agent_identity_id: string | null
   ai_tool: string | null
   source: string | null
   client_tool: string | null
