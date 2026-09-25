@@ -1070,6 +1070,10 @@ class ReservationScopeOut(BaseModel):
     workspace_id: str
     clerk_user_id: str | None
     agent_identity_id: str | None
+    # R13: populated by the BEFORE DELETE trigger on agent_identities
+    # (migration 0152). Non-null after the agent is deleted; UI renders
+    # "agent:<id> (deleted)" so historical rows do not look orphaned.
+    deleted_agent_identity_id: str | None = None
     ai_tool: str | None
     source: str | None
     client_tool: str | None
@@ -1115,6 +1119,7 @@ def list_reservations_for_request(
             workspace_id=str(r.workspace_id),
             clerk_user_id=r.clerk_user_id,
             agent_identity_id=r.agent_identity_id,
+            deleted_agent_identity_id=r.deleted_agent_identity_id,
             ai_tool=r.ai_tool,
             source=r.source,
             client_tool=r.client_tool,

@@ -104,6 +104,7 @@ function formatScope(r: ReservationScope): string {
   if (r.source) parts.push(`transport:${r.source}`)
   if (r.client_tool) parts.push(`tool:${r.client_tool}`)
   if (r.agent_identity_id) parts.push(`agent:${r.agent_identity_id.slice(0, 12)}`)
+  else if (r.deleted_agent_identity_id) parts.push(`agent:${r.deleted_agent_identity_id.slice(0, 12)} (deleted)`)
   if (r.clerk_user_id) parts.push(`user:${r.clerk_user_id.slice(0, 12)}`)
   if (r.ai_tool && r.ai_tool !== "_all") parts.push(`cap:${r.ai_tool}`)
   return parts.length ? parts.join(" · ") : "workspace"
