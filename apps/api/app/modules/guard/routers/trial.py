@@ -128,6 +128,9 @@ def get_trial_session(
 
     token = None
     if not expired:
+        from app.modules.guard.trial_seed import link_trial_owner
+        link_trial_owner(db, workspace_id, str(identity.id))
+        db.commit()
         try:
             token = decrypt(identity.token_encrypted).get("token")
         except Exception as exc:
@@ -236,7 +239,7 @@ def run_demo_verb(
             upstream_body='{"error":"trial token missing"}',
         )
 
-    api_base = settings.conduct_proxy_url.rstrip("/").removesuffix("/proxy")
+    api_base = settings.api_base_url.rstrip("/")
 
     # Prove verb — hits the audit-chain verifier, not upstream Anthropic.
     if verb == "prove":

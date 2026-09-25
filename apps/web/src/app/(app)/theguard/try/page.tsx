@@ -65,7 +65,7 @@ function CopyButton({ text, label = "Copy" }: { text: string; label?: string }) 
           setTimeout(() => setCopied(false), 1200)
         } catch { /* clipboard unavailable */ }
       }}
-      className="text-xs px-2 py-1 rounded border border-stone-300 hover:bg-stone-50"
+      className="text-xs px-2 py-1 rounded border border-stone-300 bg-white text-stone-900 hover:bg-stone-50 shrink-0"
     >
       {copied ? "Copied" : label}
     </button>
@@ -115,7 +115,7 @@ function TokenCard({ session, revealed, onToggle }: {
 
 function curlFor(verb: Verb, token: string, gatewayUrl: string): string {
   if (verb.key === "prove") {
-    return `curl -s ${gatewayUrl.replace(/\/proxy$/, "")}/guard/events/audit/verify \\
+    return `curl -s ${API.replace(/\/$/, "")}/guard/events/audit/verify \\
   -H "Authorization: Bearer ${token}"`
   }
   const body = JSON.stringify({
@@ -134,34 +134,36 @@ function curlFor(verb: Verb, token: string, gatewayUrl: string): string {
   -d '${body.replace(/'/g, "'\\''")}'`
 }
 
-function VerbCard({ verb, session, onRun, verdict, running }: {
+function VerbCard({ verb, session, onRun, verdict, running, revealed }: {
   verb: Verb
   session: TrialSession
   onRun: () => void
   verdict: string | null
   running: boolean
+  revealed: boolean
 }) {
   const curl = session.token ? curlFor(verb, session.token, session.gateway_url) : ""
+  const displayCurl = revealed ? curl : curlFor(verb, "$CONDUCT_AGENT_TOKEN", session.gateway_url)
   return (
-    <div className="rounded-lg border border-stone-200 p-4 space-y-3 bg-white">
-      <div className="flex items-center justify-between">
-        <div>
+    <div className="min-w-0 rounded-lg border border-stone-200 p-4 space-y-3 bg-white">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
           <p className="font-semibold text-stone-900">{verb.title}</p>
           <p className="text-sm text-stone-600">{verb.subtitle}</p>
         </div>
         <button
           onClick={onRun}
           disabled={running || !session.token}
-          className="text-sm px-3 py-1.5 rounded border border-stone-800 bg-stone-900 text-white hover:bg-stone-700 disabled:opacity-40"
+          className="shrink-0 text-sm px-3 py-1.5 rounded border border-stone-800 bg-stone-900 text-white hover:bg-stone-700 disabled:opacity-40"
         >
           {running ? "Running…" : "Run in browser"}
         </button>
       </div>
-      <div className="relative">
-        <pre className="text-xs font-mono bg-stone-900 text-stone-100 p-3 rounded overflow-x-auto whitespace-pre-wrap">{curl}</pre>
-        <div className="absolute top-2 right-2">
+      <div className="min-w-0">
+        <div className="flex justify-end mb-2">
           <CopyButton text={curl} label="Copy curl" />
         </div>
+        <pre className="text-xs font-mono bg-stone-900 text-stone-100 p-3 rounded overflow-x-auto whitespace-pre-wrap break-all">{displayCurl}</pre>
       </div>
       {verdict && (
         <pre className="text-xs font-mono bg-stone-50 border border-stone-200 p-3 rounded overflow-x-auto whitespace-pre-wrap max-h-48">{verdict}</pre>
@@ -172,7 +174,7 @@ function VerbCard({ verb, session, onRun, verdict, running }: {
 
 function UseAnywherePanel({ token, gatewayUrl }: { token: string; gatewayUrl: string }) {
   const [tab, setTab] = useState<"cli" | "mcp" | "http">("cli")
-  const mcpUrl = gatewayUrl.replace(/\/proxy$/, "") + "/guard/mcp"
+  const mcpUrl = API.replace(/\/$/, "") + "/guard/mcp"
   return (
     <div className="rounded-lg border border-stone-200 p-4 space-y-3 bg-white">
       <p className="font-semibold text-stone-900">Use this token anywhere</p>
@@ -335,10 +337,11 @@ export default function GuardTryPage() {
                     onRun={() => void runVerb(verb)}
                     verdict={verdicts[verb.key] ?? null}
                     running={!!running[verb.key]}
+                    revealed={revealed}
                   />
                 ))}
               </div>
-              <UseAnywherePanel token={session.token} gatewayUrl={session.gateway_url} />
+              <UseAnywherePanel token={revealed ? session.token : "$CONDUCT_AGENT_TOKEN"} gatewayUrl={session.gateway_url} />
               <div className="text-center text-sm text-stone-500">
                 Every call above lands in <Link href="/theguard/activity" className="underline">Activity</Link> with a
                 hash-chained audit row.

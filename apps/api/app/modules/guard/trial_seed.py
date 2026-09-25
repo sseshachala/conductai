@@ -28,6 +28,26 @@ TRIAL_DAYS = 7
 TRIAL_IDENTITY_NAME = "Trial (7 days)"
 
 
+def link_trial_owner(db: Session, workspace_id: str, identity_id: str) -> None:
+    """Repair only an unlinked, active owner membership; never undo revocation."""
+    db.execute(text("""
+        UPDATE guard_member_config AS member
+        SET agent_identity_id = :aid
+        FROM workspaces AS workspace, workspace_users AS membership,
+             agent_identities AS identity
+        WHERE workspace.id = :ws
+          AND member.workspace_id = workspace.id
+          AND member.clerk_user_id = workspace.owner_id
+          AND membership.workspace_id = workspace.id
+          AND membership.clerk_user_id = member.clerk_user_id
+          AND member.active = true AND member.agent_identity_id IS NULL
+          AND identity.id = :aid AND identity.workspace_id = workspace.id
+          AND identity.source = 'conduct_trial'
+          AND identity.lifecycle_state = 'active'
+          AND identity.expires_at > now()
+    """), {"ws": str(workspace_id), "aid": str(identity_id)})
+
+
 def seed_trial(db: Session, workspace_id: str) -> str | None:
     """Seed trial guardrails on `workspace_id`. Idempotent.
 
@@ -85,8 +105,9 @@ def seed_trial(db: Session, workspace_id: str) -> str | None:
         return None
 
     plaintext, prefix = _generate_token()
+    identity_id = str(uuid.uuid4())
     db.add(AgentIdentity(
-        id=str(uuid.uuid4()),
+        id=identity_id,
         workspace_id=workspace_id,
         name=TRIAL_IDENTITY_NAME,
         provider="conduct",
@@ -98,4 +119,6 @@ def seed_trial(db: Session, workspace_id: str) -> str | None:
         last_used_at=None,
         expires_at=now + timedelta(days=TRIAL_DAYS),
     ))
+    db.flush()
+    link_trial_owner(db, workspace_id, identity_id)
     return plaintext
