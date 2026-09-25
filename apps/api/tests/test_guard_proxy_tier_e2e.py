@@ -95,6 +95,23 @@ def test_concrete_model_passes_through_untouched(client_and_capture):
     assert forwarded_body["model"] == "gpt-4.1-mini"
 
 
+@pytest.mark.parametrize("provider,path,model", [
+    ("openai", "/v1/responses", "gpt-4.1"),
+    ("openai", "/v1/chat/completions", "gpt-4.1"),
+    ("anthropic", "/v1/messages", "claude-sonnet-4-6"),
+])
+def test_gateway_preserves_usage_protocol_for_audit(client_and_capture, provider, path, model):
+    client, forward_calls = client_and_capture
+    response = client.post(
+        f"/gateway/v1/{provider}{path}",
+        headers={"Authorization": "Bearer guard-mt-fake"},
+        json={"model": model, "messages": [{"role": "user", "content": "hi"}],
+              "input": "hi", "max_tokens": 5},
+    )
+    assert response.status_code == 200, response.text
+    assert forward_calls[0]["audit_args"][15]["operation"] == path
+
+
 def test_provider_prefixed_tier_matching_endpoint(client_and_capture):
     client, forward_calls = client_and_capture
     r = client.post(
@@ -139,7 +156,7 @@ def test_routing_meta_is_threaded_into_audit_args(client_and_capture):
     assert routing_meta["resolution_source"] == "workspace_primitives"
 
 
-def test_routing_meta_is_none_for_concrete_model(client_and_capture):
+def test_concrete_model_retains_operation_without_tier_metadata(client_and_capture):
     client, forward_calls = client_and_capture
     r = client.post(
         "/proxy/openai/v1/chat/completions",
@@ -148,7 +165,7 @@ def test_routing_meta_is_none_for_concrete_model(client_and_capture):
     )
     assert r.status_code == 200, r.text
     audit_args = forward_calls[0]["audit_args"]
-    assert audit_args[15] is None, "concrete model calls must leave routing_meta NULL"
+    assert audit_args[15] == {"operation": "/v1/chat/completions"}
 
 
 def test_anthropic_token_count_forwards_headers_and_is_non_billable(client_and_capture):
