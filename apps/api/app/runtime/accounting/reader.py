@@ -202,6 +202,17 @@ class AccountingReader:
     def __init__(self, db: Session) -> None:
         self._db = db
 
+    def evidence_for_requests(
+        self, *, workspace_id: uuid.UUID, requests: dict[uuid.UUID, uuid.UUID],
+    ):
+        """Receipt evidence for already-authorized request/identity pairs.
+
+        Preserves missing usage, pricing provenance and attempt coverage.
+        Never adds audit estimates or workflow references to receipt costs.
+        """
+        from app.runtime.accounting.request_evidence import read_request_evidence
+        return read_request_evidence(self._db, workspace_id=workspace_id, requests=requests)
+
     def summarize_by_scope(
         self,
         *,
