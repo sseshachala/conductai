@@ -15,6 +15,8 @@ it("loads names only and saves the chosen Vault ID", async () => {
   render(<LensSettings />)
   fireEvent.click(screen.getByRole("button", { name: "Lens settings" }))
   const select = await screen.findByLabelText("Workspace Vault")
+  expect(select).toHaveStyle({ height: "36px", fontSize: "13px" })
+  expect(screen.getByRole("button", { name: "Save" })).toHaveClass("btn", "btn-primary", "btn-sm")
   fireEvent.change(select, { target: { value: "prod" } })
   state.fetch.mockResolvedValue(new Response("{}"))
   fireEvent.click(screen.getByRole("button", { name: "Save" }))

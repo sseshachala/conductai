@@ -80,6 +80,13 @@ jobs:
           export GUARD_INBOX_TEST_DATABASE_URL="${SCHEME}://marshal:marshal@localhost:5432/marshal_test"
           python -m pytest tests/guard/test_guard_inbox_postgres.py -q
         working-directory: apps/api
+      - name: Lens evidence journeys (PostgreSQL)
+        # Lens evidence SQL must also pass under a non-owner PostgreSQL role.
+        # This step intentionally fails instead of skipping when CI has no DB.
+        env:
+          LENS_TEST_DATABASE_URL: postgresql://marshal:marshal@localhost:5432/marshal_test
+        run: python -m pytest tests/glens/test_journey_postgres.py -q
+        working-directory: apps/api
       - name: Auth coverage
         run: python scripts/check_auth_coverage.py
         working-directory: apps/api
@@ -106,6 +113,9 @@ jobs:
         run: npm ci
       - name: Typecheck
         run: npm run typecheck
+        working-directory: apps/web
+      - name: Lens entry and Vault settings
+        run: npx vitest run src/lib/lens-entry.test.ts src/components/glens/GLensChatPage.entry.test.tsx src/components/glens/LensSettings.test.tsx src/components/settings/LLMPrimitivesPanel.defaults.test.ts
         working-directory: apps/web
       - name: Lint
         run: npm run lint
