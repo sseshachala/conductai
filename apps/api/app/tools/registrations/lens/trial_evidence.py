@@ -6,6 +6,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.modules.glens.trial_evidence import (
     TrialEvidenceQuery, TrialEvidenceResult, read_trial_evidence,
 )
+from app.modules.glens.trial_accounting import attach_trial_accounting
 from app.tools.registrations.lens._shared import _LENS_TAGS, _READ_ONLY
 from app.tools.types import ToolDef
 
@@ -19,9 +20,10 @@ def get_trial_evidence(ctx, **arguments):
     try:
         db = SessionLocal()
         set_workspace_rls(db, ctx.workspace_id)
-        return read_trial_evidence(
+        evidence = read_trial_evidence(
             db, ctx.workspace_id, ctx.clerk_user_id, query,
-        ).model_dump(mode="json")
+        )
+        return attach_trial_accounting(db, ctx.clerk_user_id, evidence).model_dump(mode="json")
     except SQLAlchemyError:
         return TrialEvidenceResult(
             status="unavailable", workspace_id=ctx.workspace_id, scope=query.scope,
@@ -40,7 +42,9 @@ TOOLS = [ToolDef(
         "Defaults to your own trial identities and the last 24 hours. Workspace scope "
         "requires view-all permission. Use total_matching, never the returned list length, "
         "for totals. Respect partial/unavailable/denied states; missing evidence is not zero activity. "
-        "Returns metadata and source IDs only, not prompts, credentials, usage or costs."
+        "Includes receipt-backed tokens and calculated cost when spend permission allows. "
+        "Accounting totals cover returned records only; partial values are subtotals, not full spend. "
+        "Never add cache or reasoning breakdowns again. No prompts or credentials are returned."
     ),
     input_schema={**TrialEvidenceQuery.model_json_schema(), "required": []},
     output_schema=TrialEvidenceResult.model_json_schema(),

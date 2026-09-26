@@ -50,8 +50,8 @@ Prompts, responses, routing metadata, credentials and email addresses are not
 returned. Text metadata remains untrusted evidence, not instructions. Policy
 hash and execution status are nullable; the reader never invents either.
 
-Phase 1 exposes source IDs, not model-generated links or narrative. Usage and
-cost belong to Phase 2. Explanation/citation validation belongs to Phase 3.
+Phase 1 exposes source IDs, not model-generated links or narrative. Phase 2
+adds usage and cost as described below. Explanation/citation validation belongs to Phase 3.
 Existing Lens tools and grounding behavior are unchanged by this PR; this
 contract does not certify all Lens answers as evidence-backed.
 
@@ -62,3 +62,41 @@ tenant isolation, own/all access, revoked membership, limits, time boundaries,
 request filtering, unavailable storage and secret-free output. PostgreSQL RLS
 and the browser journey require separate validation; SQLite does not prove
 PostgreSQL deployment behavior.
+
+## Phase 2: Receipt-Backed Usage And Cost
+
+Evidence contract version 2 adds per-event `accounting`, batch
+`accounting_totals`, and a separate `accounting_status`. Activity access does
+not grant spend access: `guard.spend.view_own` or `guard.spend.view_all` is
+checked independently. A spend denial or receipt-storage outage preserves
+the authorized activity evidence without exposing amounts or inventing zero.
+
+`AccountingReader.evidence_for_requests()` accepts at most 100 already-authorized
+request/identity pairs. It queries receipt metadata once, scoped by workspace
+and both identifiers. An audit coverage query retrieves only the information
+needed to compare expected attempt ordinals and terminal lifecycle; raw routing
+metadata is never returned to Lens. All arithmetic stays in accounting, not Lens.
+
+- All recorded attempts contribute once, including charged failed attempts.
+  Workflow references and audit estimates do not contribute a second charge.
+- The receipt's actual provider, model, pricing/normalizer/contract versions,
+  usage origin, completeness and execution outcome remain visible.
+- Input/output are the receipt totals. Cache-read and reasoning breakdowns
+  are not added again. Historical receipts are not repriced.
+- Each metric has a nullable `value` and complete/partial/unavailable status.
+  A partial value is a recorded subtotal. No reported values means null;
+  explicitly reported zero remains zero.
+- Only supported-version receipts with complete usage, priced/override pricing,
+  non-null nonnegative cost and USD currency contribute to cost subtotals.
+  Other receipts remain visible with their original status and provenance.
+- Unknown attempt count, missing ordinals, extra ordinals, or non-finalized audit
+  lifecycle prevents a complete-total claim. An absent receipt is not inferred
+  to be a free call, even when an audit decision says blocked.
+- Requests without usable linkage are reported as unlinked events. Missing
+  receipt counts and usage/pricing provenance breakdowns accompany totals.
+- Totals cover returned records only, not omitted records when Phase 1's result
+  is truncated. Receipt lookup does not filter on finalization time: a receipt
+  finalized after the event window still belongs to that request.
+
+This is additive read-side work. No settlement, reservation, rate card,
+ledger schema, production data or budget scope changes are part of Phase 2.
