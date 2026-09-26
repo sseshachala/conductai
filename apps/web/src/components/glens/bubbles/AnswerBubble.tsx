@@ -41,7 +41,7 @@ export function AnswerBubble({
   const isError = tone === "error"
   return (
     <div style={{ display: "flex", justifyContent: "flex-start", marginBottom: dense ? 10 : 16 }}>
-      <div style={{ maxWidth: dense ? "92%" : "75%" }}>
+      <div style={{ minWidth: 0, maxWidth: dense ? "92%" : "75%" }}>
         {!dense && (skill || understoodAs) && (
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
             {skill && (

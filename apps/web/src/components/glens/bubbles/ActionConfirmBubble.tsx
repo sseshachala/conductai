@@ -5,7 +5,11 @@ import { useLensEvent } from "@/hooks/useLensEvent"
 import type { LensSessionStream } from "@/hooks/useLensSessionStream"
 import RunDetailPanel, { type RunMeta } from "@/components/runs/RunDetailPanel"
 
-export function ActionConfirmBubble({
+export function ActionConfirmBubble(props: Parameters<typeof ActionConfirmBubbleContent>[0]) {
+  return <ActionConfirmBubbleContent key={props.approvalRequestId} {...props} />
+}
+
+function ActionConfirmBubbleContent({
   toolName,
   approvalRequestId,
   summary,
@@ -37,6 +41,10 @@ export function ActionConfirmBubble({
   // showing active Confirm/Cancel buttons for something that already ran.
   const [serverStatus, setServerStatus] = useState<"pending" | "approved" | "rejected" | "timed_out" | null>(null)
   const [serverResult, setServerResult] = useState<Record<string, unknown> | null>(null)
+  const [checking, setChecking] = useState(true)
+  const [checkFailed, setCheckFailed] = useState(false)
+  const [refreshVersion, setRefreshVersion] = useState(0)
+  const decisionBusy = useRef(false)
   // #1511 — expand toggle + fetched workflow_id so we can embed <RunDetailPanel>
   // when the action resolved into a run. localStorage keeps expand state across
   // refresh, keyed by approvalRequestId (per-bubble).
@@ -96,17 +104,34 @@ export function ActionConfirmBubble({
   // decision has already been dispatched in this render (handledRef set).
   useEffect(() => {
     let cancelled = false
+    setChecking(true)
+    setCheckFailed(false)
     authFetch(`${API}/glens/actions/${approvalRequestId}`)
-      .then(r => (r.ok ? r.json() : null))
+      .then(r => { if (!r.ok) throw new Error("Status unavailable"); return r.json() })
       .then(data => {
-        if (cancelled || !data?.status) return
+        if (cancelled || handledRef.current) return
+        if (!["pending", "approved", "rejected", "timed_out"].includes(data?.status)) throw new Error("Invalid status")
         setServerStatus(data.status as typeof serverStatus)
         if (data.result) setServerResult(data.result as Record<string, unknown>)
       })
-      .catch(() => {})
+      .catch(() => { if (!cancelled) setCheckFailed(true) })
+      .finally(() => { if (!cancelled) setChecking(false) })
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [approvalRequestId])
+  }, [approvalRequestId, refreshVersion])
+
+  useEffect(() => {
+    const refresh = () => { setChecking(true); setRefreshVersion(v => v + 1) }
+    const visible = () => { if (document.visibilityState === "visible") refresh() }
+    window.addEventListener("focus", refresh)
+    window.addEventListener("online", refresh)
+    document.addEventListener("visibilitychange", visible)
+    return () => {
+      window.removeEventListener("focus", refresh)
+      window.removeEventListener("online", refresh)
+      document.removeEventListener("visibilitychange", visible)
+    }
+  }, [])
 
   const finishText = (text: string) => {
     if (handledRef.current) return
@@ -114,6 +139,11 @@ export function ActionConfirmBubble({
     setStatus("done")
     onResult(text)
   }
+
+  useEffect(() => stream?.subscribe(
+    evt => evt.type === "connection.ready",
+    () => { setChecking(true); setRefreshVersion(v => v + 1) },
+  ), [stream])
 
   const finishRun = (runId: string, workflowName: string, initialStatus: string) => {
     if (handledRef.current) return
@@ -155,6 +185,8 @@ export function ActionConfirmBubble({
   })
 
   async function post(action: "confirm" | "cancel") {
+    if (checking || checkFailed || serverStatus !== "pending" || decisionBusy.current || handledRef.current) return
+    decisionBusy.current = true
     setStatus("loading")
     try {
       const res = await authFetch(`${API}/glens/actions/${approvalRequestId}/${action}`, {
@@ -364,7 +396,12 @@ export function ActionConfirmBubble({
             />
           </div>
         )}
-        {status === "pending" && (serverStatus === null || serverStatus === "pending") && (
+        {status === "pending" && checking && <div role="status">Checking current approval status...</div>}
+        {status === "pending" && !checking && checkFailed && <div role="alert">
+          Approval status unavailable.
+          <button type="button" className="btn btn-secondary btn-sm" onClick={() => { setChecking(true); setRefreshVersion(v => v + 1) }}>Retry status check</button>
+        </div>}
+        {status === "pending" && !checking && !checkFailed && serverStatus === "pending" && (
           <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
             <button
               onClick={() => post("confirm")}

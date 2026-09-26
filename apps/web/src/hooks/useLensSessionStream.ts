@@ -99,6 +99,7 @@ export function useLensSessionStream(sessionId: string | null): LensSessionStrea
           if (!res.ok || !res.body) {
             throw new Error(`stream open failed: ${res.status}`)
           }
+          dispatch({ id: "", type: "connection.ready", at: new Date().toISOString() })
 
           const reader = res.body.getReader()
           const decoder = new TextDecoder()

@@ -1,4 +1,6 @@
 import React from "react"
+import { ResultTableView } from "./ResultTableView"
+import { fmtDate } from "@/lib/glens/formatters"
 
 export function renderInline(text: string): React.ReactNode[] {
   return text.split(/(\*\*[^*]+\*\*|\[[^\]]+\]\([^)]+\))/).map((p, j) => {
@@ -21,8 +23,8 @@ export function parseRow(line: string): string[] {
 
 export function renderTable(header: string[], rows: string[][], key: number): React.ReactNode {
   return (
-    <div key={key} style={{ overflowX: "auto", margin: "8px 0" }}>
-      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+    <ResultTableView key={key}>
+      <table style={{ width: "max-content", minWidth: "100%", borderCollapse: "collapse", fontSize: 13 }}>
         <thead>
           <tr style={{ borderBottom: "1px solid var(--border)" }}>
             {header.map((h, i) => (
@@ -34,13 +36,13 @@ export function renderTable(header: string[], rows: string[][], key: number): Re
           {rows.map((row, ri) => (
             <tr key={ri} style={{ borderBottom: ri < rows.length - 1 ? "1px solid var(--border)" : "none" }}>
               {row.map((cell, ci) => (
-                <td key={ci} style={{ padding: "6px 10px", color: "var(--text)", verticalAlign: "top" }}>{renderInline(cell)}</td>
+                <td key={ci} style={{ padding: "6px 10px", color: "var(--text)", verticalAlign: "top", whiteSpace: "nowrap" }}>{renderInline(/^\d{4}-\d{2}-\d{2}T.*(?:Z|[+-]\d{2}:\d{2})$/.test(cell) ? fmtDate(cell) : cell)}</td>
               ))}
             </tr>
           ))}
         </tbody>
       </table>
-    </div>
+    </ResultTableView>
   )
 }
 
