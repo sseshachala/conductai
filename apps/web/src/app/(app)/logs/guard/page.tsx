@@ -190,6 +190,7 @@ function ActivityContent() {
   // the governance dashboard deep-link with ?rule_id=foo or ?decision=blocked,
   // and lets the Session Reports redirect land on ?view=session_reports.
   const searchParams = useSearchParams()
+  const filterEventId = searchParams?.get("id") || ""
   const filterHookSession = searchParams?.get("hook_session_id") || ""
   const filterAgentIdentity = searchParams?.get("agent_identity_id") || ""
   const _router = useRouter()
@@ -238,6 +239,10 @@ function ActivityContent() {
   function buildParams(offset: number) {
     const p = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String(offset) })
     if (teamId) p.set("workspace_id", teamId)
+    if (filterEventId) {
+      p.set("event_id", filterEventId)
+      return p.toString()
+    }
     if (effectiveDeveloperFilter) p.set("user_email", effectiveDeveloperFilter)
     if (filterTool) p.set("ai_tool", filterTool)
     if (filterDecision) p.set("decision", filterDecision)
@@ -274,7 +279,7 @@ function ActivityContent() {
       setLoading(false)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authFetch, teamId, effectiveDeveloperFilter, filterTool, filterDecision, filterSince, filterUntil, filterRuleId, filterHookSession, filterAgentIdentity])
+  }, [authFetch, teamId, effectiveDeveloperFilter, filterTool, filterDecision, filterSince, filterUntil, filterRuleId, filterHookSession, filterAgentIdentity, filterEventId])
 
   const loadSessions = useCallback(async () => {
     if (!teamId) return
@@ -302,7 +307,7 @@ function ActivityContent() {
   // SSE real-time feed — only active when streaming=true (user clicked Go Live)
   const LIVE_EVENT_CAP = 500
   useEffect(() => {
-    if (!streaming || !teamId) return
+    if (!streaming || !teamId || filterEventId) return
     let es: EventSource | null = null
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -370,7 +375,7 @@ function ActivityContent() {
       esRef.current = null
       if (reconnectTimer) clearTimeout(reconnectTimer)
     }
-  }, [streaming, teamId, getToken, filterHookSession, filterAgentIdentity])
+  }, [streaming, teamId, getToken, filterHookSession, filterAgentIdentity, filterEventId])
 
   const loadReports = useCallback(async () => {
     if (!teamId) return
@@ -526,7 +531,13 @@ function ActivityContent() {
       </div>
 
       {/* Consolidated toolbar — #1982 */}
-      {activeView === "events" && (
+      {activeView === "events" && filterEventId && (
+        <div style={{ display: "flex", gap: 12, alignItems: "center", padding: "12px 0" }}>
+          <span>Cited event</span>
+          <Link href="/logs/guard">All activity</Link>
+        </div>
+      )}
+      {activeView === "events" && !filterEventId && (
         <GuardToolbar<ColumnKey>
           streaming={streaming}
           onStreamingToggle={() => setStreaming(s => !s)}

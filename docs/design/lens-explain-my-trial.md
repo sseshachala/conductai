@@ -1,7 +1,13 @@
-# Explain My Trial
+# Lens Platform Investigations
 
-First delivery milestone under #1787, before the scoped-exception pilot.
-This does not replace that pilot or close its parent stories.
+Lens is the primary conversational surface for Conduct: Guard, Gateway,
+workflows and supported platform management. The trial is one entry point and
+acceptance scenario, not the scope of Lens. Phases 1 and 2 delivered the trial
+evidence slice below; Phase 3 extends investigations across the platform using
+the same ToolRegistry and guarded dispatch as other Lens features.
+
+This milestone remains under #1787, before the scoped-exception pilot. It does
+not replace that pilot or close its parent stories.
 
 | Phase / PR | Existing ownership | Outcome |
 | --- | --- | --- |
@@ -100,3 +106,59 @@ metadata is never returned to Lens. All arithmetic stays in accounting, not Lens
 
 This is additive read-side work. No settlement, reservation, rate card,
 ledger schema, production data or budget scope changes are part of Phase 2.
+
+## Phase 3: Platform Evidence Tools And Explanations
+
+`get_platform_evidence` is registered beside existing Lens tools, not exposed
+through a separate service or execution engine. It supports all/Guard/Gateway/
+workflow/trial filters, decision, run ID, request IDs and a bounded time window.
+`get_trial_evidence` remains available for trial-specific requests. Existing
+configuration and management tools and their confirmation flow remain in place.
+
+Lens dispatch carries the authenticated caller, not `system:lens`. When the
+model selects either evidence tool, its result ends the tool loop. Any
+other tools in that batch are not executed. A deterministic renderer produces
+decisions, recorded rule/policy identifiers, execution status, bounded counts,
+receipt totals and pricing versions before the first answer token is emitted.
+Evidence text is escaped and known secrets are masked. Returned facts are not
+sent to a subsequent model turn or used to authorize a mutation.
+
+Each Flight Recorder citation is constructed from a UUID in the returned
+authorized evidence. The page now consumes `?id=` and passes an exact
+`event_id` filter to the API. That path checks current membership and activity
+permission, then enforces own-event/owned-agent or workspace-wide access.
+Focused views do not append unrelated live events. An unavailable record or
+access change is not replaced with another event.
+
+Workspace-shared chat history stores a normalized query and a placeholder,
+not the protected trial explanation. Session retrieval reruns authorization
+and accounting access before rendering. Follow-up model context contains the
+query, not historical protected facts. Refresh is a fresh read of the original
+time window, not an immutable snapshot of the previous answer.
+
+Guard/Gateway evidence includes non-trial identities and caller-attributed
+events without an identity. Own scope matches the authenticated event caller or
+an owned identity in the same workspace. Gateway includes legacy `proxy` source
+rows. Workflow investigations use existing run/step metadata, require
+`platform.runs.view`, and independently enforce workspace and own/all scope.
+They expose the latest ten step events per returned run, with exact recorded
+counts. Run selection uses creation time; step history can extend past the
+selected window. Raw step payloads and workflow state are not returned.
+
+A specific run can find its Gateway events through existing receipt run links
+or the audit run ID. Tokens/cost still come only from the shared accounting
+reader; workflow analytics are never summed into the same spend again. Runs
+without linked audit evidence retain their run status, not invented usage.
+No unrelated runs are attached to a request-ID-only lookup. Configuration,
+actions, approvals and broader generic Lens answers keep their existing tools;
+this PR does not claim every Lens capability is now evidence-verified.
+
+This path distinguishes missing, partial, denied and unavailable data. Rule
+IDs alone are not claimed to explain full policy rationale. A recorded allow
+does not prove success. Generic Lens answers remain outside this guarantee.
+
+Validation includes real SQLite SQL/RBAC tests, terminal read-only dispatch,
+malformed/cross-workspace results, forged citations, escaped record metadata,
+receipt-derived formatting, session permission revocation and focused-link
+ownership. PostgreSQL RLS, live model tool selection and the authenticated
+browser journey remain release gates for Phase 5.
