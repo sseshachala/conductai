@@ -21,6 +21,7 @@ import { LensSettings } from "./LensSettings"
 import { useAuthFetch } from "@/hooks/useAuthFetch"
 import { AnswerBubble } from "@/components/glens/bubbles/AnswerBubble"
 import { ActionConfirmBubble } from "@/components/glens/bubbles/ActionConfirmBubble"
+import { lensEntryQuestion, lensRequestError, type LensEntry } from "@/lib/lens-entry"
 
 type Message =
   | { role: "user"; text: string }
@@ -41,6 +42,7 @@ type Message =
 export function LensChat({
   pathname,
   initialQuery,
+  initialEntry,
   initialSessionId,
   onSessionId,
   onExpandMessage,
@@ -51,6 +53,7 @@ export function LensChat({
 }: {
   pathname?: string | null
   initialQuery?: string | null
+  initialEntry?: LensEntry | null
   initialSessionId?: string | null
   onSessionId?: (sid: string) => void
   onExpandMessage?: (sid?: string) => void
@@ -63,10 +66,12 @@ export function LensChat({
    *  pending_action_ids, no lost conversation). Omit to opt out. */
   persistKey?: string
 }) {
-  const { authFetch } = useAuthFetch()
+  const { authFetch, workspaceId } = useAuthFetch()
   const [messages, setMessages] = useState<Message[]>([])
   const [composer, setComposer] = useState("")
   const [loading, setLoading] = useState(false)
+  const [retryText, setRetryText] = useState<string | null>(null)
+  const pendingEntry = useRef(initialEntry)
   const _storageKey = persistKey ? `lens.session.${persistKey}` : null
   const [sessionId, setSessionId] = useState<string | null>(() => {
     if (initialSessionId) return initialSessionId
@@ -81,12 +86,13 @@ export function LensChat({
   const initialQuerySentRef = useRef<string | null>(null)
 
   useEffect(() => {
-    if (!initialQuery) return
-    if (initialQuerySentRef.current === initialQuery) return
-    initialQuerySentRef.current = initialQuery
-    void send(initialQuery)
+    const query = initialQuery || (initialEntry ? lensEntryQuestion(initialEntry) : null)
+    if (!query || (initialEntry && !workspaceId)) return
+    if (initialQuerySentRef.current === query) return
+    initialQuerySentRef.current = query
+    void send(query)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialQuery])
+  }, [initialQuery, initialEntry, workspaceId])
 
   useEffect(() => {
     if (autoFocusOnMount && !initialQuery) composerRef.current?.focus()
@@ -106,10 +112,18 @@ export function LensChat({
 
     setMessages(prev => [...prev, { role: "user", text }, { role: "assistant", kind: "streaming", text: "" }])
     setLoading(true)
+    setRetryText(null)
+    let receivedResponse = false
+    let reader: ReadableStreamDefaultReader<Uint8Array> | undefined
 
     try {
       const body: Record<string, unknown> = { message: text }
-      if (sessionId) body.session_id = sessionId
+      if (pendingEntry.current && pendingEntry.current.workspace_id !== workspaceId) {
+        setMessages(prev => [...prev.slice(0, -1), { role: "assistant", kind: "error", text: lensRequestError(409) }])
+        return
+      }
+      if (pendingEntry.current) body.entry_context = pendingEntry.current
+      else if (sessionId) body.session_id = sessionId
       if (pathname) body.page_context = pathname
 
       const res = await authFetch(`${API}/glens/chat/stream`, {
@@ -118,25 +132,29 @@ export function LensChat({
         body: JSON.stringify(body),
         signal: controller.signal,
       })
+      if (controller.signal.aborted) return
+      receivedResponse = true
       if (!res.ok) {
-        setMessages(prev => [...prev.slice(0, -1), { role: "assistant", kind: "error", text: `Request failed (${res.status}).` }])
+        setMessages(prev => [...prev.slice(0, -1), { role: "assistant", kind: "error", text: lensRequestError(res.status) }])
+        setRetryText(text)
         return
       }
 
-      const reader = res.body!.getReader()
+      reader = res.body!.getReader()
       const decoder = new TextDecoder()
       let buf = ""
       let streamedText = ""
 
       while (true) {
         const { done, value } = await reader.read()
+        if (controller.signal.aborted) return
         if (done) break
         buf += decoder.decode(value, { stream: true })
         const lines = buf.split("\n")
         buf = lines.pop()!
         for (const line of lines) {
           if (!line.startsWith("data: ")) continue
-          try {
+          {
             const evt = JSON.parse(line.slice(6))
             if (evt.type === "token") {
               streamedText += evt.text
@@ -146,6 +164,7 @@ export function LensChat({
                 return copy
               })
             } else if (evt.type === "done") {
+              pendingEntry.current = null
               if (evt.session_id) {
                 setSessionId(evt.session_id)
                 onSessionId?.(evt.session_id)
@@ -189,17 +208,28 @@ export function LensChat({
                 }
                 return copy
               })
+              return
             } else if (evt.type === "error") {
+              setRetryText(text)
               setMessages(prev => [...prev.slice(0, -1), { role: "assistant", kind: "error", text: evt.message || "Error" }])
+              return
             }
-          } catch { /* ignore malformed SSE payloads */ }
+          }
         }
       }
+      throw new Error("incomplete stream")
     } catch (e) {
-      if ((e as Error).name === "AbortError") return
-      setMessages(prev => [...prev.slice(0, -1), { role: "assistant", kind: "error", text: (e as Error).message }])
+      if (controller.signal.aborted || (e as Error).name === "AbortError") return
+      setRetryText(text)
+      setMessages(prev => [...prev.slice(0, -1), { role: "assistant", kind: "error", text: receivedResponse
+        ? "Lens could not complete the response. Retry this investigation."
+        : "Unable to connect to Lens. Please try again." }])
     } finally {
-      setLoading(false)
+      if (reader) {
+        void reader.cancel().catch(() => {})
+        reader.releaseLock()
+      }
+      if (abortRef.current === controller) setLoading(false)
     }
   }
 
@@ -227,6 +257,8 @@ export function LensChat({
             onActionResolved={(text) => setMessages(prev => [...prev, { role: "assistant", kind: "action_done", text }])}
           />
         ))}
+        {retryText && !loading && <button type="button" className="btn btn-secondary btn-sm"
+          style={{ alignSelf: "flex-start" }} onClick={() => void send(retryText)}>Retry</button>}
       </div>
 
       <form

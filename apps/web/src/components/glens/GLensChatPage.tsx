@@ -1,7 +1,7 @@
 "use client"
 import { API } from "@/lib/api"
 import { LensSettings } from "./LensSettings"
-import { parseLensEntry, lensEntryQuestion, type LensEntry } from "@/lib/lens-entry"
+import { parseLensEntry, lensEntryQuestion, lensRequestError, type LensEntry } from "@/lib/lens-entry"
 
 import { useEffect, useRef, useState } from "react"
 import { useRouter, usePathname, useSearchParams } from "next/navigation"
@@ -348,10 +348,7 @@ function GLensChatContent({ initialSessionId }: { initialSessionId?: string }) {
       if (controller.signal.aborted) return
 
       if (!res.ok) {
-        const message = res.status === 409 ? "Switch to the originating workspace and reopen Ask Lens."
-          : res.status === 403 ? "You do not have permission to investigate this activity."
-          : res.status === 404 ? "This activity is unavailable or outside your access."
-          : `Request failed (${res.status}). Try again.`
+        const message = lensRequestError(res.status)
         setMessages(prev => replaceLast(prev, { role: "assistant", kind: "answer", text: message }))
         return
       }
@@ -407,7 +404,9 @@ function GLensChatContent({ initialSessionId }: { initialSessionId?: string }) {
     } catch (err) {
       if (controller.signal.aborted) return
       if (err instanceof Error && err.name === "AbortError") return
-      setMessages(prev => replaceLast(prev, { role: "assistant", kind: "answer", text: "Network error. Please try again." }))
+      setMessages(prev => replaceLast(prev, { role: "assistant", kind: "answer", text: err instanceof SyntaxError
+        ? "Lens returned an unreadable response. Reopen Ask Lens to retry this investigation."
+        : "Unable to complete the Lens request. Reopen Ask Lens to retry this investigation." }))
     } finally {
       if (abortRef.current === controller) setLoading(false)
     }

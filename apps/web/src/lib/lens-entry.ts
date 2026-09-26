@@ -5,6 +5,23 @@ export type LensEntry = {
   block_id?: string
 }
 
+export const LENS_ENTRY_EVENT = "conduct:lens-entry"
+
+export function openLensEntry(entry: LensEntry): boolean {
+  lensEntryHref(entry)
+  // Only suppress navigation when the mounted app shell accepts the handoff.
+  return !window.dispatchEvent(new CustomEvent(LENS_ENTRY_EVENT, { detail: entry, cancelable: true }))
+}
+
+export function lensRequestError(status: number): string {
+  if (status === 409) return "Switch to the originating workspace and reopen Ask Lens."
+  if (status === 401) return "Your session has expired. Sign in again and retry."
+  if (status === 403) return "You do not have permission to investigate this activity."
+  if (status === 404) return "This activity is unavailable or outside your access."
+  if (status === 422) return "This activity context is invalid. Reopen Ask Lens from the original record."
+  return `Request failed (${status}). Try again.`
+}
+
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 export function parseLensEntry(params: Pick<URLSearchParams, "get">): LensEntry | null {
