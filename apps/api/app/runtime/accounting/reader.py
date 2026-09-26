@@ -42,11 +42,12 @@ from decimal import Decimal
 from enum import Enum
 from typing import Any, Iterable, Mapping, Optional
 
-from sqlalchemy import case, func, select
+from sqlalchemy import case, func, select, or_, cast, String
 from sqlalchemy.orm import Session
 
 from app.models.llm_attempt_receipt import LlmAttemptReceipt
 from app.runtime.accounting.contracts import (
+    CONTRACT_VERSION,
     MICRODOLLARS_PER_USD,
     PricingCompleteness,
     UsageCompleteness,
@@ -212,6 +213,49 @@ class AccountingReader:
         """
         from app.runtime.accounting.request_evidence import read_request_evidence
         return read_request_evidence(self._db, workspace_id=workspace_id, requests=requests)
+
+    def gateway_window(self, *, workspace_id, since, until, user_id=None,
+                       failed_only=False, limit=20):
+        """Full-window receipt totals plus a bounded sample, in one snapshot."""
+        from app.modules.agent_identity.models import AgentIdentity
+        from app.modules.guard.models import GuardAuditEvent
+
+        r, a, identity = LlmAttemptReceipt, GuardAuditEvent, AgentIdentity
+        owned = select(identity.id).where(
+            identity.workspace_id == workspace_id, identity.owner_user_id == user_id,
+        )
+        filters = [r.workspace_id == workspace_id, r.source.in_(["gateway", "proxy"]),
+                   r.finalized_at >= since, r.finalized_at < until]
+        if user_id is not None:
+            owned_receipt = select(identity.id).where(
+                identity.workspace_id == workspace_id, identity.owner_user_id == user_id,
+                func.replace(identity.id, "-", "") == func.replace(cast(r.agent_identity_id, String), "-", ""),
+            ).correlate(r).exists()
+            filters.append(or_(r.developer_external_id == user_id, owned_receipt))
+        if failed_only:
+            filters.append(r.execution_outcome == "failed")
+        priced = (r.usage_completeness == "complete") & r.pricing_completeness.in_(
+            ["priced", "override_applied"]
+        ) & r.calculated_cost_microdollars.is_not(None) & (r.currency == "USD") & (r.contract_version == CONTRACT_VERSION)
+        audit_filters = [a.workspace_id == workspace_id, a.request_id == r.request_id]
+        if user_id is not None:
+            audit_filters.append(or_(a.clerk_user_id == user_id, a.agent_identity_id.in_(owned)))
+        event_id = select(a.id).where(*audit_filters).limit(1).correlate(r).scalar_subquery()
+        rows = self._db.execute(select(
+            r.id, r.request_id, r.attempt_ordinal, r.provider, r.model,
+            r.execution_outcome, r.finalized_at, r.pricing_version,
+            event_id.label("event_id"),
+            func.count().over().label("attempt_count"),
+            func.sum(case((priced, 1), else_=0)).over().label("priced_count"),
+            func.sum(case((priced, r.calculated_cost_microdollars), else_=None)).over().label("cost_microdollars"),
+        ).where(*filters).order_by(r.finalized_at.desc(), r.id.desc()).limit(limit)).mappings().all()
+        if not rows:
+            return {"attempt_count": 0, "priced_count": 0, "cost_microdollars": None, "attempts": []}
+        return {**{key: rows[0][key] for key in ("attempt_count", "priced_count", "cost_microdollars")},
+                "attempts": [{key: row[key] for key in (
+                    "id", "request_id", "attempt_ordinal", "provider", "model", "execution_outcome",
+                    "finalized_at", "pricing_version", "event_id",
+                )} for row in rows]}
 
     def summarize_by_scope(
         self,

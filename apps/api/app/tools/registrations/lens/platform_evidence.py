@@ -1,5 +1,6 @@
 """Platform investigations exposed through the existing Lens registry."""
 from datetime import datetime, timezone
+from pathlib import Path
 
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -25,7 +26,7 @@ def get_platform_evidence(ctx, **arguments):
             status="unavailable", workspace_id=ctx.workspace_id, scope=query.scope,
             retrieved_at=datetime.now(timezone.utc), since=query.since, until=query.until,
             request_ids=query.request_ids, limit=query.limit, surface=query.surface,
-            run_id=query.run_id, decision=query.decision,
+            run_id=query.run_id, decision=query.decision, intent=query.intent,
             event_ids=query.event_ids, block_id=query.block_id, exact_resource=query.exact_resource,
         ).model_dump(mode="json")
     finally:
@@ -35,17 +36,7 @@ def get_platform_evidence(ctx, **arguments):
 
 TOOLS = [ToolDef(
     name="get_platform_evidence",
-    description=(
-        "Investigate recorded Conduct activity across Guard, Gateway and workflows. "
-        "Use for what happened, blocked/warned calls, recorded model attempts, tokens/cost, "
-        "and workflow run/step status. Filter surface, decision, run_id, request_ids or time. "
-        "Defaults to own activity in the last 24 hours; workspace scope requires view-all. "
-        "Run metadata requires platform.runs.view; spend requires separate spend access. "
-        "Returns bounded metadata and citation IDs, not raw prompts, tool payloads or secrets. "
-        "Policy decisions, provider attempts and run outcomes are different facts. "
-        "Missing evidence is not zero. Partial totals cover returned records only. "
-        "Use existing configuration and action tools for management, not this read-only tool."
-    ),
+    description=(Path(__file__).resolve().parents[3] / "modules/glens/prompts/platform_evidence.txt").read_text().strip(),
     input_schema={**PlatformEvidenceQuery.model_json_schema(), "required": []},
     output_schema=PlatformEvidenceResult.model_json_schema(), impl=get_platform_evidence,
     annotations=_READ_ONLY, tags=_LENS_TAGS,

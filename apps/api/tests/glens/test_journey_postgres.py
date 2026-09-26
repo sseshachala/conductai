@@ -51,7 +51,7 @@ def journey(monkeypatch):
         "decision", "rule_id", "policy_hash", "provider", "model", "lifecycle_state", "execution_status",
         "clerk_user_id", "source", "conductai_run_id", "routing_meta"])
     receipts = projection(LlmAttemptReceipt, list(AttemptEvidence.__dataclass_fields__) + [
-        "workspace_id", "agent_identity_id", "workflow_run_id"])
+        "workspace_id", "agent_identity_id", "workflow_run_id", "source", "developer_external_id", "finalized_at"])
     workflows = projection(Workflow, ["id", "workspace_id", "name"])
     versions = projection(WorkflowVersion, ["id", "workflow_id"])
     runs = projection(Run, ["id", "workspace_id", "workflow_version_id", "triggered_by", "status",
@@ -97,7 +97,7 @@ def journey(monkeypatch):
                 c.execute(events.insert().values(**row))
             return row
 
-        def receipt(row, ordinal=0, run_id=None, workspace=None):
+        def receipt(row, ordinal=0, run_id=None, workspace=None, when=None):
             with engine.begin() as c:
                 c.execute(receipts.insert().values(id=uuid4(), workspace_id=workspace or row["workspace_id"],
                     agent_identity_id=agent, request_id=row["request_id"], attempt_ordinal=ordinal,
@@ -105,7 +105,8 @@ def journey(monkeypatch):
                     currency="USD", usage_origin="provider_reported", usage_completeness="complete",
                     pricing_completeness="priced", execution_outcome="failed" if ordinal == 0 else "succeeded",
                     total_input_tokens=100, total_output_tokens=20, cache_read_tokens=50,
-                    reasoning_output_tokens=5, calculated_cost_microdollars=1200, workflow_run_id=run_id))
+                    reasoning_output_tokens=5, calculated_cost_microdollars=1200, workflow_run_id=run_id,
+                    source=row["source"], developer_external_id=None, finalized_at=when or now))
 
         def run(workspace=ws, workflow_workspace=None):
             rid, wid, version = uuid4(), uuid4(), uuid4()
@@ -140,6 +141,27 @@ def investigate(j, db, kind, resource=None, **kwargs):
     evidence = read_platform_evidence(db, j.ws, "alice", query)
     answer, saved = answer_from_result(evidence.model_dump_json(), str(j.ws), "get_platform_evidence")
     return evidence, answer, saved
+
+
+def test_gateway_window_totals_and_failed_attempts(journey):
+    j = journey
+    row = j.event(expected=2)
+    j.receipt(row)
+    j.receipt(row, 1)
+    j.receipt(j.event(workspace=j.other, identity=j.foreign_agent))
+    j.receipt(j.event(), when=j.now + timedelta(hours=1))
+    with j.reader() as db:
+        args = dict(surface="gateway", since=j.now - timedelta(hours=1),
+                    until=j.now + timedelta(hours=1), limit=1)
+        value = read_platform_evidence(db, j.ws, "alice", PlatformEvidenceQuery(intent="spend", **args))
+        assert value.status == "ok"
+        assert value.gateway_window.cost_microdollars == 2400
+        assert value.gateway_window.attempt_count == 2
+        assert len(value.gateway_window.attempts) == 1
+        assert value.gateway_window.attempts[0].event_id == row["id"]
+        failures = read_platform_evidence(db, j.ws, "alice", PlatformEvidenceQuery(intent="failures", **args))
+        assert failures.gateway_window.attempt_count == 1
+        assert failures.gateway_window.attempts[0].attempt_ordinal == 0
 
 
 @pytest.mark.parametrize("source", ["hook", "mcp", "gateway", "proxy"])

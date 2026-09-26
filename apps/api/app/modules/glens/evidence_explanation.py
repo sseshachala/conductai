@@ -43,6 +43,8 @@ def render_evidence(evidence: TrialEvidenceResult) -> str:
         return "You do not have access to this evidence in this workspace and scope."
     if evidence.status == "unavailable":
         return UNAVAILABLE
+    if getattr(evidence, "intent", "activity") != "activity":
+        return _gateway_answer(evidence)
     lines = [
         "## Recorded Conduct Activity" if platform else "## Your Recorded Trial",
         f"Scope: {'your activity' if evidence.scope == 'own' else 'workspace activity'}.",
@@ -93,6 +95,38 @@ def render_evidence(evidence: TrialEvidenceResult) -> str:
     return "\n\n".join(lines)
 
 
+def _gateway_answer(evidence):
+    window = evidence.gateway_window
+    if window is None:
+        return UNAVAILABLE
+    scope = "your" if evidence.scope == "own" else "workspace"
+    if evidence.intent == "spend":
+        cost = window.cost_microdollars
+        amount = "unavailable" if cost is None else f"${Decimal(cost) / Decimal(1_000_000):.6f} USD"
+        partial = window.priced_count < window.attempt_count
+        lines = [f"Recorded {scope} Gateway cost: **{amount}**" +
+                 (" (partial recorded subtotal)." if partial else "."),
+                 f"{window.priced_count} of {window.attempt_count} recorded attempts have complete USD pricing.",
+                 "Totals cover the full selected receipt-finalization window, not just the examples below. "
+                 "Calculated cost is not a provider invoice; absent receipts or pricing do not mean zero."]
+    else:
+        lines = [f"Found {window.attempt_count} recorded failed Gateway attempts in {scope} activity.",
+                 "A failed attempt does not mean the overall request failed: a later fallback may have succeeded. "
+                 "Policy blocks are not provider failures. Missing receipts do not prove no failures occurred."]
+    lines.extend([
+        f"Window (UTC): {evidence.since.isoformat()} inclusive to {evidence.until.isoformat()} exclusive.",
+        f"Retrieved: {evidence.retrieved_at.isoformat()}.",
+        f"Showing {len(window.attempts)} of {window.attempt_count} receipt attempts.",
+    ])
+    for attempt in window.attempts:
+        link = f" [Flight Recorder](/logs/guard?id={attempt.event_id})" if attempt.event_id else " No linked audit record available."
+        lines.append(f"- {attempt.finalized_at.isoformat()}: {_literal(attempt.provider)} / "
+                     f"{_literal(attempt.model)}, attempt {attempt.attempt_ordinal}, "
+                     f"{_literal(attempt.execution_outcome)}. Request `{attempt.request_id}`. "
+                     f"Pricing version: {_literal(attempt.pricing_version)}.{link}")
+    return "\n\n".join(lines)
+
+
 def _run_lines(evidence):
     if evidence.runs_status == "not_requested":
         return []
@@ -125,7 +159,7 @@ def answer_from_result(raw: str, workspace_id: str, tool_name="get_trial_evidenc
         query = (PlatformEvidenceQuery if platform else TrialEvidenceQuery)(
             scope=evidence.scope, since=evidence.since, until=evidence.until,
             request_ids=evidence.request_ids, limit=evidence.limit,
-            **({"surface": evidence.surface, "run_id": evidence.run_id, "decision": evidence.decision,
+            **({"intent": evidence.intent, "surface": evidence.surface, "run_id": evidence.run_id, "decision": evidence.decision,
                 "event_ids": evidence.event_ids, "block_id": evidence.block_id,
                 "exact_resource": evidence.exact_resource} if platform else {}),
         )
