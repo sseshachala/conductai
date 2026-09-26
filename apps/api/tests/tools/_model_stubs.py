@@ -242,6 +242,7 @@ class StubDB:
         class _R:
             def scalar(self): return 0
             def all(self): return []
+            def fetchone(self): return None
             def __iter__(self): return iter([])
         return _R()
 
