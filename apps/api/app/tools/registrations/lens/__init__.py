@@ -40,6 +40,7 @@ from app.tools.registrations.lens import (
     primitives,
     report_builder,
     runs,
+    trial_evidence,
     workflows,
     workspace,
 )
@@ -62,6 +63,7 @@ _ALL_TOOLS = [
     *actor.TOOLS,
     *capabilities.TOOLS,
     *gateway_v2.TOOLS,
+    *trial_evidence.TOOLS,
 ]
 
 
