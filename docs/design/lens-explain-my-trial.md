@@ -14,7 +14,7 @@ not replace that pilot or close its parent stories.
 | 1 | #1913 | Authorized trial evidence contract, stable IDs, exact bounded totals, explicit coverage |
 | 2 | #1913, #1981 | Usage/cost through shared accounting receipts; no duplicate ledger |
 | 3 | #1883, #1981 | Evidence-backed explanations, validated citations, Flight Recorder links |
-| 4 | Rewrite #1830; supports #1333 | Trial-to-Lens entry with authorized request context |
+| 4 | Rewrite #1830; supports #1333 | Platform-to-Lens entry with authorized resource context |
 | 5 | #1484 | Full journey, failure, permission and reconnect acceptance |
 
 Each PR carries its own tests. Phase 5 adds cross-feature release tests.
@@ -162,3 +162,39 @@ malformed/cross-workspace results, forged citations, escaped record metadata,
 receipt-derived formatting, session permission revocation and focused-link
 ownership. PostgreSQL RLS, live model tool selection and the authenticated
 browser journey remain release gates for Phase 5.
+
+## Phase 4: Contextual Ask Lens
+
+Activity details (including Gateway requests), workflow run headers, recorded
+workflow steps and the trial page link to the existing Lens chat. Links carry
+only context kind, originating workspace UUID, resource UUID and optional block
+ID. They do not copy prompts, responses, tokens, credentials or tool payloads.
+
+The chat waits for workspace selection, rejects malformed or mismatched links,
+starts a fresh conversation, and sends a typed `entry_context`. A contextual
+link ignores arbitrary `q` prose. The URL is cleared after the API accepts the
+handoff so refresh does not send again; failures retain it for retry/sign-in.
+Workspace changes remount the chat and abort the
+previous request; Strict Mode effect replay does not duplicate auto-send.
+
+The API verifies originating workspace, membership and current resource access
+before creating a session. Event resolution uses the same ownership checks as
+Flight Recorder citations. Run/step resolution checks run permission, both run
+and workflow workspace, own/all scope and recorded block existence. Missing or
+inaccessible resources never fall back to a broader query.
+
+The authorized query invokes `get_platform_evidence` through the existing Lens
+registry dispatcher and Guard policy gate. No model is needed to select a tool
+for this initial contextual read. Later conversation turns keep the existing
+Lens tool loop, actions and confirmation behavior.
+
+Exact event/run lookups can include older records outside the default time
+window; `exact_resource` requires IDs and retains the existing row/step limits
+and authorization. The answer declares this scope explicitly. A block filter
+restricts step history, not accounting: linked usage remains run-wide and is
+labelled accordingly. Trial handoff retains the default own-scope time window.
+
+Phase 4 tests cover typed handoff, invalid/mismatched references, old records,
+permissions, no-model dispatch, frontend URL validation, Strict Mode single
+send, workspace switching and denied responses. Live auth/provider/browser
+journey and PostgreSQL RLS acceptance remain Phase 5 work.

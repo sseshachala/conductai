@@ -27,6 +27,7 @@ class Executor:
         self.clerk_user_id = clerk_user_id
         self.evidence_query = None
         self.evidence_tool = None
+        self.entry_query = None
         # Set on chat endpoints so guarded_llm_call/stream can attribute egress
         # to the session-scoped AgentIdentity. None outside chat (tool registrations).
         self.agent_identity_id = agent_identity_id

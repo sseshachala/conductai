@@ -6,6 +6,7 @@ import AppShell from "@/components/AppShell"
 import { GuardShell } from "@/components/guard/GuardShell"
 import { useAuthFetch } from "@/hooks/useAuthFetch"
 import { API } from "@/lib/api/client"
+import { AskLensLink } from "@/components/glens/AskLensLink"
 
 interface TrialSession {
   plan: string
@@ -328,6 +329,7 @@ export default function GuardTryPage() {
           {session && !session.expired && session.token && (
             <>
               <TokenCard session={session} revealed={revealed} onToggle={() => setRevealed(v => !v)} />
+              <AskLensLink kind="trial" workspaceId={session.workspace_id} />
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {VERBS.map(verb => (
                   <VerbCard

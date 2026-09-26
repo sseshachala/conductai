@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 from app.core.auth import get_user_id, get_workspace_id, require_permission
 from app.core.database import get_db
 from app.modules.glens.executor import Executor
+from app.modules.glens.entry_context import LensEntryContext, resolve_entry_context
 from app.modules.glens.masking import mask_secrets
 from app.modules.glens.models import GlensChatSession
 from app.tools import registrations as _tool_registrations  # noqa: F401  # side-effect: populate default_registry before TOOLS derives
@@ -586,8 +587,6 @@ def _resolve_tools(messages: list[dict], system: str, executor: Executor) -> tup
     from app.runtime.llm_client import LLMToolUseBlock
     from app.runtime.tool_dispatch import dispatch_tool_blocks
 
-    client, provider, model = _llm_config(executor)
-    log.info("glens.llm_call", provider=provider, model=model)
     msgs = list(messages)
     tool_calls_made: list[tuple[str, dict]] = []
 
@@ -605,6 +604,16 @@ def _resolve_tools(messages: list[dict], system: str, executor: Executor) -> tup
     def _bound_dispatcher(name: str, args_json: str) -> str:
         return lens_dispatch(name, args_json, lens_ctx)
 
+    if isinstance(executor.entry_query, dict):
+        from app.modules.glens.evidence_explanation import answer_from_result
+        name = "get_platform_evidence"
+        raw = _bound_dispatcher(name, json.dumps(executor.entry_query))
+        answer, query = answer_from_result(raw, executor.workspace_id, name)
+        executor.evidence_query, executor.evidence_tool = query or {}, name
+        return msgs, answer, [(name, executor.entry_query)]
+
+    client, provider, model = _llm_config(executor)
+    log.info("glens.llm_call", provider=provider, model=model)
     for _ in range(5):
         resp = _guarded_openai_completion(
             executor, provider, model, client,
@@ -728,6 +737,7 @@ class ChatRequest(BaseModel):
     message: str
     session_id: str | None = None
     page_context: str | None = None
+    entry_context: LensEntryContext | None = None
 
 
 @router.post("/chat/stream")
@@ -741,6 +751,7 @@ async def glens_chat_stream(
 ):
     ws_uuid = _parse_workspace_id(workspace_id)
     logger = log.bind(workspace_id=workspace_id)
+    entry_query = resolve_entry_context(db, workspace_id, user_id, req.entry_context) if req.entry_context else None
 
     session = None
     if req.session_id:
@@ -783,6 +794,7 @@ async def glens_chat_stream(
         session_id=session_id_str,
         clerk_user_id=user_id,
     )
+    executor.entry_query = entry_query.model_dump(mode="json") if entry_query else None
 
     _now = datetime.now(timezone.utc)
     today = _now.strftime("%Y-%m-%d")

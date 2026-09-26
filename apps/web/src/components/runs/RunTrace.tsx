@@ -4,6 +4,7 @@ import { memo, useEffect, useMemo, useRef, useState } from "react"
 import { duration as formatDuration } from "@/lib/runUtils"
 import { API } from "@/lib/api"
 import { useWorkspace } from "@/lib/WorkspaceContext"
+import { AskLensLink } from "@/components/glens/AskLensLink"
 
 interface RunEvent {
   id: string
@@ -285,7 +286,7 @@ function cardStyle(row: BlockRow): React.CSSProperties {
   return { flex: 1, padding: "12px 15px" }
 }
 
-const BlockRowView = memo(function BlockRowView({ row, isLast }: { row: BlockRow; isLast: boolean }) {
+const BlockRowView = memo(function BlockRowView({ row, isLast, runId }: { row: BlockRow; isLast: boolean; runId: string }) {
   const isTimedOut = row.timedOut === true
   const [expanded, setExpanded] = useState(row.status === "failed")
   const [diffExpanded, setDiffExpanded] = useState(false)
@@ -343,6 +344,7 @@ const BlockRowView = memo(function BlockRowView({ row, isLast }: { row: BlockRow
             {isTimedOut && <span aria-hidden="true" style={{ marginRight: 4 }}>⏱</span>}
             {row.label}
           </span>
+          <AskLensLink kind="run" resourceId={runId} blockId={row.blockId} />
 
           {/* Type chip */}
           <span
@@ -1056,7 +1058,7 @@ export default function RunTrace({ workflowId, runId, initialStatus, initialMeta
         )}
 
         {blockRows.map((row, i) => (
-          <BlockRowView key={row.blockId} row={row} isLast={i === blockRows.length - 1 && !runCompleted && !runFailed} />
+          <BlockRowView key={row.blockId} row={row} runId={runId} isLast={i === blockRows.length - 1 && !runCompleted && !runFailed} />
         ))}
 
         {/* Run-level terminal event */}
