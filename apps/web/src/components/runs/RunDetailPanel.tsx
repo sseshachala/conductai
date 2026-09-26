@@ -12,6 +12,7 @@ import RunApprovalsTab from "@/components/runs/tabs/RunApprovalsTab"
 import RunCostTab from "@/components/runs/tabs/RunCostTab"
 import { useAuthFetch } from "@/hooks/useAuthFetch"
 import { API } from "@/lib/api"
+import { AskLensLink } from "@/components/glens/AskLensLink"
 
 // ── Tab error boundary ────────────────────────────────────────────────────────
 class TabErrorBoundary extends Component<{ children: React.ReactNode }, { hasError: boolean }> {
@@ -248,7 +249,7 @@ export default function RunDetailPanel({ workflowId, runId, embedded = false, in
       )}
 
       {/* Header */}
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, marginBottom: 22 }}>
+      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-start", justifyContent: "space-between", gap: 16, marginBottom: 22 }}>
         <div>
           {/* Line 1: title + project chip + status badge */}
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 8 }}>
@@ -282,7 +283,8 @@ export default function RunDetailPanel({ workflowId, runId, embedded = false, in
 
         {/* Action buttons — hidden when embedded (parent surface owns actions) */}
         {!embedded && (
-          <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+          <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, maxWidth: "100%" }}>
+            <AskLensLink kind="run" resourceId={runId} />
             {isActive(run.status) && !isAwaiting(run.status) && (
               <button onClick={stopRun} disabled={stopping} className="btn btn-ghost btn-sm" aria-label="Stop run" style={{ color: "var(--err)", borderColor: "var(--err-bd)" }}>
                 {stopping ? "Stopping…" : "⏹ Stop"}

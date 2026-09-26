@@ -4,7 +4,7 @@ from typing import Literal
 from uuid import UUID
 
 from fastapi import HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import func, or_, select, text
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -22,6 +22,17 @@ class PlatformEvidenceQuery(TrialEvidenceQuery):
     surface: Literal["all", "guard", "gateway", "workflow", "trial"] = "all"
     run_id: UUID | None = None
     decision: Literal["allowed", "warned", "blocked", "approval"] | None = None
+    event_ids: list[UUID] | None = Field(default=None, min_length=1, max_length=100)
+    block_id: str | None = Field(default=None, min_length=1, max_length=255)
+    exact_resource: bool = False
+
+    @model_validator(mode="after")
+    def exact_target(self):
+        if self.exact_resource and not (self.event_ids or self.run_id):
+            raise ValueError("Exact resource lookup needs event IDs or a run ID")
+        if self.block_id and not self.run_id:
+            raise ValueError("A block filter needs a run ID")
+        return self
 
 
 class PlatformEventEvidence(TrialEventEvidence):
@@ -52,6 +63,9 @@ class PlatformEvidenceResult(TrialEvidenceResult):
     surface: Literal["all", "guard", "gateway", "workflow", "trial"] = "all"
     run_id: UUID | None = None
     decision: str | None = None
+    event_ids: list[UUID] | None = None
+    block_id: str | None = None
+    exact_resource: bool = False
     records: list[PlatformEventEvidence] = Field(default_factory=list)
     runs_status: Literal["not_requested", "ok", "empty", "partial", "denied", "unavailable"] = "not_requested"
     runs: list[RunEvidence] = Field(default_factory=list)
@@ -77,6 +91,9 @@ def _member(db, workspace_id, user_id):
 def _read_runs(db, user_id, query, evidence):
     if query.surface not in {"all", "workflow"}:
         return
+    # An exact call lookup must not include unrelated workflow history.
+    if (query.request_ids is not None or query.event_ids is not None) and query.run_id is None:
+        return
     try:
         _permission(db, evidence.workspace_id, user_id, "platform.runs.view")
         if query.scope == "workspace":
@@ -87,16 +104,13 @@ def _read_runs(db, user_id, query, evidence):
             func.count().over().label("total"),
         ).join(WorkflowVersion, Run.workflow_version_id == WorkflowVersion.id).join(
             Workflow, WorkflowVersion.workflow_id == Workflow.id,
-        ).where(Run.workspace_id == evidence.workspace_id, Workflow.workspace_id == evidence.workspace_id,
-                Run.created_at >= query.since, Run.created_at < query.until)
+        ).where(Run.workspace_id == evidence.workspace_id, Workflow.workspace_id == evidence.workspace_id)
+        if not query.exact_resource:
+            stmt = stmt.where(Run.created_at >= query.since, Run.created_at < query.until)
         if query.scope == "own":
             stmt = stmt.where(Run.triggered_by == user_id)
         if query.run_id:
             stmt = stmt.where(Run.id == query.run_id)
-        # Request-ID filters describe calls, not entire runs. Do not return
-        # unrelated runs as if they were linked to those calls.
-        if query.request_ids is not None and query.run_id is None:
-            return
         rows = db.execute(stmt.order_by(Run.created_at.desc(), Run.id.desc()).limit(query.limit)).all()
         evidence.runs_total = rows[0].total if rows else 0
         evidence.runs = [RunEvidence(
@@ -108,12 +122,15 @@ def _read_runs(db, user_id, query, evidence):
         if not rows:
             return
         # Bound step history independently for each authorized run.
+        step_filter = [RunEvent.run_id.in_([r.id for r in rows])]
+        if query.block_id:
+            step_filter.append(RunEvent.block_id == query.block_id)
         ranked = select(
             RunEvent.id, RunEvent.run_id, RunEvent.block_id, RunEvent.kind, RunEvent.created_at,
             func.row_number().over(partition_by=RunEvent.run_id,
                                    order_by=(RunEvent.created_at.desc(), RunEvent.id.desc())).label("rank"),
             func.count().over(partition_by=RunEvent.run_id).label("total"),
-        ).where(RunEvent.run_id.in_([r.id for r in rows])).subquery()
+        ).where(*step_filter).subquery()
         steps = db.execute(select(ranked).where(ranked.c.rank <= 10).order_by(ranked.c.rank)).mappings()
         indexed = {r.source_id: r for r in evidence.runs}
         for step in steps:
@@ -133,6 +150,7 @@ def read_platform_evidence(db, workspace_id, user_id, query: PlatformEvidenceQue
         retrieved_at=datetime.now(timezone.utc), since=query.since, until=query.until,
         request_ids=query.request_ids, limit=query.limit, surface=query.surface,
         run_id=query.run_id, decision=query.decision,
+        event_ids=query.event_ids, block_id=query.block_id, exact_resource=query.exact_resource,
     )
     try:
         if not _member(db, workspace_id, user_id):
@@ -147,8 +165,12 @@ def read_platform_evidence(db, workspace_id, user_id, query: PlatformEvidenceQue
             func.count().over().label("total"),
         ).outerjoin(identity, (event.agent_identity_id == identity.id)
                     & (identity.workspace_id == evidence.workspace_id)).where(
-            event.workspace_id == evidence.workspace_id, event.ts >= query.since, event.ts < query.until,
+            event.workspace_id == evidence.workspace_id,
         )
+        if not query.exact_resource:
+            stmt = stmt.where(event.ts >= query.since, event.ts < query.until)
+        if query.event_ids:
+            stmt = stmt.where(event.id.in_(query.event_ids))
         if query.scope == "own":
             stmt = stmt.where(or_(event.clerk_user_id == user_id, identity.owner_user_id == user_id))
         if query.surface == "trial":

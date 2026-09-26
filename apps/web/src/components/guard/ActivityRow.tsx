@@ -6,6 +6,7 @@ import { DecisionBadge } from "./DecisionBadge"
 import { LifecyclePill } from "./LifecyclePill"
 import { ALL_COLUMNS, type ColumnKey } from "./common/GuardToolbar"
 import { formatTokensUsed } from "./common/formatTokens"
+import { AskLensLink } from "@/components/glens/AskLensLink"
 
 // Per-column grid weights — kept in one place so ActivityHeader and
 // ActivityRow can't drift. Mirrors the historical 8-column template.
@@ -582,6 +583,7 @@ export function ActivityRow({ ev, compact = false, isLast = false, visibleColumn
         gap: "8px 24px",
         fontSize: 11,
       }}>
+        <div style={{ gridColumn: "1 / -1" }}><AskLensLink kind="event" resourceId={ev.id} /></div>
         {ev.input_summary && (
           <div style={{ gridColumn: "1 / -1" }}>
             <span style={{ color: "var(--text-muted)", fontWeight: 600, marginRight: 6 }}>Input</span>

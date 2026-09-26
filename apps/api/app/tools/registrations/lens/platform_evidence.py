@@ -26,6 +26,7 @@ def get_platform_evidence(ctx, **arguments):
             retrieved_at=datetime.now(timezone.utc), since=query.since, until=query.until,
             request_ids=query.request_ids, limit=query.limit, surface=query.surface,
             run_id=query.run_id, decision=query.decision,
+            event_ids=query.event_ids, block_id=query.block_id, exact_resource=query.exact_resource,
         ).model_dump(mode="json")
     finally:
         if db is not None:

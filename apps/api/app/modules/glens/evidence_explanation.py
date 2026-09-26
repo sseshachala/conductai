@@ -46,7 +46,8 @@ def render_evidence(evidence: TrialEvidenceResult) -> str:
     lines = [
         "## Recorded Conduct Activity" if platform else "## Your Recorded Trial",
         f"Scope: {'your activity' if evidence.scope == 'own' else 'workspace activity'}.",
-        f"Window: {evidence.since.isoformat()} (inclusive) to {evidence.until.isoformat()} (exclusive).",
+        "Exact resource lookup; no time-window exclusion." if getattr(evidence, "exact_resource", False)
+        else f"Window: {evidence.since.isoformat()} (inclusive) to {evidence.until.isoformat()} (exclusive).",
         f"Retrieved: {evidence.retrieved_at.isoformat()}.",
     ]
     if not evidence.records:
@@ -97,7 +98,10 @@ def _run_lines(evidence):
         return []
     if evidence.runs_status in {"denied", "unavailable"}:
         return ["Workflow evidence: " + evidence.runs_status + "."]
-    lines = [f"## Workflow Runs\n\nShowing {len(evidence.runs)} of {evidence.runs_total} matching runs (selected by creation time)."]
+    selection = "exact ID" if evidence.exact_resource else "creation time"
+    lines = [f"## Workflow Runs\n\nShowing {len(evidence.runs)} of {evidence.runs_total} matching runs (selected by {selection})."]
+    if evidence.block_id:
+        lines.append(f"Step history filtered to {_literal(evidence.block_id)}. Usage above is run-wide, not step-specific.")
     for run in evidence.runs:
         # Links are built only from validated UUIDs in the authorized run result.
         lines.append(f"- {_literal(run.workflow_name)}: **{_literal(run.status)}**. "
@@ -121,7 +125,9 @@ def answer_from_result(raw: str, workspace_id: str, tool_name="get_trial_evidenc
         query = (PlatformEvidenceQuery if platform else TrialEvidenceQuery)(
             scope=evidence.scope, since=evidence.since, until=evidence.until,
             request_ids=evidence.request_ids, limit=evidence.limit,
-            **({"surface": evidence.surface, "run_id": evidence.run_id, "decision": evidence.decision} if platform else {}),
+            **({"surface": evidence.surface, "run_id": evidence.run_id, "decision": evidence.decision,
+                "event_ids": evidence.event_ids, "block_id": evidence.block_id,
+                "exact_resource": evidence.exact_resource} if platform else {}),
         )
         return render_evidence(evidence), query.model_dump(mode="json")
     except (ValidationError, ValueError, TypeError):

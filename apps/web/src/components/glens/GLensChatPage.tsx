@@ -1,5 +1,6 @@
 "use client"
 import { API } from "@/lib/api"
+import { parseLensEntry, lensEntryQuestion, type LensEntry } from "@/lib/lens-entry"
 
 import { useEffect, useRef, useState } from "react"
 import { useRouter, usePathname, useSearchParams } from "next/navigation"
@@ -26,24 +27,54 @@ import { RunBubble } from "@/components/glens/bubbles/RunBubble"
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export function GLensChatPage({ initialSessionId }: { initialSessionId?: string } = {}) {
+  const { workspaceId } = useAuthFetch()
+  return <GLensChatContent key={workspaceId ?? "loading"} initialSessionId={initialSessionId} />
+}
+
+function GLensChatContent({ initialSessionId }: { initialSessionId?: string }) {
   const { authFetch, workspaceId } = useAuthFetch()
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const askedFromUrlRef = useRef<string | null>(null)
+  const [entryError, setEntryError] = useState<string | null>(null)
 
   // Auto-send when arriving with ?q=… from the global "Ask Lens" bar (#1333 #5).
   // Ref-guard so React Strict-mode double-mount doesn't fire twice, and clean
   // the query out of the URL after the send so refresh doesn't re-trigger.
   useEffect(() => {
-    const q = searchParams?.get("q")
-    if (!q) return
-    if (askedFromUrlRef.current === q) return
-    askedFromUrlRef.current = q
-    void sendMessage(q)
-    router.replace("/lens")
+    let cancelled = false
+    // Strict Mode replays effects. Defer the initial send so its cancelled
+    // first pass cannot start a request and then suppress the real pass.
+    queueMicrotask(() => {
+      if (cancelled || !workspaceId || !searchParams) return
+      let entry: LensEntry | null
+      try { entry = parseLensEntry(searchParams) }
+      catch { setEntryError("This Lens context link is invalid."); return }
+      if (entry) {
+        if (entry.workspace_id !== workspaceId.toLowerCase()) {
+          setEntryError("Switch to the originating workspace to investigate this activity.")
+          return
+        }
+        const key = JSON.stringify(entry)
+        if (askedFromUrlRef.current === key) return
+        askedFromUrlRef.current = key
+        setEntryError(null)
+        setActiveId(null)
+        void sendMessage(lensEntryQuestion(entry), entry)
+        return
+      }
+      setEntryError(null)
+      const q = searchParams.get("q")
+      if (!q) { askedFromUrlRef.current = null; return }
+      if (askedFromUrlRef.current === q) return
+      askedFromUrlRef.current = q
+      void sendMessage(q)
+      router.replace("/lens")
+    })
+    return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams])
+  }, [searchParams, workspaceId])
 
   const [sessions, setSessions] = useState<GLensSession[]>([])
   const [activeId, setActiveId] = useState<string | null>(null)
@@ -66,6 +97,7 @@ export function GLensChatPage({ initialSessionId }: { initialSessionId?: string 
 
   const threadRef = useRef<HTMLDivElement>(null)
   const abortRef = useRef<AbortController | null>(null)
+  useEffect(() => () => abortRef.current?.abort(), [])
 
   // Load session list
   useEffect(() => {
@@ -81,6 +113,7 @@ export function GLensChatPage({ initialSessionId }: { initialSessionId?: string 
   // router.replace, which is a no-op when we already match — so no loop.
   const initialLoadedRef = useRef(false)
   useEffect(() => {
+    if (searchParams?.get("context") || searchParams?.get("q")) return
     if (initialSessionId && !initialLoadedRef.current && workspaceId) {
       initialLoadedRef.current = true
       selectSession(initialSessionId)
@@ -111,20 +144,27 @@ export function GLensChatPage({ initialSessionId }: { initialSessionId?: string 
   }, [messages])
 
   function startNew() {
+    abortRef.current?.abort()
+    setEntryError(null)
+    setLoading(false)
     setActiveId(null)
     setMessages([])
     router.replace("/lens")
   }
 
   async function selectSession(id: string) {
+    abortRef.current?.abort()
+    const controller = new AbortController()
+    abortRef.current = controller
     router.replace(`/lens/${id}`)
     setLoading(true)
     setActiveId(id)
     setMessages([])
     try {
-      const res = await authFetch(`${API}/glens/sessions/${id}`)
+      const res = await authFetch(`${API}/glens/sessions/${id}`, { signal: controller.signal })
       if (!res.ok) return
       const data = await res.json()
+      if (controller.signal.aborted) return
       const thread: MessageBody[] = []
       for (const m of (data.messages ?? [])) {
         if (m.role === "user") {
@@ -174,8 +214,12 @@ export function GLensChatPage({ initialSessionId }: { initialSessionId?: string 
         }
       } catch { /* malformed spec — skip dashboard bubble */ }
       setMessages(thread.map(withId))
+    } catch {
+      if (!controller.signal.aborted) {
+        setEntryError("Unable to load this Lens conversation.")
+      }
     } finally {
-      setLoading(false)
+      if (abortRef.current === controller) setLoading(false)
     }
   }
 
@@ -194,8 +238,8 @@ export function GLensChatPage({ initialSessionId }: { initialSessionId?: string 
     }).catch(() => {})
   }
 
-  function _applyData(data: Record<string, unknown>, text: string) {
-    if (!activeId && data.session_id) {
+  function _applyData(data: Record<string, unknown>, text: string, freshSession = false) {
+    if ((!activeId || freshSession) && data.session_id) {
       setActiveId(data.session_id as string)
       setSessions(prev => [{ id: data.session_id as string, title: text.slice(0, 60), has_dashboard: !!data.spec, created_at: new Date().toISOString() }, ...prev])
     }
@@ -276,17 +320,18 @@ export function GLensChatPage({ initialSessionId }: { initialSessionId?: string 
     }
   }
 
-  async function sendMessage(text: string) {
+  async function sendMessage(text: string, entry?: LensEntry) {
     abortRef.current?.abort()
     const controller = new AbortController()
     abortRef.current = controller
 
-    setMessages(prev => [...prev, withId({ role: "user", text }), withId({ role: "assistant", kind: "loading" })])
+    setMessages(prev => [...(entry ? [] : prev), withId({ role: "user", text }), withId({ role: "assistant", kind: "loading" })])
     setLoading(true)
 
     try {
       const body: Record<string, unknown> = { message: text }
-      if (activeId) body.session_id = activeId
+      if (activeId && !entry) body.session_id = activeId
+      if (entry) body.entry_context = entry
       if (pathname) body.page_context = pathname
 
       const res = await authFetch(`${API}/glens/chat/stream`, {
@@ -295,11 +340,19 @@ export function GLensChatPage({ initialSessionId }: { initialSessionId?: string 
         body: JSON.stringify(body),
         signal: controller.signal,
       })
+      if (controller.signal.aborted) return
 
       if (!res.ok) {
-        setMessages(prev => replaceLast(prev, { role: "assistant", kind: "answer", text: `Request failed (${res.status}). Try again.` }))
+        const message = res.status === 409 ? "Switch to the originating workspace and reopen Ask Lens."
+          : res.status === 403 ? "You do not have permission to investigate this activity."
+          : res.status === 404 ? "This activity is unavailable or outside your access."
+          : `Request failed (${res.status}). Try again.`
+        setMessages(prev => replaceLast(prev, { role: "assistant", kind: "answer", text: message }))
         return
       }
+      // Preserve context for failed requests and sign-in redirects. Once
+      // accepted, refresh must not repeat the contextual investigation.
+      if (entry) router.replace("/lens")
 
       const reader = res.body!.getReader()
       const decoder = new TextDecoder()
@@ -307,6 +360,7 @@ export function GLensChatPage({ initialSessionId }: { initialSessionId?: string 
 
       while (true) {
         const { done, value } = await reader.read()
+        if (controller.signal.aborted) return
         if (done) break
         buf += decoder.decode(value, { stream: true })
         const lines = buf.split("\n")
@@ -332,7 +386,7 @@ export function GLensChatPage({ initialSessionId }: { initialSessionId?: string 
               return prev
             })
           } else if (evt.type === "done") {
-            _applyData(evt, text)
+            _applyData(evt, text, !!entry)
           } else if (evt.type === "error") {
             setMessages(prev => replaceLast(prev, { role: "assistant", kind: "answer", text: (evt.message as string) ?? "Something went wrong." }))
           }
@@ -342,7 +396,7 @@ export function GLensChatPage({ initialSessionId }: { initialSessionId?: string 
       if (err instanceof Error && err.name === "AbortError") return
       setMessages(prev => replaceLast(prev, { role: "assistant", kind: "answer", text: "Network error. Please try again." }))
     } finally {
-      setLoading(false)
+      if (abortRef.current === controller) setLoading(false)
     }
   }
 
@@ -365,6 +419,7 @@ export function GLensChatPage({ initialSessionId }: { initialSessionId?: string 
 
       {/* Chat area */}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", background: "var(--surface)" }}>
+        {entryError && <div role="alert" style={{ padding: 16, color: "var(--err)" }}>{entryError}</div>}
 
         {/* Thread */}
         <div
