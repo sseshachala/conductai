@@ -441,6 +441,7 @@ def write_receipts_for_attempts(
     client_tool: Optional[str] = None,
     transport: Optional[str] = None,
     attempts_meta: Optional[list[dict]] = None,
+    winner_execution_outcome: Optional[str] = None,
 ) -> list[uuid.UUID]:
     """Reviewer #3 (#2221): write one receipt per actual upstream attempt.
 
@@ -486,6 +487,7 @@ def write_receipts_for_attempts(
             transport=transport,
             response_bytes=response_bytes,
             attempt_ordinal=0,
+            execution_outcome=winner_execution_outcome,
         )
         if rid is not None:
             receipts.append(rid)
@@ -505,6 +507,8 @@ def write_receipts_for_attempts(
             if succeeded
             else ExecutionOutcome.FAILED.value
         )
+        if succeeded and winner_execution_outcome is not None:
+            outcome = winner_execution_outcome
         # #2209 Session 6D: for failed attempts, the coordinator captured
         # the provider response body (base64) so we can normalize + price
         # it. Decode when present; fall back to the winner-only response_bytes

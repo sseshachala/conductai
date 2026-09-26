@@ -181,6 +181,7 @@ def record(
     # vs /gateway/v1/anthropic/v1/messages). Distinguishes legacy from new
     # Gateway traffic at query time. NULL for in-process callers.
     route: str | None = None,
+    request_id: str | None = None,
 ) -> None:
     """Background task — best-effort audit write, never blocks the response.
 
@@ -229,7 +230,7 @@ def record(
         db.execute(
             text("""
                 INSERT INTO guard_audit_events (
-                  id,
+                  id, request_id,
                   workspace_id, clerk_user_id, agent_identity_id, ai_tool, tool_call,
                   source, provider, model,
                   decision, rule_id, ts,
@@ -243,7 +244,7 @@ def record(
                   execution_status, result_summary,
                   route
                 ) VALUES (
-                  CAST(:row_id AS uuid),
+                  CAST(:row_id AS uuid), CAST(:request_id AS uuid),
                   :ws, :uid, CAST(:agent_id AS uuid), :ai, NULL,
                   'gateway', :prov, :model,
                   :dec, :rid, :ts,
@@ -260,6 +261,7 @@ def record(
             """),
             {
                 "row_id": row_id,
+                "request_id": request_id,
                 "ws": workspace_id, "uid": clerk_user_id,
                 "agent_id": agent_identity_id,
                 "ai": ai_tool,

@@ -86,6 +86,7 @@ def _schedule_audit(
         agent_identity_id=audit_args[16] if len(audit_args) > 16 else None,
         # Follow-up to #1971 — index 17 = FastAPI request path.
         route=audit_args[17] if len(audit_args) > 17 else None,
+        request_id=audit_args[19] if len(audit_args) > 19 else None,
         execution_status=execution_status,
         result_summary=result_summary,
     )
