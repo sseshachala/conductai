@@ -731,8 +731,8 @@ async def handle_gateway_request(
         _durable_row_id = _durable.row_id
         # R5 fix (reviewer P1): the reservation row and the drawer query
         # correlate via the audit row's request_id (not its row_id).
-        # Fall back to row_id if durable audit is off (no request_id
-        # generated) so the reservation still has a stable key.
+        # The lifecycle mints request_id even when durable audit is off.
+        # Keep the row-id fallback for older lifecycle integrations.
         _audit_request_id = _durable.request_id or _durable_row_id
 
         # ── PR-A2b: pre-flight budget reservation ─────────────────────
@@ -996,6 +996,7 @@ async def handle_gateway_request(
                         # Phase 2 of #1959 — index 18 = durable row id. When set,
                         # _schedule_audit dispatches to finalize() instead of record().
                         _durable_row_id,
+                        _audit_request_id,
                     ),
                     upstream_api_key=_upstream_key,
                     vendor_key=_vault_key_val,
@@ -1254,6 +1255,7 @@ async def handle_gateway_request(
                         ingress_rule_id=_audit_rule_id,
                         started_monotonic=started,
                         record_audit_fn=_record_audit,
+                        request_id=_audit_request_id,
                         # Z2 — deadline enforcement independent of audit
                         # flag. Same profile timeout the durable-on
                         # wrapper uses (Y3).
@@ -1285,6 +1287,7 @@ async def handle_gateway_request(
                         hook_session_id=_hook_session_id,
                         routing_meta=_routing_meta,
                         execution_status=_v2_finalize["execution_status"],
+                        request_id=_audit_request_id,
                         agent_identity_id=(
                             str(_agent_identity_id) if _agent_identity_id else None
                         ),
@@ -1360,6 +1363,7 @@ async def handle_gateway_request(
                         routing_meta=_routing_meta,
                         execution_status=_exec_status,
                         result_summary=_result_summary,
+                        request_id=_audit_request_id,
                         agent_identity_id=(
                             str(_agent_identity_id) if _agent_identity_id else None
                         ),
@@ -1557,6 +1561,15 @@ async def handle_gateway_request(
                         reservation_count=len(_reservations),
                         dispatched=_dispatched,
                     )
+
+        if isinstance(_response, StreamingResponse) and (_v2_plan is None or not _durable_row_id):
+            _response = _wrap_stream_receipts(
+                _response, workspace_id=workspace_id, request_id=_audit_request_id,
+                provider=provider, model=model, operation=request.url.path,
+                developer_external_id=clerk_user_id, agent_identity_id=_agent_identity_id,
+                source="gateway", client_tool=ai_tool, attempts_meta=(_routing_meta or {}).get("attempts"),
+                workflow_run_id=_run_id, hook_session_id=_hook_session_id,
+            )
 
         # Streaming lifecycle: transfer admission ticket ownership so the
         # outer finally does not release before ASGI drains the response.
@@ -2708,6 +2721,43 @@ def _wrap_v2_stream_finalize(
     )
 
 
+def _wrap_stream_receipts(response: StreamingResponse, **receipt_args) -> StreamingResponse:
+    """Persist legacy/audit-off stream receipts after usage arrives, including disconnects."""
+    original = response.body_iterator
+
+    async def chunks():
+        from anyio import CancelScope
+        from starlette.concurrency import run_in_threadpool
+        from app.runtime.accounting.shadow_writer import write_receipts_for_attempts
+        collected = bytearray()
+        outcome = "succeeded"
+        try:
+            async for chunk in original:
+                data = chunk.encode() if isinstance(chunk, str) else chunk
+                collected.extend(data)
+                yield data
+        except BaseException as exc:
+            outcome = "disconnected" if isinstance(exc, (asyncio.CancelledError, GeneratorExit)) else "failed"
+            raise
+        finally:
+            with CancelScope(shield=True):
+                close = getattr(original, "aclose", None)
+                if close is not None:
+                    try:
+                        await close()
+                    except Exception:
+                        log.exception("guard.gateway.stream_close_failed", request_id=receipt_args.get("request_id"))
+                try:
+                    await run_in_threadpool(write_receipts_for_attempts, **receipt_args,
+                                            dispatched=True, response_bytes=bytes(collected) or None,
+                                            winner_execution_outcome=outcome)
+                except Exception:
+                    log.exception("guard.gateway.stream_receipts_failed", request_id=receipt_args.get("request_id"))
+
+    response.body_iterator = chunks()
+    return response
+
+
 def _wrap_v2_stream_record_legacy(
     response: StreamingResponse,
     *,
@@ -2732,6 +2782,7 @@ def _wrap_v2_stream_record_legacy(
     ingress_rule_id: str | None,
     started_monotonic: float,
     record_audit_fn,
+    request_id: str | None = None,
     stream_deadline_seconds: float | None = None,
 ) -> StreamingResponse:
     """X2 fallback wrapper — mirrors ``_wrap_v2_stream_finalize`` but
@@ -2845,6 +2896,7 @@ def _wrap_v2_stream_record_legacy(
                     execution_status=_execution_status,
                     agent_identity_id=agent_identity_id,
                     route=route,
+                    request_id=request_id,
                 )
             except Exception:
                 log.exception(

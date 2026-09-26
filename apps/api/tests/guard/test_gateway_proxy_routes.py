@@ -37,7 +37,7 @@ def test_gateway_openai_models_requires_workspace_authentication():
         if route.path == "/gateway/v1/openai/v1/models"
     )
     assert any(
-        dependency.call is gateway_proxy.get_workspace_id
+        dependency.call is gateway_proxy._gateway_principal
         for dependency in route.dependant.dependencies
     )
 

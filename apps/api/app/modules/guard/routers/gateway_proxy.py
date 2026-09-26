@@ -7,6 +7,7 @@ stable migration target for canonical Gateway Profiles and LiteLLM routing.
 from __future__ import annotations
 
 import time
+import structlog
 
 from fastapi import (
     APIRouter,
@@ -33,13 +34,14 @@ from app.modules.guard.completions_shim import gateway_completions_impl
 _proxy = handle_gateway_request
 
 router = APIRouter(prefix="/gateway/v1", tags=["gateway-proxy"])
+log = structlog.get_logger(__name__)
 
 
 def _gateway_principal(
     request: Request,
     db: Session = Depends(get_db),
 ) -> tuple[str, str, str | None]:
-    """Authenticate either credential header emitted by Claude Code.
+    """Authenticate Gateway credentials for both provider catalogs.
 
     Returns (workspace_id, clerk_user_id, agent_identity_id). The identity
     id is None for legacy guard-mt-* member tokens; audit rows for those
@@ -49,15 +51,24 @@ def _gateway_principal(
     if raw.lower().startswith("bearer "):
         raw = raw[7:].strip()
     if not raw:
+        log.warning("gateway.catalog.auth_rejected", reason="missing_credential", path=request.url.path)
         raise HTTPException(status_code=401, detail="Gateway credential required")
 
-    identity = resolve_agent_token(raw, db)
+    try:
+        identity = resolve_agent_token(raw, db)
+    except HTTPException as exc:
+        log.warning("gateway.catalog.auth_rejected", reason="credential_validation",
+                    status=exc.status_code, path=request.url.path)
+        raise
     if not identity:
+        expired = token_is_expired(raw, db)
         detail = (
             "Gateway credential expired"
-            if token_is_expired(raw, db)
+            if expired
             else "Invalid gateway credential"
         )
+        log.warning("gateway.catalog.auth_rejected", reason="expired" if expired else "invalid_credential",
+                    path=request.url.path)
         raise HTTPException(status_code=401, detail=detail)
 
     workspace_id, clerk_user_id = identity
@@ -125,7 +136,7 @@ def _anthropic_catalog(profile, limit: int) -> list[dict[str, str]]:
 
 @router.get("/openai/v1/models")
 async def gateway_openai_models(
-    _workspace_id: str = Depends(get_workspace_id),
+    principal: tuple[str, str, str | None] = Depends(_gateway_principal),
 ) -> JSONResponse:
     """Let Codex retain its bundled model catalog for this custom provider.
 
