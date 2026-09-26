@@ -1,6 +1,7 @@
 "use client"
 import { API } from "@/lib/api"
 import { LensSettings } from "./LensSettings"
+import { LensResultsLayout } from "./LensResultsLayout"
 import { parseLensEntry, lensEntryQuestion, lensRequestError, type LensEntry } from "@/lib/lens-entry"
 
 import { useEffect, useRef, useState } from "react"
@@ -430,6 +431,7 @@ function GLensChatContent({ initialSessionId }: { initialSessionId?: string }) {
       />
 
       {/* Chat area */}
+      <LensResultsLayout resetKey={activeId}>
       <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", background: "var(--surface)" }}>
         <LensSettings disabled={loading} />
         {entryError && <div role="alert" style={{ padding: 16, color: "var(--err)" }}>{entryError}</div>}
@@ -437,6 +439,7 @@ function GLensChatContent({ initialSessionId }: { initialSessionId?: string }) {
         {/* Thread */}
         <div
           ref={threadRef}
+          data-lens-thread
           style={{ flex: 1, overflowY: "auto", padding: hasThread ? "32px 48px" : "0", display: hasThread ? "block" : "flex", flexDirection: "column", justifyContent: "center" }}
         >
           {!hasThread && (
@@ -562,13 +565,14 @@ function GLensChatContent({ initialSessionId }: { initialSessionId?: string }) {
 
         {/* Input — bottom-anchored once the thread has content */}
         {hasThread && (
-          <div style={{ borderTop: "1px solid var(--border)", background: "var(--surface)", padding: "12px 48px 16px" }}>
+          <div data-lens-composer style={{ borderTop: "1px solid var(--border)", background: "var(--surface)", padding: "12px 48px 16px" }}>
             <div style={{ maxWidth: 800, margin: "0 auto" }}>
               <ChatInput onSubmit={sendMessage} disabled={loading} />
             </div>
           </div>
         )}
       </div>
+      </LensResultsLayout>
     </div>
   )
 }

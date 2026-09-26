@@ -1,24 +1,17 @@
 import React from "react"
+import { marked, type Token } from "marked"
 import { ResultTableView } from "./ResultTableView"
 import { fmtDate } from "@/lib/glens/formatters"
 
 export function renderInline(text: string): React.ReactNode[] {
-  return text.split(/(\*\*[^*]+\*\*|\[[^\]]+\]\([^)]+\))/).map((p, j) => {
-    if (p.startsWith("**")) return <strong key={j}>{p.slice(2, -2)}</strong>
-    const link = p.match(/^\[([^\]]+)\]\(([^)]+)\)$/)
-    if (link) return <a key={j} href={link[2]} target="_blank" rel="noopener noreferrer" style={{ color: "var(--accent, #6366f1)", textDecoration: "underline" }}>{link[1]}</a>
-    return p
-  })
+  return marked.Lexer.lexInline(text).map(renderToken)
 }
 
-export function isTableSeparator(line: string): boolean {
-  // e.g. "| --- | --- |" or "|:---|---:|"
-  return /^\s*\|(\s*:?-{3,}:?\s*\|)+\s*$/.test(line)
-}
-
-export function parseRow(line: string): string[] {
-  const trimmed = line.trim().replace(/^\|/, "").replace(/\|$/, "")
-  return trimmed.split("|").map(c => c.trim())
+function literalText(text: string): string {
+  // Decode evidence's HTML escaping only as React text, never as markup.
+  return text.replace(/&(amp|lt|gt|quot|#39|#x27);/g, entity => ({
+    "&amp;": "&", "&lt;": "<", "&gt;": ">", "&quot;": '"', "&#39;": "'", "&#x27;": "'",
+  }[entity] ?? entity))
 }
 
 export function renderTable(header: string[], rows: string[][], key: number): React.ReactNode {
@@ -28,7 +21,7 @@ export function renderTable(header: string[], rows: string[][], key: number): Re
         <thead>
           <tr style={{ borderBottom: "1px solid var(--border)" }}>
             {header.map((h, i) => (
-              <th key={i} style={{ textAlign: "left", padding: "6px 10px", color: "var(--text-muted)", fontWeight: 600, fontSize: 11.5, textTransform: "uppercase", letterSpacing: ".04em" }}>{h}</th>
+              <th key={i} style={{ textAlign: "left", padding: "6px 10px", color: "var(--text-muted)", fontWeight: 600, fontSize: 11.5 }}>{renderInline(h)}</th>
             ))}
           </tr>
         </thead>
@@ -47,30 +40,40 @@ export function renderTable(header: string[], rows: string[][], key: number): Re
 }
 
 export function renderMd(text: string): React.ReactNode[] {
-  const lines = text.split("\n")
-  const out: React.ReactNode[] = []
-  let i = 0
-  while (i < lines.length) {
-    const line = lines[i]
-    // Detect markdown table: current line starts with | AND next line is separator
-    if (line.trim().startsWith("|") && i + 1 < lines.length && isTableSeparator(lines[i + 1])) {
-      const header = parseRow(line)
-      const rows: string[][] = []
-      let j = i + 2
-      while (j < lines.length && lines[j].trim().startsWith("|") && !isTableSeparator(lines[j])) {
-        rows.push(parseRow(lines[j]))
-        j++
-      }
-      out.push(renderTable(header, rows, i))
-      i = j
-      continue
+  return marked.lexer(text, { gfm: true }).map(renderToken)
+}
+
+function renderToken(token: Token, key: number): React.ReactNode {
+  const children = () => ("tokens" in token ? token.tokens ?? [] : []).map(renderToken)
+  switch (token.type) {
+    case "space": return null
+    case "heading": return React.createElement(`h${token.depth}`, {
+      key, style: { fontSize: token.depth <= 2 ? 16 : 14, fontWeight: 600, margin: "12px 0 6px", lineHeight: 1.4 },
+    }, children())
+    case "paragraph": return <p key={key} style={{ margin: "6px 0", overflowWrap: "anywhere" }}>{children()}</p>
+    case "strong": return <strong key={key}>{children()}</strong>
+    case "em": return <em key={key}>{children()}</em>
+    case "del": return <del key={key}>{children()}</del>
+    case "codespan": return <code key={key} style={{ overflowWrap: "anywhere" }}>{literalText(token.text)}</code>
+    case "code": return <pre key={key} style={{ maxWidth: "100%", overflowX: "auto", padding: 10, background: "var(--surface-1)" }}><code>{token.text}</code></pre>
+    case "br": return <br key={key} />
+    case "hr": return <hr key={key} />
+    case "blockquote": return <blockquote key={key} style={{ margin: "8px 0", paddingLeft: 12, borderLeft: "2px solid var(--border)" }}>{children()}</blockquote>
+    case "list": {
+      const items = token.items.map((item: Token, i: number) => <li key={i} style={{ margin: "4px 0" }}>{("tokens" in item ? item.tokens ?? [] : []).map(renderToken)}</li>)
+      const style = { paddingLeft: 20, margin: "8px 0", listStyleType: token.ordered ? "decimal" : "disc" }
+      return token.ordered ? <ol key={key} start={Number(token.start) || 1} style={style}>{items}</ol> : <ul key={key} style={style}>{items}</ul>
     }
-    const bullet = line.match(/^[*-]\s+(.+)/)
-    const content = bullet ? bullet[1] : line
-    const parts = renderInline(content)
-    if (bullet) out.push(<div key={i} style={{ paddingLeft: 12, position: "relative" }}><span style={{ position: "absolute", left: 0 }}>•</span>{parts}</div>)
-    else out.push(<div key={i} style={{ minHeight: line ? undefined : "0.6em" }}>{parts}</div>)
-    i++
+    case "table": return renderTable(token.header.map((cell: { text: string }) => cell.text), token.rows.map((row: { text: string }[]) => row.map(cell => cell.text)), key)
+    case "link": {
+      const href = token.href.trim()
+      const safe = /^(?:https?:\/\/|mailto:)/i.test(href) || (/^\/(?!\/)/.test(href) && !href.includes("\\")) || href.startsWith("#")
+      return safe && !/[\u0000-\u0020]/.test(href) ? <a key={key} href={href} target="_blank" rel="noopener noreferrer" style={{ color: "var(--accent)", textDecoration: "underline" }}>{children()}</a> : <React.Fragment key={key}>{children()}</React.Fragment>
+    }
+    case "image": return <React.Fragment key={key}>{literalText(token.text)}</React.Fragment>
+    case "text": return <React.Fragment key={key}>{token.tokens ? children() : literalText(token.text)}</React.Fragment>
+    case "escape": return <React.Fragment key={key}>{literalText(token.text)}</React.Fragment>
+    // Raw HTML stays inert; model output must never become executable markup.
+    default: return <React.Fragment key={key}>{literalText(token.raw)}</React.Fragment>
   }
-  return out
 }

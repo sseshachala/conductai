@@ -18,6 +18,7 @@
 import { useEffect, useRef, useState } from "react"
 import { API } from "@/lib/api"
 import { LensSettings } from "./LensSettings"
+import { LensResultsLayout } from "./LensResultsLayout"
 import { useAuthFetch } from "@/hooks/useAuthFetch"
 import { AnswerBubble } from "@/components/glens/bubbles/AnswerBubble"
 import { ActionConfirmBubble } from "@/components/glens/bubbles/ActionConfirmBubble"
@@ -50,6 +51,7 @@ export function LensChat({
   placeholder = "Ask Lens…",
   emptyText = "Ask about anything on this page. Lens is Guard-enforced.",
   persistKey,
+  onResultsExpandedChange,
 }: {
   pathname?: string | null
   initialQuery?: string | null
@@ -65,6 +67,7 @@ export function LensChat({
    *  so a page reload resumes the same server-side session (no forgotten
    *  pending_action_ids, no lost conversation). Omit to opt out. */
   persistKey?: string
+  onResultsExpandedChange?: (expanded: boolean) => void
 }) {
   const { authFetch, workspaceId } = useAuthFetch()
   const [messages, setMessages] = useState<Message[]>([])
@@ -234,7 +237,7 @@ export function LensChat({
   }
 
   return (
-    <>
+    <LensResultsLayout onExpandedChange={onResultsExpandedChange}>
       <LensSettings disabled={loading} />
       <div
         ref={bodyRef}
@@ -298,7 +301,7 @@ export function LensChat({
           }}
         />
       </form>
-    </>
+    </LensResultsLayout>
   )
 }
 
