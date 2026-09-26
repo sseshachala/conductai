@@ -38,8 +38,11 @@ const OPENAI_COMPAT_DEFAULTS: Record<string, string> = {
   smart:    "gpt-4.1",
 }
 
-function defaultsFor(provider: string): Record<string, string> {
-  return provider === "anthropic" ? { ...ANTHROPIC_DEFAULTS } : { ...OPENAI_COMPAT_DEFAULTS }
+export function defaultsFor(provider: string): Record<string, string> {
+  if (provider === "anthropic") return { ...ANTHROPIC_DEFAULTS }
+  if (provider === "openai") return { ...OPENAI_COMPAT_DEFAULTS }
+  // Empty maps use the provider-specific runtime fallback, never GPT defaults.
+  return {}
 }
 
 export default function LLMPrimitivesPanel({

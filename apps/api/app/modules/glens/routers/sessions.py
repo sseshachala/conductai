@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timezone
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -23,6 +24,49 @@ from ._helpers import (
 )
 
 router = APIRouter(prefix="/glens", tags=["glens"])
+
+
+class LensSettingsUpdate(BaseModel):
+    environment_id: UUID
+
+
+@router.get("/settings")
+def get_lens_settings(
+    _: str = Depends(require_permission("guard.activity.view_own")),
+    workspace_id: str = Depends(get_workspace_id),
+    user_id: str = Depends(get_user_id),
+    db: Session = Depends(get_db),
+):
+    from app.core.auth import check_permission
+    from app.models.environment import Environment
+    from app.models.workspace import Workspace
+    from app.modules.glens.vault_settings import PREFERENCE
+    workspace = db.query(Workspace).filter(Workspace.id == workspace_id).first()
+    if workspace is None:
+        raise HTTPException(404, "Workspace not found")
+    can_edit = True
+    try:
+        check_permission(user_id=user_id, workspace_id=workspace_id, credentials=None,
+                         db=db, permission="platform.workspace.edit")
+    except HTTPException as exc:
+        if exc.status_code != 403:
+            raise
+        can_edit = False
+    rows = db.query(Environment).filter(Environment.workspace_id == workspace_id).order_by(Environment.name).all()
+    return {"environment_id": (workspace.preferences or {}).get(PREFERENCE),
+            "vaults": [{"id": str(row.id), "name": row.name} for row in rows], "can_edit": can_edit}
+
+
+@router.put("/settings")
+def put_lens_settings(
+    body: LensSettingsUpdate,
+    _: str = Depends(require_permission("platform.workspace.edit")),
+    workspace_id: str = Depends(get_workspace_id),
+    db: Session = Depends(get_db),
+):
+    from app.modules.glens.vault_settings import save_environment
+    save_environment(db, workspace_id, body.environment_id)
+    return {"environment_id": str(body.environment_id)}
 
 
 class SessionTitleUpdate(BaseModel):

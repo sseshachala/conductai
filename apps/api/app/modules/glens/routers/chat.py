@@ -340,12 +340,12 @@ def _llm_config(executor):
     - provider + model come from workspace_llm_primitives; falls back to
       seeded defaults if the workspace has no row yet.
     - api_key is looked up in the workspace vault by provider handle;
-      falls back to "unused" (which the client turns into a 401 on first
-      call — an operator-fixable error, not silent misuse of a stale key).
+      missing or unreadable credentials stop before a provider request.
     """
     from app.runtime.model_router import resolve_for_workspace
     from app.runtime.llm_client import client_for
     from app.core.credentials import get_credential
+    from app.modules.glens.vault_settings import selected_environment
 
     provider, model, reason = resolve_for_workspace(
         db=executor.db,
@@ -353,13 +353,23 @@ def _llm_config(executor):
         routing_preference="balanced",
     )
 
-    api_key = "unused"
+    api_key = None
+    environment_id = selected_environment(executor.db, executor.workspace_id)
     if executor.db and executor.workspace_id:
         try:
-            creds = get_credential(executor.db, executor.workspace_id, provider)
-            api_key = creds.get("api_key") or api_key
+            creds = get_credential(executor.db, executor.workspace_id, provider, environment_id=environment_id)
+            api_key = creds.get("api_key")
         except Exception:
-            pass
+            raise ValueError(
+                f"Lens could not read the {provider} credential from Vault. "
+                "Ask a workspace administrator to check the credential configuration."
+            ) from None
+
+    if not isinstance(api_key, str) or not api_key.strip():
+        raise ValueError(
+            f"Lens has no {provider} API key. Add {provider}.api_key in Settings > Vault "
+            "in the Vault selected in Lens settings (Default when none is selected)."
+        )
 
     log.debug("glens.llm_resolved", provider=provider, model=model, reason=reason)
     return client_for(provider, api_key=api_key), provider, model

@@ -12,7 +12,7 @@ from typing import Any
 from app.runtime.adapters.openai import OpenAIClient
 from app.runtime.llm_client import LLMResponse, LLMUsage
 
-_TOGETHER_BASE = "https://api.together.xyz/v1"
+_TOGETHER_BASE = "https://api.together.ai/v1"
 
 # Pricing per 1M tokens (USD) — https://www.together.ai/pricing
 # Add models as needed; unknown models fall back to zero cost.

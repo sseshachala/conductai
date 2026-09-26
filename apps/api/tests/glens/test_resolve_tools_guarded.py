@@ -111,8 +111,9 @@ def test_llm_config_reads_workspace_primitives():
         return "anthropic", "claude-sonnet-4-6", "workspace anthropic: tier_map[balanced]"
 
     with patch("app.runtime.model_router.resolve_for_workspace", side_effect=fake_resolve), \
+         patch("app.modules.glens.vault_settings.selected_environment", return_value=None), \
          patch("app.runtime.llm_client.client_for", return_value=fake_client), \
-         patch("app.core.credentials.get_credential", side_effect=Exception("no creds")):
+         patch("app.core.credentials.get_credential", return_value={"api_key": "test-only"}):
         ex = MagicMock()
         ex.workspace_id = "ws-1"
         ex.db = MagicMock()

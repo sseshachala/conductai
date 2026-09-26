@@ -17,6 +17,7 @@
 
 import { useEffect, useRef, useState } from "react"
 import { API } from "@/lib/api"
+import { LensSettings } from "./LensSettings"
 import { useAuthFetch } from "@/hooks/useAuthFetch"
 import { AnswerBubble } from "@/components/glens/bubbles/AnswerBubble"
 import { ActionConfirmBubble } from "@/components/glens/bubbles/ActionConfirmBubble"
@@ -204,6 +205,7 @@ export function LensChat({
 
   return (
     <>
+      <LensSettings disabled={loading} />
       <div
         ref={bodyRef}
         style={{

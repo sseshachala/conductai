@@ -40,7 +40,7 @@ it("sends one typed context request under Strict Mode without copied payloads", 
   expect(body.entry_context).toEqual({ kind: "event", workspace_id: workspace, resource_id: event })
   expect(body.session_id).toBeUndefined()
   expect(body.message).not.toContain("injected")
-  expect(state.replace).toHaveBeenCalledWith("/lens")
+  expect(state.replace).toHaveBeenCalledWith("/lens/new-session")
 })
 
 it("waits for workspace selection before auto-send", async () => {
@@ -88,4 +88,57 @@ it("aborts an in-flight investigation when switching workspaces", async () => {
   expect(await screen.findByRole("alert")).toHaveTextContent("originating workspace")
   expect(signal.aborted).toBe(true)
   expect(calls()).toHaveLength(1)
+})
+
+it.each(["run", "trial"])("hands off %s context through the same chat endpoint", async (kind) => {
+  state.params.set("context", kind)
+  if (kind === "trial") state.params.delete("resource_id")
+  else state.params.set("block_id", "deploy")
+  render(<GLensChatPage />)
+  await screen.findByText("Verified evidence")
+  const body = JSON.parse(calls()[0][1].body)
+  expect(body.entry_context.kind).toBe(kind)
+  expect(body.entry_context.workspace_id).toBe(workspace)
+  expect(body.entry_context.block_id).toBe(kind === "run" ? "deploy" : undefined)
+})
+
+it("does not present truncated evidence as a completed answer or discard retry context", async () => {
+  state.fetch.mockImplementation(async (url: string) => url.includes("/chat/stream")
+    ? new Response('data: {"type":"token","text":"Partial evidence"}\n\n') : new Response("[]"))
+  render(<GLensChatPage />)
+  await screen.findByText(/connection ended before the answer completed/)
+  expect(screen.queryByText("Partial evidence")).not.toBeInTheDocument()
+  expect(state.replace).not.toHaveBeenCalled()
+  expect(calls()).toHaveLength(1)
+})
+
+it("reassembles split stream chunks before linking the completed session", async () => {
+  const encoded = new TextEncoder().encode('data: {"type":"done","session_id":"saved","answer":"Complete evidence"}\n\n')
+  state.fetch.mockImplementation(async (url: string) => url.includes("/chat/stream")
+    ? new Response(new ReadableStream({ start(controller) {
+      for (const byte of encoded) controller.enqueue(new Uint8Array([byte]))
+      controller.close()
+    } })) : new Response("[]"))
+  render(<GLensChatPage />)
+  await screen.findByText("Complete evidence")
+  expect(state.replace).toHaveBeenCalledWith("/lens/saved")
+})
+
+it("reloads a saved conversation without dispatching a new investigation", async () => {
+  state.params = new URLSearchParams()
+  state.fetch.mockImplementation(async (url: string) => url.endsWith("/sessions/saved")
+    ? new Response(JSON.stringify({ messages: [{ role: "assistant", content: JSON.stringify({ answer: "Reauthorized evidence" }) }] }))
+    : new Response("[]"))
+  render(<GLensChatPage initialSessionId="saved" />)
+  await screen.findByText("Reauthorized evidence")
+  expect(calls()).toHaveLength(0)
+})
+
+it("shows an explicit error when saved conversation access is revoked", async () => {
+  state.params = new URLSearchParams()
+  state.fetch.mockImplementation(async (url: string) => url.endsWith("/sessions/saved")
+    ? new Response("{}", { status: 403 }) : new Response("[]"))
+  render(<GLensChatPage initialSessionId="saved" />)
+  expect(await screen.findByRole("alert")).toHaveTextContent("unavailable or outside your access")
+  expect(calls()).toHaveLength(0)
 })
