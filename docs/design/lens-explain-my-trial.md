@@ -198,3 +198,34 @@ Phase 4 tests cover typed handoff, invalid/mismatched references, old records,
 permissions, no-model dispatch, frontend URL validation, Strict Mode single
 send, workspace switching and denied responses. Live auth/provider/browser
 journey and PostgreSQL RLS acceptance remain Phase 5 work.
+
+## Phase 5: Release Validation
+
+`tests/glens/test_journey_postgres.py` runs against a disposable schema with
+native PostgreSQL UUID/JSON types, real RBAC reads, and a non-owner database
+role without RLS bypass. It applies the shipped workflow SELECT policy from
+migration 0004. Other tables retain their existing explicit workspace filters;
+these tests do not claim those tables have database RLS.
+
+The eight tests cover Guard hook/MCP and Gateway event handoffs, receipt-backed
+fallback totals, exact authorized Flight Recorder citations, workflow step
+lookup with receipt linkage, malformed cross-workspace workflow associations,
+saved-query permission revocation, trial entry, and the registered tool's own
+RLS-scoped database session. CI runs the suite with LENS_TEST_DATABASE_URL.
+The fixture needs role/schema creation rights on a disposable test database.
+
+Frontend tests cover typed entry, workspace switching, split stream frames,
+truncation, completed-session navigation, saved-session reload and denial, and
+the admin-managed Vault selector. CI runs these alongside typecheck. An
+interrupted answer is not shown as complete, and contextual entry is retained
+until a complete answer supplies a saved-session link.
+
+Lens's settings cog is shared by drawer and full-page chat. The selected Vault
+ID is stored in workspace preferences and validated against workspace ownership
+on save and credential resolution. No credential values are returned. Selection
+does not copy all variables into model context or change tool authorization.
+
+Still outstanding: authenticated desktop/mobile browser acceptance, live model
+tool selection, and the full live policy-check-to-record-to-Lens journey. Seeded
+PostgreSQL tests and mocked browser-component transport do not prove these.
+Phase 5 is not a declaration that every Lens capability is release-certified.

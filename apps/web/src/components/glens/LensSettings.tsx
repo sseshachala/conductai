@@ -20,6 +20,7 @@ function WorkspaceLensSettings({ disabled }: { disabled: boolean }) {
   const [selected, setSelected] = useState("")
   const [error, setError] = useState("")
   const [saving, setSaving] = useState(false)
+  const canSave = !!data?.can_edit && !saving && !disabled && !!data.vaults.some(v => v.id === selected)
 
   useEffect(() => {
     if (!open || !workspaceId) return
@@ -54,20 +55,22 @@ function WorkspaceLensSettings({ disabled }: { disabled: boolean }) {
     </button>
     {open && <section aria-label="Lens settings" style={{ position: "absolute", top: 44, right: 12, zIndex: 40, width: 300, maxWidth: "calc(100vw - 40px)", padding: 16, border: "1px solid var(--border)", borderRadius: 8, background: "var(--surface)", boxShadow: "0 4px 16px #0002" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-        <strong>Lens settings</strong>
-        <button type="button" aria-label="Close Lens settings" title="Close" disabled={saving} onClick={() => setOpen(false)}><X size={16} /></button>
+        <strong style={{ fontSize: 14, color: "var(--text)" }}>Lens settings</strong>
+        <button type="button" className="btn btn-ghost btn-icon btn-sm" aria-label="Close Lens settings" title="Close" disabled={saving} onClick={() => setOpen(false)}><X size={16} /></button>
       </div>
       {data ? <>
-        <label htmlFor={selectId}>Workspace Vault</label>
+        <label htmlFor={selectId} style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text)" }}>Workspace Vault</label>
         <select id={selectId} value={selected} disabled={!data.can_edit || saving || disabled}
-          onChange={e => setSelected(e.target.value)} style={{ width: "100%", marginTop: 8, padding: 8 }}>
+          onChange={e => setSelected(e.target.value)} style={{ width: "100%", minWidth: 0, height: 36, marginTop: 6, padding: "8px 10px", fontSize: 13, border: "1px solid var(--border)", borderRadius: 8, background: "var(--surface)", color: "var(--text)" }}>
           <option value="" disabled>Default (not configured)</option>
           {selected && !data.vaults.some(v => v.id === selected) && <option value={selected} disabled>Unavailable Vault</option>}
           {data.vaults.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
         </select>
         {!data.vaults.length && <p>No Vaults available.</p>}
         {!data.can_edit && <p>Managed by your workspace administrator.</p>}
-        {data.can_edit && <button type="button" onClick={save} disabled={saving || disabled || !data.vaults.some(v => v.id === selected)} style={{ marginTop: 12 }}>{saving ? "Saving..." : "Save"}</button>}
+        {data.can_edit && <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 16 }}>
+          <button type="button" className="btn btn-primary btn-sm" onClick={save} disabled={!canSave} style={{ minWidth: 76, opacity: canSave ? 1 : 0.5 }}>{saving ? "Saving..." : "Save"}</button>
+        </div>}
       </> : !error && <p>Loading...</p>}
       {error && <p role="alert">{error}</p>}
     </section>}
