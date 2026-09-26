@@ -1,5 +1,5 @@
 """Bounded platform investigations over existing audit, receipt and run stores."""
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Literal
 from uuid import UUID
 
@@ -19,6 +19,8 @@ from app.modules.glens.trial_accounting import attach_trial_accounting
 
 
 class PlatformEvidenceQuery(TrialEvidenceQuery):
+    intent: Literal["activity", "spend", "failures"] = "activity"
+    period: Literal["today"] | None = None
     surface: Literal["all", "guard", "gateway", "workflow", "trial"] = "all"
     run_id: UUID | None = None
     decision: Literal["allowed", "warned", "blocked", "approval"] | None = None
@@ -26,8 +28,21 @@ class PlatformEvidenceQuery(TrialEvidenceQuery):
     block_id: str | None = Field(default=None, min_length=1, max_length=255)
     exact_resource: bool = False
 
+    @model_validator(mode="before")
+    @classmethod
+    def today_window(cls, values):
+        if isinstance(values, dict) and values.get("period") == "today":
+            values = dict(values)
+            if values.get("since") is None and values.get("until") is None:
+                start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+                values.update(since=start, until=start + timedelta(days=1))
+        return values
+
     @model_validator(mode="after")
     def exact_target(self):
+        if self.intent != "activity" and (self.surface != "gateway" or self.run_id or
+                self.event_ids or self.request_ids or self.decision or self.exact_resource):
+            raise ValueError("Spend/failures require Gateway surface and a time window, without activity filters")
         if self.exact_resource and not (self.event_ids or self.run_id):
             raise ValueError("Exact resource lookup needs event IDs or a run ID")
         if self.block_id and not self.run_id:
@@ -59,7 +74,28 @@ class RunEvidence(BaseModel):
     steps_total: int = 0
 
 
+class GatewayAttemptEvidence(BaseModel):
+    id: UUID
+    request_id: UUID
+    attempt_ordinal: int
+    provider: str
+    model: str
+    execution_outcome: str
+    finalized_at: datetime
+    pricing_version: str | None
+    event_id: UUID | None
+
+
+class GatewayWindowEvidence(BaseModel):
+    attempt_count: int
+    priced_count: int
+    cost_microdollars: int | None
+    attempts: list[GatewayAttemptEvidence]
+
+
 class PlatformEvidenceResult(TrialEvidenceResult):
+    intent: Literal["activity", "spend", "failures"] = "activity"
+    gateway_window: GatewayWindowEvidence | None = None
     surface: Literal["all", "guard", "gateway", "workflow", "trial"] = "all"
     run_id: UUID | None = None
     decision: str | None = None
@@ -150,6 +186,7 @@ def read_platform_evidence(db, workspace_id, user_id, query: PlatformEvidenceQue
         retrieved_at=datetime.now(timezone.utc), since=query.since, until=query.until,
         request_ids=query.request_ids, limit=query.limit, surface=query.surface,
         run_id=query.run_id, decision=query.decision,
+        intent=query.intent,
         event_ids=query.event_ids, block_id=query.block_id, exact_resource=query.exact_resource,
     )
     try:
@@ -157,6 +194,22 @@ def read_platform_evidence(db, workspace_id, user_id, query: PlatformEvidenceQue
             return evidence
         _permission(db, workspace_id, user_id,
                     f"guard.activity.view_{'all' if query.scope == 'workspace' else 'own'}")
+        if query.intent != "activity":
+            from app.runtime.accounting.reader import AccountingReader
+            if query.intent == "spend":
+                _permission(db, workspace_id, user_id,
+                            f"guard.spend.view_{'all' if query.scope == 'workspace' else 'own'}")
+            window = AccountingReader(db).gateway_window(
+                workspace_id=evidence.workspace_id, since=query.since, until=query.until,
+                user_id=user_id if query.scope == "own" else None,
+                failed_only=query.intent == "failures", limit=query.limit,
+            )
+            # Activity permission alone must not disclose spend through the tool envelope.
+            if query.intent == "failures":
+                window.update(cost_microdollars=None, priced_count=0)
+            evidence.gateway_window = GatewayWindowEvidence.model_validate(window)
+            evidence.status = "ok" if window["attempt_count"] else "empty"
+            return evidence
         event, identity = GuardAuditEvent, AgentIdentity
         stmt = select(
             event.id, event.request_id, event.agent_identity_id, event.ts, event.decision,
@@ -222,7 +275,7 @@ def read_platform_evidence(db, workspace_id, user_id, query: PlatformEvidenceQue
     except SQLAlchemyError:
         # Do not keep partially assembled counts after a failed query.
         return PlatformEvidenceResult(
-            **{**evidence.model_dump(exclude={"records", "runs", "accounting_totals"}),
+            **{**evidence.model_dump(exclude={"records", "runs", "accounting_totals", "gateway_window"}),
                "status": "unavailable", "total_matching": None, "has_more": None,
                "accounting_status": "unavailable", "runs_status": "unavailable", "runs_total": None},
         )

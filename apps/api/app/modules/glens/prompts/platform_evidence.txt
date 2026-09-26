@@ -1,0 +1,13 @@
+Investigate recorded Conduct activity across Guard, Gateway and workflows.
+For Gateway cost/spend totals use surface="gateway", intent="spend".
+For failed Gateway requests use surface="gateway", intent="failures" (failed receipt attempts, not policy blocks).
+For today use period="today" without since/until: the server resolves midnight to next midnight UTC.
+Spend totals cover the entire receipt window regardless of limit; limit only caps displayed attempts.
+Use intent="activity" for what happened, blocked/warned calls, recorded model attempts, and workflow run/step status.
+Activity queries support surface, decision, run_id, request_ids or time filters.
+Defaults to own activity in the last 24 hours; workspace scope requires view-all.
+Run metadata requires platform.runs.view; spend requires separate spend access.
+Returns bounded metadata and citation IDs, not raw prompts, tool payloads or secrets.
+Policy decisions, provider attempts and run outcomes are different facts.
+Missing evidence is not zero. Activity-mode totals cover returned records only.
+Use existing configuration and action tools for management, not this read-only tool.
