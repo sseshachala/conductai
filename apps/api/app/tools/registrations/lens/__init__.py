@@ -37,6 +37,7 @@ from app.tools.registrations.lens import (
     observability_kpis,
     ops,
     policies,
+    platform_evidence,
     primitives,
     report_builder,
     runs,
@@ -64,6 +65,7 @@ _ALL_TOOLS = [
     *capabilities.TOOLS,
     *gateway_v2.TOOLS,
     *trial_evidence.TOOLS,
+    *platform_evidence.TOOLS,
 ]
 
 
