@@ -9,6 +9,7 @@ import hashlib
 import ipaddress
 import json
 from datetime import datetime, timezone
+from uuid import UUID
 
 import structlog
 
@@ -24,6 +25,7 @@ from app.core.auth import (
     _resolve_agent_token,
     _verify_clerk_token,
     get_workspace_id,
+    get_user_id,
     require_permission,
 )
 from app.core.config import settings
@@ -1051,11 +1053,16 @@ def list_events(
     offset: int = Query(default=0, ge=0),
     hook_session_id: str | None = Query(default=None),
     agent_identity_id: str | None = Query(default=None),
+    event_id: UUID | None = Query(default=None),
+    user_id: str = Depends(get_user_id),
 ):
     """Paginated, filterable audit event list for a workspace."""
     org_ws = _org_ws_subquery(db, workspace_id)
 
     q = db.query(GuardAuditEvent).filter(GuardAuditEvent.workspace_id.in_(org_ws))
+    if isinstance(event_id, UUID):
+        from app.modules.guard.event_access import restrict_event_query
+        q = restrict_event_query(q, db, workspace_id, user_id, event_id)
     if hook_session_id:
         q = q.filter(GuardAuditEvent.hook_session_id == hook_session_id)
     if agent_identity_id:

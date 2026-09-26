@@ -17,7 +17,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.core.auth import get_workspace_id, require_permission
+from app.core.auth import get_user_id, get_workspace_id, require_permission
 from app.core.database import get_db
 from app.modules.glens.executor import Executor
 from app.modules.glens.masking import mask_secrets
@@ -597,7 +597,7 @@ def _resolve_tools(messages: list[dict], system: str, executor: Executor) -> tup
     # dispatch by scanning results for `confirm_required` envelopes.
     lens_ctx = MCPContext(
         workspace_id=executor.workspace_id,
-        clerk_user_id="system:lens",
+        clerk_user_id=executor.clerk_user_id if isinstance(executor.clerk_user_id, str) else "system:lens",
         surface="lens",
         pending_action_ids_this_turn=set(),
     )
@@ -615,6 +615,17 @@ def _resolve_tools(messages: list[dict], system: str, executor: Executor) -> tup
 
         if not tool_blocks:
             return msgs, text or "I couldn't find relevant data to answer that.", tool_calls_made
+
+        trial = next((b for b in tool_blocks if b.name in {"get_trial_evidence", "get_platform_evidence"}), None)
+        if trial is not None:
+            from app.modules.glens.evidence_explanation import answer_from_result
+            # Evidence is terminal and read-only: do not co-dispatch mutations
+            # or feed untrusted record fields into another model turn.
+            raw = _bound_dispatcher(trial.name, json.dumps(trial.input))
+            answer, query = answer_from_result(raw, executor.workspace_id, trial.name)
+            executor.evidence_query = query or {}
+            executor.evidence_tool = trial.name
+            return msgs, answer, [(trial.name, trial.input)]
 
         msgs.extend(client.make_assistant_turn(resp))
         for b in tool_blocks:
@@ -698,7 +709,11 @@ def _build_llm_messages(session_messages: list[dict]) -> list[dict]:
             continue
         if m["role"] == "assistant":
             try:
-                content = json.loads(m["content"]).get("answer", m["content"])
+                saved = json.loads(m["content"])
+                if "evidence_query" in saved:
+                    content = "Evidence was requested. Call " + saved.get("evidence_tool", "get_trial_evidence") + " again with current authorization before answering follow-up questions. Previous query: " + json.dumps(saved["evidence_query"])
+                else:
+                    content = saved.get("answer", m["content"])
             except Exception:
                 content = m["content"]
             result.append({"role": "assistant", "content": content})
@@ -721,6 +736,7 @@ async def glens_chat_stream(
     background_tasks: BackgroundTasks,
     _: str = Depends(require_permission("guard.activity.view_own")),
     workspace_id: str = Depends(get_workspace_id),
+    user_id: str = Depends(get_user_id),
     db: Session = Depends(get_db),
 ):
     ws_uuid = _parse_workspace_id(workspace_id)
@@ -765,6 +781,7 @@ async def glens_chat_stream(
         db, workspace_id,
         agent_identity_id=session.agent_identity_id,
         session_id=session_id_str,
+        clerk_user_id=user_id,
     )
 
     _now = datetime.now(timezone.utc)
@@ -803,10 +820,11 @@ async def glens_chat_stream(
                 check_grounded(answer, tool_results, skill="governance")
                 if drilldown:
                     answer += f"\n\n[View all →]({drilldown})"
-                # ponytail: fake-stream at ~4-char/8ms — matches GPT/Claude cadence.
-                # Real Phase-1 streaming would need tool_use detection mid-stream; not worth it yet.
-                for i in range(0, len(answer), 4):
-                    await event_q.put({"type": "token", "text": answer[i:i + 4]})
+                # Verified evidence can be longer than model prose. Avoid
+                # spending the request timeout on artificial typing delays.
+                chunk_size = 128 if executor.evidence_tool else 4
+                for i in range(0, len(answer), chunk_size):
+                    await event_q.put({"type": "token", "text": answer[i:i + chunk_size]})
                     await asyncio.sleep(0.008)
                 await event_q.put({"type": "done", "answer": answer, "confirm_envelope": confirm_envelope, "run_started_envelope": run_started_envelope})
                 return
@@ -861,6 +879,9 @@ async def glens_chat_stream(
                     # kind — otherwise refresh loses ActionConfirmBubble /
                     # RunBubble and shows the LLM's prose only.
                     persisted: dict[str, Any] = {"answer": answer, "skill": "governance"}
+                    if executor.evidence_query is not None:
+                        from app.modules.glens.evidence_explanation import SAVED
+                        persisted = {"answer": SAVED, "skill": "governance", "evidence_query": executor.evidence_query, "evidence_tool": executor.evidence_tool}
                     if evt.get("confirm_envelope"):
                         persisted["confirm_envelope"] = evt["confirm_envelope"]
                     if evt.get("run_started_envelope"):
