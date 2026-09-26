@@ -3,6 +3,7 @@
 import { useState, useMemo } from "react"
 import { DecisionBadge } from "@/components/guard/DecisionBadge"
 import { fmtNumber, fmtDate } from "@/lib/glens/formatters"
+import { ResultTableView } from "./ResultTableView"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -115,8 +116,8 @@ function sortRows(
 export function renderTable(columns: Column[], rows: Record<string, unknown>[]) {
   // This is a plain render helper used by BlocksBubble — no sort state.
   return (
-    <div style={{ overflowX: "auto" }}>
-      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+    <ResultTableView>
+      <table style={{ width: "max-content", minWidth: "100%", whiteSpace: "nowrap", borderCollapse: "collapse", fontSize: 13 }}>
         <thead>
           <tr>
             {columns.map(col => (
@@ -148,7 +149,7 @@ export function renderTable(columns: Column[], rows: Record<string, unknown>[]) 
           ))}
         </tbody>
       </table>
-    </div>
+    </ResultTableView>
   )
 }
 
@@ -210,6 +211,7 @@ export function GenericTableBubble({
   return (
     <div style={{ display: "flex", justifyContent: "flex-start", marginBottom: 16, width: "100%" }}>
       <div style={{
+        minWidth: 0,
         width: "100%",
         background: "var(--surface-2)",
         border: "1px solid var(--border)",
@@ -244,8 +246,8 @@ export function GenericTableBubble({
         {rows.length === 0 ? (
           <div style={{ fontSize: 13, color: "var(--text-muted)", padding: "8px 0" }}>No data.</div>
         ) : (
-          <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+          <ResultTableView>
+            <table style={{ width: "max-content", minWidth: "100%", whiteSpace: "nowrap", borderCollapse: "collapse", fontSize: 13 }}>
               <thead>
                 <tr>
                   {effectiveCols.map(col => {
@@ -288,7 +290,7 @@ export function GenericTableBubble({
                 ))}
               </tbody>
             </table>
-          </div>
+          </ResultTableView>
         )}
 
         {drilldown && (

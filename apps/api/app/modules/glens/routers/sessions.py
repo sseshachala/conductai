@@ -6,8 +6,10 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timezone
+from time import perf_counter
 from uuid import UUID
 
+import structlog
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -101,8 +103,10 @@ def get_session(
     db: Session = Depends(get_db),
     user_id: str = Depends(get_user_id),
 ):
+    started = perf_counter()
     ws_uuid = _parse_workspace_id(workspace_id)
     session = _get_session(db, session_id, ws_uuid)
+    loaded = perf_counter()
     messages = json.loads(session.messages)
     from app.modules.glens.evidence_explanation import refresh_saved_evidence
     user_messages = [
@@ -110,6 +114,13 @@ def get_session(
          if m["role"] == "assistant" else m["content"]}
         for m in messages if m["role"] != "system"
     ]
+    structlog.get_logger(__name__).info(
+        "glens.session.loaded",
+        message_count=len(user_messages),
+        session_read_ms=round((loaded - started) * 1000, 2),
+        evidence_refresh_ms=round((perf_counter() - loaded) * 1000, 2),
+        total_ms=round((perf_counter() - started) * 1000, 2),
+    )
     return {
         "id": str(session.id),
         "title": session.title,

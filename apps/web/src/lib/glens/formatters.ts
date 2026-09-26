@@ -13,11 +13,13 @@ export function fmtCost(n: number): string {
 }
 
 export function fmtDate(raw: string): string {
+  // Do not invent a timezone for date-only or timezone-less values.
+  if (!/(?:Z|[+-]\d{2}:\d{2})$/.test(raw)) return raw
   const d = new Date(raw)
   if (isNaN(d.getTime())) return raw
-  const datePart = d.toLocaleDateString("en-GB", { day: "numeric", month: "short" })
-  const timePart = d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false })
-  return `${datePart} ${timePart}`
+  const datePart = d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" })
+  const timePart = d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false, timeZone: "UTC" })
+  return `${datePart} ${timePart} UTC`
 }
 
 export function relativeTime(ts: string): string {

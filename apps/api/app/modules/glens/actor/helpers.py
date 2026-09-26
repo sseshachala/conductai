@@ -236,21 +236,24 @@ def require_confirmation(
 # ── Confirm / Cancel dispatch — shared by HTTP endpoint + LLM tools (#1465) ─
 
 def _get_pending_row(
-    db: Session, action_id: str, workspace_id: str,
+    db: Session, action_id: str, workspace_id: str, *, lock: bool = False,
 ) -> GuardApprovalRequest:
     try:
         aid = _uuid.UUID(action_id)
         ws = _uuid.UUID(workspace_id)
     except ValueError:
         raise ConfirmError(400, "invalid action id")
-    row = (
+    query = (
         db.query(GuardApprovalRequest)
         .filter(
             GuardApprovalRequest.id == aid,
             GuardApprovalRequest.workspace_id == ws,
         )
-        .first()
     )
+    if lock:
+        # Serialize competing decisions; apply_decision commits approved before dispatch.
+        query = query.populate_existing().with_for_update()
+    row = query.first()
     if not row:
         raise ConfirmError(404, "action not found")
     return row
@@ -307,7 +310,7 @@ def dispatch_confirm(
     """
     from app.modules.glens.actor.registry import default_action_registry
 
-    row = _get_pending_row(db, action_id, workspace_id)
+    row = _get_pending_row(db, action_id, workspace_id, lock=True)
     row = sweep_if_timed_out(db, row)
 
     # Idempotent success — already executed, return cached result.
@@ -399,7 +402,7 @@ def dispatch_cancel(
     session_id: str | None = None,
 ) -> dict[str, Any]:
     """Cancel a pending action. No spec.execute — just marks rejected."""
-    row = _get_pending_row(db, action_id, workspace_id)
+    row = _get_pending_row(db, action_id, workspace_id, lock=True)
     row = sweep_if_timed_out(db, row)
     if row.status != "pending":
         raise ConfirmError(409, f"action is {row.status}")
