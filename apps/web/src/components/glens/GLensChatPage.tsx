@@ -1,5 +1,6 @@
 "use client"
 import { API } from "@/lib/api"
+import { LensSettings } from "./LensSettings"
 import { parseLensEntry, lensEntryQuestion, type LensEntry } from "@/lib/lens-entry"
 
 import { useEffect, useRef, useState } from "react"
@@ -162,7 +163,11 @@ function GLensChatContent({ initialSessionId }: { initialSessionId?: string }) {
     setMessages([])
     try {
       const res = await authFetch(`${API}/glens/sessions/${id}`, { signal: controller.signal })
-      if (!res.ok) return
+      if (controller.signal.aborted) return
+      if (!res.ok) {
+        setEntryError("This Lens conversation is unavailable or outside your access.")
+        return
+      }
       const data = await res.json()
       if (controller.signal.aborted) return
       const thread: MessageBody[] = []
@@ -350,13 +355,10 @@ function GLensChatContent({ initialSessionId }: { initialSessionId?: string }) {
         setMessages(prev => replaceLast(prev, { role: "assistant", kind: "answer", text: message }))
         return
       }
-      // Preserve context for failed requests and sign-in redirects. Once
-      // accepted, refresh must not repeat the contextual investigation.
-      if (entry) router.replace("/lens")
-
       const reader = res.body!.getReader()
       const decoder = new TextDecoder()
       let buf = ""
+      let terminal = false
 
       while (true) {
         const { done, value } = await reader.read()
@@ -386,13 +388,24 @@ function GLensChatContent({ initialSessionId }: { initialSessionId?: string }) {
               return prev
             })
           } else if (evt.type === "done") {
+            terminal = true
             _applyData(evt, text, !!entry)
+            // Only retire contextual entry after the complete answer arrives.
+            // Refresh then reloads the saved query with current permissions.
+            if (entry && typeof evt.session_id === "string") {
+              router.replace(`/lens/${encodeURIComponent(evt.session_id)}`)
+            }
           } else if (evt.type === "error") {
+            terminal = true
             setMessages(prev => replaceLast(prev, { role: "assistant", kind: "answer", text: (evt.message as string) ?? "Something went wrong." }))
           }
         }
       }
+      if (!terminal) {
+        setMessages(prev => replaceLast(prev, { role: "assistant", kind: "answer", text: "The connection ended before the answer completed. Reopen the conversation or retry the investigation." }))
+      }
     } catch (err) {
+      if (controller.signal.aborted) return
       if (err instanceof Error && err.name === "AbortError") return
       setMessages(prev => replaceLast(prev, { role: "assistant", kind: "answer", text: "Network error. Please try again." }))
     } finally {
@@ -419,6 +432,7 @@ function GLensChatContent({ initialSessionId }: { initialSessionId?: string }) {
 
       {/* Chat area */}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", background: "var(--surface)" }}>
+        <LensSettings disabled={loading} />
         {entryError && <div role="alert" style={{ padding: 16, color: "var(--err)" }}>{entryError}</div>}
 
         {/* Thread */}

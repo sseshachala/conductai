@@ -35,9 +35,8 @@ SUPPORTED_PROVIDERS = {"anthropic", "openai", "perplexity", "together"}
 #: locking admins out of adding their own tier names.
 ROUTER_TIER_KEYS = {"cheap", "balanced", "smart"}
 
-# Anthropic uses native Claude models. Everything else speaks OpenAI protocol
-# (openai, perplexity, together via OpenAI-compat) so the same GPT tier map
-# is a sensible starting default; users tune from there.
+# Protocol compatibility does not imply a shared model catalog. GPT defaults
+# belong only to OpenAI; other providers use their router fallback until edited.
 #
 # Defaults now include a 4th tier per provider so a freshly-created
 # workspace already has more than the three router entries in its
@@ -66,7 +65,9 @@ def tier_map_defaults_for(provider: str) -> dict[str, str]:
     """Return the seed tier map for a provider we have not seen yet."""
     if provider == "anthropic":
         return dict(ANTHROPIC_TIER_MAP)
-    return dict(OPENAI_COMPAT_TIER_MAP)
+    if provider == "openai":
+        return dict(OPENAI_COMPAT_TIER_MAP)
+    return {}
 
 
 class LLMPrimitivesOut(BaseModel):

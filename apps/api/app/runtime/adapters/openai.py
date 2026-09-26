@@ -39,6 +39,19 @@ class OpenAIClient:
         # in retry/upstream events without duplicating the whole adapter.
         self._provider = "openai"
 
+    def _chat_url(self) -> str:
+        base = (self._base_url or "https://api.openai.com").rstrip("/")
+        return f"{base}/chat/completions" if base.endswith("/v1") else f"{base}/v1/chat/completions"
+
+    def _response_error(self, status: int, body: str) -> Exception:
+        provider = "OpenAI" if self._provider == "openai" else self._provider.title()
+        if body.lstrip().lower().startswith(("<!doctype html", "<html")):
+            return Exception(
+                f"{provider} {status}: The model endpoint returned an HTML page instead of an API response. "
+                "Check the provider endpoint configuration."
+            )
+        return Exception(f"{provider} {status}: {body[:500]}")
+
     def create(
         self,
         *,
@@ -94,7 +107,7 @@ class OpenAIClient:
         # future dag_runner block-level retry) to avoid 3×3 = 9 silent attempts.
         _max_attempts = 1 if outer_attempt > 1 else 3
         r = post_with_retry(
-            url=f"{self._base_url or 'https://api.openai.com'}/v1/chat/completions",
+            url=self._chat_url(),
             headers=headers,
             json_body=payload,
             provider=self._provider,
@@ -105,7 +118,7 @@ class OpenAIClient:
         # a typed exception dag_runner classifies through the Guard UX path.
         raise_if_guard_proxy_blocked(provider=self._provider, response=r)
         if r.status_code >= 400:
-            raise Exception(f"OpenAI {r.status_code}: {r.text[:500]}")
+            raise self._response_error(r.status_code, r.text)
         raw = r.json()
 
         choice = ((raw.get("choices") or [{}])[0])
@@ -198,7 +211,7 @@ class OpenAIClient:
             "Accept": "text/event-stream",
             **self._default_headers,
         }
-        url = f"{self._base_url or 'https://api.openai.com'}/v1/chat/completions"
+        url = self._chat_url()
 
         with _httpx.stream("POST", url, headers=headers, json=payload, timeout=_httpx.Timeout(600.0)) as resp:
             if resp.status_code >= 400:
@@ -206,7 +219,7 @@ class OpenAIClient:
                 body = b""
                 for _chunk in resp.iter_bytes():
                     body += _chunk
-                raise Exception(f"OpenAI {resp.status_code}: {body[:500].decode(errors='replace')}")
+                raise self._response_error(resp.status_code, body[:500].decode(errors='replace'))
             for line in resp.iter_lines():
                 if not line or not line.startswith("data:"):
                     continue
