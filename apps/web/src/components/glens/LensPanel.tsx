@@ -10,15 +10,18 @@
 import { useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { LensChat } from "@/components/glens/LensChat"
+import { lensEntryHref, type LensEntry } from "@/lib/lens-entry"
 
 export function LensPanel({
   open,
   initialQuery,
+  initialEntry,
   pathname,
   onClose,
 }: {
   open: boolean
   initialQuery: string | null
+  initialEntry?: LensEntry | null
   pathname: string | null
   onClose: () => void
 }) {
@@ -96,7 +99,7 @@ export function LensPanel({
         <div style={{ display: "flex", gap: 4 }}>
           <button
             onClick={() => {
-              router.push(sessionId ? `/lens/${sessionId}` : "/lens")
+              router.push(sessionId ? `/lens/${sessionId}` : initialEntry ? lensEntryHref(initialEntry) : "/lens")
               onClose()
             }}
             title="Expand to full Lens"
@@ -123,9 +126,10 @@ export function LensPanel({
       <LensChat
         pathname={pathname}
         initialQuery={initialQuery}
+        initialEntry={initialEntry}
         onSessionId={setSessionId}
         onExpandMessage={(sid) => {
-          router.push(sid ? `/lens/${sid}` : "/lens")
+          router.push(sid ? `/lens/${sid}` : initialEntry ? lensEntryHref(initialEntry) : "/lens")
           onClose()
         }}
       />

@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, useCallback, type MouseEvent as ReactMouse
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { LensPanel } from "@/components/glens/LensPanel"
+import { LENS_ENTRY_EVENT, lensEntryHref, lensEntryQuestion, type LensEntry } from "@/lib/lens-entry"
 import { useAuth, useUser, useClerk } from "@clerk/nextjs"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 import { setActiveGuardWorkspace } from "@/lib/guardStorage"
@@ -269,13 +270,39 @@ function AppShellInnerContent({
   const [paletteActive, setPaletteActive] = useState(0)
   const paletteInputRef = useRef<HTMLInputElement>(null)
 
+  const { workspaces, activeWorkspace, setActiveWorkspace, refresh: refreshWorkspaces } = useWorkspace()
+
   // Global "Ask Lens" bar + right-side panel (#1214 #B1/#B2/#B5)
   const [askLensQuery, setAskLensQuery] = useState("")
   const [lensPanelOpen, setLensPanelOpen] = useState(false)
   const [lensPanelInitialQuery, setLensPanelInitialQuery] = useState<string | null>(null)
+  const [lensPanelEntry, setLensPanelEntry] = useState<LensEntry | null>(null)
+  const [lensPanelGeneration, setLensPanelGeneration] = useState(0)
 
   // Suppress side panel on full-page Lens routes (would render Lens twice).
   const lensPanelSuppressed = pathname?.startsWith("/lens") ?? false
+
+  useEffect(() => {
+    if (lensPanelSuppressed) return
+    const openEntry = (event: Event) => {
+      const entry = (event as CustomEvent<LensEntry>).detail
+      try { lensEntryHref(entry) } catch { return }
+      if (entry.workspace_id !== activeWorkspace?.id) return
+      event.preventDefault()
+      setLensPanelEntry(entry)
+      setLensPanelInitialQuery(lensEntryQuestion(entry))
+      setLensPanelGeneration(n => n + 1)
+      setLensPanelOpen(true)
+    }
+    window.addEventListener(LENS_ENTRY_EVENT, openEntry)
+    return () => window.removeEventListener(LENS_ENTRY_EVENT, openEntry)
+  }, [lensPanelSuppressed, activeWorkspace?.id])
+
+  useEffect(() => {
+    setLensPanelOpen(false)
+    setLensPanelEntry(null)
+    setLensPanelInitialQuery(null)
+  }, [activeWorkspace?.id])
 
   // Persist open/closed state (#B5). localStorage read is client-only.
   useEffect(() => {
@@ -308,7 +335,6 @@ function AppShellInnerContent({
   const newTeamInputRef = useRef<HTMLInputElement>(null)
   const deleteConfirmRef = useRef<HTMLInputElement>(null)
 
-  const { workspaces, activeWorkspace, setActiveWorkspace, refresh: refreshWorkspaces } = useWorkspace()
   const { authFetch } = useAuthFetch()
 
   // Guard install state
@@ -1224,6 +1250,8 @@ function AppShellInnerContent({
                   const q = askLensQuery.trim()
                   if (!q) return
                   setLensPanelInitialQuery(q)
+                  setLensPanelEntry(null)
+                  setLensPanelGeneration(n => n + 1)
                   setLensPanelOpen(true)
                   setAskLensQuery("")
                 }}
@@ -1379,10 +1407,12 @@ function AppShellInnerContent({
       {/* Lens — docked side panel (pushes content, not an overlay) */}
       {!lensPanelSuppressed && (
         <LensPanel
+          key={`${activeWorkspace?.id}:${lensPanelGeneration}`}
           open={lensPanelOpen}
           initialQuery={lensPanelInitialQuery}
+          initialEntry={lensPanelEntry}
           pathname={pathname}
-          onClose={() => { setLensPanelOpen(false); setLensPanelInitialQuery(null) }}
+          onClose={() => { setLensPanelOpen(false); setLensPanelInitialQuery(null); setLensPanelEntry(null) }}
         />
       )}
     </div>
