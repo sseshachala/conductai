@@ -1,7 +1,13 @@
-# Explain My Trial
+# Lens Platform Investigations
 
-First delivery milestone under #1787, before the scoped-exception pilot.
-This does not replace that pilot or close its parent stories.
+Lens is the primary conversational surface for Conduct: Guard, Gateway,
+workflows and supported platform management. The trial is one entry point and
+acceptance scenario, not the scope of Lens. Phases 1 and 2 delivered the trial
+evidence slice below; Phase 3 extends investigations across the platform using
+the same ToolRegistry and guarded dispatch as other Lens features.
+
+This milestone remains under #1787, before the scoped-exception pilot. It does
+not replace that pilot or close its parent stories.
 
 | Phase / PR | Existing ownership | Outcome |
 | --- | --- | --- |
@@ -50,8 +56,8 @@ Prompts, responses, routing metadata, credentials and email addresses are not
 returned. Text metadata remains untrusted evidence, not instructions. Policy
 hash and execution status are nullable; the reader never invents either.
 
-Phase 1 exposes source IDs, not model-generated links or narrative. Usage and
-cost belong to Phase 2. Explanation/citation validation belongs to Phase 3.
+Phase 1 exposes source IDs, not model-generated links or narrative. Phase 2
+adds usage and cost as described below. Explanation/citation validation belongs to Phase 3.
 Existing Lens tools and grounding behavior are unchanged by this PR; this
 contract does not certify all Lens answers as evidence-backed.
 
@@ -62,3 +68,97 @@ tenant isolation, own/all access, revoked membership, limits, time boundaries,
 request filtering, unavailable storage and secret-free output. PostgreSQL RLS
 and the browser journey require separate validation; SQLite does not prove
 PostgreSQL deployment behavior.
+
+## Phase 2: Receipt-Backed Usage And Cost
+
+Evidence contract version 2 adds per-event `accounting`, batch
+`accounting_totals`, and a separate `accounting_status`. Activity access does
+not grant spend access: `guard.spend.view_own` or `guard.spend.view_all` is
+checked independently. A spend denial or receipt-storage outage preserves
+the authorized activity evidence without exposing amounts or inventing zero.
+
+`AccountingReader.evidence_for_requests()` accepts at most 100 already-authorized
+request/identity pairs. It queries receipt metadata once, scoped by workspace
+and both identifiers. An audit coverage query retrieves only the information
+needed to compare expected attempt ordinals and terminal lifecycle; raw routing
+metadata is never returned to Lens. All arithmetic stays in accounting, not Lens.
+
+- All recorded attempts contribute once, including charged failed attempts.
+  Workflow references and audit estimates do not contribute a second charge.
+- The receipt's actual provider, model, pricing/normalizer/contract versions,
+  usage origin, completeness and execution outcome remain visible.
+- Input/output are the receipt totals. Cache-read and reasoning breakdowns
+  are not added again. Historical receipts are not repriced.
+- Each metric has a nullable `value` and complete/partial/unavailable status.
+  A partial value is a recorded subtotal. No reported values means null;
+  explicitly reported zero remains zero.
+- Only supported-version receipts with complete usage, priced/override pricing,
+  non-null nonnegative cost and USD currency contribute to cost subtotals.
+  Other receipts remain visible with their original status and provenance.
+- Unknown attempt count, missing ordinals, extra ordinals, or non-finalized audit
+  lifecycle prevents a complete-total claim. An absent receipt is not inferred
+  to be a free call, even when an audit decision says blocked.
+- Requests without usable linkage are reported as unlinked events. Missing
+  receipt counts and usage/pricing provenance breakdowns accompany totals.
+- Totals cover returned records only, not omitted records when Phase 1's result
+  is truncated. Receipt lookup does not filter on finalization time: a receipt
+  finalized after the event window still belongs to that request.
+
+This is additive read-side work. No settlement, reservation, rate card,
+ledger schema, production data or budget scope changes are part of Phase 2.
+
+## Phase 3: Platform Evidence Tools And Explanations
+
+`get_platform_evidence` is registered beside existing Lens tools, not exposed
+through a separate service or execution engine. It supports all/Guard/Gateway/
+workflow/trial filters, decision, run ID, request IDs and a bounded time window.
+`get_trial_evidence` remains available for trial-specific requests. Existing
+configuration and management tools and their confirmation flow remain in place.
+
+Lens dispatch carries the authenticated caller, not `system:lens`. When the
+model selects either evidence tool, its result ends the tool loop. Any
+other tools in that batch are not executed. A deterministic renderer produces
+decisions, recorded rule/policy identifiers, execution status, bounded counts,
+receipt totals and pricing versions before the first answer token is emitted.
+Evidence text is escaped and known secrets are masked. Returned facts are not
+sent to a subsequent model turn or used to authorize a mutation.
+
+Each Flight Recorder citation is constructed from a UUID in the returned
+authorized evidence. The page now consumes `?id=` and passes an exact
+`event_id` filter to the API. That path checks current membership and activity
+permission, then enforces own-event/owned-agent or workspace-wide access.
+Focused views do not append unrelated live events. An unavailable record or
+access change is not replaced with another event.
+
+Workspace-shared chat history stores a normalized query and a placeholder,
+not the protected trial explanation. Session retrieval reruns authorization
+and accounting access before rendering. Follow-up model context contains the
+query, not historical protected facts. Refresh is a fresh read of the original
+time window, not an immutable snapshot of the previous answer.
+
+Guard/Gateway evidence includes non-trial identities and caller-attributed
+events without an identity. Own scope matches the authenticated event caller or
+an owned identity in the same workspace. Gateway includes legacy `proxy` source
+rows. Workflow investigations use existing run/step metadata, require
+`platform.runs.view`, and independently enforce workspace and own/all scope.
+They expose the latest ten step events per returned run, with exact recorded
+counts. Run selection uses creation time; step history can extend past the
+selected window. Raw step payloads and workflow state are not returned.
+
+A specific run can find its Gateway events through existing receipt run links
+or the audit run ID. Tokens/cost still come only from the shared accounting
+reader; workflow analytics are never summed into the same spend again. Runs
+without linked audit evidence retain their run status, not invented usage.
+No unrelated runs are attached to a request-ID-only lookup. Configuration,
+actions, approvals and broader generic Lens answers keep their existing tools;
+this PR does not claim every Lens capability is now evidence-verified.
+
+This path distinguishes missing, partial, denied and unavailable data. Rule
+IDs alone are not claimed to explain full policy rationale. A recorded allow
+does not prove success. Generic Lens answers remain outside this guarantee.
+
+Validation includes real SQLite SQL/RBAC tests, terminal read-only dispatch,
+malformed/cross-workspace results, forged citations, escaped record metadata,
+receipt-derived formatting, session permission revocation and focused-link
+ownership. PostgreSQL RLS, live model tool selection and the authenticated
+browser journey remain release gates for Phase 5.

@@ -6,7 +6,7 @@ from uuid import UUID, uuid4
 
 import pytest
 from pydantic import ValidationError
-from sqlalchemy import Column, MetaData, Table, create_engine, text
+from sqlalchemy import Column, MetaData, Table, Uuid, create_engine, text
 from sqlalchemy.orm import Session
 
 from app.modules.agent_identity.models import AgentIdentity
@@ -26,7 +26,8 @@ def data(monkeypatch):
     metadata = MetaData()
     def projection(model, names):
         return Table(model.__tablename__, metadata, *[
-            Column(name, model.__table__.c[name].type, primary_key=name == "id") for name in names
+            Column(name, Uuid(native_uuid=False) if isinstance(model.__table__.c[name].type, Uuid)
+                   else model.__table__.c[name].type, primary_key=name == "id") for name in names
         ])
     identities = projection(AgentIdentity, ["id", "workspace_id", "source", "owner_user_id"])
     events = projection(GuardAuditEvent, [
@@ -190,7 +191,7 @@ def test_registered_tool_returns_json_contract_with_no_payload_fields(data, monk
     response = tool.impl(SimpleNamespace(workspace_id=str(WS), clerk_user_id="alice"),
                          since=NOW - timedelta(hours=1), until=NOW + timedelta(hours=1))
     assert response["status"] == "ok"
-    assert response["contract_version"] == 1
+    assert response["contract_version"] == 2
     assert response["timezone"] == "UTC"
     assert not {"input_summary", "result_summary", "routing_meta", "token_encrypted", "user_email"} & response["records"][0].keys()
     json.dumps(response)

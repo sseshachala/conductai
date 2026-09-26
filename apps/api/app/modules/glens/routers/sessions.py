@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.core.auth import get_workspace_id, require_permission
+from app.core.auth import get_user_id, get_workspace_id, require_permission
 from app.core.database import get_db
 from app.modules.glens.models import GlensChatSession
 
@@ -55,12 +55,15 @@ def get_session(
     _: str = Depends(require_permission("guard.activity.view_own")),
     workspace_id: str = Depends(get_workspace_id),
     db: Session = Depends(get_db),
+    user_id: str = Depends(get_user_id),
 ):
     ws_uuid = _parse_workspace_id(workspace_id)
     session = _get_session(db, session_id, ws_uuid)
     messages = json.loads(session.messages)
+    from app.modules.glens.evidence_explanation import refresh_saved_evidence
     user_messages = [
-        {"role": m["role"], "content": m["content"]}
+        {"role": m["role"], "content": refresh_saved_evidence(m["content"], db, workspace_id, user_id)
+         if m["role"] == "assistant" else m["content"]}
         for m in messages if m["role"] != "system"
     ]
     return {
