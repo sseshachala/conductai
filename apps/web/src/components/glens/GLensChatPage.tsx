@@ -440,7 +440,8 @@ function GLensChatContent({ initialSessionId }: { initialSessionId?: string }) {
         <div
           ref={threadRef}
           data-lens-thread
-          style={{ flex: 1, overflowY: "auto", padding: hasThread ? "32px 48px" : "0", display: hasThread ? "block" : "flex", flexDirection: "column", justifyContent: "center" }}
+          className={hasThread ? "px-4 py-6 md:px-8" : undefined}
+          style={{ flex: 1, overflowY: "auto", display: hasThread ? "block" : "flex", flexDirection: "column", justifyContent: "center" }}
         >
           {!hasThread && (
             <div style={{ maxWidth: 680, width: "100%", margin: "0 auto", padding: "32px 24px" }}>
@@ -479,7 +480,7 @@ function GLensChatContent({ initialSessionId }: { initialSessionId?: string }) {
             </div>
           )}
 
-          <div style={{ maxWidth: 800, margin: "0 auto" }}>
+          <div style={{ width: "100%", minWidth: 0, margin: "0 auto" }}>
             {messages.map((msg) => {
               if (msg.role === "user") return (
                 <UserBubble
@@ -565,8 +566,8 @@ function GLensChatContent({ initialSessionId }: { initialSessionId?: string }) {
 
         {/* Input — bottom-anchored once the thread has content */}
         {hasThread && (
-          <div data-lens-composer style={{ borderTop: "1px solid var(--border)", background: "var(--surface)", padding: "12px 48px 16px" }}>
-            <div style={{ maxWidth: 800, margin: "0 auto" }}>
+          <div data-lens-composer className="px-4 pt-3 pb-4 md:px-8" style={{ borderTop: "1px solid var(--border)", background: "var(--surface)" }}>
+            <div style={{ width: "100%", minWidth: 0, margin: "0 auto" }}>
               <ChatInput onSubmit={sendMessage} disabled={loading} />
             </div>
           </div>

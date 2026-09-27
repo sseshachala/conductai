@@ -2,6 +2,7 @@ Investigate recorded Conduct activity across Guard, Gateway and workflows.
 For Gateway cost/spend totals use surface="gateway", intent="spend".
 For failed Gateway requests use surface="gateway", intent="failures" (failed receipt attempts, not policy blocks).
 For today use period="today" without since/until: the server resolves midnight to next midnight UTC.
+For a new question asking about today, do not copy absolute dates from an earlier conversation query. Use period="today" even when earlier messages refer to another date.
 Spend totals cover the entire receipt window regardless of limit; limit only caps displayed attempts.
 Use intent="activity" for what happened, blocked/warned calls, recorded model attempts, and workflow run/step status.
 Activity queries support surface, decision, run_id, request_ids or time filters.

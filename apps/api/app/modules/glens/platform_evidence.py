@@ -33,9 +33,9 @@ class PlatformEvidenceQuery(TrialEvidenceQuery):
     def today_window(cls, values):
         if isinstance(values, dict) and values.get("period") == "today":
             values = dict(values)
-            if values.get("since") is None and values.get("until") is None:
-                start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
-                values.update(since=start, until=start + timedelta(days=1))
+            # Relative periods are server-owned, even if a model copies old dates.
+            start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+            values.update(since=start, until=start + timedelta(days=1))
         return values
 
     @model_validator(mode="after")

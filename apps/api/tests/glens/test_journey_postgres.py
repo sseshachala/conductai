@@ -97,16 +97,16 @@ def journey(monkeypatch):
                 c.execute(events.insert().values(**row))
             return row
 
-        def receipt(row, ordinal=0, run_id=None, workspace=None, when=None):
+        def receipt(row, ordinal=0, run_id=None, workspace=None, when=None, source=None, identity=agent):
             with engine.begin() as c:
                 c.execute(receipts.insert().values(id=uuid4(), workspace_id=workspace or row["workspace_id"],
-                    agent_identity_id=agent, request_id=row["request_id"], attempt_ordinal=ordinal,
+                    agent_identity_id=identity, request_id=row["request_id"], attempt_ordinal=ordinal,
                     provider="anthropic", model="fixture-model", contract_version=1, pricing_version="frozen-v1",
                     currency="USD", usage_origin="provider_reported", usage_completeness="complete",
                     pricing_completeness="priced", execution_outcome="failed" if ordinal == 0 else "succeeded",
                     total_input_tokens=100, total_output_tokens=20, cache_read_tokens=50,
                     reasoning_output_tokens=5, calculated_cost_microdollars=1200, workflow_run_id=run_id,
-                    source=row["source"], developer_external_id=None, finalized_at=when or now))
+                    source=source or row["source"], developer_external_id=None, finalized_at=when or now))
 
         def run(workspace=ws, workflow_workspace=None):
             rid, wid, version = uuid4(), uuid4(), uuid4()
@@ -162,6 +162,42 @@ def test_gateway_window_totals_and_failed_attempts(journey):
         failures = read_platform_evidence(db, j.ws, "alice", PlatformEvidenceQuery(intent="failures", **args))
         assert failures.gateway_window.attempt_count == 1
         assert failures.gateway_window.attempts[0].attempt_ordinal == 0
+
+
+def test_gateway_spend_includes_authorized_recovered_receipts_only(journey):
+    j = journey
+    recovered = j.event()
+    j.receipt(recovered, source="reconciler", identity=None)
+    j.receipt(j.event(source="hook"), source="reconciler", identity=None)
+    j.receipt(j.event(user="bob", identity=uuid4()), source="reconciler", identity=None)
+    j.receipt(j.event(workspace=j.other), source="reconciler", identity=None)
+    with j.reader() as db:
+        query = PlatformEvidenceQuery(surface="gateway", intent="spend",
+            since=j.now - timedelta(hours=1), until=j.now + timedelta(hours=1))
+        value = read_platform_evidence(db, j.ws, "alice", query)
+        assert value.gateway_window.attempt_count == 1
+        assert value.gateway_window.cost_microdollars == 1200
+        assert value.gateway_window.attempts[0].event_id == recovered["id"]
+        query.intent = "failures"
+        failures = read_platform_evidence(db, j.ws, "alice", query)
+        assert failures.gateway_window.attempt_count == 1
+        assert failures.gateway_window.cost_microdollars is None
+
+
+def test_unpriced_recovered_gateway_receipt_is_not_zero_spend(journey):
+    j = journey
+    row = j.event()
+    j.receipt(row, source="reconciler", identity=None)
+    with j.engine.begin() as conn:
+        conn.execute(text("UPDATE llm_attempt_receipts SET usage_completeness='unavailable', calculated_cost_microdollars=NULL WHERE request_id=:request"), {"request": row["request_id"]})
+    with j.reader() as db:
+        value = read_platform_evidence(db, j.ws, "alice", PlatformEvidenceQuery(
+            surface="gateway", intent="spend", since=j.now - timedelta(hours=1), until=j.now + timedelta(hours=1)))
+        assert value.gateway_window.attempt_count == 1
+        assert value.gateway_window.priced_count == 0
+        assert value.gateway_window.cost_microdollars is None
+        answer, _ = answer_from_result(value.model_dump_json(), str(j.ws), "get_platform_evidence")
+        assert "**unavailable**" in answer
 
 
 @pytest.mark.parametrize("source", ["hook", "mcp", "gateway", "proxy"])
