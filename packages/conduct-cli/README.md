@@ -273,6 +273,27 @@ change the environment of an already-running process. `--no-codex-proxy` leaves
 the Codex provider and desktop launch environment unchanged. This is client
 configuration, not protection against a user deliberately bypassing the Gateway.
 
+### Copilot CLI
+
+On macOS, Linux, and Windows, `conduct guard sync` detects the `copilot` executable
+or its configuration directory independently of the VS Code extension. It creates
+or updates the Conduct MCP entry and installs managed hooks at
+`~/.copilot/hooks/conduct-guard.json` (or `$COPILOT_HOME/hooks/conduct-guard.json`).
+Other MCP servers and hook files are preserved. Restart Copilot after syncing.
+
+Pre-tool hooks use the shared Guard policy engine; blocked calls return a Copilot
+deny decision. Allowed calls retain Copilot's own permission checks. Post-tool
+hooks record success or failure as separate audit events linked by session ID;
+they do not infer model token counts. This does not configure or replace the
+GitHub-hosted model provider, and does not imply Gateway spend coverage.
+
+The adapter returns a deny decision if its Guard subprocess exceeds 20 seconds,
+before Copilot's configured 30-second hook timeout. Approval checks exceeding
+that bound are denied and must be retried. Copilot's outer hook timeout is itself
+fail-open; user hooks can also be disabled. These are not tamper-proof enterprise
+policy hooks. Use a current Copilot CLI release supporting user hooks and the
+`exec`/`args` command-hook format.
+
 ```bash
 # Add to a daily cron or run manually after policy changes
 conduct guard sync
