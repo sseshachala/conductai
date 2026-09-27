@@ -1,0 +1,14 @@
+.root { container-type: inline-size; flex: 1; min-width: 0; min-height: 0; }
+.layout { display: flex; height: 100%; min-height: 0; }
+.chat { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; overflow: hidden; }
+.expanded .chat { flex: 2; }
+.results { display: flex; flex-direction: column; flex: 3; min-width: 0; min-height: 0; border-left: 1px solid var(--border); background: var(--surface); }
+.header { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid var(--border); font-size: 14px; }
+.content { flex: 1; min-height: 0; overflow: auto; padding: 16px; }
+.content thead { position: sticky; top: -16px; background: var(--surface); z-index: 1; }
+.expanded .chat [data-lens-thread], .expanded .chat [data-lens-composer] { padding: 16px !important; }
+@container (max-width: 700px) {
+  .expanded { flex-direction: column; }
+  .expanded .chat { flex: 1; }
+  .results { flex: 1; border-left: 0; border-top: 1px solid var(--border); }
+}

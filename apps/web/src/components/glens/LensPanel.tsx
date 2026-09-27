@@ -27,6 +27,7 @@ export function LensPanel({
 }) {
   const router = useRouter()
   const [sessionId, setSessionId] = useState<string | null>(null)
+  const [resultsOpen, setResultsOpen] = useState(false)
 
   // Persisted, drag-to-resize width (min 320, max 720).
   const [width, setWidth] = useState(420)
@@ -70,7 +71,7 @@ export function LensPanel({
     <aside
       className="max-md:!fixed max-md:inset-y-0 max-md:right-0 max-md:z-[400] max-md:!w-full max-md:max-w-full"
       style={{
-        width, flexShrink: 0, height: "100dvh",
+        width: resultsOpen ? "min(1100px, calc(100vw - 32px))" : width, flexShrink: 0, height: "100dvh",
         background: "var(--surface)", borderLeft: "1px solid var(--border)",
         display: "flex", flexDirection: "column",
         boxShadow: "-4px 0 20px rgba(0,0,0,.06)",
@@ -128,6 +129,7 @@ export function LensPanel({
         initialQuery={initialQuery}
         initialEntry={initialEntry}
         onSessionId={setSessionId}
+        onResultsExpandedChange={setResultsOpen}
         onExpandMessage={(sid) => {
           router.push(sid ? `/lens/${sid}` : initialEntry ? lensEntryHref(initialEntry) : "/lens")
           onClose()
