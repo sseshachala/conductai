@@ -8,6 +8,24 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
 
+## [0.14.11] - 2026-09-27
+
+### Added
+- Explicit Copilot CLI detection, fresh MCP setup, and managed pre/post-tool
+  hooks on macOS, Linux, and Windows via `conduct guard sync`.
+- Shared policy enforcement for Copilot tool calls and session-linked execution
+  outcomes without estimating model token usage. Existing model routing is unchanged.
+
+### Fixed
+- Isolate Codex Gateway credentials using `CONDUCT_GATEWAY_TOKEN` instead of the
+  shared `OPENAI_API_KEY`. Sync refreshes managed shell credentials and the macOS
+  app-launch environment. Restart Codex after syncing.
+
+### Notes
+- Copilot Guard checks time out with a deny after 20 seconds. Copilot's outer
+  hook timeout remains fail-open; user hooks are not tamper-proof policy hooks.
+- Native OS/Python CI passed; live authenticated Copilot sessions remain untested.
+
 ## [0.14.10] - 2026-09-17
 
 ### Fixed
