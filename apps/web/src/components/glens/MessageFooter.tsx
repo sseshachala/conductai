@@ -14,12 +14,11 @@ export function MessageFooter({ text, sessionId, messageId }: { text?: string; s
     <div
       style={{
         display: "flex",
-        justifyContent: "flex-start",
+        justifyContent: "flex-end",
         alignItems: "center",
         gap: 0,
         marginTop: 4,
         marginBottom: 12,
-        marginLeft: -4,
       }}
     >
       {text ? <CopyButton text={text} /> : null}
