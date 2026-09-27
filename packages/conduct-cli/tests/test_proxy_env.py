@@ -157,8 +157,82 @@ def test_configure_codex_proxy_is_secret_free(tmp_path, monkeypatch):
     assert 'model_provider = "conduct"' in written
     assert 'base_url = "https://api.conductai.ai/gateway/v1/openai/v1"' in written
     assert 'wire_api = "responses"' in written
+    assert 'env_key = "CONDUCT_GATEWAY_TOKEN"' in written
     assert "cond_agt_" not in written
     assert config.with_suffix(".toml.pre-conduct-proxy").exists()
+
+
+def test_codex_sync_migrates_shared_credential_idempotently(tmp_path, monkeypatch):
+    monkeypatch.setattr(guard.Path, "home", lambda: tmp_path)
+    codex = tmp_path / ".codex"
+    codex.mkdir()
+    config = codex / "config.toml"
+    original = ('model = "gpt-test"\nmodel_provider = "conduct"\n'
+                '[model_providers.conduct]\nenv_key = "OPENAI_API_KEY"\n'
+                '[model_providers.other]\nenv_key = "OTHER_KEY"\n')
+    config.write_text(original)
+    guard._configure_codex_proxy("https://gateway.example/gateway/v1")
+    first = config.read_text()
+    guard._configure_codex_proxy("https://gateway.example/gateway/v1")
+    assert config.read_text() == first
+    assert first.count('[model_providers.conduct]') == 1
+    assert 'env_key = "OPENAI_API_KEY"' not in first
+    assert '[model_providers.other]\nenv_key = "OTHER_KEY"' in first
+    assert config.with_suffix(".toml.pre-conduct-proxy").read_text() == original
+
+
+@pytestmark_posix
+def test_gateway_token_survives_openai_override_and_rotates(tmp_path, monkeypatch):
+    import subprocess
+
+    _redirect_home(tmp_path, monkeypatch)
+    monkeypatch.setenv("SHELL", "/bin/bash")
+    monkeypatch.setenv("OPENAI_API_KEY", "stale-process-value")
+    for token in ("agent-first", "agent-rotated"):
+        guard._write_proxy_env(token, "https://gateway.example/gateway/v1")
+        override = tmp_path / ".conduct" / "env-override"
+        override.write_text('export OPENAI_API_KEY="provider-key"\n')
+        result = subprocess.run(
+            ["bash", "-c", '. "$HOME/.conduct/env"; printf "%s|%s" "$CONDUCT_GATEWAY_TOKEN" "$OPENAI_API_KEY"'],
+            capture_output=True, text=True, check=True,
+        )
+        assert result.stdout == f"{token}|provider-key"
+
+
+def test_codex_mac_launch_environment_refreshed_without_output(monkeypatch, capsys):
+    import subprocess
+
+    monkeypatch.setattr(sys, "platform", "darwin")
+    run = mock.Mock()
+    monkeypatch.setattr(subprocess, "run", run)
+    for token in ("agent-first", "agent-rotated"):
+        assert guard._configure_codex_launch_env(token)
+        assert run.call_args.args[0] == ["/bin/launchctl", "setenv", "CONDUCT_GATEWAY_TOKEN", token]
+        assert run.call_args.kwargs["stderr"] == subprocess.DEVNULL
+    assert capsys.readouterr().out == ""
+
+
+def test_codex_launch_failure_does_not_print_token(monkeypatch, capsys):
+    import subprocess
+
+    monkeypatch.setattr(sys, "platform", "darwin")
+    command = ["/bin/launchctl", "setenv", "CONDUCT_GATEWAY_TOKEN", "secret-test-token"]
+    monkeypatch.setattr(subprocess, "run", mock.Mock(side_effect=subprocess.CalledProcessError(1, command)))
+    assert not guard._configure_codex_launch_env("secret-test-token")
+    output = capsys.readouterr().out
+    assert "secret-test-token" not in output
+    assert "Source ~/.conduct/env" in output
+
+
+@pytest.mark.parametrize("platform,token", [("linux", "agent"), ("win32", "agent"), ("darwin", "")])
+def test_codex_launch_environment_skips_unsupported_or_missing_token(platform, token, monkeypatch):
+    import subprocess
+
+    monkeypatch.setattr(sys, "platform", platform)
+    run = mock.Mock()
+    monkeypatch.setattr(subprocess, "run", run)
+    assert not guard._configure_codex_launch_env(token)
+    run.assert_not_called()
 
 
 def test_codex_hook_install_collapses_duplicate_conduct_entries(tmp_path, monkeypatch):
@@ -231,6 +305,8 @@ def test_windows_writes_ps1_env_file(tmp_path, monkeypatch):
     assert '$env:CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY = "1"' in text
     assert '$env:OPENAI_BASE_URL = "https://api.conductai.ai/proxy/openai/v1"' in text
     assert '$env:OPENAI_API_KEY  = "abc123"' in text
+    assert '$env:CONDUCT_GATEWAY_TOKEN = $env:OPENAI_API_KEY' in text
+    assert text.index('$env:CONDUCT_GATEWAY_TOKEN') < text.index('if (Test-Path')
     assert '$env:PERPLEXITY_BASE_URL = "https://api.conductai.ai/proxy/perplexity"' in text
     assert '$env:PERPLEXITY_API_KEY  = "abc123"' in text
 
