@@ -453,7 +453,7 @@ def _register_mcp(workspace_id: str, agent_token: str, api_url: str, dry_run: bo
     if not found_any:
         print(f"  {GRAY}No AI tool configs found for MCP registration{RESET}")
 
-    # GitHub Copilot uses SSE + Bearer token (can't run local stdio process via mcp-config.json)
+    # Copilot CLI supports HTTP and stdio; use the authenticated central HTTP server.
     _patch_copilot_mcp(agent_token, api_url)
 
     # Claude Desktop doesn't source shell env — patch apiBaseUrl directly in config
@@ -494,6 +494,31 @@ def _patch_claude_desktop_proxy(api_url: str, agent_token: str) -> None:
         print(f"  {YELLOW}Restart Claude Desktop for proxy routing to take effect{RESET}")
 
 
+def _copilot_home() -> Path:
+    return Path(os.environ.get("COPILOT_HOME", str(Path.home() / ".copilot"))).expanduser()
+
+
+def _copilot_cli_installed() -> bool:
+    import shutil
+    return bool(shutil.which("copilot") or _copilot_home().exists())
+
+
+def _install_copilot_hooks(hook_path: Path) -> None:
+    if not _copilot_cli_installed():
+        return
+    hooks_dir = _copilot_home() / "hooks"
+    hooks_dir.mkdir(parents=True, exist_ok=True)
+    config = {"version": 1, "hooks": {
+        event: [{"type": "command", "exec": _best_python(),
+                 "args": ["-m", "conduct_cli.hooks.copilot", mode, str(hook_path)],
+                 "timeoutSec": 30}]
+        for event, mode in (("preToolUse", "pre"), ("postToolUse", "post"),
+                            ("postToolUseFailure", "failure"))
+    }}
+    (hooks_dir / "conduct-guard.json").write_text(json.dumps(config, indent=2) + "\n")
+    print(f"  {GREEN}Copilot CLI tool hooks registered (restart Copilot){RESET}")
+
+
 def _patch_copilot_mcp(agent_token: str, api_url: str) -> None:
     """Keep ~/.copilot/mcp-config.json and any .mcp.json in cwd in sync with current agent token."""
     import shutil
@@ -505,9 +530,19 @@ def _patch_copilot_mcp(agent_token: str, api_url: str) -> None:
     booster_entry = {"command": "booster", "args": ["serve"]} if shutil.which("booster") else None
 
     # ~/.copilot/mcp-config.json (global Copilot config)
-    global_path = Path.home() / ".copilot" / "mcp-config.json"
-    if global_path.exists():
+    global_path = _copilot_home() / "mcp-config.json"
+    if _copilot_cli_installed():
+        global_path.parent.mkdir(parents=True, exist_ok=True)
+        if global_path.exists():
+            try:
+                existing = json.loads(global_path.read_text())
+                if not isinstance(existing, dict) or not isinstance(existing.get("mcpServers", {}), dict):
+                    raise ValueError("Invalid MCP config")
+            except (OSError, ValueError):
+                print(f"  {YELLOW}Copilot MCP config is unreadable or invalid; left unchanged.{RESET}")
+                return
         _write_mcp_file(global_path, "conduct-guard", sse_entry, booster_entry, "GitHub Copilot (global)")
+        global_path.chmod(0o600)
 
     # .mcp.json in cwd (project-level, picked up by VS Code Copilot)
     local_path = Path.cwd() / ".mcp.json"
@@ -1052,6 +1087,7 @@ def cmd_guard_install(args):
     # Install PreToolUse hooks — Claude Code + Codex (real interception)
     _install_claude_hook(hook_path)
     _install_codex_hook(hook_path)
+    _install_copilot_hooks(hook_path)
 
     # Register MCP in all found AI tools — Cursor/Windsurf (advisory)
     _register_mcp(workspace_id, agent_token or "", server)
@@ -1299,6 +1335,18 @@ def _detect_ai_tools() -> list[dict]:
             "mcp_registered": False,
             "hook_registered": False,
             "proxy_routed": _claude_desktop_proxied(),
+        })
+
+    if _copilot_cli_installed():
+        try:
+            copilot_mcp = json.loads((_copilot_home() / "mcp-config.json").read_text())
+            mcp_registered = "conduct-guard" in copilot_mcp.get("mcpServers", {})
+        except (OSError, ValueError, AttributeError, TypeError):
+            mcp_registered = False
+        tools.append({
+            "name": "copilot-cli", "mcp_registered": mcp_registered,
+            "hook_registered": (_copilot_home() / "hooks" / "conduct-guard.json").exists(),
+            "proxy_routed": False,
         })
 
     vscode_ext_dir = home / ".vscode" / "extensions"
@@ -1624,6 +1672,7 @@ def cmd_guard_sync(args):
         else:
             print(f"  {YELLOW}Codex proxy skipped:{RESET} ~/.codex is not installed")
 
+    _install_copilot_hooks(GUARD_DIR / "hook.py")
     _tools = _detect_ai_tools()
     if _tools:
         print(f"\n  {'Tool':<20} {'Proxy Routed':<16} {'MCP':<8} {'Hooks'}")

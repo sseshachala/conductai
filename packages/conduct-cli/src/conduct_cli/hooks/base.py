@@ -117,6 +117,8 @@ def detect_repo() -> Optional[str]:
 def detect_ai_tool() -> str:
     """Return a string identifying the active AI coding tool / surface."""
     import os
+    if os.environ.get("CONDUCT_HOOK_SURFACE") == "copilot-cli":
+        return "copilot-cli"
     # ── Anthropic ─────────────────────────────────────────────────────────────
     if os.environ.get("CLAUDE_CODE_ENTRYPOINT") or os.environ.get("CLAUDECODE"):
         return "claude-code"
@@ -445,6 +447,7 @@ def post_event(
     drain_via: Optional[Path] = None,
     blast_radius: "dict | None" = None,
     receipt_id: Optional[str] = None,
+    execution_status: Optional[str] = None,
 ) -> None:
     """Post one guard event via the journal/drain pattern.  Never raises.
 
@@ -480,6 +483,7 @@ def post_event(
         "goal_id":         _gcfg.get("current_goal_id") or None,
         "goal_name":       _gcfg.get("current_goal_name") or None,
         "receipt_id":      receipt_id,
+        **({"execution_status": execution_status} if execution_status is not None else {}),
     })
     api_url = cfg.get("api_url", "https://api.conductai.ai").rstrip("/")
     journal_append(payload, api_url)
