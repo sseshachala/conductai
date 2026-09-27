@@ -6,9 +6,9 @@ import { renderMd } from "@/components/glens/glensMarkdown"
 /**
  * Shared assistant bubble for both Lens surfaces.
  *
- * - Full-page canvas (`GLensChatPage`) uses defaults: skill label, `maxWidth: 75%`,
+ * - Full-page canvas (`GLensChatPage`) uses defaults: skill label, full available width,
  *   14px, followup chips row.
- * - Docked side panel (`LensPanel`) passes `dense`: no skill label, `maxWidth: 92%`,
+ * - Docked side panel (`LensPanel`) passes `dense`: no skill label, content-sized width,
  *   13px, tighter padding. Streaming state adds a blinking cursor; error tone
  *   flips to red styling. Docked passes its own `footer` (e.g. "Open in Lens →").
  *
@@ -41,7 +41,7 @@ export function AnswerBubble({
   const isError = tone === "error"
   return (
     <div style={{ display: "flex", justifyContent: "flex-start", marginBottom: dense ? 10 : 16 }}>
-      <div style={{ minWidth: 0, maxWidth: dense ? "92%" : "75%" }}>
+      <div style={{ minWidth: 0, maxWidth: "100%", width: dense ? undefined : "100%" }}>
         {!dense && (skill || understoodAs) && (
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
             {skill && (

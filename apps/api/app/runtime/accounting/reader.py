@@ -224,14 +224,22 @@ class AccountingReader:
         owned = select(identity.id).where(
             identity.workspace_id == workspace_id, identity.owner_user_id == user_id,
         )
-        filters = [r.workspace_id == workspace_id, r.source.in_(["gateway", "proxy"]),
+        gateway_audit = select(a.id).where(
+            a.workspace_id == workspace_id, a.request_id == r.request_id,
+            a.source.in_(["gateway", "proxy"]),
+        ).correlate(r)
+        recovered_gateway = (r.source == "reconciler") & gateway_audit.exists()
+        filters = [r.workspace_id == workspace_id, or_(r.source.in_(["gateway", "proxy"]), recovered_gateway),
                    r.finalized_at >= since, r.finalized_at < until]
         if user_id is not None:
             owned_receipt = select(identity.id).where(
                 identity.workspace_id == workspace_id, identity.owner_user_id == user_id,
                 func.replace(identity.id, "-", "") == func.replace(cast(r.agent_identity_id, String), "-", ""),
             ).correlate(r).exists()
-            filters.append(or_(r.developer_external_id == user_id, owned_receipt))
+            recovered_own = (r.source == "reconciler") & gateway_audit.where(
+                or_(a.clerk_user_id == user_id, a.agent_identity_id.in_(owned)),
+            ).exists()
+            filters.append(or_(r.developer_external_id == user_id, owned_receipt, recovered_own))
         if failed_only:
             filters.append(r.execution_outcome == "failed")
         priced = (r.usage_completeness == "complete") & r.pricing_completeness.in_(
