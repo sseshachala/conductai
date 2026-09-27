@@ -261,6 +261,18 @@ Policy is stored at `~/.conduct/policy.json` and synced from the server:
 
 Run `conduct guard sync` after your security team updates rules in the ConductGuard dashboard. The sync command pulls the latest policy, rewrites the hook, and re-registers the MCP entry in any newly detected AI tool configs.
 
+Sync also migrates the Codex Conduct provider to `CONDUCT_GATEWAY_TOKEN`, separate
+from provider-specific `OPENAI_API_KEY` overrides. The managed shell environment
+refreshes this credential on every sync. On macOS, sync also updates the current
+login session's app-launch environment for newly launched desktop apps. Run sync
+again after a new macOS login before opening Codex from the Dock.
+
+Fully quit and reopen Codex after syncing. For terminal launches, open a new shell
+or source `~/.conduct/env` first (`~/.conduct/env.ps1` in PowerShell). Sync cannot
+change the environment of an already-running process. `--no-codex-proxy` leaves
+the Codex provider and desktop launch environment unchanged. This is client
+configuration, not protection against a user deliberately bypassing the Gateway.
+
 ```bash
 # Add to a daily cron or run manually after policy changes
 conduct guard sync

@@ -793,11 +793,31 @@ def _configure_codex_proxy(proxy_url: str) -> bool:
         "[model_providers.conduct]\n"
         'name = "Conduct Gateway"\n'
         f"base_url = {json.dumps(base)}\n"
-        'env_key = "OPENAI_API_KEY"\n'
+        'env_key = "CONDUCT_GATEWAY_TOKEN"\n'
         'wire_api = "responses"\n'
         'requires_openai_auth = false\n\n'
     )
     config_path.write_text(root + snippet + "".join(remaining).lstrip())
+    return True
+
+
+def _configure_codex_launch_env(agent_token: str) -> bool:
+    """Refresh credentials for newly launched macOS apps, not running processes."""
+    if sys.platform != "darwin" or not agent_token:
+        return False
+    import subprocess
+
+    try:
+        subprocess.run(
+            ["/bin/launchctl", "setenv", "CONDUCT_GATEWAY_TOKEN", agent_token],
+            check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            timeout=5,
+        )
+    except (OSError, subprocess.SubprocessError):
+        # Subprocess exceptions can include the credential-bearing command.
+        print(f"  {YELLOW}Could not update the macOS app environment. "
+              f"Source ~/.conduct/env and launch Codex from that shell.{RESET}")
+        return False
     return True
 
 
@@ -1595,9 +1615,12 @@ def cmd_guard_sync(args):
         print(f"  {GREEN}Proxy env written:{RESET} ~/.conduct/{env_name} → {proxy_url}")
         if newly_sourced:
             print(f"  {CYAN}Run `{activate_cmd}` (or open a new shell) to activate.{RESET}")
-    if not getattr(args, "no_codex_proxy", False):
+    if not getattr(args, "no_codex_proxy", False) and agent_token:
         if _configure_codex_proxy(proxy_url):
+            _configure_codex_launch_env(agent_token)
             print(f"  {GREEN}Codex proxy enabled:{RESET} Responses API via Conduct (restart Codex)")
+            print(f"  {CYAN}New terminal sessions load the managed credential. "
+                  f"Fully quit and reopen Codex; running apps keep their old environment.{RESET}")
         else:
             print(f"  {YELLOW}Codex proxy skipped:{RESET} ~/.codex is not installed")
 
@@ -1818,6 +1841,7 @@ def _write_proxy_env_windows(agent_token: str, proxy_url: str) -> tuple[Path, bo
         "",
         f'$env:OPENAI_BASE_URL = "{proxy}/openai/v1"',
         f'$env:OPENAI_API_KEY  = "{token}"',
+        '$env:CONDUCT_GATEWAY_TOKEN = $env:OPENAI_API_KEY',
         "",
         f'$env:PERPLEXITY_BASE_URL = "{proxy}/perplexity"',
         f'$env:PERPLEXITY_API_KEY  = "{token}"',
@@ -1929,6 +1953,7 @@ def _write_proxy_env(agent_token: str, proxy_url: str) -> tuple[Path, bool]:
         "",
         f'export OPENAI_BASE_URL="{proxy}/openai/v1"',
         f'export OPENAI_API_KEY="{token}"',
+        'export CONDUCT_GATEWAY_TOKEN="$OPENAI_API_KEY"',
         "",
         f'export PERPLEXITY_BASE_URL="{proxy}/perplexity"',
         f'export PERPLEXITY_API_KEY="{token}"',
