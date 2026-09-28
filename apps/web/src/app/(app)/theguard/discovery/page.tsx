@@ -35,6 +35,7 @@ function Evidence({ agent, workspaceId, close }: { agent: DiscoveryAgent; worksp
       <dt>Hook activity</dt><dd>{discoveryTime(agent.hook_observed_at)}</dd>
       <dt>Hooks</dt><dd>{discoveryLabel(agent.hooks_status)}</dd>
       <dt>Gateway</dt><dd>{discoveryLabel(agent.gateway_status)}</dd>
+      {agent.gateway_checked_at && <><dt>Connection checked</dt><dd>{discoveryTime(agent.gateway_checked_at)}</dd></>}
       <dt>MCP</dt><dd>{agent.mcp_configured ? "Configured" : "Unverified"}</dd>
     </dl>
     <h3 className="font-semibold text-sm">Evidence</h3>
@@ -50,6 +51,11 @@ function Evidence({ agent, workspaceId, close }: { agent: DiscoveryAgent; worksp
       </div>}
       <p role="status" className="text-sm">{copyState}</p>
     </section>
+    {agent.gateway_remediation && <section className="mt-6 border-t border-stone-200 pt-4">
+      <h3 className="text-sm font-semibold">{agent.gateway_remediation.label}</h3>
+      <p className="my-3 text-sm">{agent.gateway_remediation.detail}</p>
+      {agent.gateway_status !== "connection_verified" && <code className="block break-all bg-stone-100 p-3 text-sm">{agent.gateway_remediation.command}</code>}
+    </section>}
     {agent.hook_event_id && <div className="mt-5 flex flex-wrap gap-3" onClick={() => dialog.current?.close()}>
       <a className="btn btn-ghost btn-sm" href={`/logs/guard?id=${encodeURIComponent(agent.hook_event_id)}`}>Flight Recorder</a>
       <AskLensLink kind="event" resourceId={agent.hook_event_id} workspaceId={workspaceId}/>
@@ -75,21 +81,23 @@ function WorkspaceDiscovery({ workspaceId }: { workspaceId: string }) {
   const [revision, setRevision] = useState(0)
   const [limit, setLimit] = useState(100)
   const [query, setQuery] = useState("")
-  const [filter, setFilter] = useState("all")
+  const [filter, setFilter] = useState("current")
+  const inventory = filter === "legacy_unverified" ? "legacy" : filter === "all" ? "all" : "current"
   const [selected, setSelected] = useState<DiscoveryAgent | null>(null)
   useEffect(() => {
     let active = true
     setLoading(true); setError("")
     const pages = Promise.all(Array.from({ length: Math.ceil(limit / 100) }, (_, page) =>
-      guard.discover.agents(authFetch, page * 100, 100))).then(results => results.flat())
+      guard.discover.agents(authFetch, page * 100, 100, inventory))).then(results => results.flat())
     Promise.all([guard.discover.summary(authFetch), pages, guard.discover.scans(authFetch)])
       .then(([sum, rows, history]) => { if (active) { setSummary(sum); setAgents(rows); setScans(history) } })
       .catch(() => { if (active) setError("Unable to load discovery. Try again.") })
       .finally(() => { if (active) setLoading(false) })
     return () => { active = false }
-  }, [authFetch, workspaceId, revision, limit])
+  }, [authFetch, workspaceId, revision, limit, inventory])
   const visible = agents.filter(a => (!query || `${a.framework} ${a.device_id ?? ""}`.toLowerCase().includes(query.toLowerCase())) &&
-    (filter === "all" || (filter === "attention" ? a.hooks_status !== "observed" || a.freshness !== "fresh" : a.detection === filter)))
+    (filter === "all" || filter === "current" && a.detection !== "legacy_unverified" || (filter === "attention" ? a.hooks_status !== "observed" || a.freshness !== "fresh" : a.detection === filter)))
+  const total = summary ? inventory === "legacy" ? summary.legacy_unverified : inventory === "current" ? summary.total - (summary.legacy_unverified ?? 0) : summary.total : agents.length
   return <div className="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6">
     <div className="flex items-start justify-between gap-3">
       <GuardPageHeader title="Agent Discovery"/>
@@ -104,12 +112,12 @@ function WorkspaceDiscovery({ workspaceId }: { workspaceId: string }) {
         <div key={label}><dt className="text-xs text-stone-500">{label}</dt><dd className="mt-1 text-2xl font-semibold">{count}</dd></div>)}
     </dl>}
     {!loading && !error && summary?.total === 0 && <div className="py-8"><p>No discovery findings.</p><code className="text-sm">conduct guard discover</code></div>}
-    {agents.length > 0 && <>
+    {!!summary?.total && <>
       <div className="flex flex-wrap items-center gap-3">
         <label className="flex items-center gap-2"><Search size={16}/><input aria-label="Search tool or device" placeholder="Tool or device" value={query}
           onChange={e => setQuery(e.target.value)} className="min-w-0 rounded border border-stone-300 px-3 py-2 text-sm"/></label>
-        <select aria-label="Filter findings" value={filter} onChange={e => setFilter(e.target.value)} className="rounded border border-stone-300 px-3 py-2 text-sm">
-          <option value="all">All findings</option><option value="attention">Needs review</option><option value="installed">Installed</option>
+        <select aria-label="Filter findings" value={filter} onChange={e => { setFilter(e.target.value); setLimit(100) }} className="rounded border border-stone-300 px-3 py-2 text-sm">
+          <option value="current">Current findings</option><option value="all">All including legacy</option><option value="attention">Needs review</option><option value="installed">Installed</option>
           <option value="running">Running at scan</option><option value="possible_integration">Possible integrations</option><option value="legacy_unverified">Legacy / unverified</option>
         </select>
       </div>
@@ -127,8 +135,8 @@ function WorkspaceDiscovery({ workspaceId }: { workspaceId: string }) {
       </div>
       {!visible.length && <p>No findings match these filters.</p>}
       <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-stone-500">
-        <p>{visible.length} shown from {agents.length} loaded / {summary?.total ?? agents.length} findings</p>
-        {summary && agents.length < summary.total && <button className="btn btn-ghost btn-sm" disabled={loading} onClick={() => setLimit(n => n + 100)}>Load more</button>}
+        <p>{visible.length} shown from {agents.length} loaded / {total} findings</p>
+        {summary && agents.length < total && <button className="btn btn-ghost btn-sm" disabled={loading} onClick={() => setLimit(n => n + 100)}>Load more</button>}
       </div>
     </>}
     {scans.length > 0 && <section className="border-t border-stone-200 pt-5">

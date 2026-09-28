@@ -65,3 +65,19 @@ def test_scan_cannot_supply_observation_fields():
     }])
     assert "hook_event_id" not in scan.agents[0].model_dump()
     assert "under_guard" not in scan.agents[0].model_dump()
+
+
+def test_observed_hook_does_not_recommend_sync():
+    result = agent_view(row(hook_observed_at=NOW, hook_event_id=uuid.uuid4()), NOW)
+    assert result["remediation"]["command"] is None
+    assert result["remediation"]["label"] == "Hook activity confirmed"
+    assert result["gateway_remediation"]["command"] == "conduct guard discover --verify-gateway"
+
+
+@pytest.mark.parametrize("age,expected", [(0, "connection_verified"), (48, "configured")])
+def test_gateway_connection_expires_independently_of_scan(age, expected):
+    evidence = {"gateway_configured": True, "gateway_connection_status": "connection_verified",
+                "gateway_checked_at": (NOW - timedelta(hours=age)).isoformat()}
+    result = agent_view(row(evidence=evidence), NOW)
+    assert result["gateway_status"] == expected
+    assert not result["proxy_routed"]

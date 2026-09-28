@@ -152,6 +152,33 @@ def test_old_writer_conflict_target_survives_migration(database):
         assert workspace_inventory(db, WS)[0]["hooks_status"] == "unverified"
 
 
+def test_gateway_probe_timestamp_is_server_owned_and_not_refreshed_by_rescan(database):
+    device = uuid.uuid4()
+    body = scan(device)
+    body.agents[0].evidence = {"gateway_configured": True, "gateway_connection_status": "connection_verified", "gateway_checked_at": "2099-01-01T00:00:00Z"}
+    with Session(database) as db:
+        first = ingest_scan(body, str(WS), db)["agents"][0]
+        assert first["gateway_status"] == "connection_verified"
+        assert first["gateway_checked_at"].year != 2099
+        body.agents[0].evidence = {"gateway_configured": True}
+        second = ingest_scan(body, str(WS), db)["agents"][0]
+        assert second["gateway_status"] == "connection_verified"
+        assert second["gateway_checked_at"] == first["gateway_checked_at"]
+        body.agents[0].evidence = {"gateway_configured": False}
+        third = ingest_scan(body, str(WS), db)["agents"][0]
+        assert third["gateway_status"] == "unverified"
+
+
+def test_inventory_filter_is_applied_before_pagination(database):
+    from app.modules.guard.routers.discovery import list_agents
+    with Session(database) as db:
+        ingest_scan(scan(uuid.uuid4()), str(WS), db)
+        current = list_agents(str(WS), db, limit=1, offset=0, inventory="current")
+        legacy = list_agents(str(WS), db, limit=1, offset=0, inventory="legacy")
+        assert current[0]["detection"] == "installed"
+        assert legacy[0]["detection"] == "legacy_unverified"
+
+
 def migration_module():
     path = Path(__file__).resolve().parents[1] / "alembic/versions/0153_discovery_evidence.py"
     spec = importlib.util.spec_from_file_location("discovery_rollback_migration", path)

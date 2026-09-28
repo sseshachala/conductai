@@ -57,7 +57,7 @@ describe("discovery evidence", () => {
     render(<Page/>)
     fireEvent.click(await screen.findByRole("button", { name: "Load more" }))
     await screen.findByText("Cursor")
-    expect(mocks.agents).toHaveBeenCalledWith(mocks.authFetch, 100, 100)
+    expect(mocks.agents).toHaveBeenCalledWith(mocks.authFetch, 100, 100, "current")
   })
   it("clears old workspace results immediately", async () => {
     const view = render(<Page/>)
@@ -66,5 +66,13 @@ describe("discovery evidence", () => {
     mocks.agents.mockReturnValue(new Promise(() => {}))
     view.rerender(<Page/>)
     expect(screen.queryByText("Codex")).toBeNull()
+  })
+  it("keeps the legacy filter accessible when only legacy findings exist", async () => {
+    mocks.summary.mockResolvedValue({ total: 1, confirmed: 0, legacy_unverified: 1 })
+    mocks.agents.mockImplementation((_: unknown, __: unknown, ___: unknown, inventory: string) => Promise.resolve(inventory === "legacy" ? [{ ...agent, detection: "legacy_unverified" }] : []))
+    render(<Page/>)
+    fireEvent.change(await screen.findByLabelText("Filter findings"), { target: { value: "legacy_unverified" } })
+    await screen.findByText("Codex")
+    expect(mocks.agents).toHaveBeenCalledWith(mocks.authFetch, 0, 100, "legacy")
   })
 })
