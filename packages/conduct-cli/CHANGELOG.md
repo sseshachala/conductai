@@ -8,6 +8,23 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
 
+## [0.14.14] - 2026-09-27
+
+### Changed
+- Share one privacy-preserving collector between Guard discovery and watch.
+- Deduplicate findings by device and installation; distinguish installed tools,
+  running executables, and possible integrations from dependency manifests.
+- Report configuration, recent hook evidence, and freshness separately instead
+  of treating configuration as proof of protection.
+- Remove secret-file scanning and process-argument uploads from discovery.
+- Link supported hook reports to installation identity and report upload failures.
+
+### Notes
+- Server-backed discovery evidence requires the API deployment containing
+  migration 0153. Upgrade, run `conduct guard sync`, restart the tool, then run
+  `conduct guard discover` and inspect Guard Discovery.
+- Native Linux, Windows and macOS tests passed on Python 3.9, 3.11 and 3.12.
+
 ## [0.14.13] - 2026-09-27
 
 ### Changed
