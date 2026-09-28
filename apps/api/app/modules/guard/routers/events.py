@@ -751,6 +751,51 @@ def _bg_project_event(event_id: str, workspace_id: str) -> None:
         db.close()
 
 
+class SessionUsageReport(BaseModel):
+    workspace_id: UUID
+    hook_session_id: UUID
+    snapshot_id: UUID
+    observed_at: datetime
+    input_tokens: int = Field(ge=0, le=2**31 - 1, strict=True)
+    output_tokens: int = Field(ge=0, le=2**31 - 1, strict=True)
+
+
+@router.post("/session-usage", response_model=EventOut, status_code=201)
+def ingest_session_usage(
+    body: SessionUsageReport,
+    request: Request,
+    background: BackgroundTasks,
+    db: Session = Depends(get_db),
+    auth_context: tuple[str, str | None] | None = Depends(_hook_authenticated_workspace),
+):
+    """Record reported Copilot session deltas, never per-tool or Gateway spend."""
+    from uuid import NAMESPACE_URL, uuid5
+
+    ws_uuid = _authenticated_workspace_uuid(str(body.workspace_id), auth_context)
+    if body.observed_at.tzinfo is None:
+        raise HTTPException(status_code=422, detail="observed_at must include a timezone")
+    # Serialize duplicate delivery, including a retry after a lost response.
+    config = db.query(GuardConfig).filter(GuardConfig.workspace_id == ws_uuid).with_for_update().first()
+    if not config:
+        raise HTTPException(status_code=404, detail="workspace_id not found in guard_config")
+    actor = auth_context[1] if auth_context else None
+    event_id = uuid5(NAMESPACE_URL, f"conduct:copilot-usage:{ws_uuid}:{actor}:{body.hook_session_id}:{body.snapshot_id}")
+    existing = db.query(GuardAuditEvent).filter(
+        GuardAuditEvent.id == event_id, GuardAuditEvent.workspace_id == ws_uuid,
+    ).first()
+    if existing:
+        return EventOut(**_event_to_dict(existing))
+    event = HookEvent(
+        workspace_id=str(ws_uuid), ai_tool="copilot-cli", tool_call="session_usage",
+        decision="audited", hook_session_id=str(body.hook_session_id), receipt_id=str(event_id),
+        tokens_before=body.input_tokens, tokens_after=body.output_tokens,
+        rule_message=("Copilot reported session usage since the previous shutdown snapshot. "
+                      "Input includes cache reads and writes once; output includes reasoning. "
+                      f"Observed at {body.observed_at.isoformat()}. Cost unavailable; not Gateway usage."),
+    )
+    return ingest_event(event, request, background, db, auth_context)
+
+
 @router.post("", response_model=EventOut, status_code=201)
 def ingest_event(
     body: HookEvent,

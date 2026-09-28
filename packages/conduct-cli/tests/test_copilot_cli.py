@@ -30,7 +30,7 @@ def test_fresh_cli_install_gets_mcp_and_hooks_without_vscode(home):
     mcp = json.loads((root / "mcp-config.json").read_text())
     assert mcp["mcpServers"]["conduct-guard"]["headers"]["Authorization"] == "Bearer test-token"
     cfg = json.loads((root / "hooks" / "conduct-guard.json").read_text())
-    assert set(cfg["hooks"]) == {"preToolUse", "postToolUse", "postToolUseFailure"}
+    assert set(cfg["hooks"]) == {"preToolUse", "postToolUse", "postToolUseFailure", "sessionStart", "sessionEnd"}
     assert "test-token" not in json.dumps(cfg)
     assert cfg["hooks"]["preToolUse"][0]["timeoutSec"] > 20
     tool = next(x for x in guard._detect_ai_tools() if x["name"] == "copilot-cli")

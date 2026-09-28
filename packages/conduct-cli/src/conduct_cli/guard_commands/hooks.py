@@ -152,7 +152,8 @@ def _install_copilot_hooks(hook_path: Path) -> None:
                  "args": ["-m", "conduct_cli.hooks.copilot", mode, str(hook_path)],
                  "timeoutSec": 30}]
         for event, mode in (("preToolUse", "pre"), ("postToolUse", "post"),
-                            ("postToolUseFailure", "failure"))
+                            ("postToolUseFailure", "failure"),
+                            ("sessionStart", "session-start"), ("sessionEnd", "session-end"))
     }}
     (hooks_dir / "conduct-guard.json").write_text(json.dumps(config, indent=2) + "\n")
     print(f"  {_guard_shared.GREEN}Copilot CLI tool hooks registered (restart Copilot){_guard_shared.RESET}")
