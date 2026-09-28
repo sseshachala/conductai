@@ -175,11 +175,30 @@ def _write_mcp_file(
 ) -> None:
     try:
         cfg = json.loads(cfg_path.read_text())
-    except (json.JSONDecodeError, OSError):
+    except FileNotFoundError:
         cfg = {}
+    except (json.JSONDecodeError, OSError):
+        print(f"  {_guard_shared.YELLOW}MCP config is unreadable or invalid in {label}; left unchanged.{_guard_shared.RESET}")
+        return
+    if not isinstance(cfg, dict) or not isinstance(cfg.get("mcpServers", {}), dict):
+        print(f"  {_guard_shared.YELLOW}MCP config is invalid in {label}; left unchanged.{_guard_shared.RESET}")
+        return
     mcp = cfg.setdefault("mcpServers", {})
     changed = False
-    if mcp.get(guard_key) != sse_entry:
+    current = mcp.get(guard_key)
+    # Headerless remote entries use native OAuth discovery, including DCR.
+    preserve_oauth = isinstance(current, dict) and (
+        any(key.startswith("oauth") for key in current)
+        or (
+            current.get("type") in {"http", "sse", "streamable-http"}
+            and current.get("url")
+            and isinstance(current.get("headers", {}), dict)
+            and not any(key.lower() == "authorization" for key in current.get("headers", {}))
+        )
+    )
+    if preserve_oauth:
+        print(f"  {_guard_shared.GRAY}conduct-guard native OAuth configuration preserved in {label}{_guard_shared.RESET}")
+    elif current != sse_entry:
         mcp[guard_key] = sse_entry
         changed = True
         print(f"  {_guard_shared.GREEN}conduct-guard MCP registered in {label}{_guard_shared.RESET}")
