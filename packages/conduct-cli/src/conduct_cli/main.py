@@ -573,6 +573,11 @@ def _web_login_flow(api_url: str, web_url: str) -> dict:
     port  = _find_free_port()
     result: dict = {}
     event = threading.Event()
+    success_url = (
+        "https://conductai.ai/cli-connected"
+        if urllib.parse.urlparse(web_url).hostname in {"app.conductai.ai", "conductai.ai", "www.conductai.ai"}
+        else web_url.rstrip("/") + "/cli-connected"
+    )
 
     class _Handler(http.server.BaseHTTPRequestHandler):
         def do_GET(self):
@@ -584,17 +589,37 @@ def _web_login_flow(api_url: str, web_url: str) -> dict:
                 self.end_headers()
                 return
 
-            # Respond immediately so browser shows success
-            body = b"<html><body><h2>Login successful. You can close this tab.</h2></body></html>"
-            self.send_response(200)
-            self.send_header("Content-Type", "text/html")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
+            if not secrets.compare_digest(params.get("state", ""), state):
+                self.send_response(400)
+                self.send_header("Cache-Control", "no-store")
+                self.send_header("Referrer-Policy", "no-referrer")
+                self.end_headers()
+                return
 
-            if params.get("state") == state:
-                result.update(params)
-            event.set()
+            try:
+                if not params.get("workspace_id"):
+                    raise ValueError("Missing workspace")
+                authenticated = params
+                if params.get("clerk_token") and not params.get("agent_token"):
+                    authenticated = _exchange_clerk_token(api_url, params["clerk_token"], params["workspace_id"])
+                if not authenticated.get("agent_token"):
+                    raise ValueError("Missing agent token")
+                result.update(authenticated)
+            except (Exception, SystemExit):
+                result["login_failed"] = True
+
+            try:
+                self.send_response(400 if result.get("login_failed") else 303)
+                self.send_header("Cache-Control", "no-store")
+                self.send_header("Referrer-Policy", "no-referrer")
+                if not result.get("login_failed"):
+                    self.send_header("Location", success_url)
+                self.send_header("Content-Type", "text/plain; charset=utf-8")
+                self.end_headers()
+                if result.get("login_failed"):
+                    self.wfile.write(b"Login failed. Return to your terminal and run conduct login again.")
+            finally:
+                event.set()
 
         def log_message(self, *_):
             pass  # silence server logs
@@ -611,18 +636,20 @@ def _web_login_flow(api_url: str, web_url: str) -> dict:
 
     if not event.wait(timeout=300):
         server.shutdown()
+        server.server_close()
         print(f"{RED}Login timed out (5 min). Try again.{RESET}")
         sys.exit(1)
 
     server.shutdown()
+    server.server_close()
+
+    if result.get("login_failed"):
+        print(f"{RED}Login failed. Run `conduct login` to try again.{RESET}")
+        sys.exit(1)
 
     if not result.get("workspace_id"):
         print(f"{RED}Login failed — missing workspace in callback. Try again.{RESET}")
         sys.exit(1)
-
-    # RFC 8693: web page relays Clerk JWT; CLI exchanges it at POST /token
-    if result.get("clerk_token") and not result.get("agent_token"):
-        result = _exchange_clerk_token(api_url, result["clerk_token"], result["workspace_id"])
 
     if not result.get("agent_token"):
         print(f"{RED}Login failed — token exchange failed. Try again.{RESET}")

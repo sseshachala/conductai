@@ -142,7 +142,7 @@ const clerkHandler = clerkMiddleware(async (auth, req) => {
     if (userId) return NextResponse.redirect(new URL(appDest, req.url))
   }
 
-  if (isPublicRoute(req)) return
+  if (req.nextUrl.pathname === "/cli-connected" || isPublicRoute(req)) return
 
   const { userId } = await auth()
   if (!userId) {
