@@ -8,6 +8,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
 
+## [0.14.15] - 2026-09-27
+
+### Changed
+- Check configured Conduct Gateway connections during `conduct guard discover`
+  by default. Use `--no-verify-gateway` to skip the check; explicit
+  `--verify-gateway` remains supported.
+- Recognize Claude Code's inherited Gateway URL, with settings taking precedence.
+- Limit checks to canonical Conduct HTTPS endpoints using the CLI credential,
+  without redirects, provider credentials, prompts, or paid inference requests.
+
+### Notes
+- Connection verification is not proof of tool inference traffic or upstream
+  provider-key validity. External gateways remain unverified.
+- Deploy the API/web changes from #2268 for connection timestamps, freshness,
+  current-versus-legacy inventory filtering, and updated hook remediation.
+
 ## [0.14.14] - 2026-09-27
 
 ### Changed
