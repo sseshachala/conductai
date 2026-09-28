@@ -10,6 +10,9 @@ generic 'token' key, never send an Authorization header without a token.
 """
 from __future__ import annotations
 
+from conduct_cli.guard_commands import discovery as _guard_discovery
+from conduct_cli.guard_commands import shared as _guard_shared
+
 import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -31,9 +34,9 @@ def test_guard_report_prefers_conduct_agent_token_over_guard_token(tmp_path, mon
     fake_resp.__exit__  = MagicMock(return_value=False)
 
     with patch.object(Path, "home", classmethod(lambda cls: tmp_path)), \
-         patch.object(guard_mod, "_detect_ai_tools", return_value=[{"name": "cursor"}]), \
-         patch.object(guard_mod, "_load_guard_config", return_value={"agent_token": "cond_agt_GUARD", "user_email": "u@x.com"}), \
-         patch.object(guard_mod, "_api_url", return_value="https://api.example"), \
+         patch.object(_guard_discovery, "_detect_ai_tools", return_value=[{"name": "cursor"}]), \
+         patch.object(_guard_shared, "_load_guard_config", return_value={"agent_token": "cond_agt_GUARD", "user_email": "u@x.com"}), \
+         patch.object(_guard_shared, "_api_url", return_value="https://api.example"), \
          patch("urllib.request.urlopen", return_value=fake_resp) as mock_open:
         guard_mod._report_tools_to_server()
 
@@ -48,9 +51,9 @@ def test_guard_report_falls_back_to_guard_token_when_no_conduct_config(tmp_path,
     fake_resp.__exit__  = MagicMock(return_value=False)
 
     with patch.object(Path, "home", classmethod(lambda cls: tmp_path)), \
-         patch.object(guard_mod, "_detect_ai_tools", return_value=[{"name": "cursor"}]), \
-         patch.object(guard_mod, "_load_guard_config", return_value={"agent_token": "cond_agt_GUARD", "user_email": "u@x.com"}), \
-         patch.object(guard_mod, "_api_url", return_value="https://api.example"), \
+         patch.object(_guard_discovery, "_detect_ai_tools", return_value=[{"name": "cursor"}]), \
+         patch.object(_guard_shared, "_load_guard_config", return_value={"agent_token": "cond_agt_GUARD", "user_email": "u@x.com"}), \
+         patch.object(_guard_shared, "_api_url", return_value="https://api.example"), \
          patch("urllib.request.urlopen", return_value=fake_resp) as mock_open:
         guard_mod._report_tools_to_server()
 
@@ -65,9 +68,9 @@ def test_guard_report_no_auth_header_when_no_token(tmp_path, monkeypatch):
     fake_resp.__exit__  = MagicMock(return_value=False)
 
     with patch.object(Path, "home", classmethod(lambda cls: tmp_path)), \
-         patch.object(guard_mod, "_detect_ai_tools", return_value=[{"name": "cursor"}]), \
-         patch.object(guard_mod, "_load_guard_config", return_value={"agent_token": "", "user_email": "u@x.com"}), \
-         patch.object(guard_mod, "_api_url", return_value="https://api.example"), \
+         patch.object(_guard_discovery, "_detect_ai_tools", return_value=[{"name": "cursor"}]), \
+         patch.object(_guard_shared, "_load_guard_config", return_value={"agent_token": "", "user_email": "u@x.com"}), \
+         patch.object(_guard_shared, "_api_url", return_value="https://api.example"), \
          patch("urllib.request.urlopen", return_value=fake_resp) as mock_open:
         guard_mod._report_tools_to_server()
 

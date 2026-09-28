@@ -1,3 +1,5 @@
+
+from conduct_cli.guard_commands import hooks as _guard_hooks
 import json
 from pathlib import Path
 import subprocess
@@ -15,7 +17,7 @@ def home(tmp_path, monkeypatch):
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
     monkeypatch.setenv("COPILOT_HOME", str(tmp_path / "custom-copilot"))
     monkeypatch.setattr("shutil.which", lambda name: "/bin/copilot" if name == "copilot" else None)
-    monkeypatch.setattr(guard, "_best_python", lambda: sys.executable)
+    monkeypatch.setattr(_guard_hooks, "_best_python", lambda: sys.executable)
     monkeypatch.chdir(tmp_path)
     return tmp_path
 
@@ -108,7 +110,7 @@ def test_malformed_payload_denies_without_echoing_input(monkeypatch, capsys):
 ])
 def test_installer_uses_shell_free_executable_on_all_platforms(home, monkeypatch, platform, python):
     monkeypatch.setattr(sys, "platform", platform)
-    monkeypatch.setattr(guard, "_best_python", lambda: python)
+    monkeypatch.setattr(_guard_hooks, "_best_python", lambda: python)
     hook = home / "directory with spaces" / "hook.py"
     guard._install_copilot_hooks(hook)
     cfg = json.loads((guard._copilot_home() / "hooks" / "conduct-guard.json").read_text())

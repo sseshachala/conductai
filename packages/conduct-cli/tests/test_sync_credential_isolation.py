@@ -1,4 +1,8 @@
 """A metadata fetch must never swap out a client's access/refresh pair."""
+
+from conduct_cli.guard_commands import policy as _guard_policy
+from conduct_cli.guard_commands import setup as _guard_setup
+from conduct_cli.guard_commands import shared as _guard_shared
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -15,17 +19,17 @@ def test_sync_preserves_credentials_when_install_status_returns_another_token(mo
         "token_expires_at": "2099-01-01T00:00:00+00:00",
     }
     original = cfg.copy()
-    monkeypatch.setattr(guard, "_proactive_token_refresh", lambda: None)
-    monkeypatch.setattr(guard, "_require_guard_config", lambda: cfg)
-    monkeypatch.setattr(guard, "_api_url", lambda _: "https://api.example.test")
-    monkeypatch.setattr(guard, "_check_and_upgrade_packages", lambda: None)
-    monkeypatch.setattr(guard, "_save_policy", lambda _: None)
+    monkeypatch.setattr(_guard_setup, "_proactive_token_refresh", lambda: None)
+    monkeypatch.setattr(_guard_shared, "_require_guard_config", lambda: cfg)
+    monkeypatch.setattr(_guard_shared, "_api_url", lambda _: "https://api.example.test")
+    monkeypatch.setattr(_guard_setup, "_check_and_upgrade_packages", lambda: None)
+    monkeypatch.setattr(_guard_policy, "_save_policy", lambda _: None)
     request = Mock(side_effect=[{"rules": []}, {
         "agent_token": "cond_agt_another-client",
         "user_email": "synthetic@example.test",
         "clerk_user_id": "synthetic",
     }])
-    monkeypatch.setattr(guard, "_req", request)
+    monkeypatch.setattr(_guard_shared, "_req", request)
 
     class MetadataSaved(BaseException):
         pass
@@ -36,7 +40,7 @@ def test_sync_preserves_credentials_when_install_status_returns_another_token(mo
         assert value["clerk_user_id"] == "synthetic"
         raise MetadataSaved()
 
-    monkeypatch.setattr(guard, "_save_guard_config", save)
+    monkeypatch.setattr(_guard_shared, "_save_guard_config", save)
     # Stop before machine configuration, process launches or external requests.
     with pytest.raises(MetadataSaved):
         guard.cmd_guard_sync(SimpleNamespace(dry_run=False))

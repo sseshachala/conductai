@@ -1,5 +1,8 @@
 """Tests for `conduct switch` and `conduct whoami` commands."""
 
+from conduct_cli.guard_commands import policy as _guard_policy
+from conduct_cli.guard_commands import shared as _guard_shared
+
 import json
 import sys
 import types
@@ -337,8 +340,8 @@ def test_switch_remints_agent_token_via_endpoint(tmp_path, monkeypatch, capsys):
         patch.object(m, "CONFIG_PATH", cfg_path),
         patch("pathlib.Path.home", return_value=tmp_path),
         patch.object(m.api, "req", side_effect=_api_req),
-        patch.object(g, "_req", return_value={"version": "1", "rules": []}),
-        patch.object(g, "_save_policy"),
+        patch.object(_guard_shared, "_req", return_value={"version": "1", "rules": []}),
+        patch.object(_guard_policy, "_save_policy"),
     ):
         m.cmd_switch(args)
 
@@ -374,8 +377,8 @@ def test_switch_hard_exits_when_remint_fails(tmp_path, monkeypatch, capsys):
         patch.object(m, "CONFIG_PATH", cfg_path),
         patch("pathlib.Path.home", return_value=tmp_path),
         patch.object(m.api, "req", side_effect=_api_req),
-        patch.object(g, "_req", return_value={"version": "1", "rules": []}),
-        patch.object(g, "_save_policy"),
+        patch.object(_guard_shared, "_req", return_value={"version": "1", "rules": []}),
+        patch.object(_guard_policy, "_save_policy"),
     ):
         with pytest.raises(SystemExit) as exc:
             m.cmd_switch(args)

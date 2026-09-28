@@ -1,3 +1,5 @@
+
+from conduct_cli.guard_commands import shared as _guard_shared
 import io
 import json
 import urllib.error
@@ -258,8 +260,8 @@ def test_proactive_refresh_preserves_prior_workspace(tmp_path, monkeypatch):
         # Force refresh — expiry already past
         "token_expires_at": (_dt.datetime.now(_dt.timezone.utc) - _dt.timedelta(hours=1)).isoformat(),
     }))
-    monkeypatch.setattr(g, "CONDUCT_HOME", cfg_path.parent)
-    monkeypatch.setattr(g, "CONFIG_PATH", cfg_path)
+    monkeypatch.setattr(_guard_shared, "CONDUCT_HOME", cfg_path.parent)
+    monkeypatch.setattr(_guard_shared, "CONFIG_PATH", cfg_path)
 
     refresh_response = {
         "agent_token":  "cond_agt_after_refresh_engineering",
@@ -321,8 +323,8 @@ def test_proactive_refresh_no_restore_when_prior_matches_default(tmp_path, monke
         "workspace_id":     same_ws,
         "token_expires_at": (_dt.datetime.now(_dt.timezone.utc) - _dt.timedelta(hours=1)).isoformat(),
     }))
-    monkeypatch.setattr(g, "CONDUCT_HOME", cfg_path.parent)
-    monkeypatch.setattr(g, "CONFIG_PATH", cfg_path)
+    monkeypatch.setattr(_guard_shared, "CONDUCT_HOME", cfg_path.parent)
+    monkeypatch.setattr(_guard_shared, "CONFIG_PATH", cfg_path)
 
     call_urls = []
 

@@ -8,6 +8,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
 
+## [0.14.13] - 2026-09-27
+
+### Changed
+- Split Guard CLI implementation into focused modules for setup, policy,
+  hooks, MCP, instructions, Gateway configuration, discovery, watch,
+  reporting, verification, Booster, and shared helpers.
+- Preserve existing command flags and compatibility imports through
+  `conduct_cli.guard`. This release does not change discovery or enforcement
+  behavior; it provides the modular foundation for subsequent improvements.
+
+### Tests
+- Add module import, compatibility export, command dispatch, and packaged
+  policy asset regression checks.
+
 ## [0.14.12] - 2026-09-27
 
 ### Changed
