@@ -228,7 +228,9 @@ def register_guard_parser(sub):
     # conduct guard discover
     discover_p = guard_sub.add_parser("discover", help="Scan for AI agents and show Guard coverage")
     discover_p.add_argument("--config-only", action="store_true", help="Skip process scan, config files only")
-    discover_p.add_argument("--verify-gateway", action="store_true", help="Check Gateway authentication with the CLI credential (no inference request)")
+    gateway_check = discover_p.add_mutually_exclusive_group()
+    gateway_check.add_argument("--verify-gateway", dest="verify_gateway", action="store_true", default=True, help="Check Gateway authentication with the CLI credential (default; no inference request)")
+    gateway_check.add_argument("--no-verify-gateway", dest="verify_gateway", action="store_false", help="Skip the Gateway connection check")
     discover_p.add_argument("--report", default=None, metavar="FILE", help="Write full JSON report to file")
 
     # conduct guard watch

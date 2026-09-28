@@ -217,7 +217,7 @@ def cmd_guard_discover(args):
     from .inventory import collect, verify_gateway
     cfg = _guard_shared._load_guard_config()
     report = collect(getattr(args, "config_only", False))
-    if getattr(args, "verify_gateway", False):
+    if getattr(args, "verify_gateway", True):
         verify_gateway(report, cfg.get("agent_token", ""))
         print("Gateway check uses the CLI credential; it does not prove this tool's inference traffic.")
     report["triggered_by"] = "cli"

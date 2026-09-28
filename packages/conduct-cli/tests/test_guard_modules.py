@@ -81,3 +81,11 @@ def test_sync_and_discovery_flags_are_unchanged():
     assert args.dry_run and args.no_codex_proxy and args.no_local_audit
     args = parser.parse_args(["guard", "discover", "--config-only", "--report", "report.json"])
     assert args.config_only and args.report == "report.json"
+
+
+@pytest.mark.parametrize("flags,expected", [([], True), (["--verify-gateway"], True), (["--no-verify-gateway"], False)])
+def test_discovery_gateway_check_defaults_on(flags, expected):
+    parser = argparse.ArgumentParser()
+    guard.register_guard_parser(parser.add_subparsers(dest="command"))
+    args = parser.parse_args(["guard", "discover", *flags])
+    assert args.verify_gateway is expected

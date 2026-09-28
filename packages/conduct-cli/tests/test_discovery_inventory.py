@@ -82,11 +82,16 @@ def test_copilot_custom_home_and_safe_evidence(local, monkeypatch):
     assert "copilot-custom" not in json.dumps(result)
 
 
-def test_upload_failure_is_explicit(local, monkeypatch, capsys):
+@pytest.mark.parametrize("options,expected", [({}, True), ({"verify_gateway": True}, True), ({"verify_gateway": False}, False)])
+def test_discovery_gateway_check_and_upload_failure(local, monkeypatch, capsys, options, expected):
     from conduct_cli.guard_commands import discovery
+    from unittest.mock import Mock
+    probe = Mock()
+    monkeypatch.setattr(inventory, "verify_gateway", probe)
     monkeypatch.setattr(discovery._guard_shared, "_load_guard_config", lambda: {})
     monkeypatch.setattr(discovery._guard_shared, "_req", lambda *a, **kw: (_ for _ in ()).throw(SystemExit(1)))
-    discovery.cmd_guard_discover(SimpleNamespace(config_only=True, report=None))
+    discovery.cmd_guard_discover(SimpleNamespace(config_only=True, report=None, **options))
+    assert probe.call_count == int(expected)
     assert "Upload failed; local findings only" in capsys.readouterr().out
 
 

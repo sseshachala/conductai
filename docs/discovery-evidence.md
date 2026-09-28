@@ -51,12 +51,15 @@ connection checks remain a separate section in the evidence panel.
 
 ### Gateway Connection Check
 
-`conduct guard discover --verify-gateway` makes a bounded authenticated model-list
+`conduct guard discover` includes a bounded authenticated model-list
 request for configured Claude Code and Codex Gateway endpoints. Claude Code's
 settings take precedence over the inherited shell URL. No secret file is scanned.
 Only canonical Conduct HTTPS endpoints are recognized for this probe. It uses
 the CLI's Conduct credential, never a provider key, and never follows redirects.
 Unsupported/custom endpoints remain unverified.
+Use `--no-verify-gateway` to skip the connection check. The explicit
+`--verify-gateway` flag remains supported. `--config-only` skips process scanning,
+not the Gateway check or discovery upload.
 
 The CLI reports connection_verified, authentication_failed or unavailable. The
 API records the ingestion timestamp and preserves it on ordinary rescans while
