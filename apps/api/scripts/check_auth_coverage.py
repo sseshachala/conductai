@@ -28,6 +28,7 @@ AUTH_DEPS = {
     "get_user_workspace_role_sse",
     "get_guard_org_id",
     "get_guard_hook_auth",
+    "_hook_authenticated_workspace",  # Agent token auth; legacy mode controlled by guard_require_hook_auth.
     "require_platform_operator",
     "_require_admin",
     "_require_super_admin",
@@ -79,10 +80,6 @@ ALLOWLIST = {
     "modules/auth/oauth/router.py::oauth_metadata",
     # Guard join (auth via invite_code in body)
     "modules/guard/routers/config.py::join_guard",
-    # Guard hook events (workspace_id validated against guard_config — no Clerk auth by design)
-    "modules/guard/routers/events.py::ingest_event",
-    "modules/guard/routers/events.py::update_usage",
-    "modules/guard/routers/events.py::ingest_batch",
     # Guard block receipt public read (#1712 — anonymous trial signup flow).
     # Auth: sha256(share_token) in URL path must match share_token_hash on the
     # audit row, AND the workspace must still be on the trial plan at read
