@@ -8,6 +8,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
 
+## [0.14.12] - 2026-09-27
+
+### Changed
+- Successful browser login redirects to the Conduct-hosted confirmation page,
+  with a message to close the tab and return to the terminal.
+
+### Fixed
+- Validate callback state and complete token exchange before displaying login
+  success. Failed authentication no longer shows a success page.
+- Keep credentials out of the confirmation URL and disable callback caching
+  and referrer forwarding.
+
 ## [0.14.11] - 2026-09-27
 
 ### Added
