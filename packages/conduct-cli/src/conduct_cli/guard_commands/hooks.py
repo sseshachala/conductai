@@ -238,6 +238,7 @@ def _install_codex_hook(hook_path: Path) -> None:
     if cleaned:
         changed = True
 
+    changed = _usage_lifecycle_hooks(hook_section, "codex") or changed
     if changed:
         codex_hooks.parent.mkdir(parents=True, exist_ok=True)
         codex_hooks.write_text(json.dumps(hooks, indent=2))
@@ -320,6 +321,7 @@ def _install_claude_hook(hook_path: Path) -> None:
         stop.append({"hooks": [{"type": "command", "command": mem_cmd}]})
         changed = True
 
+    changed = _usage_lifecycle_hooks(hooks, "claude-code") or changed
     if changed:
         claude_settings.parent.mkdir(parents=True, exist_ok=True)
         claude_settings.write_text(json.dumps(settings, indent=2))
@@ -331,3 +333,25 @@ def _install_claude_hook(hook_path: Path) -> None:
             print(f"  {_guard_shared.GREEN}Claude Code Stop hook registered (team memory capture){_guard_shared.RESET}")
     else:
         print(f"  {_guard_shared.GRAY}Claude Code hooks already registered{_guard_shared.RESET}")
+
+
+def _usage_lifecycle_hooks(hooks: dict, surface: str) -> bool:
+    """Install independent usage hooks without replacing memory/user hooks."""
+    import shlex
+    import subprocess
+    argv = [_best_python(), "-m", "conduct_cli.hooks.session_usage", surface]
+    command = subprocess.list2cmdline(argv) if sys.platform == "win32" else shlex.join(argv)
+    changed = False
+    for event in ("SessionStart", "Stop", "SessionEnd"):
+        existing = hooks.get(event, [])
+        kept = []
+        for group in existing:
+            commands = [hook for hook in group.get("hooks", [])
+                        if "conduct_cli.hooks.session_usage" not in hook.get("command", "")]
+            if commands:
+                kept.append({**group, "hooks": commands})
+        desired = [*kept, {"hooks": [{"type": "command", "command": command}]}]
+        if existing != desired:
+            hooks[event] = desired
+            changed = True
+    return changed

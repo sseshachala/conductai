@@ -93,6 +93,15 @@ def test_workspace_change_does_not_upload(collector):
     cfg["workspace_id"] = "other"
     assert not usage.collect(session, Path("hook.py"), expected)
     journal.assert_not_called()
+    assert not collect(collector)
+    write_snapshot(path, 20)
+    assert collect(collector)
+    cfg["workspace_id"] = expected[1]
+    assert not collect(collector)
+    write_snapshot(path, 21)
+    assert collect(collector)
+    payload = json.loads(journal.call_args.args[0])
+    assert (payload["input_tokens"], payload["output_tokens"]) == (3, 1)
 
 
 @pytest.mark.parametrize("session", ["../../config", "", "not-a-uuid"])
@@ -119,3 +128,24 @@ def test_session_end_worker_is_detached_and_has_no_credentials(collector, monkey
     usage.handle("session-end", {"sessionId": session}, Path("hook.py"))
     assert "secret" not in str(spawn.call_args)
     assert spawn.call_args.kwargs.get("start_new_session") or spawn.call_args.kwargs.get("creationflags")
+
+
+def test_large_tool_output_does_not_hide_shutdown(collector):
+    _, path, _, journal = collector
+    collect(collector)
+    path.write_text(json.dumps({"type": "tool.execution_complete", "data": "x" * (1024 * 1024 + 1)}) + "\n")
+    write_snapshot(path, 10)
+    assert collect(collector)
+    assert json.loads(journal.call_args.args[0])["output_tokens"] == 10
+
+
+def test_recovers_after_counter_reset_without_counting_gap(collector):
+    _, path, _, journal = collector
+    write_snapshot(path, 10)
+    collect(collector)
+    write_snapshot(path, 1)
+    assert not collect(collector)
+    write_snapshot(path, 3)
+    assert collect(collector)
+    payload = json.loads(journal.call_args.args[0])
+    assert (payload["input_tokens"], payload["output_tokens"]) == (6, 2)

@@ -51,6 +51,7 @@ from conduct_cli.guard_commands.hooks import (  # noqa: F401
     _install_copilot_hooks,
     _install_codex_hook,
     _install_claude_hook,
+    _usage_lifecycle_hooks,
 )
 
 from conduct_cli.guard_commands.mcp import (  # noqa: F401

@@ -754,6 +754,8 @@ def main() -> None:
     except Exception:
         sys.exit(0)
     record_hook_heartbeat("pre_tool_use")
+    from .session_usage import handle as collect_usage
+    collect_usage(data)
 
     # Stop hook — session ended, capture for team memory
     if data.get("hook_event_name") == "Stop" or data.get("stop_hook_active"):
@@ -859,7 +861,7 @@ def main() -> None:
 
     post_event(
         tool_name, tool_input, decision, rule_id, message, session_id,
-        drain_via=_this_file, receipt_id=receipt_id,
+        drain_via=_this_file, receipt_id=receipt_id, tool_use_id=data.get("tool_use_id"),
     )
 
     if action == "block":
