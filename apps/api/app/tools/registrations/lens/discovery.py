@@ -27,117 +27,47 @@ from app.tools.registrations.lens._shared import (
 
 
 # ── Free-function tool implementations ─────────────────────────────────
-def _risk_level(score: int | None) -> str:
-    if score is None:
-        return "Unknown"
-    if score >= 70:
-        return "High"
-    if score >= 40:
-        return "Medium"
-    return "Low"
-
-
 def get_discovery_summary(ctx):
-    """Discovered agents inventory — total, coverage, high-risk agents,
-    per-framework breakdown. Migrated from Executor._tool_get_discovery_summary
-    (epic #1655)."""
-    import uuid as _uuid
+    """Live installation evidence, scoped to the selected workspace."""
     from app.core.database import SessionLocal
-    from app.modules.guard.models import DiscoveredAgent
+    from app.modules.guard.discovery_inventory import workspace_inventory, summarize
+    from fastapi.encoders import jsonable_encoder
     db = SessionLocal()
     try:
-        ws_uuid = _uuid.UUID(ctx.workspace_id)
-        agents = db.query(DiscoveredAgent).filter(
-            DiscoveredAgent.workspace_id == ws_uuid
-        ).all()
-
-        total = len(agents)
-        under_guard = sum(1 for a in agents if a.under_guard)
-
-        by_framework: dict[str, int] = {}
-        for a in agents:
-            fw = a.framework or "unknown"
-            by_framework[fw] = by_framework.get(fw, 0) + 1
-
-        high_risk = [
-            {"name": a.name, "framework": a.framework, "risk_score": a.risk_score,
-             "under_guard": a.under_guard, "location": a.location}
-            for a in agents if (a.risk_score or 0) >= 70
-        ]
-
-        return {
-            "total": total,
-            "under_guard": under_guard,
-            "missing": total - under_guard,
-            "coverage_pct": round(under_guard / total * 100) if total else 0,
-            "by_framework": [{"framework": fw, "count": cnt} for fw, cnt in sorted(by_framework.items())],
-            "high_risk": high_risk,
-            "agents": [
-                {
-                    "name": a.name,
-                    "framework": a.framework,
-                    "source": a.source,
-                    "location": a.location,
-                    "risk_score": a.risk_score,
-                    "risk_level": _risk_level(a.risk_score),
-                    "under_guard": a.under_guard,
-                    "proxy_routed": a.proxy_routed,
-                    "last_seen_at": a.last_seen_at.isoformat() if a.last_seen_at else None,
-                }
-                for a in agents
-            ],
-        }
+        agents = workspace_inventory(db, ctx.workspace_id)
+        return jsonable_encoder({**summarize(agents), "agents": agents})
     finally:
         db.close()
 
 
 def list_discovered_agents(ctx, framework: str | None = None, since: str | None = None):
-    """Discovered AI agents in the workspace — name, framework, source,
-    risk_score, under_guard, proxy_routed. Optional framework filter (e.g.
-    'langchain', 'crewai') and since ISO-8601 lower bound on last_seen_at.
-    """
-    import uuid as _uuid
-    from datetime import datetime
+    """Live findings; configuration does not prove enforcement."""
+    from datetime import datetime, timezone
     from app.core.database import SessionLocal
-    from app.modules.guard.models import DiscoveredAgent
+    from app.modules.guard.discovery_inventory import workspace_inventory
+    from fastapi.encoders import jsonable_encoder
     db = SessionLocal()
     try:
-        ws_uuid = _uuid.UUID(ctx.workspace_id)
-        q = db.query(DiscoveredAgent).filter(DiscoveredAgent.workspace_id == ws_uuid)
-        if framework:
-            q = q.filter(DiscoveredAgent.framework == framework)
-        if since:
-            try:
-                q = q.filter(DiscoveredAgent.last_seen_at >= datetime.fromisoformat(since))
-            except ValueError:
-                pass
-        rows = q.order_by(DiscoveredAgent.last_seen_at.desc()).all()
-        return {
-            "count": len(rows),
-            "agents": [
-                {
-                    "name": r.name,
-                    "framework": r.framework,
-                    "source": r.source,
-                    "location": r.location,
-                    "risk_score": r.risk_score,
-                    "under_guard": r.under_guard,
-                    "proxy_routed": r.proxy_routed,
-                    "first_seen_at": r.first_seen_at.isoformat() if r.first_seen_at else None,
-                    "last_seen_at": r.last_seen_at.isoformat() if r.last_seen_at else None,
-                }
-                for r in rows
-            ],
-        }
+        agents = workspace_inventory(db, ctx.workspace_id)
     finally:
         db.close()
+    if framework:
+        agents = [a for a in agents if a["framework"] == framework]
+    if since:
+        lower = datetime.fromisoformat(since)
+        if lower.tzinfo is None:
+            lower = lower.replace(tzinfo=timezone.utc)
+        agents = [a for a in agents if a["last_seen_at"] and
+                  a["last_seen_at"].replace(tzinfo=a["last_seen_at"].tzinfo or timezone.utc) >= lower]
+    return jsonable_encoder({"count": len(agents), "agents": agents})
+
 
 
 # ── ToolDef list ───────────────────────────────────────────────────────
 TOOLS: list[ToolDef] = [
     ToolDef(
         name="get_discovery_summary",
-        description="Discovered agents inventory — total, coverage, high-risk agents, per-framework breakdown.",
+        description="Live discovery inventory: installed tools, possible integrations, freshness, configuration and observed hook evidence. Not a protection percentage.",
         input_schema={"type": "object", "properties": {}, "required": []},
         impl=get_discovery_summary,
         annotations=_READ_ONLY,

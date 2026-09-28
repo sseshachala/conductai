@@ -33,8 +33,8 @@ _GUARD_TAGS = ("guard",)
 
 # Per-tool annotations. Pure-read tools use read_only; the write tools
 # (guard_activity, guard_check with side-effect recording, guard_enable,
-# guard_discover_register, conduct_run_workflow) don't; guard_check +
-# guard_discover_register + conduct_run_workflow are open_world (they mutate
+# conduct_run_workflow) don't; guard_check +
+# conduct_run_workflow are open_world (they mutate
 # DB / enqueue runs).
 _ANNOTATIONS: dict[str, ToolAnnotations] = {
     "guard_status":              ToolAnnotations(read_only=True),
@@ -49,7 +49,7 @@ _ANNOTATIONS: dict[str, ToolAnnotations] = {
     "guard_activity":          ToolAnnotations(open_world=True),
     "guard_recent_activity":   ToolAnnotations(read_only=True),
     "guard_discover":          ToolAnnotations(read_only=True),
-    "guard_discover_register": ToolAnnotations(open_world=True, destructive=False),
+    "guard_discover_register": ToolAnnotations(read_only=True, idempotent=True),
     "conduct_list_agents":     ToolAnnotations(read_only=True),
     "conduct_list_projects":   ToolAnnotations(read_only=True),
     "conduct_list_playbooks":  ToolAnnotations(read_only=True),

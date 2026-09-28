@@ -41,7 +41,7 @@ def test_all_guard_tools_have_annotations():
 
 def test_write_tools_are_not_read_only():
     for name in ("guard_activity",
-                 "conduct_run_workflow", "guard_discover_register", "guard_check"):
+                 "conduct_run_workflow", "guard_check"):
         tool = next(t for t in guard_reg._TOOLS if t.name == name)
         assert not tool.annotations.read_only, f"{name} should not be read_only"
 

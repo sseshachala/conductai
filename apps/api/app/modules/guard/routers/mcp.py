@@ -217,12 +217,12 @@ _TOOLS = [
     },
     {
         "name": "guard_discover",
-        "description": "Show all AI agents discovered in this org and Guard coverage. Returns total, coverage %, and the full agent inventory — each entry has a `governed: true|false` flag so callers can filter to shadow (ungoverned) or governed as needed.",
+        "description": "Show this workspace's discovery findings: installations, possible integrations, freshness, configuration and recent hook evidence. Configuration is not proof of continuous protection or Gateway traffic.",
         "inputSchema": {"type": "object", "properties": {}, "required": []},
     },
     {
         "name": "guard_discover_register",
-        "description": "Bring a discovered shadow agent under Guard governance by agent ID.",
+        "description": "Get setup guidance for a discovered finding. Does not register protection or change governance state.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -783,16 +783,17 @@ async def mcp_endpoint(
                     ai_tool = ua_surface
             session_id = request.headers.get("x-session-id", str(uuid.uuid4()))
 
-            # Self-register: every tool call proves this agent is under Guard.
+            # Legacy MCP sightings do not establish hook or Gateway protection.
             try:
                 _now = datetime.now(timezone.utc)
-                db.execute(_sql("""
+                with db.begin_nested():
+                    db.execute(_sql("""
                     INSERT INTO discovered_agents
-                        (id, workspace_id, name, framework, source, location, under_guard, first_seen_at, last_seen_at)
+                        (id, workspace_id, name, framework, source, location, under_guard, proxy_routed, first_seen_at, last_seen_at)
                     VALUES
-                        (gen_random_uuid(), :ws, :name, :fw, 'mcp', 'remote-mcp', true, :now, :now)
+                        (gen_random_uuid(), :ws, :name, :fw, 'mcp', NULL, false, false, :now, :now)
                     ON CONFLICT (workspace_id, framework, source)
-                    DO UPDATE SET under_guard = true, last_seen_at = :now
+                    DO UPDATE SET under_guard = false, last_seen_at = :now
                 """), {"ws": ws_uuid, "name": ai_tool, "fw": ai_tool, "now": _now})
                 db.commit()
             except Exception:

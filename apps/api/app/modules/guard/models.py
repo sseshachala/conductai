@@ -676,14 +676,17 @@ class DiscoveredAgent(Base):
     risk_score    = Column(Integer, nullable=True)      # 0-100
     under_guard   = Column(Boolean, nullable=False, default=False)
     proxy_routed  = Column(Boolean, nullable=False, default=False)
+    device_id = Column(UUID(as_uuid=True), nullable=True)
+    installation_id = Column(String(64), nullable=True)
+    detection = Column(String(30), nullable=True)
+    hook_observed_at = Column(DateTime(timezone=True), nullable=True)
+    hook_event_id = Column(UUID(as_uuid=True), nullable=True)
     first_seen_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
     last_seen_at  = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
 
     __table_args__ = (
-        UniqueConstraint(
-            "workspace_id", "framework", "source",
-            name="uq_discovered_agents_workspace_framework_source",
-        ),
+        UniqueConstraint("workspace_id", "device_id", "installation_id", name="uq_discovered_agents_installation"),
+        UniqueConstraint("workspace_id", "framework", "source", name="uq_discovered_agents_workspace_framework_source"),
         Index("ix_discovered_agents_workspace", "workspace_id"),
         Index("ix_discovered_agents_scan", "scan_id"),
     )

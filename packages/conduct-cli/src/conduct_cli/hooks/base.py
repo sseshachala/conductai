@@ -465,8 +465,17 @@ def post_event(
     import json as _json_gcfg, pathlib as _pl_gcfg
     _gcfg_path = _pl_gcfg.Path.home() / ".conduct" / "config.json"
     _gcfg = _json_gcfg.loads(_gcfg_path.read_text()) if _gcfg_path.exists() else {}
+    discovery_identity = {}
+    try:
+        from conduct_cli.guard_commands.inventory import device_id, installation_id
+        installation = installation_id(detect_ai_tool())
+        if installation:
+            discovery_identity = {"discovery_device_id": device_id(), "discovery_installation_id": installation}
+    except (OSError, ValueError):
+        pass  # Discovery attribution must never interfere with policy enforcement.
     payload = json.dumps({
         "workspace_id":    workspace_id,
+        **discovery_identity,
         "clerk_user_id":   cfg.get("clerk_user_id"),
         "user_email":      cfg.get("user_email"),
         "ai_tool":         detect_ai_tool(),

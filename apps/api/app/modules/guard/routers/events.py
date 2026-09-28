@@ -17,7 +17,7 @@ log = structlog.get_logger(__name__)
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.core.auth import (
@@ -131,6 +131,8 @@ class HookEvent(BaseModel):
     blast_radius: dict | None = None
     os_info: str | None = None
     hostname: str | None = None
+    discovery_device_id: UUID | None = None
+    discovery_installation_id: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
     goal_id:   str | None = None
     goal_name: str | None = None
     # #1150 phase 1 — layered verdict envelope; hooks may forward the same shape
@@ -820,18 +822,13 @@ def ingest_event(
     db.add(event)
     db.flush()  # get event.id before commit
 
-    # Self-register: every hook event proves this agent is under Guard.
+    # A hook report is evidence for this installation, not universal protection.
     try:
-        _loc = body.hostname or "local"
-        _framework = body.ai_tool or "unknown"
-        db.execute(_sql("""
-            INSERT INTO discovered_agents
-                (id, workspace_id, name, framework, source, location, under_guard, first_seen_at, last_seen_at)
-            VALUES
-                (gen_random_uuid(), :ws, :name, :fw, 'hook', :loc, true, :now, :now)
-            ON CONFLICT (workspace_id, framework, source)
-            DO UPDATE SET under_guard = true, last_seen_at = :now
-        """), {"ws": ws_uuid, "name": _framework, "fw": _framework, "loc": _loc, "now": now})
+        from app.modules.guard.discovery_inventory import observe_hook
+        with db.begin_nested():
+            observe_hook(db, ws_uuid, body.discovery_device_id, body.discovery_installation_id,
+                         {"claude_code": "claude-code", "codex_cli": "codex", "codex-desktop": "codex"}.get(body.ai_tool, body.ai_tool),
+                         event.id, now)
     except Exception:
         pass  # never block a hook event over a telemetry write
 

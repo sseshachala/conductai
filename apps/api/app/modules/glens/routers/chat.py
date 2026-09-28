@@ -127,7 +127,7 @@ _LEGACY_TOOLS = [
     },
     {
         "name": "get_discovery_summary",
-        "description": "Get discovered AI agents: total count, how many are under Guard, coverage %, high-risk agents, breakdown by framework. Use for 'what agents are running', 'agent coverage', 'unguarded agents', 'risk score' questions.",
+        "description": "Get live discovery findings: installed tools, possible integrations, scan freshness, configured integrations, and recent hook evidence. These are distinct facts, not a protection percentage or risk score.",
         "input_schema": {"type": "object", "properties": {}},
     },
     {

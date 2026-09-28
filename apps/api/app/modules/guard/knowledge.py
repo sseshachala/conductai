@@ -140,26 +140,11 @@ def project_rule(rule: WorkspaceCustomRule, db: Session) -> None:
 
 
 def _project_discovered_agent(agent: DiscoveredAgent) -> tuple[str, dict]:
-    parts = [
-        f"Agent: {agent.name or agent.framework}",
-        f"Framework: {agent.framework or 'unknown'}",
-        f"Source: {agent.source or 'unknown'}",
-        f"Location: {agent.location or 'unknown'}",
-        f"Risk score: {agent.risk_score}",
-        f"Under Guard: {agent.under_guard}",
-        f"Proxy routed: {agent.proxy_routed}",
-    ]
-    canonical = " | ".join(parts)
-    metadata = {
-        "name": agent.name,
-        "framework": agent.framework,
-        "source": agent.source,
-        "location": agent.location,
-        "risk_score": agent.risk_score,
-        "under_guard": agent.under_guard,
-        "proxy_routed": agent.proxy_routed,
-    }
-    return canonical, metadata
+    from app.modules.guard.discovery_inventory import agent_view
+    view = agent_view(agent)
+    # Indexed facts must not turn into indefinitely cached protection claims.
+    metadata = {key: view[key] for key in ("id", "framework", "device_id", "detection")}
+    return f"Discovery finding: {agent.framework}. Query live discovery inventory for protection and freshness evidence.", metadata
 
 
 def project_discovered_agent(agent: DiscoveredAgent, db: Session) -> None:
