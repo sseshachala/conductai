@@ -6,7 +6,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ---
 
-## [Unreleased]
+## [0.14.16] - 2026-09-28
 
 ### Added
 - Copilot session hooks collect input/output token deltas from persisted shutdown counters and send a separate session usage event to Flight Recorder. Cache input is included once; cost remains unavailable.
