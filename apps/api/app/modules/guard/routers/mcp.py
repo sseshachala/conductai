@@ -285,11 +285,17 @@ def _list_agents(db, ws_uuid: uuid.UUID) -> list[dict]:
 
 
 def _list_projects(db, ws_uuid: uuid.UUID) -> list[dict]:
+    from sqlalchemy import select
+    from app.models.project import Project
+
     rows = db.execute(
-        _sql("SELECT id, name, description FROM projects WHERE workspace_id = :w ORDER BY name LIMIT 100"),
-        {"w": str(ws_uuid)},
-    ).fetchall()
-    return [{"id": str(r.id), "name": r.name, "description": r.description} for r in rows]
+        select(Project.id, Project.name)
+        .where(Project.workspace_id == ws_uuid)
+        .order_by(Project.name, Project.id)
+        .limit(100)
+    ).all()
+    # Projects have no description column; retain the existing response shape.
+    return [{"id": str(r.id), "name": r.name, "description": None} for r in rows]
 
 
 def _list_playbooks(db, ws_uuid: uuid.UUID) -> list[dict]:

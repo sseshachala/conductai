@@ -137,6 +137,32 @@ def test_invalid_existing_mcp_config_is_preserved(home):
     assert config.read_text() == "invalid user config"
 
 
+@pytest.mark.parametrize("entry", [
+    {"type": "http", "url": "https://api.example/mcp"},
+    {"type": "sse", "url": "https://api.example/mcp", "headers": {"X-Custom": "keep"}},
+    {"type": "streamable-http", "url": "https://api.example/mcp", "oauthClientId": "client", "oauthScopes": ["mcp"]},
+    {"type": "http", "url": "https://api.example/mcp", "oauthPublicClient": False, "headers": {"Authorization": "Bearer existing"}},
+])
+@pytest.mark.parametrize("location", ["global", "project"])
+def test_sync_preserves_native_oauth(home, entry, location):
+    root = guard._copilot_home()
+    root.mkdir()
+    config = root / "mcp-config.json" if location == "global" else home / ".mcp.json"
+    original = {"mcpServers": {"conduct-guard": entry, "other": {"command": "other"}}, "custom": True}
+    config.write_text(json.dumps(original))
+    for token in ("first-token", "rotated-token"):
+        guard._patch_copilot_mcp(token, "https://api.example")
+        assert json.loads(config.read_text()) == original
+
+
+@pytest.mark.parametrize("content", ["invalid", "[]", '{"mcpServers": []}'])
+def test_sync_preserves_invalid_project_mcp(home, content):
+    config = home / ".mcp.json"
+    config.write_text(content)
+    guard._patch_copilot_mcp("token", "https://api.example")
+    assert config.read_text() == content
+
+
 def test_native_adapter_entrypoint_without_network():
     result = subprocess.run(
         [sys.executable, "-m", "conduct_cli.hooks.copilot", "pre", "unused.py"],
