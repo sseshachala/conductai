@@ -7,6 +7,9 @@ Validates:
 """
 from __future__ import annotations
 
+from conduct_cli.guard_commands import gateway as _guard_gateway
+from conduct_cli.guard_commands import hooks as _guard_hooks
+
 import os
 import json
 import sys
@@ -27,8 +30,8 @@ def _redirect_home(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
     # The guard module captures Path.home() at import time into module-level
     # constants. Re-bind them so the redirect actually takes effect.
-    monkeypatch.setattr(guard, "CONDUCT_DIR", tmp_path / ".conduct")
-    monkeypatch.setattr(guard, "PROXY_ENV_FILE", tmp_path / ".conduct" / "env")
+    monkeypatch.setattr(_guard_gateway, "CONDUCT_DIR", tmp_path / ".conduct")
+    monkeypatch.setattr(_guard_gateway, "PROXY_ENV_FILE", tmp_path / ".conduct" / "env")
 
 
 @pytestmark_posix
@@ -237,7 +240,7 @@ def test_codex_launch_environment_skips_unsupported_or_missing_token(platform, t
 
 def test_codex_hook_install_collapses_duplicate_conduct_entries(tmp_path, monkeypatch):
     monkeypatch.setattr(guard.Path, "home", lambda: tmp_path)
-    monkeypatch.setattr(guard, "_best_python", lambda: "/usr/bin/python3")
+    monkeypatch.setattr(_guard_hooks, "_best_python", lambda: "/usr/bin/python3")
     codex = tmp_path / ".codex"
     codex.mkdir()
     hook_path = tmp_path / ".conduct" / "hook.py"
@@ -288,8 +291,8 @@ def _redirect_home_windows(tmp_path: Path, monkeypatch):
     """Redirect Path.home() and module-level paths for the Windows branch."""
     monkeypatch.setattr(sys, "platform", "win32")
     monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
-    monkeypatch.setattr(guard, "CONDUCT_DIR", tmp_path / ".conduct")
-    monkeypatch.setattr(guard, "PROXY_ENV_FILE", tmp_path / ".conduct" / "env")
+    monkeypatch.setattr(_guard_gateway, "CONDUCT_DIR", tmp_path / ".conduct")
+    monkeypatch.setattr(_guard_gateway, "PROXY_ENV_FILE", tmp_path / ".conduct" / "env")
 
 
 def test_windows_writes_ps1_env_file(tmp_path, monkeypatch):

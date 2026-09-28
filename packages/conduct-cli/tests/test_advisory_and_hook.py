@@ -42,6 +42,9 @@ Covers:
 """
 from __future__ import annotations
 
+from conduct_cli.guard_commands import policy as _guard_policy
+from conduct_cli.guard_commands import shared as _guard_shared
+
 import json
 import sys
 from io import StringIO
@@ -86,7 +89,7 @@ class TestGetAdvisoryMode:
     def test_default_false(self, tmp_path, monkeypatch):
         cfg = tmp_path / "config.json"
         _write(cfg, {"workspace_id": "ws1"})
-        monkeypatch.setattr(guard_mod, "CONFIG_PATH", cfg)
+        monkeypatch.setattr(_guard_shared, "CONFIG_PATH", cfg)
         import conduct_cli.hooks.pretooluse as pt
         monkeypatch.setattr(pt, "load_config", lambda: {"workspace_id": "ws1"})
         assert pt._get_advisory_mode() is False
@@ -355,35 +358,35 @@ class TestSyncMirrorsAdvisoryMode:
         pol_path = tmp_path / "policy.json"
         _write(cfg_path, {"workspace_id": "ws1"})
 
-        monkeypatch.setattr(guard_mod, "CONFIG_PATH", cfg_path)
-        monkeypatch.setattr(guard_mod, "POLICY_PATH", pol_path)
+        monkeypatch.setattr(_guard_shared, "CONFIG_PATH", cfg_path)
+        monkeypatch.setattr(_guard_shared, "POLICY_PATH", pol_path)
 
         policy = {"version": "v1", "rules": [], "fail_mode": "fail_open", "advisory_mode": True}
-        monkeypatch.setattr(guard_mod, "_load_guard_config", lambda: {"workspace_id": "ws1"})
+        monkeypatch.setattr(_guard_shared, "_load_guard_config", lambda: {"workspace_id": "ws1"})
 
         saved: list[dict] = []
-        monkeypatch.setattr(guard_mod, "_save_guard_config", lambda cfg: saved.append(dict(cfg)))
-        monkeypatch.setattr(guard_mod, "_save_policy", lambda p: None)
+        monkeypatch.setattr(_guard_shared, "_save_guard_config", lambda cfg: saved.append(dict(cfg)))
+        monkeypatch.setattr(_guard_policy, "_save_policy", lambda p: None)
 
         # Simulate the sync block
-        cfg = guard_mod._load_guard_config()
+        cfg = _guard_shared._load_guard_config()
         cfg["fail_mode"] = policy.get("fail_mode", "fail_open")
         cfg["advisory_mode"] = policy.get("advisory_mode", False)
-        guard_mod._save_guard_config(cfg)
+        _guard_shared._save_guard_config(cfg)
 
         assert saved[0]["advisory_mode"] is True
 
     def test_advisory_false_default(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(guard_mod, "_load_guard_config", lambda: {"workspace_id": "ws1"})
+        monkeypatch.setattr(_guard_shared, "_load_guard_config", lambda: {"workspace_id": "ws1"})
         saved: list[dict] = []
-        monkeypatch.setattr(guard_mod, "_save_guard_config", lambda cfg: saved.append(dict(cfg)))
-        monkeypatch.setattr(guard_mod, "_save_policy", lambda p: None)
+        monkeypatch.setattr(_guard_shared, "_save_guard_config", lambda cfg: saved.append(dict(cfg)))
+        monkeypatch.setattr(_guard_policy, "_save_policy", lambda p: None)
 
         policy = {"version": "v1", "rules": [], "fail_mode": "fail_open"}
-        cfg = guard_mod._load_guard_config()
+        cfg = _guard_shared._load_guard_config()
         cfg["fail_mode"] = policy.get("fail_mode", "fail_open")
         cfg["advisory_mode"] = policy.get("advisory_mode", False)
-        guard_mod._save_guard_config(cfg)
+        _guard_shared._save_guard_config(cfg)
 
         assert saved[0]["advisory_mode"] is False
 
@@ -451,11 +454,11 @@ class TestVerifyCommand:
         import conduct_cli.guard as _g
         from conduct_cli.guard import cmd_verify
 
-        monkeypatch.setattr(_g, "_require_guard_config", lambda: {
+        monkeypatch.setattr(_guard_shared, "_require_guard_config", lambda: {
             "workspace_id": "test-ws-id", "api_key": "k", "api_url": "https://api.test",
         })
-        monkeypatch.setattr(_g, "_api_url", lambda cfg: "https://api.test")
-        monkeypatch.setattr(_g, "_req", lambda *a, **kw: api_response or _MOCK_EVIDENCE_PASS)
+        monkeypatch.setattr(_guard_shared, "_api_url", lambda cfg: "https://api.test")
+        monkeypatch.setattr(_guard_shared, "_req", lambda *a, **kw: api_response or _MOCK_EVIDENCE_PASS)
 
         parser = argparse.ArgumentParser()
         parser.add_argument("--evidence",  default=None)

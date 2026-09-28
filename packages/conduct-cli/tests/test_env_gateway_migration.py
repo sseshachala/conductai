@@ -4,6 +4,8 @@ without touching user-customised URLs or tokens.
 """
 from __future__ import annotations
 
+from conduct_cli.guard_commands import gateway as _guard_gateway
+
 from pathlib import Path
 
 import pytest
@@ -16,9 +18,9 @@ def _isolate_conduct_dir(tmp_path, monkeypatch):
     from conduct_cli import guard
     conduct_dir = tmp_path / ".conduct"
     conduct_dir.mkdir()
-    monkeypatch.setattr(guard, "CONDUCT_DIR", conduct_dir)
-    monkeypatch.setattr(guard, "PROXY_ENV_FILE", conduct_dir / "env")
-    monkeypatch.setattr(guard, "PROXY_OVERRIDE", conduct_dir / "env-override")
+    monkeypatch.setattr(_guard_gateway, "CONDUCT_DIR", conduct_dir)
+    monkeypatch.setattr(_guard_gateway, "PROXY_ENV_FILE", conduct_dir / "env")
+    monkeypatch.setattr(_guard_gateway, "PROXY_OVERRIDE", conduct_dir / "env-override")
     yield conduct_dir
 
 

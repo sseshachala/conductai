@@ -5,6 +5,8 @@ for decide, output for list (populated + empty), and dispatcher routing.
 """
 from __future__ import annotations
 
+from conduct_cli.guard_commands import shared as _guard_shared
+
 import argparse
 import sys
 from pathlib import Path
@@ -27,8 +29,8 @@ _FAKE_CFG = {
 @pytest.fixture(autouse=True)
 def patch_config(monkeypatch):
     import conduct_cli.guard as g
-    monkeypatch.setattr(g, "_require_guard_config", lambda: _FAKE_CFG)
-    monkeypatch.setattr(g, "_api_url", lambda cfg: cfg["api_url"])
+    monkeypatch.setattr(_guard_shared, "_require_guard_config", lambda: _FAKE_CFG)
+    monkeypatch.setattr(_guard_shared, "_api_url", lambda cfg: cfg["api_url"])
 
 
 def _parse(*argv):
@@ -58,7 +60,7 @@ def test_list_renders_rows(capsys):
         {"id":"req-2","requester_email":"b@x.io","rule_id":"r.two","rule_message":"m2","status":"approved"},
     ]}
     args, guard_p = _parse("guard", "approvals", "list")
-    with patch.object(g, "_req", return_value=resp) as mock:
+    with patch.object(_guard_shared, "_req", return_value=resp) as mock:
         g.dispatch_guard(args, guard_p)
     call_url = mock.call_args.args[1]
     assert "/guard/approvals" in call_url and "status=pending" in call_url and "workspace_id=ws-abc-123" in call_url
@@ -70,7 +72,7 @@ def test_list_renders_rows(capsys):
 def test_list_empty_state(capsys):
     import conduct_cli.guard as g
     args, guard_p = _parse("guard", "approvals", "list", "--status", "all")
-    with patch.object(g, "_req", return_value={"items": []}):
+    with patch.object(_guard_shared, "_req", return_value={"items": []}):
         g.dispatch_guard(args, guard_p)
     out = capsys.readouterr().out
     assert "No approvals" in out
@@ -83,7 +85,7 @@ def test_approve_sends_correct_body_and_url(capsys):
         "run_resumed": True,
     }
     args, guard_p = _parse("guard", "approvals", "approve", "req-9", "--reason", "looks ok")
-    with patch.object(g, "_req", return_value=decision_resp) as mock:
+    with patch.object(_guard_shared, "_req", return_value=decision_resp) as mock:
         g.dispatch_guard(args, guard_p)
     method, url = mock.call_args.args[0], mock.call_args.args[1]
     body = mock.call_args.kwargs["body"]
@@ -101,7 +103,7 @@ def test_reject_without_reason_omits_field(capsys):
         "run_resumed": False,
     }
     args, guard_p = _parse("guard", "approvals", "reject", "req-9")
-    with patch.object(g, "_req", return_value=decision_resp) as mock:
+    with patch.object(_guard_shared, "_req", return_value=decision_resp) as mock:
         g.dispatch_guard(args, guard_p)
     body = mock.call_args.kwargs["body"]
     assert body == {"decision": "rejected"}  # no reason key when None

@@ -1,5 +1,8 @@
 """Tests for local health details reported by ``conduct guard status``."""
 
+from conduct_cli.guard_commands import policy as _guard_policy
+from conduct_cli.guard_commands import shared as _guard_shared
+
 import json
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -16,9 +19,9 @@ def test_status_reports_recent_hook_heartbeat(tmp_path, capsys, monkeypatch):
 
     monkeypatch.setattr(guard.Path, "home", staticmethod(lambda: tmp_path))
     monkeypatch.setattr(guard.time, "time", lambda: 1_007.9)
-    monkeypatch.setattr(guard, "_load_policy", lambda: {"rules": []})
+    monkeypatch.setattr(_guard_policy, "_load_policy", lambda: {"rules": []})
     monkeypatch.setattr(
-        guard,
+        _guard_shared,
         "_require_guard_config",
         lambda: {
             "workspace_id": "workspace-test",
@@ -29,7 +32,7 @@ def test_status_reports_recent_hook_heartbeat(tmp_path, capsys, monkeypatch):
         },
     )
 
-    with patch.object(guard, "_req", side_effect=[{}, []]), patch(
+    with patch.object(_guard_shared, "_req", side_effect=[{}, []]), patch(
         "conduct_cli.hooks.base.drain_daemon_status", return_value=("running", 123)
     ):
         guard.cmd_guard_status(None)
@@ -46,7 +49,7 @@ def test_replay_events_requeues_and_starts_drain(tmp_path, capsys, monkeypatch):
     dead.mkdir()
     (dead / "event.json").write_text("{}")
     monkeypatch.setattr(base, "JOURNAL_DEAD_DIR", dead)
-    monkeypatch.setattr(guard, "_require_guard_config", lambda: {"agent_token": "cond_agt_test"})
+    monkeypatch.setattr(_guard_shared, "_require_guard_config", lambda: {"agent_token": "cond_agt_test"})
 
     with patch.object(base, "requeue_dead_letters", return_value=1) as requeue, patch.object(
         base, "ensure_drain_daemon"

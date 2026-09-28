@@ -13,6 +13,8 @@ Covers:
 """
 from __future__ import annotations
 
+from conduct_cli.guard_commands import shared as _guard_shared
+
 import json
 import sys
 from pathlib import Path
@@ -64,7 +66,7 @@ def policy_path(tmp_path, monkeypatch):
     """Returns a factory; call it with rules to write policy and patch the path."""
     def _make(rules):
         p = _write_policy(tmp_path, rules)
-        monkeypatch.setattr(guard_mod, "POLICY_PATH", p)
+        monkeypatch.setattr(_guard_shared, "POLICY_PATH", p)
         return p
     return _make
 
@@ -73,7 +75,7 @@ def policy_path(tmp_path, monkeypatch):
 def no_policy(tmp_path, monkeypatch):
     """Point POLICY_PATH at a non-existent file."""
     p = tmp_path / "missing.json"
-    monkeypatch.setattr(guard_mod, "POLICY_PATH", p)
+    monkeypatch.setattr(_guard_shared, "POLICY_PATH", p)
 
 
 # ── no policy file ────────────────────────────────────────────────────────────
@@ -87,7 +89,7 @@ class TestNoPolicyFile:
     def test_allow_when_file_corrupt(self, tmp_path, monkeypatch):
         p = tmp_path / "policy.json"
         p.write_text("not json {{{{")
-        monkeypatch.setattr(guard_mod, "POLICY_PATH", p)
+        monkeypatch.setattr(_guard_shared, "POLICY_PATH", p)
         _, action, _, _ = _check_policy("bash", {"command": "ls"})
         assert action == "allow"
 
@@ -324,7 +326,7 @@ def builtin_rules():
 def builtin_policy_path(tmp_path, monkeypatch, builtin_rules):
     p = tmp_path / "policy.json"
     p.write_text(json.dumps({"version": "builtin", "rules": builtin_rules}))
-    monkeypatch.setattr(guard_mod, "POLICY_PATH", p)
+    monkeypatch.setattr(_guard_shared, "POLICY_PATH", p)
 
 
 class TestBuiltinPolicies:
