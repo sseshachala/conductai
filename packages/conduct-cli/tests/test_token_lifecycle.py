@@ -12,6 +12,11 @@ import pytest
 from conduct_cli.main import _exchange_clerk_token, _refresh_agent_token
 
 
+@pytest.fixture(autouse=True)
+def isolated_credential_lock(tmp_path, monkeypatch):
+    monkeypatch.setattr("conduct_cli.main.CONFIG_PATH", tmp_path / "config.json")
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

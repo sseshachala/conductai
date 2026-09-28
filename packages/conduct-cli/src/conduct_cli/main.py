@@ -2639,9 +2639,30 @@ def cmd_run(args):
 
 # ── conduct sync / test-guard ────────────────────────────────
 
-def _refresh_agent_token() -> bool:
+def _refresh_agent_token(expected_config: dict | None = None) -> bool:
+    """Rotate once across concurrent callers, without crossing login contexts."""
+    from conduct_cli.credential_lock import credential_lock
+    snapshot = dict(expected_config if expected_config is not None else _load_config())
+    if not snapshot.get("refresh_token"):
+        return False
+    try:
+        with credential_lock(CONFIG_PATH):
+            current = _load_config()
+            for key in ("api_url", "workspace_id", "clerk_user_id"):
+                if current.get(key) != snapshot.get(key):
+                    return False
+            if current.get("agent_token") != snapshot.get("agent_token"):
+                return bool(current.get("agent_token"))
+            if current.get("refresh_token") != snapshot.get("refresh_token"):
+                return False
+            return _rotate_agent_token(current)
+    except Exception:
+        return False
+
+
+def _rotate_agent_token(cfg: dict) -> bool:
     """Silently rotate agent_token using refresh_token. Returns True if refreshed."""
-    cfg = _load_config()
+    cfg = dict(cfg)
     refresh_token = cfg.get("refresh_token", "")
     if not refresh_token:
         return False
@@ -2656,12 +2677,22 @@ def _refresh_agent_token() -> bool:
         )
         with urllib.request.urlopen(req, timeout=10) as resp:
             data = _json.loads(resp.read())
+        if not all(isinstance(data.get(k), str) and data[k] for k in ("agent_token", "refresh_token", "workspace_id")):
+            return False
+        if cfg.get("workspace_id") and data["workspace_id"] != cfg["workspace_id"]:
+            return False
+        current = _load_config()
+        if any(current.get(k) != cfg.get(k) for k in ("api_url", "workspace_id", "clerk_user_id", "agent_token", "refresh_token")):
+            return False
+        expires_in = int(data.get("expires_in", 28800))
+        if expires_in <= 0:
+            return False
         import datetime as _dt
         cfg["agent_token"]      = data["agent_token"]
         cfg["refresh_token"]    = data["refresh_token"]
         cfg["workspace"]        = data["workspace_id"]
         cfg["workspace_id"]     = data["workspace_id"]
-        cfg["token_expires_at"] = (_dt.datetime.now(_dt.timezone.utc) + _dt.timedelta(hours=8)).isoformat()
+        cfg["token_expires_at"] = (_dt.datetime.now(_dt.timezone.utc) + _dt.timedelta(seconds=expires_in)).isoformat()
         _atomic_write(CONFIG_PATH, cfg)
         return True
     except Exception:

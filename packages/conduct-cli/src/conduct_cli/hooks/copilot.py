@@ -25,6 +25,10 @@ def normalize(data: dict) -> dict:
 
 
 def run(mode: str, hook_path: Path, data: dict) -> dict:
+    if mode in ("session-start", "session-end"):
+        from .copilot_usage import handle
+        handle(mode, data, hook_path)
+        return {}
     normalized = normalize(data)
     if mode == "pre":
         # Finish before Copilot's fail-open 30s timeout, even if Guard is offline.
@@ -53,7 +57,12 @@ def run(mode: str, hook_path: Path, data: dict) -> dict:
         session_id=normalized["session_id"], drain_via=hook_path,
         execution_status="error" if mode == "failure" else "success",
     )
-    # Copilot tool hooks do not report model token usage. Leave it unavailable.
+    # Recover a completed shutdown snapshot on the next action after resume.
+    try:
+        from .copilot_usage import handle
+        handle("post", data, hook_path)
+    except (OSError, ValueError, KeyError, TypeError, TimeoutError):
+        pass
     return {}
 
 

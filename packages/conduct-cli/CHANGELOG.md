@@ -8,6 +8,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
 
+### Added
+- Copilot session hooks collect input/output token deltas from persisted shutdown counters and send a separate session usage event to Flight Recorder. Cache input is included once; cost remains unavailable.
+- Resumes and upload retries do not duplicate counters. Existing historical sessions are not backfilled; missing or reset counters remain unavailable.
+- Requires the API session-usage endpoint deployment, then `conduct guard sync` and a Copilot restart. Usage appears after session shutdown (or the next resume), not on each tool call. Abrupt exits without a shutdown record cannot report usage.
+
+### Fixed
+- Refresh expired CLI credentials on hook upload HTTP 401 and retry once for
+  both policy events and usage events, including Claude Code and Codex hooks.
+- Serialize CLI/hook refresh rotation and preserve events when authentication
+  cannot recover. Back off for 60 seconds, bypassing the cooldown after a new
+  credential is saved. Existing dead letters still require explicit replay.
+
 ## [0.14.15] - 2026-09-27
 
 ### Changed

@@ -6,11 +6,13 @@ bare `pip install conduct-cli` with no shell rc sourced.
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import subprocess
 import sys
 import time
 import urllib.request
+import urllib.error
 
 import psutil as _psutil
 from dataclasses import dataclass, field
@@ -168,18 +170,18 @@ def detect_ai_tool() -> str:
 
 # ── Journal / drain (fire-and-forget event posting) ───────────────────────────
 
-_JOURNAL_ENDPOINTS = {"/guard/events", "/guard/events/usage"}
+_JOURNAL_ENDPOINTS = {"/guard/events", "/guard/events/usage", "/guard/events/session-usage"}
 
 
 def journal_append(
     payload_str: str,
     api_url: str,
     endpoint: str = "/guard/events",
-) -> None:
+) -> bool:
     """Atomically write one event to the journal for the drain daemon to pick up."""
     try:
         if endpoint not in _JOURNAL_ENDPOINTS:
-            return
+            return False
         JOURNAL_DIR.mkdir(parents=True, exist_ok=True)
         JOURNAL_DIR.chmod(0o700)
         import random
@@ -194,8 +196,9 @@ def journal_append(
         tmp.write_text(entry)
         tmp.chmod(0o600)
         tmp.rename(JOURNAL_DIR / name)
+        return True
     except Exception:
-        pass
+        return False
 
 
 _DAEMON_STALE_SECS = 600       # PID file not touched in 10 min → daemon is stale
@@ -306,6 +309,13 @@ def run_drain_daemon() -> None:
             try:
                 entry = json.loads(f.read_text())
                 cfg = load_config()
+                credential_fingerprint = hashlib.sha256(cfg.get("agent_token", "").encode()).hexdigest()
+                try:
+                    pause = json.loads((JOURNAL_DIR / "auth-retry").read_text())
+                except (OSError, ValueError):
+                    pause = {}
+                if pause.get("credential") == credential_fingerprint and pause.get("retry_after", 0) > time.time():
+                    continue
                 api_url = cfg.get("api_url", "https://api.conductai.ai").rstrip("/")
                 if entry.get("api_url", "").rstrip("/") != api_url:
                     raise ValueError("journal API URL does not match active configuration")
@@ -335,12 +345,45 @@ def run_drain_daemon() -> None:
                     },
                     method="POST",
                 )
-                urllib.request.urlopen(req, timeout=8)
+                try:
+                    response = urllib.request.urlopen(req, timeout=8)
+                except urllib.error.HTTPError as auth_error:
+                    if auth_error.code != 401:
+                        raise
+                    auth_error.close()
+                    from conduct_cli.main import _refresh_agent_token
+                    if not _refresh_agent_token(expected_config=cfg):
+                        raise
+                    refreshed = load_config()
+                    if any(refreshed.get(k) != cfg.get(k) for k in ("api_url", "workspace_id", "clerk_user_id")):
+                        raise
+                    req.add_header("Authorization", f"Bearer {refreshed.get('agent_token', '')}")
+                    response = urllib.request.urlopen(req, timeout=8)
+                if hasattr(response, "close"):
+                    response.close()
                 f.unlink(missing_ok=True)
                 posted_any = True
             except Exception as exc:
                 attempts = int(entry.get("attempts", 0)) + 1
                 status = getattr(exc, "code", None)
+                if status == 401:
+                    # Authentication is recoverable. Retain without consuming the
+                    # transport retry budget or rotating once per queued event.
+                    entry["last_error"] = "HTTP 401"
+                    try:
+                        latest = load_config()
+                        fingerprint = hashlib.sha256(latest.get("agent_token", "").encode()).hexdigest()
+                        pause_path = JOURNAL_DIR / "auth-retry"
+                        pause_path.write_text(json.dumps({"credential": fingerprint, "retry_after": time.time() + 60}))
+                        pause_path.chmod(0o600)
+                        tmp = f.with_suffix(".tmp")
+                        tmp.write_text(json.dumps(entry))
+                        tmp.chmod(0o600)
+                        tmp.replace(f)
+                        JOURNAL_PID_PATH.unlink(missing_ok=True)
+                    except Exception:
+                        pass
+                    return
                 permanent = isinstance(status, int) and 400 <= status < 500 and status not in (408, 429)
                 try:
                     if permanent or attempts >= 5:
