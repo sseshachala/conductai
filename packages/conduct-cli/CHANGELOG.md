@@ -6,6 +6,26 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ---
 
+## [0.14.17] - 2026-09-28
+
+### Added
+- Collect deduplicated session input/output usage for Codex and Claude Code from
+  local usage records, separately from individual tool execution events.
+- Install session lifecycle usage hooks through `conduct guard sync`.
+
+### Fixed
+- Handle Copilot usage counter resets and large logs, and establish a baseline
+  when hooks begin during an existing session.
+- Isolate usage cursors across workspace changes and retries without importing
+  historical usage or double-counting cached and reasoning tokens.
+- Preserve native Copilot MCP OAuth configuration during Guard sync.
+
+### Notes
+- Requires the multi-client session-usage API deployed with #2287. After upgrading,
+  run `conduct guard sync` and restart Codex, Claude Code, and Copilot CLI.
+- Copilot usage requires a persisted shutdown record. Missing usage stays
+  unavailable; hook usage does not create Gateway spend receipts.
+
 ## [0.14.16] - 2026-09-28
 
 ### Added
