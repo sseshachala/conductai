@@ -1,6 +1,7 @@
 "use client"
 
 import { DecisionBadge } from "@/components/guard/DecisionBadge"
+import { discoveryLabel, discoveryTime } from "@/lib/discovery"
 import { ActivityHeader, ActivityRow, type AuditEvent } from "@/components/guard/ActivityRow"
 import { ByAiToolTable, type ByAiToolRow } from "@/components/guard/ByAiToolTable"
 import { fmtCost, fmtNumber, relativeTime } from "@/lib/glens/formatters"
@@ -162,83 +163,29 @@ function SpendEmbed({ data }: { data: Record<string, unknown> }) {
 
 // ─── DiscoveryEmbed ────────────────────────────────────────────────────────────
 
-interface AgentRow {
-  name: string
-  framework: string
-  source: string
-  location: string
-  risk_score: number
-  under_guard: boolean
-  proxy_routed: boolean
-  last_seen_at: string
-}
-
-interface DiscoveryData {
-  agents: AgentRow[]
-  total: number
-  under_guard: number
-  coverage_pct: number
-}
-
-function RiskBadge({ score }: { score: number }) {
-  if (score >= 70) return <span className="sbadge err">High</span>
-  if (score >= 40) return <span className="sbadge warn">Medium</span>
-  return <span className="sbadge ok">Low</span>
-}
-
-function DotLabel({ on, yesText = "Yes", noText = "No" }: { on: boolean; yesText?: string; noText?: string }) {
-  return (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12 }}>
-      <span style={{
-        width: 7, height: 7, borderRadius: "50%",
-        background: on ? "var(--ok, #16a34a)" : "var(--err, #dc2626)",
-        flexShrink: 0,
-      }} />
-      {on ? yesText : noText}
-    </span>
-  )
-}
-
 function DiscoveryEmbed({ data }: { data: Record<string, unknown> }) {
-  const d = data as unknown as DiscoveryData
-  const agents: AgentRow[] = d.agents ?? []
-
-  return (
-    <div>
-      <StatRow>
-        <StatCard label="Total Agents" value={d.total ?? agents.length} />
-        <StatCard label="Under Guard" value={d.under_guard ?? 0} />
-        <StatCard label="Coverage" value={`${d.coverage_pct ?? 0}%`} />
-      </StatRow>
-
-      {agents.length > 0 && (
-        <EmbedTable>
-          <thead>
-            <tr>
-              <th style={TH_STYLE}>Name</th>
-              <th style={TH_STYLE}>Framework</th>
-              <th style={TH_STYLE}>Source</th>
-              <th style={TH_STYLE}>Risk</th>
-              <th style={TH_STYLE}>Under Guard</th>
-              <th style={TH_STYLE}>Last Seen</th>
-            </tr>
-          </thead>
-          <tbody>
-            {agents.map((a, i) => (
-              <tr key={a.name ?? i}>
-                <td style={TD_STYLE} className="mono">{a.name ?? "—"}</td>
-                <td style={TD_STYLE}>{FRAMEWORK_LABELS[a.framework] ?? a.framework ?? "—"}</td>
-                <td style={{ ...TD_STYLE, fontSize: 12, color: "var(--text-muted)" }}>{a.source ?? "—"}</td>
-                <td style={TD_STYLE}><RiskBadge score={a.risk_score ?? 0} /></td>
-                <td style={TD_STYLE}><DotLabel on={!!a.under_guard} /></td>
-                <td style={{ ...TD_STYLE, fontSize: 12, color: "var(--text-muted)" }}>{a.last_seen_at ? relativeTime(a.last_seen_at) : "—"}</td>
-              </tr>
-            ))}
-          </tbody>
-        </EmbedTable>
-      )}
+  const d = data as unknown as Partial<import("@/lib/discovery").DiscoverySummary> & { agents?: import("@/lib/discovery").DiscoveryAgent[] }
+  const agents = d.agents ?? []
+  return <div>
+    <StatRow>
+      <StatCard label="Tool installations" value={d.confirmed ?? "Unverified"} />
+      <StatCard label="Possible integrations" value={d.possible_integrations ?? "Unverified"} />
+      <StatCard label="Recent hook activity" value={d.recent_hook_evidence ?? "Unverified"} />
+    </StatRow>
+    <div style={{ overflowX: "auto" }}>
+      <table style={{ width: "100%", minWidth: 640, borderCollapse: "collapse" }}>
+        <thead><tr>{["Tool", "Device", "Detection", "Hooks", "Gateway", "Last scan / detection"].map(h => <th key={h} style={TH_STYLE}>{h}</th>)}</tr></thead>
+        <tbody>{agents.map((a, i) => <tr key={a.id ?? i}>
+          <td style={TD_STYLE}>{discoveryLabel(a.framework)}</td>
+          <td style={TD_STYLE}>{a.device_id?.slice(0, 8) ?? "Legacy device"}</td>
+          <td style={TD_STYLE}>{discoveryLabel(a.detection)}</td>
+          <td style={TD_STYLE}>{discoveryLabel(a.hooks_status)}</td>
+          <td style={TD_STYLE}>{discoveryLabel(a.gateway_status)}</td>
+          <td style={TD_STYLE}>{discoveryTime(a.last_seen_at)}</td>
+        </tr>)}</tbody>
+      </table>
     </div>
-  )
+  </div>
 }
 
 // ─── ComplianceEmbed ───────────────────────────────────────────────────────────

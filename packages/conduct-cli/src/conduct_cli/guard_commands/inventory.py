@@ -1,0 +1,178 @@
+"""Privacy-preserving local facts, shared by discovery and watch."""
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import shutil
+import tempfile
+import uuid
+from pathlib import Path
+from urllib.parse import urlparse
+
+TOOLS = ("claude-code", "codex", "cursor", "windsurf", "copilot-cli")
+DEPENDENCIES = {"langchain": "langchain", "crewai": "crewai", "autogen-agentchat": "autogen",
+                "openai-agents": "openai-agents", "llama-index": "llama-index",
+                "@langchain/core": "langchain", "@openai/agents": "openai-agents"}
+
+
+def device_id():
+    directory = Path.home() / ".conduct"
+    directory.mkdir(parents=True, exist_ok=True)
+    destination = directory / "discovery-device-id"
+    if not destination.exists():
+        # Publish a complete ID atomically so parallel hooks never read an empty file.
+        with tempfile.NamedTemporaryFile(mode="w", dir=directory, delete=False) as handle:
+            temporary = Path(handle.name)
+            handle.write(str(uuid.uuid4()))
+        try:
+            try:
+                os.link(temporary, destination)
+            except FileExistsError:
+                pass
+        finally:
+            temporary.unlink()
+    return str(uuid.UUID(destination.read_text().strip()))
+
+
+def canonical_tool(tool):
+    return {"claude_code": "claude-code", "codex_cli": "codex",
+            "codex-desktop": "codex"}.get(tool, tool)
+
+
+def tool_root(tool):
+    home = Path.home()
+    return {"claude-code": home / ".claude", "codex": Path(os.getenv("CODEX_HOME", str(home / ".codex"))),
+            "cursor": home / ".cursor", "windsurf": home / ".codeium" / "windsurf",
+            "copilot-cli": Path(os.getenv("COPILOT_HOME", str(home / ".copilot"))).expanduser()}.get(tool)
+
+
+def installation_id(tool, root=None):
+    root = root or tool_root(canonical_tool(tool))
+    if root is None:
+        return None
+    return hashlib.sha256((canonical_tool(tool) + ":" + str(root.resolve())).encode()).hexdigest()
+
+
+def _document(path):
+    if not path.exists():
+        return {}
+    if path.stat().st_size > 1_000_000:
+        raise ValueError("Oversized configuration")
+    if path.suffix == ".toml":
+        try:
+            import tomllib
+        except ImportError:
+            import tomli as tomllib
+        result = tomllib.loads(path.read_text())
+    else:
+        result = json.loads(path.read_text())
+    if not isinstance(result, dict):
+        raise ValueError("Expected an object")
+    return result
+
+
+def _managed_hook(entries):
+    if not isinstance(entries, list):
+        return False
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        command = entry.get("command", "")
+        if isinstance(command, str) and any(marker in command for marker in
+                ("conduct_cli.hooks.", "conductguard-", "/.conduct/hook.py", "\\.conduct\\hook.py")):
+            return True
+        args = entry.get("args", [])
+        if isinstance(args, list) and "conduct_cli.hooks.copilot" in args:
+            return True
+        if _managed_hook(entry.get("hooks", [])):
+            return True
+    return False
+
+
+def _gateway(value):
+    if not isinstance(value, str):
+        return False
+    url = urlparse(value)
+    return url.scheme == "https" and url.hostname == "gateway.conductai.ai" and url.path.startswith("/gateway/v1/")
+
+
+def collect(config_only=False):
+    records, errors = {}, set()
+
+    def record(tool, root=None, detection="installed"):
+        key = installation_id(tool, root)
+        item = records.setdefault(key, {
+            "installation_id": key, "framework": tool, "name": tool, "source": "inventory",
+            "detection": detection, "evidence": {"signals": []},
+        })
+        if detection == "running":
+            item["detection"] = "running"
+        return item
+
+    for tool in TOOLS:
+        root = tool_root(tool)
+        executable = {"claude-code": "claude", "copilot-cli": "copilot"}.get(tool, tool)
+        if not root.exists() and not shutil.which(executable):
+            continue
+        evidence = record(tool)["evidence"]
+        evidence["signals"] = ["tool_installation"]
+        try:
+            if tool == "codex":
+                data = _document(root / "config.toml")
+                servers = data.get("mcp_servers", {})
+                provider = data.get("model_providers", {}).get(data.get("model_provider"), {})
+                evidence["gateway_configured"] = _gateway(provider.get("base_url"))
+                hooks = _document(root / "hooks.json").get("hooks", {})
+                evidence["hooks_configured"] = _managed_hook(hooks.get("PreToolUse", []))
+            elif tool == "copilot-cli":
+                servers = _document(root / "mcp-config.json").get("mcpServers", {})
+                hooks = _document(root / "hooks" / "conduct-guard.json").get("hooks", {})
+                evidence["hooks_configured"] = _managed_hook(hooks.get("preToolUse", []))
+            else:
+                filename = {"claude-code": "settings.json", "cursor": "mcp.json", "windsurf": "mcp_config.json"}[tool]
+                data = _document(root / filename)
+                servers = data.get("mcpServers", {})
+                hooks = data.get("hooks", {}) if tool == "claude-code" else _document(root / "hooks.json").get("hooks", {})
+                evidence["hooks_configured"] = _managed_hook(hooks.get("PreToolUse", []))
+                if tool == "claude-code":
+                    evidence["gateway_configured"] = _gateway(data.get("env", {}).get("ANTHROPIC_BASE_URL"))
+            evidence["mcp_configured"] = any(key in {"conduct", "conduct-guard"} for key in servers)
+        except (OSError, ValueError, TypeError, AttributeError):
+            evidence.clear()
+            evidence.update(signals=["tool_installation"], config_unreadable=True)
+            errors.add("config_unreadable")
+
+    # Only dependency names from the current project's structured manifests.
+    for filename in ("package.json", "pyproject.toml"):
+        try:
+            data = _document(Path.cwd() / filename)
+            if filename == "package.json":
+                dependencies = set(data.get("dependencies", {})) | set(data.get("devDependencies", {}))
+            else:
+                from packaging.requirements import Requirement
+                dependencies = {Requirement(value).name.lower() for value in data.get("project", {}).get("dependencies", [])}
+            for dependency in sorted(dependencies & DEPENDENCIES.keys()):
+                item = record(DEPENDENCIES[dependency], Path.cwd(), "possible_integration")
+                item["evidence"]["signals"] = ["dependency_manifest"]
+        except (OSError, ValueError, TypeError, AttributeError):
+            errors.add("manifest_unreadable")
+
+    if not config_only:
+        try:
+            import psutil
+            names = {"claude": "claude-code", "codex": "codex", "cursor": "cursor",
+                     "windsurf": "windsurf", "copilot": "copilot-cli"}
+            for process in psutil.process_iter(["name", "exe"]):
+                try:
+                    name = Path(process.info.get("exe") or process.info.get("name") or "").name.lower().removesuffix(".exe")
+                    if name in names:
+                        record(names[name], detection="running")["evidence"]["signals"].append("running_executable")
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    errors.add("process_unreadable")
+        except (OSError, ImportError):
+            errors.add("process_scan_unavailable")
+    for item in records.values():
+        item["evidence"]["signals"] = sorted(set(item["evidence"]["signals"]))
+    return {"schema_version": 2, "device_id": device_id(), "agents": list(records.values()),
+            "status": "partial" if errors else "complete", "errors": sorted(errors), "config_only": config_only}

@@ -70,6 +70,11 @@ jobs:
           CREDENTIAL_TEST_DATABASE_URL: postgresql://marshal:marshal@localhost:5432/marshal_test
         run: python -m pytest tests/test_credential_sessions_postgres.py -q
         working-directory: apps/api
+      - name: Discovery evidence migration and isolation (PostgreSQL)
+        env:
+          DISCOVERY_TEST_DATABASE_URL: postgresql://marshal:marshal@localhost:5432/marshal_test
+        run: python -m pytest tests/test_discovery_evidence_postgres.py -q
+        working-directory: apps/api
       - name: Guard Inbox trigger + backfill (PostgreSQL)
         # DSN is assembled at runtime from the service credentials the
         # job already exposes at the top of this file. Guard's inline

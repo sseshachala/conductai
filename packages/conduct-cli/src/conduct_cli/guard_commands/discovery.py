@@ -200,211 +200,34 @@ def _report_tools_to_server() -> None:
 
 
 def _discover_config_agents() -> list[tuple]:
-    """Detect installed AI tools from config dirs + .env files. No cross-module import.
-    Returns list of (name, config_path, under_guard) tuples.
-    """
-    home = Path.home()
-    results = []
-
-    def _mcp_registered(path: Path) -> bool:
-        try:
-            if not path.exists():
-                return False
-            text = path.read_text()
-            if path.suffix == ".toml":
-                # conduct-mcp or conductai in mcp_servers section
-                return "conduct" in text and "mcp_servers" in text
-            import json as _j
-            d = _j.loads(text)
-            return any("conduct" in k for k in d.get("mcpServers", {}))
-        except Exception:
-            return False
-
-    def _hook_registered(path: Path) -> bool:
-        try:
-            if not path.exists():
-                # Codex: check hooks.json sibling
-                hooks_path = path.parent / "hooks.json"
-                if hooks_path.exists():
-                    _content = hooks_path.read_text()
-                    return "conductguard" in _content or "conduct" in _content
-                return False
-            import json as _j
-            d = _j.loads(path.read_text())
-            hooks = d.get("hooks", {})
-            return any("conductguard" in str(h).lower() or "conduct" in str(h).lower()
-                       for h in hooks.get("PreToolUse", []))
-        except Exception:
-            return False
-
-    # Known tool config locations
-    TOOLS = [
-        ("claude-code", home / ".claude",  home / ".claude"  / "settings.json", "mcp"),
-        ("codex",       home / ".codex",   home / ".codex"   / "config.toml",    "mcp"),
-        ("cursor",      home / ".cursor",  home / ".cursor"  / "mcp.json",       "mcp"),
-        ("windsurf",    home / ".codeium" / "windsurf", home / ".codeium" / "windsurf" / "mcp_config.json", "mcp"),
-        ("copilot",     home / ".copilot", home / ".copilot" / "mcp-config.json", "mcp"),
-    ]
-    for name, check_dir, config_path, _ in TOOLS:
-        if check_dir.exists():
-            under = _mcp_registered(config_path) or _hook_registered(config_path)
-            results.append((name, config_path, under))
-
-    # .env file scan for LLM API keys — shadow agents not using known tools
-    LLM_KEYS = ["OPENAI_API_KEY", "ANTHROPIC_API_KEY", "COHERE_API_KEY", "GROQ_API_KEY", "MISTRAL_API_KEY"]
-    search_paths = [home, home / "projects", home / "code", home / "dev", Path.cwd()]
-    seen_envs: set[str] = set()
-    for base in search_paths:
-        if not base.exists():
-            continue
-        try:
-            candidates = list(base.glob(".env"))
-            # ponytail: shallow glob only — deep ** hits system dirs (WhatsApp containers etc.)
-            for sub in base.iterdir() if base.exists() else []:
-                try:
-                    if sub.is_dir() and not sub.name.startswith("."):
-                        env = sub / ".env"
-                        if env.exists():
-                            candidates.append(env)
-                except OSError:
-                    pass
-        except OSError:
-            continue
-        for env_file in candidates:
-            if str(env_file) in seen_envs or ".git" in str(env_file):
-                continue
-            seen_envs.add(str(env_file))
-            try:
-                content = env_file.read_text(errors="ignore")
-                found_keys = [k for k in LLM_KEYS if k in content]
-                if found_keys:
-                    results.append(("env-agent", env_file, False))  # .env with LLM key = unregistered
-            except OSError:
-                pass
-
-    return results
+    """Compatibility wrapper: configuration findings are not protection evidence."""
+    from .inventory import collect, tool_root
+    return [(a["framework"], tool_root(a["framework"]), False)
+            for a in collect(config_only=True)["agents"] if a["detection"] == "installed"]
 
 
 def _scan_processes() -> list[dict]:
-    """Detect AI agent processes using psutil. Returns list of discovered agent dicts."""
-    try:
-        import psutil
-    except ImportError:
-        return []
-
-    # Known framework signatures: (framework_name, cmdline_patterns)
-    SIGNATURES = [
-        ("langchain",      ["langchain"]),
-        ("crewai",         ["crewai", "crew_ai"]),
-        ("autogen",        ["autogen", "pyautogen"]),
-        ("openai-agents",  ["openai-agents", "openai_agents"]),
-        ("llama-index",    ["llama_index", "llamaindex"]),
-        ("claude-code",    ["claude"]),
-        ("codex",          ["codex"]),
-        ("cursor",         ["cursor"]),
-        ("windsurf",       ["windsurf"]),
-        ("copilot",        ["copilot-language-server", "github.copilot"]),
-    ]
-
-    found = []
-    seen = set()
-    for proc in psutil.process_iter(["pid", "name", "cmdline"]):
-        try:
-            cmdline = " ".join(proc.info["cmdline"] or []).lower()
-            name    = (proc.info["name"] or "").lower()
-            combined = f"{name} {cmdline}"
-            for framework, patterns in SIGNATURES:
-                if any(p in combined for p in patterns):
-                    key = (framework, proc.info["name"])
-                    if key not in seen:
-                        seen.add(key)
-                        found.append({
-                            "name": proc.info["name"],
-                            "framework": framework,
-                            "source": "process",
-                            "location": f"pid:{proc.info['pid']} {proc.info['name']}",
-                            "evidence": {"pid": proc.info["pid"], "cmdline": cmdline[:200]},
-                            "risk_score": 60,
-                        })
-                    break
-        except (psutil.NoSuchProcess, psutil.AccessDenied):
-            pass
-    return found
+    """Compatibility wrapper without command-line collection."""
+    from .inventory import collect
+    return [a for a in collect()["agents"] if a["detection"] == "running"]
 
 
 def cmd_guard_discover(args):
-    """Scan for AI agents across config files and processes, report Guard coverage."""
-    import json as _json
-
-    cfg      = _guard_shared._load_guard_config()
-    api_url  = _guard_shared._api_url(cfg)
-    token    = cfg.get("agent_token", "")
-    hdrs     = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
-
-    # Config file scan — detect AI tools from known config dirs
-    config_agents = []
-    for name, config_path, mcp_key in _discover_config_agents():
-        under = mcp_key
-        config_agents.append({
-            "name": name,
-            "framework": name,
-            "source": "config",
-            "location": str(config_path),
-            "evidence": {"config_path": str(config_path), "under_guard": under},
-            "risk_score": 20 if under else 70,
-            "under_guard": under,
-        })
-
-    # Process scan
-    process_agents: list[dict] = []
-    if not getattr(args, "config_only", False):
-        process_agents = _scan_processes()
-        # Mark as under Guard if same framework is already registered
-        registered_frameworks = {a["framework"] for a in config_agents if a["under_guard"]}
-        for a in process_agents:
-            a["under_guard"] = a["framework"] in registered_frameworks
-
-    all_agents = config_agents + process_agents
-    total      = len(all_agents)
-    covered    = sum(1 for a in all_agents if a["under_guard"])
-    missing    = total - covered
-    pct        = round(covered / total * 100) if total else 0
-
-    # Print coverage meter
-    print(f"\n  Discovered {total} AI agents across your environment\n")
-    config_count  = len(config_agents)
-    process_count = len(process_agents)
-    config_cov    = sum(1 for a in config_agents if a["under_guard"])
-    process_cov   = sum(1 for a in process_agents if a["under_guard"])
-    if config_count:
-        print(f"  Config files:  {config_count:3d} agents   ({config_cov} under Guard, {config_count - config_cov} not)")
-    if process_count:
-        print(f"  Processes:     {process_count:3d} running   ({process_cov} under Guard, {process_count - process_cov} not)")
-    print(f"  {'─' * 52}")
-    print(f"  Guard coverage: {covered} of {total} agents  ({pct}%)\n")
-    if missing:
-        print(f"  Run: conduct guard discover --register to close the gap")
-    print(f"  GitHub scan available — coming in v2\n")
-
-    # POST to API
+    """Report local facts and server-linked evidence using the same inventory as watch."""
+    from .inventory import collect
+    cfg = _guard_shared._load_guard_config()
+    report = collect(getattr(args, "config_only", False))
+    report["triggered_by"] = "cli"
+    print(f"\nDiscovery: {len(report['agents'])} local findings ({report['status']})")
     try:
-        agents_payload = list(all_agents)
-        for t in _detect_ai_tools():
-            agents_payload.append({
-                "name": t["name"],
-                "framework": t["name"],
-                "source": "ai-tool",
-                "under_guard": t.get("mcp_registered", False),
-                "proxy_routed": t.get("proxy_routed", False),
-            })
-        payload = {"triggered_by": "cli", "agents": agents_payload}
-        _guard_shared._req("POST", f"{api_url}/guard/discover/scan", body=payload, token=token)
-    except SystemExit:
-        pass  # 401/network errors — local output still useful
-
-    # Write report if requested
-    report_path = getattr(args, "report", None)
-    if report_path:
-        report = {"total": total, "under_guard": covered, "missing": missing, "coverage_pct": pct, "agents": all_agents}
-        Path(report_path).write_text(_json.dumps(report, indent=2))
-        print(f"  Report written to {report_path}")
+        result = _guard_shared._req("POST", f"{_guard_shared._api_url(cfg)}/guard/discover/scan",
+                                    body=report, token=cfg.get("agent_token", ""))
+        if isinstance(result, dict) and "summary" in result and "agents" in result:
+            report["server_inventory"] = result
+    except (Exception, SystemExit):
+        print("Upload failed; local findings only. Server evidence unavailable.")
+    for item in report.get("server_inventory", {}).get("agents", report["agents"]):
+        print(f"  {item['framework']} [{item['detection']}] | hooks: {item.get('hooks_status', 'unverified')} | gateway: {item.get('gateway_status', 'unverified')}")
+    print("Configuration is not proof of enforcement. Run conduct guard sync for supported tool setup.")
+    if getattr(args, "report", None):
+        Path(args.report).write_text(json.dumps(report, indent=2))

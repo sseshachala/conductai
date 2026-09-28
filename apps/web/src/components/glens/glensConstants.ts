@@ -14,7 +14,7 @@ export const PAGE_SUGGESTIONS: Array<{ match: RegExp; chips: string[] }> = [
   { match: /^\/workflows\/?$/,           chips: ["Which workflows failed today?", "Most-run workflows", "Longest-running workflows"] },
   { match: /^\/theguard\/policies/,      chips: ["Which rules block the most?", "Show rules with no hits", "Rules changed this week"] },
   { match: /^\/theguard\/spend/,         chips: ["Top spenders this month", "Budgets near limit", "Cost by AI tool"] },
-  { match: /^\/theguard\/discovery/,     chips: ["Unguarded agents", "Coverage by framework", "High-risk agents"] },
+  { match: /^\/theguard\/discovery/,     chips: ["Show discovered tools", "Which findings need review?", "Show recent hook evidence"] },
   { match: /^\/compliance/,              chips: ["Overall compliance grade", "Which frameworks are we missing?", "ASI control status"] },
   { match: /^\/logs\/guard/,             chips: ["Show blocks today", "Warnings by tool", "Events by user"] },
   { match: /^\/marketplace/,             chips: ["Recommend packs for us", "What's installed?", "Newest packs"] },

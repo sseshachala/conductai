@@ -440,7 +440,7 @@ export const guard = {
 
   discover: {
     summary: (f: AuthFetch) => json<any>(f, `${base()}/discover/summary`),
-    agents: (f: AuthFetch) => json<any[]>(f, `${base()}/discover/agents`),
+    agents: (f: AuthFetch, offset = 0, limit = 100) => json<any[]>(f, `${base()}/discover/agents?offset=${offset}&limit=${limit}`),
     register: (f: AuthFetch, agentId: string) =>
       post(f, `${base()}/discover/agents/${agentId}/register`, {}),
     scans: (f: AuthFetch) => json<any[]>(f, `${base()}/discover/scans`),

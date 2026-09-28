@@ -135,8 +135,8 @@ def test_tools_list_returns_non_empty(workspace_no_config):
 
 @requires_db
 @pytest.mark.matrix
-def test_guard_discover_returns_full_inventory_with_governed_flag(workspace_no_config):
-    """Regression 971cdce: payload uses `agents` (not `shadow_agents`) with per-entry `governed` flag."""
+def test_guard_discover_returns_inventory_without_legacy_protection_claims(workspace_no_config):
+    """Legacy booleans cannot be promoted into observed protection."""
     from app.modules.guard.models import DiscoveredAgent
     ws_id, token = workspace_no_config
     now = datetime.now(timezone.utc)
@@ -156,8 +156,9 @@ def test_guard_discover_returns_full_inventory_with_governed_flag(workspace_no_c
                json=_rpc("tools/call", {"name": "guard_discover", "arguments": {}}, mid=2))
     assert r.status_code == 200
     text = r.json()["result"]["content"][0]["text"]
-    assert '"governed": true' in text
-    assert '"governed": false' in text
+    assert '"legacy_unverified"' in text
+    assert '"hooks_status": "unverified"' in text
+    assert '"under_guard": true' not in text
     assert '"shadow_agents"' not in text
 
 

@@ -5,6 +5,7 @@ shape, and (critically for #1417) never returns raw secret material.
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import uuid
 from unittest.mock import patch
 
 from app.mcp.server import MCPContext
@@ -173,6 +174,13 @@ def test_list_discovered_agents_empty():
 
 def test_list_discovered_agents_returns_shape():
     class _Agent:
+        id = uuid.uuid4()
+        device_id = None
+        installation_id = None
+        detection = None
+        evidence = None
+        hook_observed_at = None
+        hook_event_id = None
         name = "langchain-agent-1"
         framework = "langchain"
         source = "process"
@@ -308,5 +316,3 @@ def test_list_credentials_returns_metadata():
     assert cred["handle"] == "acme-workspace"
     assert cred["auth_method"] == "api_key"
     assert cred["scopes"] == ["chat:write"]
-
-

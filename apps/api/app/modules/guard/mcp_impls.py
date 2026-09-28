@@ -564,27 +564,9 @@ def guard_discover_impl(ctx: GuardCtx, **arguments) -> str:
     ws_uuid = ctx.ws_uuid
     workspace_id = ctx.workspace_id
 
-    from app.modules.guard.models import DiscoveredAgent
-    _ws = db.query(Workspace).filter(Workspace.id == ws_uuid).first()
-    if _ws and _ws.org_id:
-        _org_ws = db.query(Workspace.id).filter(Workspace.org_id == _ws.org_id)
-    elif _ws and _ws.owner_id:
-        _org_ws = db.query(Workspace.id).filter(Workspace.owner_id == _ws.owner_id)
-    else:
-        _org_ws = db.query(Workspace.id).filter(Workspace.id == ws_uuid)
-    all_agents = db.query(DiscoveredAgent).filter(DiscoveredAgent.workspace_id.in_(_org_ws)).limit(200).all()
-    total = len(all_agents)
-    covered = sum(1 for a in all_agents if a.under_guard)
-    missing = total - covered
-    pct = round(covered / total * 100) if total else 0
-    agents_list = [{
-        "id": str(a.id), "name": a.name, "framework": a.framework,
-        "source": a.source, "location": a.location,
-        "governed": bool(a.under_guard),
-    } for a in all_agents]
-    if total == 0:
-        return "No discovery scan found. Run `conduct guard discover` from your machine first."
-    return f"Guard coverage: {covered} of {total} agents ({pct}%)\n{missing} shadow agents not under Guard.\n\n" + json.dumps(agents_list, indent=2)
+    from app.modules.guard.discovery_inventory import workspace_inventory, summarize
+    agents = workspace_inventory(db, ws_uuid)
+    return json.dumps({**summarize(agents), "agents": agents}, default=str)
 
 
 
@@ -602,10 +584,9 @@ def guard_discover_register_impl(ctx: GuardCtx, **arguments) -> str:
         ).first()
         if not row:
             return f"Agent {agent_id} not found."
-        row.under_guard = True
-        row.last_seen_at = datetime.now(timezone.utc)
-        db.commit()
-        return f"Agent '{row.name or agent_id}' ({row.framework}) is now under Guard."
+        from app.modules.guard.discovery_inventory import agent_view
+        return json.dumps({"message": "Registration cannot prove protection. Configure the integration and rescan.",
+                           "remediation": agent_view(row)["remediation"]})
     except Exception as e:
         return f"Error registering agent: {e}"
 

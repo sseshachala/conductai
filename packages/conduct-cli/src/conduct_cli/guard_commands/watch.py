@@ -4,7 +4,6 @@ from __future__ import annotations
 from pathlib import Path
 import os
 
-from . import discovery as _guard_discovery
 from . import shared as _guard_shared
 
 
@@ -32,7 +31,8 @@ def _is_watch_running():
 
 def _watch_loop():
     """Background loop — runs discover+push every 15 min. Invoked as subprocess."""
-    import time, json as _json
+    import time
+    from .inventory import collect, device_id
     # resolve config at each iteration so workspace switches are picked up
     def _cfg():
         return _guard_shared._load_guard_config()
@@ -42,29 +42,16 @@ def _watch_loop():
             c       = _cfg()
             api_url = _guard_shared._api_url(c)
             token   = c.get("agent_token", "")
-            agent_token = c.get("agent_token", "")
-            agents = []
-            for name, config_path, mcp_key in _guard_discovery._discover_config_agents():
-                agents.append({
-                    "name": name, "framework": name, "source": "config",
-                    "location": str(config_path),
-                    "evidence": {"config_path": str(config_path), "under_guard": mcp_key},
-                    "risk_score": 20 if mcp_key else 70,
-                    "under_guard": mcp_key,
-                })
             try:
-                process_agents = _guard_discovery._scan_processes()
-                registered = {a["framework"] for a in agents if a["under_guard"]}
-                for a in process_agents:
-                    a["under_guard"] = a["framework"] in registered
-                agents += process_agents
+                report = collect()
             except Exception:
-                pass
+                report = {"schema_version": 2, "device_id": device_id(), "agents": [],
+                          "status": "failed", "errors": ["scan_failed"]}
+            report["triggered_by"] = "watch"
             _guard_shared._req("POST", f"{api_url}/guard/discover/scan",
-                 body={"triggered_by": "watch", "agents": agents},
-                 token=token or agent_token)
-        except Exception:
-            pass
+                 body=report, token=token)
+        except (Exception, SystemExit):
+            print("Discovery scan upload failed; previous inventory retained.", flush=True)
         time.sleep(_WATCH_INTERVAL)
 
 
