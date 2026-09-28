@@ -23,8 +23,6 @@ FIELDS = ("input", "cache_read", "cache_write", "output")
 def shutdowns(path: Path) -> list[dict]:
     if not path.exists():
         return []
-    if path.stat().st_size > 64 * 1024 * 1024:
-        raise ValueError("Session log exceeds collection limit")
     result = []
     with path.open(encoding="utf-8") as stream:
         while True:
@@ -32,7 +30,9 @@ def shutdowns(path: Path) -> list[dict]:
             if not line:
                 break
             if len(line) > 1024 * 1024:
-                raise ValueError("Session record exceeds collection limit")
+                while line and not line.endswith("\n"):
+                    line = stream.readline(1024 * 1024 + 1)
+                continue  # Large tool output must not hide later usage snapshots.
             try:
                 event = json.loads(line)
             except ValueError:
@@ -63,16 +63,17 @@ def collect(session_id: str, hook_path: Path, expected: tuple) -> bool:
     path = root / "session-state" / session_id / "events.jsonl"
     if path.resolve().parent.parent != (root / "session-state").resolve():
         raise ValueError("Session path escaped Copilot home")
-    key = hashlib.sha256(json.dumps([*expected, session_id]).encode()).hexdigest()
+    key = hashlib.sha256(json.dumps([session_id, str(path.resolve())]).encode()).hexdigest()
+    context_key = hashlib.sha256(json.dumps(expected).encode()).hexdigest()
     state = Path.home() / ".conduct" / "copilot-usage" / (key + ".json")
     with credential_lock(state, timeout=1):
         records = shutdowns(path)
-        if not state.exists():
+        cursor = json.loads(state.read_text()) if state.exists() else {}
+        if cursor.get("context") != context_key:
             # Begin at the current snapshot, never import historical usage on sync.
             cursor = records[-1] if records else {"id": None, "counts": dict.fromkeys(FIELDS, 0)}
-            _save(state, cursor)
+            _save(state, {**cursor, "context": context_key})
             return False
-        cursor = json.loads(state.read_text())
         pending = records
         if cursor["id"]:
             positions = [i for i, record in enumerate(records) if record["id"] == cursor["id"]]
@@ -83,7 +84,10 @@ def collect(session_id: str, hook_path: Path, expected: tuple) -> bool:
         for record in pending:
             delta = {key: record["counts"][key] - cursor["counts"][key] for key in FIELDS}
             if any(value < 0 for value in delta.values()):
-                return queued  # Counter reset: do not guess how much was consumed.
+                # Rebaseline a reset without inventing usage across the gap.
+                _save(state, {**record, "context": context_key})
+                cursor = record
+                continue
             if context(base.load_config()) != tuple(expected):
                 return queued
             payload = {"workspace_id": expected[1], "hook_session_id": session_id,
@@ -92,7 +96,7 @@ def collect(session_id: str, hook_path: Path, expected: tuple) -> bool:
                        "output_tokens": delta["output"]}
             if not base.journal_append(json.dumps(payload), expected[0], "/guard/events/session-usage"):
                 return queued
-            _save(state, record)
+            _save(state, {**record, "context": context_key})
             cursor = record
             queued = True
         if queued:

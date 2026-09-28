@@ -491,6 +491,7 @@ def post_event(
     blast_radius: "dict | None" = None,
     receipt_id: Optional[str] = None,
     execution_status: Optional[str] = None,
+    tool_use_id: Optional[str] = None,
 ) -> None:
     """Post one guard event via the journal/drain pattern.  Never raises.
 
@@ -529,6 +530,7 @@ def post_event(
         "rule_id":         rule_id,
         "rule_message":    message,
         "hook_session_id": session_id,
+        "tool_use_id": tool_use_id,
         "os_info":         _os_info,
         "hostname":        _platform.node(),
         "blast_radius":    blast_radius,

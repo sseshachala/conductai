@@ -31,6 +31,12 @@ def run(mode: str, hook_path: Path, data: dict) -> dict:
         return {}
     normalized = normalize(data)
     if mode == "pre":
+        # Establish the usage baseline even if sync was run mid-session.
+        try:
+            from .copilot_usage import handle
+            handle("pre", data, hook_path)
+        except (OSError, ValueError, KeyError, TypeError, TimeoutError):
+            pass
         # Finish before Copilot's fail-open 30s timeout, even if Guard is offline.
         try:
             result = subprocess.run(

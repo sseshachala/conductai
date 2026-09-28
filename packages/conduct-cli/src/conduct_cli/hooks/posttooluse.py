@@ -103,10 +103,7 @@ def _scan_codex_tokens(transcript_path: str):
                         usage = info.get("last_token_usage", {})
                         if usage:
                             total_in  = usage.get("input_tokens", 0)
-                            total_out = (
-                                usage.get("output_tokens", 0)
-                                + usage.get("reasoning_output_tokens", 0)
-                            )
+                            total_out = usage.get("output_tokens", 0)
                             return total_in, total_out
                 except Exception:
                     continue
@@ -193,7 +190,7 @@ def _compute_blast_radius(tool_name: str, tool_input: dict, tool_response: str) 
     return {"files": files, "symbols": symbols, "tier": tier, "file_paths": file_paths, "repo": repo, "branch": branch}
 
 
-def _post_usage(session_id, tool_name, tokens_input, tokens_output, duration_ms, blast_radius=None, execution_status=None, result_summary=None) -> None:
+def _post_usage(session_id, tool_name, tokens_input, tokens_output, duration_ms, blast_radius=None, execution_status=None, result_summary=None, tool_use_id=None) -> None:
     """Queue a PostToolUse update for the authenticated drain daemon."""
     cfg = load_config()
     workspace_id = cfg.get("workspace_id")
@@ -203,6 +200,7 @@ def _post_usage(session_id, tool_name, tokens_input, tokens_output, duration_ms,
         "workspace_id":     workspace_id,
         "hook_session_id":  session_id,
         "tool_name":        tool_name,
+        "tool_use_id":      tool_use_id,
         "tokens_input":     tokens_input,
         "tokens_output":    tokens_output,
         "duration_ms":      duration_ms,
@@ -263,7 +261,8 @@ def main() -> None:
     tool_name     = (data.get("tool_name") or "").lower()
     tool_use_id   = data.get("tool_use_id")
     transcript_path = data.get("transcript_path")
-    is_codex      = (tool_use_id or "").startswith("call_")
+    surface = detect_ai_tool()
+    is_codex = surface.startswith("codex") or (tool_use_id or "").startswith("call_")
     session_id    = data.get("session_id") or (f"transcript:{transcript_path}" if transcript_path else None)
 
     tool_response = data.get("tool_response") or data.get("output") or ""
@@ -279,38 +278,14 @@ def main() -> None:
         execution_status = "success"
         result_summary   = None
 
-    if is_codex and transcript_path:
-        import uuid as _uuid
-        pending = GUARD_DIR / f"codex_pending_{_uuid.uuid4().hex[:8]}.json"
-        try:
-            pending.write_text(json.dumps({
-                "session_id":      session_id,
-                "tool_name":       tool_name,
-                "transcript_path": transcript_path,
-                "blast_radius":    blast_radius,
-                "execution_status": execution_status,
-                "result_summary":   result_summary,
-            }))
-            subprocess.Popen(
-                [sys.executable, str(_this_file), "post-codex", str(pending)],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                start_new_session=True,
-            )
-        except Exception:
-            pass
+    if is_codex or surface == "claude-code":
+        from .session_usage import handle as collect_usage
+        collect_usage(data, surface if surface in {"codex", "codex-cli", "codex-desktop", "claude-code"} else "codex", poll=True)
+        _post_usage(session_id, tool_name, None, None, None, blast_radius,
+                    execution_status, result_summary, tool_use_id)
     elif transcript_path:
         tokens_input, tokens_output = _read_tokens_from_transcript(transcript_path, tool_use_id)
         _post_usage(session_id, tool_name, tokens_input, tokens_output, None, blast_radius, execution_status, result_summary)
-        _, action, rule_id, message = check_policy(tool_name, {}, tokens_before=tokens_input)
-        if action in ("warn", "block"):
-            decision = "warned" if action == "warn" else "blocked"
-            if action == "warn" and session_id and rule_id and _already_warned_this_session(session_id, rule_id):
-                pass
-            else:
-                if action == "warn" and session_id and rule_id:
-                    _record_session_warn(session_id, rule_id)
-                post_event(tool_name, {}, decision, rule_id, message, session_id, drain_via=_this_file, blast_radius=blast_radius)
     elif session_id:
         # Some Codex clients omit transcript_path. Still send the PostToolUse
         # update so the pre-tool audit row is correlated and execution status
@@ -318,13 +293,24 @@ def main() -> None:
         _post_usage(
             session_id,
             tool_name or "unknown",
-            0,
-            0,
+            None,
+            None,
             None,
             blast_radius,
             execution_status,
             result_summary,
         )
+
+    if not is_codex and transcript_path:
+        # Preserve existing post-tool token policy checks independently of accounting.
+        tokens_input, _ = _read_tokens_from_transcript(transcript_path, tool_use_id)
+        _, action, rule_id, message = check_policy(tool_name, {}, tokens_before=tokens_input)
+        if action in ("warn", "block"):
+            decision = "warned" if action == "warn" else "blocked"
+            if not (action == "warn" and session_id and rule_id and _already_warned_this_session(session_id, rule_id)):
+                if action == "warn" and session_id and rule_id:
+                    _record_session_warn(session_id, rule_id)
+                post_event(tool_name, {}, decision, rule_id, message, session_id, drain_via=_this_file, blast_radius=blast_radius)
 
     sys.exit(0)
 

@@ -10,6 +10,7 @@ import ipaddress
 import json
 from datetime import datetime, timezone
 from uuid import UUID
+from typing import Literal
 
 import structlog
 
@@ -149,8 +150,9 @@ class UsageUpdate(BaseModel):
     workspace_id: str
     hook_session_id: str
     tool_name: str | None = None
-    tokens_input: int
-    tokens_output: int
+    tokens_input: int | None = Field(default=None, ge=0, le=2**31 - 1, strict=True)
+    tokens_output: int | None = Field(default=None, ge=0, le=2**31 - 1, strict=True)
+    tool_use_id: str | None = None
     duration_ms: int | None = None
     ai_tool: str | None = None   # for pricing
     blast_radius: dict | None = None
@@ -758,6 +760,7 @@ class SessionUsageReport(BaseModel):
     observed_at: datetime
     input_tokens: int = Field(ge=0, le=2**31 - 1, strict=True)
     output_tokens: int = Field(ge=0, le=2**31 - 1, strict=True)
+    ai_tool: Literal["copilot-cli", "codex", "codex-cli", "codex-desktop", "claude-code"] = "copilot-cli"
 
 
 @router.post("/session-usage", response_model=EventOut, status_code=201)
@@ -768,7 +771,7 @@ def ingest_session_usage(
     db: Session = Depends(get_db),
     auth_context: tuple[str, str | None] | None = Depends(_hook_authenticated_workspace),
 ):
-    """Record reported Copilot session deltas, never per-tool or Gateway spend."""
+    """Record reported client session deltas, never per-tool or Gateway spend."""
     from uuid import NAMESPACE_URL, uuid5
 
     ws_uuid = _authenticated_workspace_uuid(str(body.workspace_id), auth_context)
@@ -779,18 +782,19 @@ def ingest_session_usage(
     if not config:
         raise HTTPException(status_code=404, detail="workspace_id not found in guard_config")
     actor = auth_context[1] if auth_context else None
-    event_id = uuid5(NAMESPACE_URL, f"conduct:copilot-usage:{ws_uuid}:{actor}:{body.hook_session_id}:{body.snapshot_id}")
+    namespace = "copilot-usage" if body.ai_tool == "copilot-cli" else f"{body.ai_tool}-usage"
+    event_id = uuid5(NAMESPACE_URL, f"conduct:{namespace}:{ws_uuid}:{actor}:{body.hook_session_id}:{body.snapshot_id}")
     existing = db.query(GuardAuditEvent).filter(
         GuardAuditEvent.id == event_id, GuardAuditEvent.workspace_id == ws_uuid,
     ).first()
     if existing:
         return EventOut(**_event_to_dict(existing))
     event = HookEvent(
-        workspace_id=str(ws_uuid), ai_tool="copilot-cli", tool_call="session_usage",
+        workspace_id=str(ws_uuid), ai_tool=body.ai_tool, tool_call="session_usage",
         decision="audited", hook_session_id=str(body.hook_session_id), receipt_id=str(event_id),
         tokens_before=body.input_tokens, tokens_after=body.output_tokens,
-        rule_message=("Copilot reported session usage since the previous shutdown snapshot. "
-                      "Input includes cache reads and writes once; output includes reasoning. "
+        rule_message=(f"{body.ai_tool} reported session usage since the previous usage snapshot. "
+                      "Cache and reasoning tokens are included once. "
                       f"Observed at {body.observed_at.isoformat()}. Cost unavailable; not Gateway usage."),
     )
     return ingest_event(event, request, background, db, auth_context)
@@ -1041,6 +1045,10 @@ def update_usage(
         )
         if body.tool_name:
             q = q.filter(GuardAuditEvent.tool_call == body.tool_name)
+        if body.tool_use_id:
+            q = q.filter(GuardAuditEvent.tool_use_id == body.tool_use_id)
+        if auth_context and auth_context[1]:
+            q = q.filter(GuardAuditEvent.clerk_user_id == auth_context[1])
         event = q.order_by(GuardAuditEvent.ts.desc()).first()
     except Exception:
         return UsageOut(updated=False)
@@ -1054,11 +1062,11 @@ def update_usage(
     output_price = pricing["output"]
 
     cost_before = (
-        body.tokens_input  / 1_000_000 * input_price
+        body.tokens_input / 1_000_000 * input_price
         + body.tokens_output / 1_000_000 * output_price
-    )
-    cost_after = 0.0 if event.decision == "blocked" else cost_before
-    tokens_saved = body.tokens_input if event.decision == "blocked" else 0
+    ) if body.tokens_input is not None and body.tokens_output is not None else None
+    cost_after = (0.0 if event.decision == "blocked" else cost_before) if cost_before is not None else None
+    tokens_saved = body.tokens_input if event.decision == "blocked" else (0 if cost_before is not None else None)
 
     event.tokens_before   = body.tokens_input
     event.tokens_after    = body.tokens_output

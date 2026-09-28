@@ -273,6 +273,28 @@ change the environment of an already-running process. `--no-codex-proxy` leaves
 the Codex provider and desktop launch environment unchanged. This is client
 configuration, not protection against a user deliberately bypassing the Gateway.
 
+### Reported Model Usage
+
+After upgrading the CLI, run `conduct guard sync` and restart Claude Code,
+Codex, and Copilot CLI so their hook registrations are reloaded. Upgrading the
+package alone does not update already-installed hooks.
+
+Flight Recorder records available model usage in separate `session_usage`
+events, not on every Bash/Edit/Read action. Codex cumulative counters and Claude
+message usage are collected incrementally and deduplicated; cache and reasoning
+tokens are counted once. Copilot reports persisted shutdown counters, so current
+session tokens may remain unavailable until shutdown. Missing telemetry is not
+zero, and these reports are not Gateway receipts or provider invoices.
+
+The first collection establishes a baseline rather than importing historical
+usage into the active workspace. Start/stop/end hooks and later tool actions
+recover delayed transcript writes. Unsupported or missing transcript formats
+remain unavailable; no token counts are inferred from tool output.
+
+Deploy the API supporting multi-client `/guard/events/session-usage` reports
+before releasing this CLI change. Production verification requires one fresh
+session per client after sync; existing tool rows are not retroactively filled.
+
 ### Copilot CLI
 
 On macOS, Linux, and Windows, `conduct guard sync` detects the `copilot` executable
