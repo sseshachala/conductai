@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import http.client
 import json
 import os
 import shutil
@@ -90,11 +91,44 @@ def _managed_hook(entries):
     return False
 
 
-def _gateway(value):
+def _gateway(value, provider):
     if not isinstance(value, str):
         return False
     url = urlparse(value)
-    return url.scheme == "https" and url.hostname == "gateway.conductai.ai" and url.path.startswith("/gateway/v1/")
+    return (url.scheme == "https" and url.hostname == "gateway.conductai.ai" and url.port in (None, 443)
+            and not url.username and not url.password and not url.query and not url.fragment
+            and url.path.rstrip("/") in {f"/gateway/v1/{provider}", f"/gateway/v1/{provider}/v1"})
+
+
+def verify_gateway(report, token):
+    """Probe only Conduct's fixed origin; never follow redirects or send prompts."""
+    results = {}
+    for item in report["agents"]:
+        evidence = item["evidence"]
+        provider = {"claude-code": "anthropic", "codex": "openai"}.get(item["framework"])
+        if not provider or not evidence.get("gateway_configured"):
+            continue
+        if provider not in results:
+            status = "unavailable"
+            if not token or not token.startswith("cond_agt_"):
+                status = "authentication_failed"
+            else:
+                connection = http.client.HTTPSConnection("gateway.conductai.ai", timeout=8)
+                try:
+                    connection.request("GET", f"/gateway/v1/{provider}/v1/models", headers={"Authorization": f"Bearer {token}"})
+                    response = connection.getresponse()
+                    if response.status in (401, 403):
+                        status = "authentication_failed"
+                    elif response.status == 200:
+                        payload = json.loads(response.read(1_000_001))
+                        if isinstance(payload, dict) and isinstance(payload.get("data"), list):
+                            status = "connection_verified"
+                except (OSError, ValueError, http.client.HTTPException):
+                    pass
+                finally:
+                    connection.close()
+            results[provider] = status
+        evidence["gateway_connection_status"] = results[provider]
 
 
 def collect(config_only=False):
@@ -122,7 +156,7 @@ def collect(config_only=False):
                 data = _document(root / "config.toml")
                 servers = data.get("mcp_servers", {})
                 provider = data.get("model_providers", {}).get(data.get("model_provider"), {})
-                evidence["gateway_configured"] = _gateway(provider.get("base_url"))
+                evidence["gateway_configured"] = _gateway(provider.get("base_url"), "openai")
                 hooks = _document(root / "hooks.json").get("hooks", {})
                 evidence["hooks_configured"] = _managed_hook(hooks.get("PreToolUse", []))
             elif tool == "copilot-cli":
@@ -136,7 +170,9 @@ def collect(config_only=False):
                 hooks = data.get("hooks", {}) if tool == "claude-code" else _document(root / "hooks.json").get("hooks", {})
                 evidence["hooks_configured"] = _managed_hook(hooks.get("PreToolUse", []))
                 if tool == "claude-code":
-                    evidence["gateway_configured"] = _gateway(data.get("env", {}).get("ANTHROPIC_BASE_URL"))
+                    environment = data.get("env", {})
+                    url = environment.get("ANTHROPIC_BASE_URL", os.environ.get("ANTHROPIC_BASE_URL"))
+                    evidence["gateway_configured"] = _gateway(url, "anthropic")
             evidence["mcp_configured"] = any(key in {"conduct", "conduct-guard"} for key in servers)
         except (OSError, ValueError, TypeError, AttributeError):
             evidence.clear()

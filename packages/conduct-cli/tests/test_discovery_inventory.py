@@ -82,9 +82,51 @@ def test_copilot_custom_home_and_safe_evidence(local, monkeypatch):
     assert "copilot-custom" not in json.dumps(result)
 
 
-def test_upload_failure_is_explicit(local, monkeypatch, capsys):
+@pytest.mark.parametrize("options,expected", [({}, True), ({"verify_gateway": True}, True), ({"verify_gateway": False}, False)])
+def test_discovery_gateway_check_and_upload_failure(local, monkeypatch, capsys, options, expected):
     from conduct_cli.guard_commands import discovery
+    from unittest.mock import Mock
+    probe = Mock()
+    monkeypatch.setattr(inventory, "verify_gateway", probe)
     monkeypatch.setattr(discovery._guard_shared, "_load_guard_config", lambda: {})
     monkeypatch.setattr(discovery._guard_shared, "_req", lambda *a, **kw: (_ for _ in ()).throw(SystemExit(1)))
-    discovery.cmd_guard_discover(SimpleNamespace(config_only=True, report=None))
+    discovery.cmd_guard_discover(SimpleNamespace(config_only=True, report=None, **options))
+    assert probe.call_count == int(expected)
     assert "Upload failed; local findings only" in capsys.readouterr().out
+
+
+def test_claude_inherited_gateway_url_and_settings_precedence(local, monkeypatch):
+    home, _ = local
+    root = home / ".claude"
+    root.mkdir()
+    monkeypatch.setenv("ANTHROPIC_BASE_URL", "https://gateway.conductai.ai/gateway/v1/anthropic")
+    assert inventory.collect(config_only=True)["agents"][0]["evidence"]["gateway_configured"]
+    (root / "settings.json").write_text(json.dumps({"env": {"ANTHROPIC_BASE_URL": "https://api.anthropic.com"}}))
+    assert not inventory.collect(config_only=True)["agents"][0]["evidence"]["gateway_configured"]
+
+
+@pytest.mark.parametrize("status,body,expected", [
+    (200, b'{"data":[]}', "connection_verified"),
+    (200, b'<html>not an API</html>', "unavailable"),
+    (302, b'', "unavailable"), (401, b'', "authentication_failed"),
+    (403, b'', "authentication_failed"), (500, b'', "unavailable"),
+])
+def test_gateway_probe_is_bounded_authenticated_and_no_redirects(monkeypatch, status, body, expected):
+    from unittest.mock import Mock
+    connection = Mock()
+    connection.getresponse.return_value = SimpleNamespace(status=status, read=lambda limit: body)
+    factory = Mock(return_value=connection)
+    monkeypatch.setattr(inventory.http.client, "HTTPSConnection", factory)
+    report = {"agents": [{"framework": "claude-code", "evidence": {"gateway_configured": True}}]}
+    inventory.verify_gateway(report, "cond_agt_test_only")
+    factory.assert_called_once_with("gateway.conductai.ai", timeout=8)
+    connection.request.assert_called_once_with("GET", "/gateway/v1/anthropic/v1/models", headers={"Authorization": "Bearer cond_agt_test_only"})
+    connection.close.assert_called_once()
+    assert report["agents"][0]["evidence"]["gateway_connection_status"] == expected
+
+
+def test_gateway_probe_never_sends_provider_credentials(monkeypatch):
+    monkeypatch.setattr(inventory.http.client, "HTTPSConnection", lambda *a, **k: pytest.fail("Unexpected network request"))
+    report = {"agents": [{"framework": "codex", "evidence": {"gateway_configured": True}}]}
+    inventory.verify_gateway(report, "provider-test-key")
+    assert report["agents"][0]["evidence"]["gateway_connection_status"] == "authentication_failed"

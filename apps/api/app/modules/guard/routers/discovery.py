@@ -62,14 +62,28 @@ def ingest_scan(body: ScanIn, workspace_id: str = Depends(get_guard_hook_auth), 
     db.add(scan)
     db.flush()
     ids = []
+    previous = {}
+    if body.schema_version == 2 and body.status != "failed":
+        previous = {r.installation_id: r.evidence or {} for r in db.query(DiscoveredAgent).filter(
+            DiscoveredAgent.workspace_id == ws, DiscoveredAgent.device_id == body.device_id,
+            DiscoveredAgent.installation_id.in_([a.installation_id for a in body.agents])).all()}
     if body.status != "failed":
         for agent in body.agents:
             normalized = body.schema_version == 2
+            evidence = clean_evidence(agent.evidence) if normalized else None
+            if evidence and evidence.get("gateway_configured"):
+                if "gateway_connection_status" in evidence:
+                    evidence["gateway_checked_at"] = now.isoformat()
+                else:
+                    old = previous.get(agent.installation_id, {})
+                    for key in ("gateway_connection_status", "gateway_checked_at"):
+                        if key in old:
+                            evidence[key] = old[key]
             values = dict(
                 scan_id=scan.id, name=agent.framework, framework=agent.framework,
                 source=None if normalized else (agent.source or "legacy"),
                 location=None, risk_score=None, under_guard=False, proxy_routed=False,
-                evidence=clean_evidence(agent.evidence) if normalized else None, last_seen_at=now,
+                evidence=evidence, last_seen_at=now,
             )
             statement = insert(DiscoveredAgent).values(
                 id=uuid.uuid4(), workspace_id=ws, first_seen_at=now,
@@ -103,8 +117,11 @@ def list_scans(workspace_id: str = Depends(get_workspace_id), db: Session = Depe
 
 @router.get("/agents")
 def list_agents(workspace_id: str = Depends(get_workspace_id), db: Session = Depends(get_db),
-                under_guard: bool | None = None, limit: int = Query(100, ge=1, le=500), offset: int = Query(0, ge=0)):
+                under_guard: bool | None = None, limit: int = Query(100, ge=1, le=500), offset: int = Query(0, ge=0),
+                inventory: Literal["all", "current", "legacy"] = "all"):
     agents = workspace_inventory(db, workspace_id)
+    if inventory != "all":
+        agents = [a for a in agents if (a["detection"] == "legacy_unverified") == (inventory == "legacy")]
     if under_guard is not None:
         agents = [a for a in agents if a["under_guard"] == under_guard]
     return agents[offset:offset + limit]

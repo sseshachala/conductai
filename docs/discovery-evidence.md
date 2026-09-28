@@ -44,6 +44,34 @@ configuration and freshness. Evidence opens in a side panel with safe signals,
 UTC timestamps, copyable setup commands, and a Flight Recorder / Ask Lens link
 when an observation exists. Registering a row cannot mark it protected.
 
+The default view excludes legacy findings; a dedicated filter reveals them.
+Legacy rows also do not inflate the current findings-needing-review count.
+Recent observed hook activity requires no hook setup action. Gateway setup and
+connection checks remain a separate section in the evidence panel.
+
+### Gateway Connection Check
+
+`conduct guard discover` includes a bounded authenticated model-list
+request for configured Claude Code and Codex Gateway endpoints. Claude Code's
+settings take precedence over the inherited shell URL. No secret file is scanned.
+Only canonical Conduct HTTPS endpoints are recognized for this probe. It uses
+the CLI's Conduct credential, never a provider key, and never follows redirects.
+Unsupported/custom endpoints remain unverified.
+Use `--no-verify-gateway` to skip the connection check. The explicit
+`--verify-gateway` flag remains supported. `--config-only` skips process scanning,
+not the Gateway check or discovery upload.
+
+The CLI reports connection_verified, authentication_failed or unavailable. The
+API records the ingestion timestamp and preserves it on ordinary rescans while
+the Gateway remains configured. Results expire after 24 hours independently of
+scan freshness. Unconfiguring the Gateway clears the connection evidence.
+
+This is client-reported connectivity/authentication evidence, not attestation,
+an upstream provider-key test, or proof that this tool sent model inference
+through Gateway. No prompts or paid inference calls are sent by the check.
+The flag requires a CLI release containing this follow-up; 0.14.14 does not
+include it. Deploy the API/web follow-up before releasing the updated CLI.
+
 ## Deployment
 
 1. Apply migration `0153` before deploying the API. It adds identity/observation

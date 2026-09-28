@@ -7,6 +7,8 @@ export interface DiscoveryAgent {
   freshness: string
   hooks_status: string
   gateway_status: string
+  gateway_checked_at?: string | null
+  gateway_remediation?: { label: string; command: string; detail: string }
   last_seen_at: string | null
   hook_observed_at: string | null
   hook_event_id: string | null
@@ -33,6 +35,7 @@ export function discoveryLabel(value: string | null | undefined): string {
     legacy_unverified: "Legacy / unverified", installed: "Installed", running: "Running at scan",
     observed: "Activity observed", configured: "Configured", unverified: "Unverified",
     fresh: "Recent scan", stale: "Stale scan", tool_installation: "Tool installation",
+    connection_verified: "Connection verified", authentication_failed: "Authentication failed", unavailable: "Check unavailable",
     running_executable: "Running executable", dependency_manifest: "Dependency manifest",
   }
   return value ? labels[value] ?? value : "Not recorded"
