@@ -60,9 +60,12 @@ when an observation exists. Registering a row cannot mark it protected.
    hooked tool. Refresh Discovery to check the linked observation. `conduct guard
    sync` remains the supported setup command; restart the tool after syncing.
 
-The migration deliberately refuses an automatic downgrade: dropping attribution
-columns would discard evidence identity. Roll back application code without
-downgrading this additive schema, or prepare an explicit data-preserving plan.
+The migration permits downgrade before installation evidence has been written,
+including the CI up/down cycle. It locks the table and checks all new columns
+before dropping them. Once evidence exists, downgrade is refused to avoid losing
+attribution. Roll back application code without downgrading this additive schema,
+or prepare an explicit data-preserving plan. Cleared legacy unsafe evidence and
+cached knowledge entries are not restored by downgrade.
 
 ## Verification
 

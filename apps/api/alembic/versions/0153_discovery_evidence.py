@@ -25,5 +25,15 @@ def upgrade():
 
 
 def downgrade():
-    # Keep installation records distinct: collapsing devices is lossy and unsafe.
-    raise RuntimeError("Discovery identity migration requires an explicit data-preserving rollback plan")
+    # Prevent a concurrent writer from adding evidence after the safety check.
+    op.execute("LOCK TABLE discovered_agents IN ACCESS EXCLUSIVE MODE")
+    populated = op.get_bind().execute(sa.text("""SELECT EXISTS (
+        SELECT 1 FROM discovered_agents WHERE device_id IS NOT NULL
+        OR installation_id IS NOT NULL OR detection IS NOT NULL
+        OR hook_observed_at IS NOT NULL OR hook_event_id IS NOT NULL
+    )""")).scalar_one()
+    if populated:
+        raise RuntimeError("Discovery identity migration requires an explicit data-preserving rollback plan")
+    op.drop_constraint("uq_discovered_agents_installation", "discovered_agents", type_="unique")
+    for column in ("hook_event_id", "hook_observed_at", "detection", "installation_id", "device_id"):
+        op.drop_column("discovered_agents", column)

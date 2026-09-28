@@ -150,3 +150,43 @@ def test_old_writer_conflict_target_survives_migration(database):
             ON CONFLICT (workspace_id,framework,source) DO UPDATE SET under_guard=true"""), {"id": uuid.uuid4(), "ws": WS})
         db.commit()
         assert workspace_inventory(db, WS)[0]["hooks_status"] == "unverified"
+
+
+def migration_module():
+    path = Path(__file__).resolve().parents[1] / "alembic/versions/0153_discovery_evidence.py"
+    spec = importlib.util.spec_from_file_location("discovery_rollback_migration", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_downgrade_upgrade_cycle_preserves_legacy_rows(database):
+    from sqlalchemy import inspect
+    migration = migration_module()
+    with database.begin() as conn:
+        before = conn.execute(text("SELECT id FROM discovered_agents")).scalars().all()
+        with Operations.context(MigrationContext.configure(conn)):
+            migration.downgrade()
+        assert "device_id" not in {c["name"] for c in inspect(conn).get_columns("discovered_agents")}
+        assert conn.execute(text("SELECT id FROM discovered_agents")).scalars().all() == before
+        with Operations.context(MigrationContext.configure(conn)):
+            migration.upgrade()
+        assert "device_id" in {c["name"] for c in inspect(conn).get_columns("discovered_agents")}
+        assert conn.execute(text("SELECT id FROM discovered_agents")).scalars().all() == before
+
+
+@pytest.mark.parametrize("column,value", [
+    ("device_id", str(uuid.uuid4())), ("installation_id", "a" * 64),
+    ("detection", "installed"), ("hook_observed_at", datetime.now(timezone.utc)),
+    ("hook_event_id", str(uuid.uuid4())),
+])
+def test_downgrade_refuses_any_installation_evidence(database, column, value):
+    migration = migration_module()
+    with database.begin() as conn:
+        conn.execute(text(f"UPDATE discovered_agents SET {column} = :value"), {"value": value})
+    with pytest.raises(RuntimeError, match="data-preserving rollback"):
+        with database.begin() as conn:
+            with Operations.context(MigrationContext.configure(conn)):
+                migration.downgrade()
+    with database.connect() as conn:
+        assert conn.execute(text(f"SELECT {column} FROM discovered_agents")).scalar_one() is not None
