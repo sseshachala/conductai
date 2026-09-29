@@ -135,6 +135,9 @@ def collect(data: dict, surface: str, expected: tuple) -> bool:
         if state["offset"] > stat.st_size or state.get("inode", stat.st_ino) != stat.st_ino:
             fresh = True
             state = {"offset": 0, "counts": [0, 0], "messages": {}, "ai_tool": surface, "context": context_key, "epoch": str(uuid4())}
+        # Refine old generic cursors without resetting their usage baseline.
+        if state.get("ai_tool") == "codex" and surface in {"codex-cli", "codex-desktop"}:
+            state["ai_tool"] = surface
         before = list(state["counts"]) if state["counts"] is not None else None
         _scan(path, state, surface)
         if context(base.load_config()) != tuple(expected):
@@ -161,6 +164,10 @@ def handle(data: dict, surface: str | None = None, *, poll: bool = False) -> Non
     """Best-effort synchronous collection plus one bounded worker per session."""
     try:
         surface = surface or base.detect_ai_tool()
+        if surface == "codex":
+            detected = base.detect_ai_tool()
+            if detected in {"codex-cli", "codex-desktop"}:
+                surface = detected
         if surface not in SURFACES:
             return
         expected = context(base.load_config())

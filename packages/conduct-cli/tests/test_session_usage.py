@@ -62,6 +62,46 @@ def test_counts_once_without_repeating_cache_reasoning_or_multi_tool_usage(setup
     assert journal.call_count == 1
 
 
+@pytest.mark.parametrize("surface", ["codex-cli", "codex-desktop"])
+def test_generic_cursor_adopts_specific_surface_without_replaying_usage(setup, surface):
+    _, path, _, journal = setup
+    append(path, codex())
+    collect(setup, "codex")
+    assert not collect(setup, surface)
+    append(path, codex(110, 35))
+    assert collect(setup, "codex")
+    payload = json.loads(journal.call_args.args[0])
+    assert payload["ai_tool"] == surface
+    assert (payload["input_tokens"], payload["output_tokens"]) == (10, 5)
+    assert not collect(setup, surface)
+    assert journal.call_count == 1
+
+
+@pytest.mark.parametrize("detected,expected", [
+    ("codex-cli", "codex-cli"), ("codex-desktop", "codex-desktop"),
+    ("claude-code", "codex"), ("cursor", "codex"),
+])
+def test_generic_lifecycle_resolves_codex_surface_before_spawning(setup, monkeypatch, detected, expected):
+    data, _, _, _ = setup
+    collector = Mock()
+    spawn = Mock()
+    monkeypatch.setattr(usage.base, "detect_ai_tool", lambda: detected)
+    monkeypatch.setattr(usage, "collect", collector)
+    monkeypatch.setattr(usage.subprocess, "Popen", spawn)
+    usage.handle(data, "codex", poll=True)
+    assert collector.call_args.args[1] == expected
+    assert spawn.call_args.args[0][4] == expected
+
+
+def test_cli_signal_takes_precedence_over_desktop_path(monkeypatch):
+    for key in ("CONDUCT_HOOK_SURFACE", "CLAUDE_CODE_ENTRYPOINT", "CLAUDECODE",
+                "CLAUDE_DESKTOP_ENTRYPOINT", "CLAUDE_DESKTOP", "CODEX_CLI_VERSION"):
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setenv("CODEX_SESSION_ID", str(uuid4()))
+    monkeypatch.setenv("PATH", "/Applications/Codex.app/Contents/MacOS:/usr/bin")
+    assert usage.base.detect_ai_tool() == "codex-cli"
+
+
 def test_codex_lifecycle_and_desktop_share_cursor(setup):
     _, path, _, journal = setup
     collect(setup, "codex")
