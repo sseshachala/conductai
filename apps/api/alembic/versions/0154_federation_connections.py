@@ -10,7 +10,12 @@ depends_on = None
 
 
 def upgrade():
-    op.create_unique_constraint("uq_integrations_workspace_id", "integrations", ["workspace_id", "id"])
+    # ALTER TABLE ADD UNIQUE takes ACCESS EXCLUSIVE and queues live readers
+    # behind long-lived read transactions. A standalone unique index supports
+    # the same composite FK, but its SHARE lock remains compatible with readers.
+    op.execute("SET LOCAL lock_timeout = '3s'")
+    op.execute("SET LOCAL statement_timeout = '60s'")
+    op.create_index("uq_integrations_workspace_id", "integrations", ["workspace_id", "id"], unique=True)
     op.create_table(
         "federation_connections",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
@@ -33,4 +38,12 @@ def downgrade():
     if op.get_bind().execute(sa.text("SELECT EXISTS (SELECT 1 FROM federation_connections)")).scalar_one():
         raise RuntimeError("Federation configuration requires an explicit data-preserving rollback plan")
     op.drop_table("federation_connections")
-    op.drop_constraint("uq_integrations_workspace_id", "integrations", type_="unique")
+    # Support databases that already applied the original constraint variant.
+    constraint = op.get_bind().execute(sa.text(
+        "SELECT 1 FROM pg_constraint WHERE conrelid='integrations'::regclass "
+        "AND conname='uq_integrations_workspace_id'"
+    )).scalar()
+    if constraint:
+        op.drop_constraint("uq_integrations_workspace_id", "integrations", type_="unique")
+    else:
+        op.drop_index("uq_integrations_workspace_id", table_name="integrations")
