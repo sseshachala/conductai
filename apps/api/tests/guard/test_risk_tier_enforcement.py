@@ -167,6 +167,8 @@ def test_cedar_export_serializes_match_agent_risk_tier():
 
 @pytest.fixture
 def proxy_client(monkeypatch):
+    # Risk-tier tests do not configure RPM/TPM limits.
+    monkeypatch.setattr("app.modules.guard.rate_limit._resolve_limits", lambda *a: (None, None, "none"))
     """Mount the proxy router with all external deps mocked. Returns a tuple:
     (TestClient, calls) where calls is a list of upstream forwards captured.
     """
