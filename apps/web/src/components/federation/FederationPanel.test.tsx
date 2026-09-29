@@ -33,6 +33,24 @@ describe("federation management", () => {
     await waitFor(() => expect(authFetch).toHaveBeenCalledWith(expect.stringContaining("/federation/connections"), expect.objectContaining({ method: "POST" })))
     const [, options] = authFetch.mock.calls.find(([, options]) => options?.method === "POST")!
     expect(JSON.parse(options.body)).toMatchObject({ name: "Enterprise production", config: { status: "draft", integration_type: "generic" } })
+    expect(await screen.findByRole("button", { name: "New connection" })).toBeVisible()
+    expect(screen.getByRole("link", { name: "Manage principals and delegation" })).toBeVisible()
+    expect(screen.queryByLabelText("Connection name")).not.toBeInTheDocument()
+  })
+
+  it("hides connection list controls while creating and restores them on cancel", async () => {
+    authFetch.mockResolvedValue(response(overview))
+    render(<FederationPanel workspace="workspace" mode="connections" />)
+    fireEvent.click(await screen.findByRole("button", { name: "New connection" }))
+    expect(screen.getByLabelText("Connection name")).toBeVisible()
+    expect(screen.queryByRole("button", { name: "New connection" })).not.toBeInTheDocument()
+    expect(screen.queryByText("No OIDC connections configured.")).not.toBeInTheDocument()
+    expect(screen.queryByRole("link", { name: "Manage principals and delegation" })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }))
+    expect(screen.getByRole("button", { name: "New connection" })).toBeVisible()
+    expect(screen.getByText("No OIDC connections configured.")).toBeVisible()
+    expect(screen.getByRole("link", { name: "Manage principals and delegation" })).toBeVisible()
+    expect(screen.queryByLabelText("Connection name")).not.toBeInTheDocument()
   })
 
   it("retains edits and shows a refresh instruction on revision conflict", async () => {

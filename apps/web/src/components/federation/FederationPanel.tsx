@@ -92,7 +92,7 @@ export function FederationPanel({ workspace, mode }: { workspace: string; mode: 
       <h2>{mode === "connections" ? "OIDC connections" : "External identity and delegation"}</h2>
       <div className={s.actions}>
         <button className="btn btn-ghost btn-icon" title="Refresh" aria-label="Refresh federation" disabled={busy || loading} onClick={() => void refresh()}><RefreshCw size={16} /></button>
-        {data && <button className="btn btn-primary" disabled={busy || loading} onClick={() => { setEdit("new"); setPending(null); setNotice("") }}><Plus size={16} />{mode === "connections" ? "New connection" : `Add ${tab === "bindings" ? "binding" : tab.slice(0, -1)}`}</button>}
+        {data && !(mode === "connections" && edit) && <button className="btn btn-primary" disabled={busy || loading} onClick={() => { setEdit("new"); setPending(null); setNotice("") }}><Plus size={16} />{mode === "connections" ? "New connection" : `Add ${tab === "bindings" ? "binding" : tab.slice(0, -1)}`}</button>}
       </div>
     </div>
     {error && <div role="alert" className={s.error}>{error}</div>}
@@ -108,7 +108,7 @@ export function FederationPanel({ workspace, mode }: { workspace: string; mode: 
       {edit && (mode === "connections"
         ? <ConnectionForm key={edit} row={data.connections.find(c => c.id === edit)} workspace={workspace} save={save} busy={busy} close={() => setEdit(null)} />
         : <ApprovalForm key={`${tab}:${edit}`} kind={tab} row={data[tab].find(r => r.id === edit)} data={data} workspace={workspace} save={save} busy={busy} close={() => setEdit(null)} />)}
-      {mode === "connections" ? <>
+      {mode === "connections" ? !edit && <>
         {!data.connections.length ? <p className={s.notice}>No OIDC connections configured.</p> : <div className={s.tableWrap}><table className={s.table}>
           <thead><tr><th>Connection</th><th>Issuer</th><th>Status</th><th>Actions</th></tr></thead>
           <tbody>{data.connections.map(row => <tr key={row.id}>
