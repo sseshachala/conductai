@@ -103,6 +103,24 @@ local fixture success does not prove those external clients work.
 - The disposable database runs as its table owner. Restricted-role RLS and the
   full configured/unconfigured MCP/Gateway release gates above remain pending.
 
+## Phase 3 verification record (2026-09-29)
+
+- 241 targeted federation, migration, Agent-token, Okta, OAuth, MCP and Guard
+  regression tests passed; 10 existing database-fixture tests were skipped.
+  The endpoint authentication coverage check passed.
+- Fresh migrations through 0155 passed on disposable PostgreSQL. The Phase 3
+  ASGI harness passed with a restricted runtime role and active forced RLS,
+  real persisted service credentials, signed JWTs and actual Guard dispatch.
+  Only JWKS retrieval was injected; this is not live customer IdP acceptance.
+- Both MCP POST transports passed configured/unconfigured cases, concurrent
+  subjects sharing a transport session, scope denial, missing/expired evidence,
+  wrong audience/connection, revocation of an already verified context, JWKS
+  outage, audit attribution and cross-workspace database isolation.
+- CI now runs this restricted-role harness. Its hosted execution remains pending
+  until this branch is pushed. Direct Gateway and LiteLLM plugin acceptance are
+  later-phase work; Phase 3 grants only the two supported MCP policy checks.
+- No production configuration or deployment was changed by this harness.
+
 ## Configuration UI requirement
 
 The later UI phase must reuse Conduct's existing Integrations and Agent Identity

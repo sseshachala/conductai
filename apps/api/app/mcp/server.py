@@ -64,6 +64,7 @@ class MCPContext:
     # just created). Left None for adapters that don't run a multi-turn tool
     # loop — the guard is a no-op for them.
     pending_action_ids_this_turn: set[str] | None = None
+    identity: Any = None  # Verified request-local federation context, never tool arguments.
 
 
 def _ok(msg_id: Any, result: dict[str, Any]) -> dict[str, Any]:
@@ -175,6 +176,19 @@ def _handle_tools_call(
             "isError": True,
         })
 
+    if ctx.identity is not None:
+        from app.core.database import SessionLocal
+        from sqlalchemy.exc import SQLAlchemyError
+        from app.modules.auth.federation.resolver import FederationDenied, recheck
+        from app.modules.auth.federation.mcp_ingress import tool_failure
+        try:
+            with SessionLocal() as db:
+                recheck(db, ctx.identity, "mcp." + tool_name)
+        except FederationDenied as error:
+            return _ok(msg_id, tool_failure(error))
+        except SQLAlchemyError:
+            return _ok(msg_id, tool_failure(FederationDenied("federation_storage_unavailable", 503)))
+
     # Per-tool policy gate — same shape as Executor.call in #1218 Step 4.
     policy_ctx = PolicyContext(
         workspace_id=ctx.workspace_id,
@@ -245,8 +259,12 @@ def _invoke_tool(
     ctx: MCPContext,
 ) -> dict[str, Any]:
     """Run the tool impl, translate return value into MCP response shape."""
+    from app.modules.auth.federation.resolver import FederationDenied
     try:
         result = tool.impl(ctx=ctx, **arguments) if _accepts_ctx(tool.impl) else tool.impl(**arguments)
+    except FederationDenied as error:
+        from app.modules.auth.federation.mcp_ingress import tool_failure
+        return _ok(msg_id, tool_failure(error))
     except TypeError as e:
         return _ok(msg_id, {
             **_text_result(f"Invalid arguments for {tool.name!r}: {e}"),

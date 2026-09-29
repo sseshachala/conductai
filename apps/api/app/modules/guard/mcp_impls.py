@@ -88,6 +88,7 @@ class GuardCtx:
     # by rules with `match_agent_risk_tier` set — null tier never matches a
     # tier-requiring rule.
     agent_risk_tier: str | None = None
+    identity: object | None = None
 
 
 def guard_status_impl(ctx: GuardCtx, **arguments) -> str:

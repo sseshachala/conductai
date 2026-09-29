@@ -26,8 +26,7 @@ class ClaimMapping(ContractModel):
 
 
 class TrustConfig(ContractModel):
-    # No active state until principal/delegation enforcement is implemented.
-    status: Literal["draft", "disabled"] = "draft"
+    status: Literal["draft", "active", "disabled"] = "draft"
     integration_type: Literal["pcai", "litellm", "generic"] = "generic"
     method: Literal["oauth_access_token"] = "oauth_access_token"
     issuer: Annotated[str, Field(min_length=1, max_length=2048)]

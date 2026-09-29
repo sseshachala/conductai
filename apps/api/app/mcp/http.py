@@ -119,6 +119,10 @@ async def mcp_endpoint(request: Request) -> JSONResponse:
         return auth
     workspace_id, clerk_user_id = auth
     token = _extract_bearer(request) or ""
+    from app.modules.auth.federation.mcp_ingress import prepare
+    identity = await run_in_threadpool(prepare, request, workspace_id, token, body)
+    if isinstance(identity, JSONResponse):
+        return identity
 
     # Detect surface from clientInfo if present (initialize call), else headers.
     client_info = (body.get("params") or {}).get("clientInfo") or {}
@@ -158,6 +162,7 @@ async def mcp_endpoint(request: Request) -> JSONResponse:
         user_email=user_email,
         session_id=session_id,
         resolved_token=token,
+        identity=identity,
     )
 
     try:

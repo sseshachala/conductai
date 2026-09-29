@@ -36,7 +36,7 @@ def main():
                 raise AssertionError("Original migration unexpectedly obtained its exclusive lock")
         # API and Gateway start against the same schema, while the reader's
         # transaction remains open. Both upgrades must succeed without a race.
-        processes = [subprocess.Popen(command + ["upgrade", "head"], cwd=api,
+        processes = [subprocess.Popen(command + ["upgrade", "0154"], cwd=api,
                                       stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
                      for _ in range(2)]
         try:
@@ -58,11 +58,11 @@ def main():
     with engine.connect() as writer:
         writer.execute(text("UPDATE integrations SET handle=handle WHERE false"))
         start = time.monotonic()
-        blocked = migrate("upgrade", "head")
+        blocked = migrate("upgrade", "0154")
         assert blocked.returncode != 0 and "lock timeout" in blocked.stderr, blocked.stderr
         assert time.monotonic() - start < 10
         writer.rollback()
-    recovered = migrate("upgrade", "head")
+    recovered = migrate("upgrade", "0154")
     assert recovered.returncode == 0, recovered.stderr
     engine.dispose()
     print("PASS: original lock regression reproduced; two serialized upgrades succeed with live reader; writer contention fails promptly; retry succeeds")

@@ -34,6 +34,8 @@ class ConnectionOut(ContractModel):
 def scoped_integration(db: Session, workspace_id: UUID, integration_id: UUID, authenticated_workspace: str, *, lock=False):
     if str(workspace_id) != authenticated_workspace:
         raise HTTPException(403, detail="federation_workspace_mismatch")
+    from app.core.workspace_context import set_workspace_rls
+    set_workspace_rls(db, workspace_id)
     query = db.query(Integration).filter(Integration.id == integration_id, Integration.workspace_id == workspace_id)
     if lock:
         query = query.with_for_update()
@@ -87,5 +89,6 @@ def put_connection(workspace_id: UUID, integration_id: UUID, body: ConnectionWri
     db.add(AuditLog(workspace_id=workspace_id, actor_id=user_id, actor_role=role,
                     action="federation.config.saved", resource_type="federation_connection",
                     resource_id=str(row.id), meta={"revision": row.revision, "status": body.config.status}))
+    response = output(row)
     db.commit()
-    return output(row)
+    return response

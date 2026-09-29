@@ -59,6 +59,7 @@ class AgentIdentity(Base):
     metadata_json       = Column(JSONB,       nullable=True)
 
     __table_args__ = (
+        Index("uq_agent_identity_workspace_id", "workspace_id", "id", unique=True),
         CheckConstraint(
             "lifecycle_state IN ('active', 'pending_review', 'deactivated', 'expired')",
             name="ck_agent_identities_lifecycle_state",

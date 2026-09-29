@@ -148,7 +148,7 @@ def test_discovery_cannot_change_trusted_jwks(keys):
 @pytest.mark.parametrize("overrides", [
     {"issuer": "http://idp.example"}, {"jwks_uri": "https://user:pass@idp.example/keys"},
     {"jwks_uri": "https://idp.example/keys?token=secret"}, {"algorithms": ["HS256"]},
-    {"status": "active"}, {"claim_mappings": [{"name": "role", "source_claim": "groups"}]},
+    {"status": "unknown"}, {"claim_mappings": [{"name": "role", "source_claim": "groups"}]},
 ])
 def test_invalid_config(overrides):
     base = {"issuer": "https://idp.example", "jwks_uri": "https://idp.example/keys", "audience": "conduct"}
