@@ -56,7 +56,7 @@ def journey(monkeypatch):
     versions = projection(WorkflowVersion, ["id", "workflow_id"])
     runs = projection(Run, ["id", "workspace_id", "workflow_version_id", "triggered_by", "status",
         "current_block_id", "created_at", "started_at", "completed_at"])
-    steps = projection(RunEvent, ["id", "run_id", "block_id", "kind", "created_at"])
+    steps = projection(RunEvent, ["id", "run_id", "block_id", "kind", "payload", "created_at"])
     ws, other, agent, foreign_agent = [uuid4() for _ in range(4)]
     now = datetime.now(timezone.utc)
     with admin.begin() as connection:
