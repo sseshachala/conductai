@@ -1,0 +1,22 @@
+Conduct is installing in namespace {{ .Release.Namespace }} as release {{ .Release.Name }}.
+
+Public URL (once Istio routes propagate):
+  https://{{ .Values.ezua.endpoint }}
+
+Watch pods come up:
+  kubectl -n {{ .Release.Namespace }} get pods -w -l app.kubernetes.io/instance={{ .Release.Name }}
+
+Health check the API (in-cluster):
+  kubectl -n {{ .Release.Namespace }} exec deploy/{{ include "conduct.fullname" . }}-api -- \
+    curl -sf http://localhost:8000/health
+
+If you didn't set `secrets.existingSecret`, the chart wrote a Secret named:
+  {{ include "conduct.secretName" . }}
+Rotate DB/auth credentials by editing that Secret and rolling the affected
+Deployments.
+
+{{- if not .Values.secrets.existingSecret }}
+
+⚠  For production, create your own Secret and pin `secrets.existingSecret`
+   instead of relying on the chart's inline values.
+{{- end }}
