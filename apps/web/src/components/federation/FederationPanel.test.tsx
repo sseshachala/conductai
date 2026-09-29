@@ -29,7 +29,7 @@ describe("federation management", () => {
     fireEvent.change(screen.getByLabelText("Issuer URL"), { target: { value: "https://issuer.example" } })
     fireEvent.change(screen.getByLabelText("Audience"), { target: { value: "conduct" } })
     fireEvent.change(screen.getByLabelText("JWKS URL"), { target: { value: "https://issuer.example/keys" } })
-    fireEvent.click(screen.getByRole("button", { name: "Save draft" }))
+    fireEvent.click(screen.getByRole("button", { name: "Save" }))
     await waitFor(() => expect(authFetch).toHaveBeenCalledWith(expect.stringContaining("/federation/connections"), expect.objectContaining({ method: "POST" })))
     const [, options] = authFetch.mock.calls.find(([, options]) => options?.method === "POST")!
     expect(JSON.parse(options.body)).toMatchObject({ name: "Enterprise production", config: { status: "draft", integration_type: "generic" } })
@@ -58,7 +58,7 @@ describe("federation management", () => {
     render(<FederationPanel workspace="workspace" mode="connections" />)
     fireEvent.click(await screen.findByRole("button", { name: "New connection" }))
     fireEvent.change(screen.getByLabelText("Connection name"), { target: { value: "Retained" } })
-    fireEvent.submit(screen.getByRole("button", { name: "Save draft" }).closest("form")!)
+    fireEvent.submit(screen.getByRole("button", { name: "Save" }).closest("form")!)
     expect(await screen.findByRole("alert")).toHaveTextContent("Refresh before saving")
     expect(screen.getByLabelText("Connection name")).toHaveValue("Retained")
   })

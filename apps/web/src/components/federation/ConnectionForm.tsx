@@ -50,7 +50,7 @@ export function ConnectionForm({ row, workspace, save, busy, close }: {
       </div>
       {confirm && <p role="alert" className={s.confirm}>Changing active trust invalidates existing delegated evidence, including pending workflows. Save these changes?</p>}
       <div className={s.actions}>
-        <button className="btn btn-primary" type="submit"><SaveIcon size={16} /> {busy ? "Saving..." : confirm ? "Confirm changes" : row ? "Save changes" : "Save draft"}</button>
+        <button className="btn btn-primary" type="submit"><SaveIcon size={16} /> {busy ? "Saving..." : confirm ? "Confirm changes" : row ? "Save changes" : "Save"}</button>
         <button type="button" className="btn btn-ghost" onClick={close}>Cancel</button>
       </div>
     </fieldset>
