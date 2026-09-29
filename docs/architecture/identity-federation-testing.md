@@ -1,0 +1,84 @@
+# Identity federation: real harness acceptance matrix
+
+Epic #2283. Companion to [the contract](identity-federation.md).
+This matrix is not a claim that federated runtime support is implemented.
+
+## Reuse and isolation
+
+Reuse `tools/security-e2e/compose.yml` and `local.py`: running API/web, PostgreSQL
+with applied migrations, Redis, real Clerk sandbox accounts, and Playwright.
+Keep production auth/RBAC enabled. Never import `apps/api/tests/conftest.py`
+into the black-box harness: that unit suite replaces permission dependencies.
+Run with a dedicated disposable database, synthetic users and cleanup.
+
+Reuse the existing sandbox signup/login and token-exchange journey helpers.
+The shared `apps/web/e2e-security/support/mcp.ts` probe exercises real HTTP
+initialize, initialized notification, tools/list and guard_status invocation
+without federation evidence. It handles JSON/SSE envelopes and session IDs.
+It does not claim to exercise PKCE consent or delegated identity.
+
+The existing `expectUsableToken` now invokes this probe instead of only listing
+tools through the legacy endpoint. It uses real OAuth token exchange to obtain
+an Agent credential. That overlap is not two independent authentication tests.
+Add a separately provisioned integration Agent-token case and full OAuth
+authorization-code/PKCE case in subsequent harness work.
+
+## Release gates
+
+| Case | Setup and observable outcome | Delivery |
+| --- | --- | --- |
+| Existing exchange / no federation | Real login and exchange, initialize/list/call succeeds without federation headers. | Phase 1 baseline enhancement |
+| MCP OAuth / no federation | Register client, authorization/consent, PKCE exchange, initialize/list/call, invalid verifier and code replay rejection. | Before shared auth integration |
+| Service Agent token / no federation | Provision caller independently of OAuth; initialize/list/call succeeds, foreign workspace denied. | Before shared auth integration |
+| LiteLLM / required federation | Actual plugin and proxy, two signed identities, different Guard decisions and correctly persisted attribution. No Conduct Gateway inference dependency. | Phase 4 |
+| Second application / federation | Independent MCP client uses identical contract, with no PCAI branches. | Phase 4 |
+| Failure matrix | Missing, expired, wrong-purpose/audience/signature evidence; wrong tenant, revoked grant, disabled connection; no inference or silent downgrade. | Phases 2-5 |
+| Mixed clients | Concurrent OAuth/service/federated calls, different users/tenants on shared transports, no cached-context leakage. | Phases 3-5 |
+| Gateway ingress | Repeat configured/unconfigured and failure cases through Gateway; inspect provider stub requests for stripped identity evidence. | Phase 5 |
+| UI and audit | Tenant-scoped Flight Recorder/Lens displays caller/principal separately and distinguishes policy checks from receipts. | Phases 5-6 |
+
+Use a local signing identity-provider fixture and deterministic provider stub for
+federated tests. Do not stub Conduct verification, delegation, policy or database
+persistence. Test assertion replay across concurrent workers and key rotation.
+Assert positive and negative records via tenant-authorized API plus database
+queries where appropriate, and assert zero provider invocations for denied calls.
+No raw tokens in test output, screenshots, traces, fixtures or retained artifacts.
+
+## Commands and evidence
+
+For the existing unfederated local baseline (requires the dedicated Clerk test
+configuration described in `tools/security-e2e/README.md`):
+
+```sh
+rtk proxy python3.11 tools/security-e2e/local.py test \
+  --credentials-file /path/to/sandbox-credentials --allow-test-users \
+  --grep 'owner token lists MCP tools only for its workspace'
+```
+
+Rebuild the isolated application stack from the candidate revision before claiming
+release compatibility; a passing probe against an old running stack is only a
+baseline observation. Do not reset or reuse production databases.
+
+CI must record revision, client/protocol/LiteLLM versions, migrations, pass/fail
+counts and skipped cases. Missing prerequisites must fail the required harness
+job, not silently turn it green. Existing unit tests supplement, not replace,
+these gates. Live PCAI and third-party UI client acceptance is separately tracked;
+local fixture success does not prove those external clients work.
+
+## Phase 1 verification record (2026-09-29)
+
+- 119 schema/authentication/MCP unit regression tests passed. These are not the
+  black-box authorization gate because of the unit-suite permission overrides.
+- The new shared MCP probe passed standalone TypeScript checking.
+- One real browser baseline passed against the existing local stack in its
+  table-owner mode: synthetic Clerk login, OAuth token exchange, MCP initialization,
+  initialized notification, tool listing and guard_status invocation. The harness
+  cleaned up its synthetic user and organization.
+- The restricted-role attempt failed its prerequisite check: the running API
+  reports the table-owner role and inactive audit RLS. No auth bypass was added;
+  the functional retry explicitly used owner mode. Restricted-role RLS remains
+  unverified and required for release acceptance.
+- The local stack was not rebuilt from this revision. This is existing-client
+  baseline evidence, not candidate deployment or federated-flow acceptance.
+- Full PKCE, independent service credentials, configured federation, mixed-client
+  isolation and direct Gateway cases remain required implementation-phase gates.
