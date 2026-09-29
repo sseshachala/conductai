@@ -1,3 +1,4 @@
+{{- if .Values.ezua.virtualService.enabled -}}
 # PCAI ingress: Istio VirtualService bound to the shared ezaf-gateway.
 # Two routes on one hostname (same-origin so the web pod doesn't need to
 # know a public API URL at build time):
@@ -29,3 +30,4 @@ spec:
             host: {{ include "conduct.fullname" . }}-web
             port:
               number: {{ .Values.web.service.port }}
+{{- end }}

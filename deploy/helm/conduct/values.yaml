@@ -2,9 +2,13 @@
 # The two knobs the PCAI Import Framework asks for when uploading the chart.
 # `endpoint` is the hostname the app is reachable at (rendered into the Istio
 # VirtualService). `istioGateway` is the shared ingress gateway PCAI runs.
+# Set `virtualService.enabled=false` on clusters without Istio (kind, plain
+# EKS, etc.); use your own Ingress in that case.
 ezua:
   endpoint: "conduct.${DOMAIN_NAME}"
   istioGateway: "istio-system/ezaf-gateway"
+  virtualService:
+    enabled: true
 
 # ─── Images ────────────────────────────────────────────────────────────────
 # API/Gateway/Worker share one image (apps/api/Dockerfile). Web is separate.
