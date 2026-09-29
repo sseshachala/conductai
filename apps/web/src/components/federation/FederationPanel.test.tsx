@@ -29,10 +29,28 @@ describe("federation management", () => {
     fireEvent.change(screen.getByLabelText("Issuer URL"), { target: { value: "https://issuer.example" } })
     fireEvent.change(screen.getByLabelText("Audience"), { target: { value: "conduct" } })
     fireEvent.change(screen.getByLabelText("JWKS URL"), { target: { value: "https://issuer.example/keys" } })
-    fireEvent.click(screen.getByRole("button", { name: "Save draft" }))
+    fireEvent.click(screen.getByRole("button", { name: "Save" }))
     await waitFor(() => expect(authFetch).toHaveBeenCalledWith(expect.stringContaining("/federation/connections"), expect.objectContaining({ method: "POST" })))
     const [, options] = authFetch.mock.calls.find(([, options]) => options?.method === "POST")!
     expect(JSON.parse(options.body)).toMatchObject({ name: "Enterprise production", config: { status: "draft", integration_type: "generic" } })
+    expect(await screen.findByRole("button", { name: "New connection" })).toBeVisible()
+    expect(screen.getByRole("link", { name: "Manage principals and delegation" })).toBeVisible()
+    expect(screen.queryByLabelText("Connection name")).not.toBeInTheDocument()
+  })
+
+  it("hides connection list controls while creating and restores them on cancel", async () => {
+    authFetch.mockResolvedValue(response(overview))
+    render(<FederationPanel workspace="workspace" mode="connections" />)
+    fireEvent.click(await screen.findByRole("button", { name: "New connection" }))
+    expect(screen.getByLabelText("Connection name")).toBeVisible()
+    expect(screen.queryByRole("button", { name: "New connection" })).not.toBeInTheDocument()
+    expect(screen.queryByText("No OIDC connections configured.")).not.toBeInTheDocument()
+    expect(screen.queryByRole("link", { name: "Manage principals and delegation" })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }))
+    expect(screen.getByRole("button", { name: "New connection" })).toBeVisible()
+    expect(screen.getByText("No OIDC connections configured.")).toBeVisible()
+    expect(screen.getByRole("link", { name: "Manage principals and delegation" })).toBeVisible()
+    expect(screen.queryByLabelText("Connection name")).not.toBeInTheDocument()
   })
 
   it("retains edits and shows a refresh instruction on revision conflict", async () => {
@@ -40,7 +58,7 @@ describe("federation management", () => {
     render(<FederationPanel workspace="workspace" mode="connections" />)
     fireEvent.click(await screen.findByRole("button", { name: "New connection" }))
     fireEvent.change(screen.getByLabelText("Connection name"), { target: { value: "Retained" } })
-    fireEvent.submit(screen.getByRole("button", { name: "Save draft" }).closest("form")!)
+    fireEvent.submit(screen.getByRole("button", { name: "Save" }).closest("form")!)
     expect(await screen.findByRole("alert")).toHaveTextContent("Refresh before saving")
     expect(screen.getByLabelText("Connection name")).toHaveValue("Retained")
   })
