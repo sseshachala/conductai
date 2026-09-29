@@ -4,6 +4,8 @@ import Link from "next/link"
 import { marked } from "marked"
 // @ts-expect-error - .md imported as raw string via webpack asset/source
 import oktaTrackingMd from "../../../../../../docs/reference/okta-tracking.md"
+// @ts-expect-error - .md imported as raw string via webpack asset/source
+import oidcSetupMd from "../../../../../../docs/reference/oidc-setup.md"
 
 const VALID_TABS = ["overview", "guard", "mcp-tools", "getting-started", "blocks", "api", "integrations"] as const
 
@@ -152,6 +154,7 @@ const TAB_NAV: Record<TabId, { href: string; label: string }[]> = {
     { href: "#mcp-troubleshoot", label: "Troubleshooting" },
   ],
   "integrations": [
+    { href: "#oidc", label: "OIDC identity & delegation" },
     { href: "#github", label: "GitHub" },
     { href: "#slack",  label: "Slack" },
     { href: "#linear", label: "Linear" },
@@ -2397,6 +2400,9 @@ Auth: OAuth  (discovered from /.well-known/oauth-protected-resource/guard/mcp)`}
 function TabIntegrations() {
   return (
     <div className="space-y-16">
+      <section id="oidc" className="scroll-mt-8 break-words [&_h2]:text-xl [&_h2]:font-bold [&_h2]:mb-4 [&_h3]:text-base [&_h3]:font-semibold [&_h3]:mt-6 [&_h3]:mb-3 [&_p]:text-sm [&_p]:text-stone-600 [&_p]:leading-relaxed [&_p]:mb-3 [&_ul]:text-sm [&_ul]:text-stone-600 [&_ul]:list-disc [&_ul]:ml-5 [&_ul]:mb-3 [&_li]:mb-2 [&_code]:font-mono [&_code]:text-xs [&_code]:break-all [&_table]:w-full [&_table]:table-fixed [&_table]:text-sm [&_table]:mb-4 [&_th]:text-left [&_th]:p-2 [&_th]:border-b [&_td]:p-2 [&_td]:border-b [&_td]:align-top"
+        dangerouslySetInnerHTML={{ __html: marked.parse(oidcSetupMd, { async: false }) as string }}
+      />
       <section id="github">
         <SectionHeading id="github">GitHub</SectionHeading>
         <p className="text-stone-500 text-sm mb-4">Create branches, push commits, open and merge pull requests, trigger Actions.</p>
@@ -2535,7 +2541,7 @@ export default function DocsPage() {
   return (
     <div className="min-h-screen bg-stone-50">
       {/* Tab bar */}
-      <div className="bg-white border-b border-stone-200 px-6">
+      <div className="bg-white border-b border-stone-200 px-6 overflow-x-auto">
         <div className="max-w-5xl mx-auto flex gap-0 items-center">
           {TABS.map(tab => (
             <button
