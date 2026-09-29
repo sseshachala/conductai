@@ -1,6 +1,6 @@
 ## Configure OIDC identity and delegation
 
-Use OIDC federation when an external application calls Conduct on behalf of a verified user or workload. This configures runtime identity, not login to the Conduct console. PCAI is one application that can use this generic connection type.
+Use OIDC federation when an external application calls Conduct on behalf of a verified user or workload. This configures runtime identity, not login to the Conduct console. [HPE's PCAI (Private Cloud AI)](https://www.hpe.com/us/en/products/private-cloud/pcai.html) is one application that can use this generic connection type, subject to configuring and verifying its identity-provider handoff.
 
 ### Before you begin
 
