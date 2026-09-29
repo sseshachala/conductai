@@ -22,6 +22,7 @@ from typing import Any
 import httpx
 import jwt
 import structlog
+from app.core.jwt_verification import decode_rs256
 
 log = structlog.get_logger(__name__)
 
@@ -164,15 +165,7 @@ def verify_okta_jwt(
     key = cache.get_key(issuer, kid)
 
     try:
-        claims = jwt.decode(
-            token,
-            key=key,
-            algorithms=["RS256"],
-            audience=audience,
-            issuer=issuer,
-            leeway=leeway_s,
-            options={"require": ["exp", "iss", "aud", "sub"]},
-        )
+        claims = decode_rs256(token, key, issuer, audience, leeway=leeway_s)
     except jwt.ExpiredSignatureError as e:
         raise OktaJWTExpired("token expired") from e
     except jwt.InvalidIssuerError as e:

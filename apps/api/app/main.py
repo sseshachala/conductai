@@ -64,6 +64,7 @@ from app.routers.generate import router as generate_router
 from app.routers.compliance import router as compliance_router
 from app.routers.cedar_import import router as cedar_import_router
 from app.routers.okta_sync import router as okta_sync_router
+from app.modules.auth.federation.router import router as federation_router
 from app.routers.whoami import router as whoami_router
 from app.routers.governance import router as governance_router
 from app.routers.sdd import router as sdd_router
@@ -291,6 +292,7 @@ app.include_router(generate_router)
 app.include_router(compliance_router)
 app.include_router(cedar_import_router)
 app.include_router(okta_sync_router)
+app.include_router(federation_router)
 app.include_router(whoami_router)
 app.include_router(governance_router)
 app.include_router(sdd_router)

@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto"
 import { test, expect, type Browser, type BrowserContext, type Page } from "@playwright/test"
 import { clerkSetup, setupClerkTestingToken } from "@clerk/testing/playwright"
+import { expectMcpInvocation } from "./support/mcp"
 
 type Account = { id: string; email: string; password: string }
 type Workspace = { id: string; name: string; owner_id: string }
@@ -227,15 +228,7 @@ async function expectUsableToken(page: Page, workspaceId: string) {
   // Assert booleans so a malformed credential cannot appear in test output.
   expect(typeof issued.access_token === 'string' && issued.access_token.startsWith('cond_agt_')).toBe(true)
   expect(typeof issued.refresh_token === 'string' && issued.refresh_token.startsWith('cond_ref_')).toBe(true)
-  let mcp
-  try {
-    mcp = await page.request.post(`${base}/api/guard/mcp?workspace_id=${workspaceId}`, {
-      headers: { Authorization: `Bearer ${issued.access_token}` },
-      data: { jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} },
-    })
-  } catch { throw new Error('MCP transport failed; credentials omitted') }
-  expect(mcp.status()).toBe(200)
-  expect(Array.isArray((await mcp.json()).result?.tools)).toBe(true)
+  await expectMcpInvocation(page, `${base}/api/mcp?workspace_id=${workspaceId}`, issued.access_token)
 }
 
 async function guardEvent(page: Page, accessToken: string, body: Record<string, unknown>) {
