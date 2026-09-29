@@ -127,6 +127,7 @@ jobs:
           export FEDERATION_LITELLM="$RUNNER_TEMP/federation-litellm/bin/litellm"
           python ../../tools/federation/phase4_harness.py
           python ../../tools/federation/phase5_harness.py
+          python ../../tools/federation/phase6_harness.py
         working-directory: apps/api
       - name: sys.modules-stub ratchet (#1075)
         run: python scripts/check_sys_modules_ratchet.py
@@ -157,4 +158,7 @@ jobs:
         working-directory: apps/web
       - name: Lint
         run: npm run lint
+        working-directory: apps/web
+      - name: Federation management UI
+        run: npx vitest run src/components/federation
         working-directory: apps/web

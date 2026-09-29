@@ -11,8 +11,9 @@ import { TabBar } from "@/components/TabBar"
 import { AgentSessions } from "@/components/AgentSessions"
 import { AgentActivitySessions } from "@/components/AgentActivitySessions"
 import { Activity, KeyRound } from "lucide-react"
+import { FederationPanel } from "@/components/federation/FederationPanel"
 
-type Tab = "tokens" | "run_tokens" | "identities" | "agent_sessions" | "lens_sessions" | "integrations"
+type Tab = "tokens" | "run_tokens" | "identities" | "agent_sessions" | "lens_sessions" | "integrations" | "delegation"
 const TAB_LABELS: Record<Tab, string> = {
   tokens: "Tokens",
   run_tokens: "Run tokens",
@@ -20,8 +21,9 @@ const TAB_LABELS: Record<Tab, string> = {
   agent_sessions: "Agent sessions",
   lens_sessions: "Lens sessions",
   integrations: "Integrations",
+  delegation: "Delegation",
 }
-const TABS: Tab[] = ["tokens", "run_tokens", "identities", "agent_sessions", "lens_sessions", "integrations"]
+const TABS: Tab[] = ["tokens", "run_tokens", "identities", "agent_sessions", "lens_sessions", "integrations", "delegation"]
 
 interface RunToken {
   id: string
@@ -183,6 +185,7 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
   const searchParams = useSearchParams()
   const initialTab = (searchParams?.get("tab") as Tab) || "tokens"
   const [activeTab, setActiveTab] = useState<Tab>(TABS.includes(initialTab) ? initialTab : "tokens")
+  const [integrationTab, setIntegrationTab] = useState<"okta" | "oidc">(searchParams.get("integration") === "oidc" ? "oidc" : "okta")
   const sourceFilter = searchParams?.get("source") || null
   // #1252 — deep-link support: click a Lens session's cond_agt_lens_* → land
   // on the Identities tab with ?id=<uuid> and highlight+scroll to the row.
@@ -814,6 +817,9 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
         </div>
 
         <div role="tabpanel" id="tabpanel-integrations" aria-labelledby="tab-integrations" hidden={activeTab !== "integrations"} style={{ display: activeTab === "integrations" ? "block" : "none" }}>
+          <TabBar tabs={["okta", "oidc"] as const} labels={{ okta: "Okta", oidc: "OIDC" }} activeTab={integrationTab} onSelect={value => { setIntegrationTab(value); selectTab("integrations", { integration: value }) }} idPrefix="integration" />
+          {activeTab === "integrations" && integrationTab === "oidc" && <div id="tabpanel-oidc" role="tabpanel" aria-labelledby="integration-oidc"><FederationPanel key={`${workspaceId}:connections`} workspace={workspaceId} mode="connections" /></div>}
+          <div id="tabpanel-okta" role="tabpanel" aria-labelledby="integration-okta" hidden={integrationTab !== "okta"} style={{ paddingTop: 18 }}>
           <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text)", marginBottom: 4 }}>Okta integration</div>
           <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "0 0 12px" }}>
             Pull agent identities from your Okta tenant into Conduct as Guard principals. Okta owns auth; Conduct governs what each identity is allowed to do.
@@ -984,6 +990,8 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
           </div>
         </div>
 
+          </div>
+        {activeTab === "delegation" && <div role="tabpanel" id="tabpanel-delegation" aria-labelledby="tab-delegation"><FederationPanel key={`${workspaceId}:delegation`} workspace={workspaceId} mode="delegation" /></div>}
         {activeTab === "agent_sessions" && <div role="tabpanel" id="tabpanel-agent_sessions" aria-labelledby="tab-agent_sessions">
           <h2 style={{ fontSize: 15, fontWeight: 700, marginBottom: 16 }}>Agent sessions</h2>
           <div className="mb-5 flex flex-wrap items-center gap-4">

@@ -13,6 +13,7 @@ from app.models.llm_attempt_receipt import LlmAttemptReceipt
 from app.models.run import Run, RunEvent
 from app.models.workflow import Workflow, WorkflowVersion
 from app.modules.agent_identity.models import AgentIdentity
+from app.modules.auth.federation.attribution import attribution, run_attribution
 from app.modules.guard.models import GuardAuditEvent
 from app.modules.glens.trial_evidence import TrialEvidenceQuery, TrialEvidenceResult, TrialEventEvidence
 from app.modules.glens.trial_accounting import attach_trial_accounting
@@ -151,7 +152,6 @@ def _read_runs(db, user_id, query, evidence):
             stmt = stmt.where(Run.id == query.run_id)
         rows = db.execute(stmt.order_by(Run.created_at.desc(), Run.id.desc()).limit(query.limit)).all()
         evidence.runs_total = rows[0].total if rows else 0
-        from app.modules.auth.federation.attribution import run_attribution
         evidence.runs = [RunEvidence(
             source_id=r.id, workflow_id=r.workflow_id, workflow_name=r.workflow_name,
             status=r.status, current_block_id=r.current_block_id, created_at=r.created_at,
@@ -257,7 +257,6 @@ def read_platform_evidence(db, workspace_id, user_id, query: PlatformEvidenceQue
         rows = db.execute(stmt.order_by(event.ts.desc(), event.id.desc()).limit(query.limit)).all()
         evidence.total_matching = rows[0].total if rows else 0
         evidence.has_more = evidence.total_matching > len(rows)
-        from app.modules.auth.federation.attribution import attribution
         evidence.records = [PlatformEventEvidence(
             source_id=r.id, request_id=r.request_id, agent_identity_id=r.agent_identity_id or "",
             recorded_at=r.ts.replace(tzinfo=timezone.utc) if r.ts.tzinfo is None else r.ts,

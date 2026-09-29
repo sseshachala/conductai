@@ -37,15 +37,17 @@ class KeyCache:
         self._attempts = OrderedDict()
         self._lock = threading.Lock()
 
-    def key(self, workspace_id: UUID, connection_id: UUID, revision: int, config: TrustConfig, kid: str):
+    def key(self, workspace_id: UUID, connection_id: UUID, revision: int, config: TrustConfig, kid: str | None):
         # Include trust configuration, tenant and revision. Never cache principals.
         cache_key = (workspace_id, connection_id, revision, config.model_dump_json())
         with self._lock:
             now = self.clock()
             entry = self._entries.get(cache_key)
-            if entry and now - entry[0] < KEY_TTL_SECONDS and kid in entry[1]:
+            if entry and now - entry[0] < KEY_TTL_SECONDS and (kid is None or kid in entry[1]):
                 self._entries.move_to_end(cache_key)
-                return entry[1][kid]
+                if kid is None and not entry[1]:
+                    raise VerificationUnavailable("federation_invalid_jwks")
+                return len(entry[1]) if kid is None else entry[1][kid]
             attempt = self._attempts.get(cache_key)
             if attempt is not None and now - attempt < REFRESH_COOLDOWN_SECONDS:
                 if entry and now - entry[0] < KEY_TTL_SECONDS:
@@ -86,6 +88,10 @@ class KeyCache:
             self._entries.move_to_end(cache_key)
             while len(self._entries) > MAX_CONNECTIONS:
                 self._entries.popitem(last=False)
+            if kid is None:
+                if not keys:
+                    raise VerificationUnavailable("federation_invalid_jwks")
+                return len(keys)
             if kid not in keys:
                 raise InvalidIdentity("federation_unknown_key")
             return keys[kid]

@@ -68,6 +68,23 @@ def get_connection(workspace_id: UUID, integration_id: UUID,
     return output(row)
 
 
+@router.post("/validate")
+def validate_connection(workspace_id: UUID, integration_id: UUID, body: ConnectionWrite,
+                        authorized_workspace: str = Depends(get_workspace_id),
+                        _role: str = Depends(admin), db: Session = Depends(get_db)):
+    from .network import VerificationUnavailable
+    from .verifier import InvalidIdentity, KeyCache
+    scoped_integration(db, workspace_id, integration_id, authorized_workspace)
+    row = connection(db, workspace_id, integration_id)
+    if not row or row.revision != body.expected_revision or row.config != body.config.model_dump(mode="json"):
+        raise HTTPException(409, detail="federation_revision_conflict")
+    try:
+        count = KeyCache().key(workspace_id, row.id, row.revision, body.config, None)
+    except (VerificationUnavailable, InvalidIdentity) as error:
+        raise HTTPException(422, detail=str(error)) from None
+    return {"revision": row.revision, "signing_keys": count, "validated_at": datetime.now(timezone.utc)}
+
+
 @router.put("", response_model=ConnectionOut)
 def put_connection(workspace_id: UUID, integration_id: UUID, body: ConnectionWrite,
                    authorized_workspace: str = Depends(get_workspace_id),

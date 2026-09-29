@@ -4,6 +4,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, ValidationError
 
+from app.models.run import Run, RunEvent
+
 
 class FederationAttribution(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -27,7 +29,6 @@ def attribution(metadata):
 
 
 def run_attribution(db, workspace_id, run_id):
-    from app.models.run import Run, RunEvent
     from .workflow import EVENT_KIND
     row = db.query(RunEvent).join(Run, Run.id == RunEvent.run_id).filter(
         Run.workspace_id == workspace_id, Run.id == run_id, RunEvent.kind == EVENT_KIND,
