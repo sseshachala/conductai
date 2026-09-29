@@ -43,3 +43,23 @@ customer IdP or network/TLS deployment works.
 
 Phase 3 must add live principal/delegation enforcement and configured/unconfigured
 MCP/Gateway end-to-end tests. Passing this harness is not that acceptance test.
+
+## Migration contention regression
+
+Use a fresh disposable loopback database named `conduct_migration_test`, set
+`DATABASE_URL`, and run from `apps/api`:
+
+```sh
+rtk proxy env PYTHONPATH=. python ../../tools/federation/migration_lock_harness.py
+```
+
+The harness migrates to 0153, holds a read transaction on `integrations`, proves
+the original `ALTER TABLE ADD UNIQUE` times out, then runs two concurrent upgrade
+processes. Both must complete while the reader remains open. It also verifies
+empty rollback, prompt failure under write-lock contention, and successful retry.
+Only this disposable database is modified; never use a production database.
+
+The replacement index still takes a SHARE lock, so writes can briefly wait.
+Migration 0154 bounds lock acquisition to three seconds and statement execution
+to sixty seconds. API/Gateway migrations use one session-level advisory lock
+before Alembic reads its revision, avoiding simultaneous schema changes.

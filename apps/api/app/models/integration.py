@@ -33,7 +33,7 @@ class Integration(Base):
     environment = relationship("Environment", back_populates="integrations")
 
     __table_args__ = (
-        UniqueConstraint("workspace_id", "id", name="uq_integrations_workspace_id"),
+        Index("uq_integrations_workspace_id", "workspace_id", "id", unique=True),
         UniqueConstraint("workspace_id", "handle", "environment_id", name="uq_integrations_workspace_handle_env"),
         Index("ix_integrations_workspace_id", "workspace_id"),
         Index("ix_integrations_workspace_environment", "workspace_id", "environment_id"),
