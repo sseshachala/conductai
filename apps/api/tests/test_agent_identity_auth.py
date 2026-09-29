@@ -541,8 +541,8 @@ class TestMcpEndpointAuth:
             patch("app.modules.guard.routers.mcp.get_clerk_user_email", return_value="oauth@example.com"),
             patch("app.modules.guard.routers.mcp.GuardConfig", _GuardConfigStub),
             patch("app.modules.guard.routers.mcp.SessionLocal") as mock_sl,
-            patch("app.modules.auth.federation.mcp_ingress.SessionLocal") as federation_sl,
-            patch("app.modules.auth.federation.mcp_ingress.resolve_agent_identity_row") as caller,
+            patch("app.modules.auth.federation.ingress.SessionLocal") as federation_sl,
+            patch("app.modules.auth.federation.ingress.resolve_agent_identity_row") as caller,
         ):
             caller.return_value = types.SimpleNamespace(workspace_id=_WS_UUID, id=str(uuid.uuid4()))
             federation_db = federation_sl.return_value.__enter__.return_value

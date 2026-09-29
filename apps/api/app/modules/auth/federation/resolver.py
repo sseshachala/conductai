@@ -10,7 +10,7 @@ from .network import VerificationUnavailable
 from .verifier import InvalidIdentity, verify_access_token
 
 
-class FederationDenied(Exception):
+class FederationDenied(PermissionError):
     def __init__(self, code, status=403):
         self.code, self.status = code, status
         super().__init__(code)

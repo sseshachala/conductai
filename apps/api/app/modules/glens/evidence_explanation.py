@@ -76,6 +76,11 @@ def render_evidence(evidence: TrialEvidenceResult) -> str:
                     f"outcome {_literal(attempt.execution_outcome)}; usage {_literal(attempt.usage_completeness)}; "
                     f"pricing {_literal(attempt.pricing_completeness)}."
                 )
+        identity = getattr(record, "federation", None)
+        if identity:
+            lines.append(f"  Calling integration: `{_literal(identity['caller_id'])}`; "
+                         f"acting principal: `{_literal(identity['principal_id'])}`. "
+                         "Verified at request time; this is not the approver's identity.")
     lines.append("A recorded policy decision does not prove that execution completed. Rule identifiers alone do not explain the full policy rationale.")
     totals = evidence.accounting_totals
     if totals is not None and evidence.accounting_status in {"ok", "partial"}:
@@ -142,6 +147,10 @@ def _run_lines(evidence):
                      f"Current block: {_literal(run.current_block_id)}. "
                      f"[Run details](/runs/{run.source_id})")
         lines.append(f"  Latest {len(run.steps)} of {run.steps_total} recorded step events:")
+        if run.federation:
+            lines.append(f"  Initiating integration: `{_literal(run.federation['caller_id'])}`; "
+                         f"acting principal: `{_literal(run.federation['principal_id'])}`. "
+                         "Approval does not replace the initiating principal.")
         for step in run.steps:
             lines.append(f"  {_literal(step.block_id)}: {_literal(step.kind)} at {step.recorded_at.isoformat()}.")
     lines.append("Step events are recorded outcomes, not an inferred root cause. Missing links do not prove a run made no model calls.")

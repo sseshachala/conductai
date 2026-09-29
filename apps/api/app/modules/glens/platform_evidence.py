@@ -52,6 +52,7 @@ class PlatformEvidenceQuery(TrialEvidenceQuery):
 
 class PlatformEventEvidence(TrialEventEvidence):
     source: str | None = None
+    federation: dict | None = None
 
 
 class StepEvidence(BaseModel):
@@ -72,6 +73,7 @@ class RunEvidence(BaseModel):
     completed_at: datetime | None
     steps: list[StepEvidence] = Field(default_factory=list)
     steps_total: int = 0
+    federation: dict | None = None
 
 
 class GatewayAttemptEvidence(BaseModel):
@@ -149,10 +151,12 @@ def _read_runs(db, user_id, query, evidence):
             stmt = stmt.where(Run.id == query.run_id)
         rows = db.execute(stmt.order_by(Run.created_at.desc(), Run.id.desc()).limit(query.limit)).all()
         evidence.runs_total = rows[0].total if rows else 0
+        from app.modules.auth.federation.attribution import run_attribution
         evidence.runs = [RunEvidence(
             source_id=r.id, workflow_id=r.workflow_id, workflow_name=r.workflow_name,
             status=r.status, current_block_id=r.current_block_id, created_at=r.created_at,
             started_at=r.started_at, completed_at=r.completed_at,
+            federation=run_attribution(db, evidence.workspace_id, r.id),
         ) for r in rows]
         evidence.runs_status = "partial" if evidence.runs_total > len(rows) else "ok" if rows else "empty"
         if not rows:
@@ -214,7 +218,7 @@ def read_platform_evidence(db, workspace_id, user_id, query: PlatformEvidenceQue
         stmt = select(
             event.id, event.request_id, event.agent_identity_id, event.ts, event.decision,
             event.rule_id, event.policy_hash, event.provider, event.model,
-            event.lifecycle_state, event.execution_status, event.source,
+            event.lifecycle_state, event.execution_status, event.source, event.routing_meta,
             func.count().over().label("total"),
         ).outerjoin(identity, (event.agent_identity_id == identity.id)
                     & (identity.workspace_id == evidence.workspace_id)).where(
@@ -253,12 +257,13 @@ def read_platform_evidence(db, workspace_id, user_id, query: PlatformEvidenceQue
         rows = db.execute(stmt.order_by(event.ts.desc(), event.id.desc()).limit(query.limit)).all()
         evidence.total_matching = rows[0].total if rows else 0
         evidence.has_more = evidence.total_matching > len(rows)
+        from app.modules.auth.federation.attribution import attribution
         evidence.records = [PlatformEventEvidence(
             source_id=r.id, request_id=r.request_id, agent_identity_id=r.agent_identity_id or "",
             recorded_at=r.ts.replace(tzinfo=timezone.utc) if r.ts.tzinfo is None else r.ts,
             decision=r.decision, rule_id=r.rule_id, policy_hash=r.policy_hash, provider=r.provider,
             model=r.model, lifecycle_state=r.lifecycle_state, execution_status=r.execution_status,
-            source=r.source,
+            source=r.source, federation=attribution(getattr(r, "routing_meta", None)),
         ) for r in rows]
         evidence.status = "partial" if evidence.has_more else "ok" if rows else "empty"
         if query.request_ids and set(query.request_ids) - {r.request_id for r in evidence.records}:

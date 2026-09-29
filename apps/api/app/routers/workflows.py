@@ -1831,6 +1831,7 @@ def validate_workflow_inputs(
 @router.post("/{workflow_id}/trigger")
 def test_trigger(
     workflow_id: UUID,
+    request: Request = None,
     payload: dict = Body(default={}),
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
@@ -1843,6 +1844,8 @@ def test_trigger(
     HMAC — callers authenticate via Clerk JWT instead.
     """
     import pathlib, yaml as _yaml
+    from app.modules.auth.federation.workflow import prepare_run, attach_run
+    federation = prepare_run(request, workspace_id)
     import redis as _redis_mod
     from app.core.config import settings as _settings
 
@@ -2070,6 +2073,7 @@ def test_trigger(
         session_id=lens_session_id,
     )
     db.add(run)
+    attach_run(db, run, federation)
     db.commit()
 
     # #1515 P1 — append run_started envelope so RunBubble rehydrates on

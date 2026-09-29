@@ -14,6 +14,10 @@ pip install conduct-litellm-guard
 
 ## Wire it up
 
+For optional user-delegated identity, see [Federation setup](FEDERATION.md).
+It uses a separate service credential and trusted custom-auth handoff; the
+service-only setup below is unchanged.
+
 1. Mint an agent token in the [Conduct console](https://conductai.ai)
    (Settings → Agent identities). Copy the `cond_agt_…` value.
 2. Export it in the environment where your LiteLLM proxy runs:

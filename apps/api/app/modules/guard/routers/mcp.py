@@ -570,6 +570,7 @@ def _record_event(
         from app.core.workspace_context import set_workspace_rls
         from app.modules.auth.federation.mcp_ingress import provenance
         set_workspace_rls(db, ws_uuid)
+        event.routing_meta = {"federation": provenance(identity), "evidence_kind": "policy_check"}
         db.flush()
         db.add(AuditLog(workspace_id=ws_uuid, action="federation.guard.decision",
                         resource_type="guard_audit_event", resource_id=str(event.id),

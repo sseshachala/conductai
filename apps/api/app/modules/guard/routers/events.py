@@ -202,6 +202,7 @@ class EventOut(BaseModel):
     evaluated_rules: list[dict] | None = None
     defense_score: int | None = None
     routing_meta: dict | None = None
+    federation: dict | None = None
     # Added by #1973 — FastAPI request path (e.g. /gateway/v1/anthropic/v1/messages).
     # NULL for in-process callers that never had an HTTP route.
     route: str | None = None
@@ -248,6 +249,7 @@ def _end_of_day_if_bare(dt):
 
 
 def _event_to_dict(e: GuardAuditEvent) -> dict:
+    from app.modules.auth.federation.attribution import attribution
     return {
         "id": str(e.id),
         "workspace_id": str(e.workspace_id),
@@ -282,6 +284,7 @@ def _event_to_dict(e: GuardAuditEvent) -> dict:
         "evaluated_rules": e.evaluated_rules,
         "defense_score": e.defense_score,
         "routing_meta": getattr(e, "routing_meta", None),
+        "federation": attribution(getattr(e, "routing_meta", None)),
         "route": getattr(e, "route", None),
         "lifecycle_state": getattr(e, "lifecycle_state", None),
         "accepted_at": getattr(e, "accepted_at", None) and getattr(e, "accepted_at").isoformat(),

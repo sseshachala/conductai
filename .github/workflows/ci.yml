@@ -12,6 +12,14 @@ jobs:
     name: API — lint + migrate + test
     runs-on: ubuntu-latest
     services:
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
       postgres:
         image: pgvector/pgvector:pg16
         env:
@@ -104,6 +112,21 @@ jobs:
           python -c "import os; from sqlalchemy import create_engine, text; from sqlalchemy.engine import make_url; e=create_engine(make_url(os.environ['DATABASE_URL']).set(database='postgres'), isolation_level='AUTOCOMMIT'); c=e.connect(); c.execute(text('CREATE DATABASE conduct_federation_test')); c.close(); e.dispose()"
           python -m alembic upgrade head
           python ../../tools/federation/phase3_harness.py
+        working-directory: apps/api
+      - name: Install isolated LiteLLM integration harness
+        run: |
+          python -m venv "$RUNNER_TEMP/federation-litellm"
+          "$RUNNER_TEMP/federation-litellm/bin/pip" install 'litellm[proxy]==1.103.0' -e './packages/conduct-litellm-guard[dev]'
+          "$RUNNER_TEMP/federation-litellm/bin/python" -m pytest packages/conduct-litellm-guard/tests -q
+      - name: Federation LiteLLM, Gateway and workflow HTTP journeys
+        env:
+          DATABASE_URL: postgresql://marshal:marshal@localhost:5432/conduct_federation_test
+          REDIS_URL: redis://localhost:6379/0
+          PYTHONPATH: .
+        run: |
+          export FEDERATION_LITELLM="$RUNNER_TEMP/federation-litellm/bin/litellm"
+          python ../../tools/federation/phase4_harness.py
+          python ../../tools/federation/phase5_harness.py
         working-directory: apps/api
       - name: sys.modules-stub ratchet (#1075)
         run: python scripts/check_sys_modules_ratchet.py
