@@ -82,3 +82,30 @@ local fixture success does not prove those external clients work.
   baseline evidence, not candidate deployment or federated-flow acceptance.
 - Full PKCE, independent service credentials, configured federation, mixed-client
   isolation and direct Gateway cases remain required implementation-phase gates.
+
+## Phase 2 verification record (2026-09-29)
+
+- 174 targeted tests passed: federation contracts/verifier/network controls and
+  existing Agent-token, Okta, OAuth and MCP regression paths.
+- Full migrations through 0154 passed on a fresh disposable PostgreSQL instance.
+- The standalone [Phase 2 harness](../../tools/federation/README.md) passed with
+  actual persisted synthetic credentials and production auth dependencies, without
+  the unit-suite permission overrides. It verified admin saves, developer denial,
+  tenant boundaries, optimistic revisions, audit persistence and composite FK
+  isolation using ASGI requests and real PostgreSQL.
+- Populated migration rollback correctly refused to discard configuration.
+- Signed fixtures cover two independent issuers, rotation, expiry, outages and
+  cache isolation. JWKS/network responses are injected in these unit tests;
+  customer IdP connectivity and live HTTPS deployment remain unverified.
+- Configuration is draft/disabled only. This phase does not enable delegated
+  authentication on MCP or Gateway; that requires Phase 3 enforcement. Existing
+  clients do not need configuration changes. No new feature flag was added.
+- The disposable database runs as its table owner. Restricted-role RLS and the
+  full configured/unconfigured MCP/Gateway release gates above remain pending.
+
+## Configuration UI requirement
+
+The later UI phase must reuse Conduct's existing Integrations and Agent Identity
+settings patterns and shared form, button, dropdown, validation, loading and
+permission components. Do not introduce a separate design system. Phase 2 has
+no UI changes.
