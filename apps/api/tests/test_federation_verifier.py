@@ -46,6 +46,21 @@ def test_two_independent_issuers(keys, issuer):
     assert not hasattr(result, "token")
 
 
+def test_admin_key_validation_uses_same_verifier_rules(keys):
+    cache = KeyCache(fetch=lambda _: {"keys": [jwk(keys[0])]})
+    workspace, connection = uuid4(), uuid4()
+    assert cache.key(workspace, connection, 1, config(), None) == 1
+    assert cache.key(workspace, connection, 1, config(), None) == 1
+
+
+def test_admin_validation_rejects_jwks_without_usable_keys():
+    cache = KeyCache(fetch=lambda _: {"keys": [{"kid": "unsupported", "kty": "oct"}]})
+    workspace, connection = uuid4(), uuid4()
+    for _ in range(2):
+        with pytest.raises(VerificationUnavailable):
+            cache.key(workspace, connection, 1, config(), None)
+
+
 @pytest.mark.parametrize("change", [
     {"iss": "https://wrong.example"}, {"aud": "wrong"}, {"sub": ""},
     {"exp": 1}, {"nbf": 9999999999}, {"iat": 9999999999}, {"exp": True},
@@ -148,7 +163,7 @@ def test_discovery_cannot_change_trusted_jwks(keys):
 @pytest.mark.parametrize("overrides", [
     {"issuer": "http://idp.example"}, {"jwks_uri": "https://user:pass@idp.example/keys"},
     {"jwks_uri": "https://idp.example/keys?token=secret"}, {"algorithms": ["HS256"]},
-    {"status": "active"}, {"claim_mappings": [{"name": "role", "source_claim": "groups"}]},
+    {"status": "unknown"}, {"claim_mappings": [{"name": "role", "source_claim": "groups"}]},
 ])
 def test_invalid_config(overrides):
     base = {"issuer": "https://idp.example", "jwks_uri": "https://idp.example/keys", "audience": "conduct"}

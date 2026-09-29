@@ -485,11 +485,8 @@ def _make_mcp_request(bearer: str | None = None):
     if bearer:
         h["Authorization"] = f"Bearer {bearer}"
 
-    class _Headers(dict):
-        def get(self, key, default=None):
-            return super().get(key, default)
-
-    req.headers = _Headers(h)
+    from starlette.datastructures import Headers
+    req.headers = Headers(h)
 
     async def _json():
         return {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}
@@ -544,7 +541,12 @@ class TestMcpEndpointAuth:
             patch("app.modules.guard.routers.mcp.get_clerk_user_email", return_value="oauth@example.com"),
             patch("app.modules.guard.routers.mcp.GuardConfig", _GuardConfigStub),
             patch("app.modules.guard.routers.mcp.SessionLocal") as mock_sl,
+            patch("app.modules.auth.federation.ingress.SessionLocal") as federation_sl,
+            patch("app.modules.auth.federation.ingress.resolve_agent_identity_row") as caller,
         ):
+            caller.return_value = types.SimpleNamespace(workspace_id=_WS_UUID, id=str(uuid.uuid4()))
+            federation_db = federation_sl.return_value.__enter__.return_value
+            federation_db.query.return_value.filter.return_value.first.return_value = None
             mock_db = MagicMock()
             mock_db.query.return_value.filter.return_value.first.return_value = _mock_guard_config()
             mock_sl.return_value = mock_db

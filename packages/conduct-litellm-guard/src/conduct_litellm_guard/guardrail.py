@@ -14,7 +14,7 @@ import re
 from dataclasses import dataclass
 from typing import Any, ClassVar, Literal
 
-from conduct_litellm_guard._client import GuardCheckClient, GuardCheckError
+from conduct_litellm_guard._client import GuardCheckClient, GuardCheckError, IdentityRequiredError
 
 log = logging.getLogger(__name__)
 
@@ -211,6 +211,7 @@ class ConductGuard(CustomGuardrail):
         fail_mode: FailMode | None = None,
         tool_name: str = "llm_call",
         timeout: float = 8.0,
+        federation_connection: str | None = None,
         # LiteLLM CustomGuardrail kwargs — accept and forward.
         **kwargs: Any,
     ) -> None:
@@ -228,6 +229,12 @@ class ConductGuard(CustomGuardrail):
             )
         self._agent_token = token
         self._workspace_id = workspace_id or os.environ.get("CONDUCT_WORKSPACE_ID")
+        self._federation_connection = federation_connection or os.environ.get("CONDUCT_FEDERATION_CONNECTION")
+        if self._federation_connection:
+            from uuid import UUID
+            self._federation_connection = str(UUID(self._federation_connection))
+            if not token.startswith("cond_api_"):
+                raise ValueError("Federation requires a dedicated Conduct service credential")
         if fail_mode is not None:
             import warnings as _w
             _w.warn(
@@ -267,7 +274,7 @@ class ConductGuard(CustomGuardrail):
         # tool_name=llm_call. Granularity (acompletion / embedding /
         # image / etc) lives inside tool_input.call_type, matching the
         # existing Guard rule ergonomics for CLI tools.
-        decision = await self.check(data=data, call_type=call_type)
+        decision = await self.check(data=data, call_type=call_type, auth=user_api_key_dict)
 
         if decision.verdict == "block" or decision.verdict == "approval":
             raise ConductGuardBlocked(decision)
@@ -281,7 +288,7 @@ class ConductGuard(CustomGuardrail):
 
     # ── Public helpers usable outside LiteLLM ─────────────────────────
 
-    async def check(self, *, data: dict[str, Any], call_type: str) -> GuardDecision:
+    async def check(self, *, data: dict[str, Any], call_type: str, auth=None) -> GuardDecision:
         """Run one ``guard_check_prompt`` for the given LiteLLM request payload."""
         session_id = _extract_session_id(data)
         prompt = _extract_prompt_text(data) or ""
@@ -289,32 +296,48 @@ class ConductGuard(CustomGuardrail):
         provider = _extract_provider(data)
 
         try:
+            identity_args = {}
+            if self._federation_connection:
+                from conduct_litellm_guard.auth import subject_token
+                evidence = subject_token(auth)
+                if not evidence:
+                    raise IdentityRequiredError("Authenticated subject evidence required")
+                identity_args = {"federation_connection": self._federation_connection,
+                                 "subject_token": evidence}
             raw = await self._client.guard_check(
                 prompt=prompt,
                 model=model,
                 provider=provider,
                 session_id=session_id,
+                **identity_args,
             )
+        except IdentityRequiredError:
+            return GuardDecision(verdict="block", raw="identity_required",
+                                 message="Conduct identity verification required or denied.")
         except GuardCheckError as e:
-            log.warning("conduct_guard: eval error %s — applying %s", e, self._unreachable_fallback)
-            if self._unreachable_fallback == "fail_closed":
+            log.warning("conduct_guard: eval error %s", type(e).__name__)
+            if self._federation_connection or self._unreachable_fallback == "fail_closed":
                 return GuardDecision(
                     verdict="block",
-                    raw=str(e),
+                    raw="policy_check_failed",
                     message="Conduct Guard policy-eval error (fail_closed).",
                 )
             return GuardDecision(verdict="allow", raw="fail_open")
         except Exception as e:  # network, timeout, unexpected
-            log.warning("conduct_guard: transport error %s — applying %s", e, self._unreachable_fallback)
-            if self._unreachable_fallback == "fail_closed":
+            log.warning("conduct_guard: transport error %s", type(e).__name__)
+            if self._federation_connection or self._unreachable_fallback == "fail_closed":
                 return GuardDecision(
                     verdict="block",
-                    raw=str(e),
+                    raw="policy_transport_failed",
                     message="Conduct Guard is unreachable (fail_closed).",
                 )
             return GuardDecision(verdict="allow", raw="fail_open")
 
-        return GuardDecision.parse(raw)
+        decision = GuardDecision.parse(raw)
+        if self._federation_connection and (not raw or decision.verdict in ("unknown", "advisory")):
+            return GuardDecision(verdict="block", raw="unverified_policy_result",
+                                 message="Conduct did not return a verified policy decision.")
+        return decision
 
     async def close(self) -> None:
         """Release the HTTP client. LiteLLM does not call this today; the

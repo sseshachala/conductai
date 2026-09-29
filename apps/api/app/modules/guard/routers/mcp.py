@@ -564,6 +564,17 @@ def _record_event(
         policy_hash=policy_hash,
     )
     db.add(event)
+    identity = db.info.get("federation_identity")
+    if identity is not None:
+        from app.models.audit_log import AuditLog
+        from app.core.workspace_context import set_workspace_rls
+        from app.modules.auth.federation.mcp_ingress import provenance
+        set_workspace_rls(db, ws_uuid)
+        event.routing_meta = {"federation": provenance(identity), "evidence_kind": "policy_check"}
+        db.flush()
+        db.add(AuditLog(workspace_id=ws_uuid, action="federation.guard.decision",
+                        resource_type="guard_audit_event", resource_id=str(event.id),
+                        meta={**provenance(identity), "decision": decision, "rule_id": rule_id}))
     db.commit()
 
     # Slack + webhook + PagerDuty + email fan-out for blocks/warns.
@@ -720,6 +731,12 @@ async def mcp_endpoint(
         else:
             ws_uuid = uuid.UUID(_ws_id_str)
 
+        from starlette.concurrency import run_in_threadpool
+        from app.modules.auth.federation.mcp_ingress import prepare
+        identity = await run_in_threadpool(prepare, request, str(ws_uuid), resolved_token, body)
+        if isinstance(identity, JSONResponse):
+            return identity
+
         user_email = get_clerk_user_email(clerk_user_id) or clerk_user_id
 
         # ponytail: auto-provision GuardConfig on first MCP call — token already
@@ -825,7 +842,19 @@ async def mcp_endpoint(
                 resolved_token=resolved_token, clerk_user_id=clerk_user_id,
                 user_email=user_email, ai_tool=ai_tool, session_id=session_id,
                 agent_risk_tier=_agent_risk_tier,
+                identity=identity,
             )
+            if identity is not None:
+                from app.modules.auth.federation.resolver import FederationDenied, recheck
+                from app.modules.auth.federation.mcp_ingress import failure
+                from sqlalchemy.exc import SQLAlchemyError
+                try:
+                    recheck(db, identity, "mcp." + tool_name)
+                except FederationDenied as error:
+                    return failure(error, msg_id)
+                except SQLAlchemyError:
+                    return failure(FederationDenied("federation_storage_unavailable", 503), msg_id)
+                db.info["federation_identity"] = identity
             return JSONResponse(_text(msg_id, dispatch_guard_tool(tool_name, arguments, _gctx)))
 
         elif method == "ping":

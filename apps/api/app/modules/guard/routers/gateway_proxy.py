@@ -82,6 +82,11 @@ def _gateway_principal(
             detail="Gateway credential does not belong to the requested workspace",
         )
     set_workspace_rls(db, workspace_id)
+    from app.modules.auth.federation.gateway import prepare_gateway
+    federation = prepare_gateway(request, workspace_id, raw, operation="model_catalog")
+    if isinstance(federation, JSONResponse):
+        import json
+        raise HTTPException(federation.status_code, detail=json.loads(federation.body)["error"])
     # #1959 Phase 0 — resolve the identity row so audit rows for gateway
     # model-catalog / count-tokens paths carry agent_identity_id. Falls
     # back to None for legacy tokens without an identity row.

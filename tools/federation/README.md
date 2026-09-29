@@ -44,6 +44,27 @@ customer IdP or network/TLS deployment works.
 Phase 3 must add live principal/delegation enforcement and configured/unconfigured
 MCP/Gateway end-to-end tests. Passing this harness is not that acceptance test.
 
+## Phase 3 MCP harness
+
+On a fresh disposable `conduct_federation_test` database, migrate to head and run:
+
+```sh
+rtk proxy env PYTHONPATH=. FEDERATION_RESTRICTED_TEST=1 python ../../tools/federation/phase3_harness.py
+```
+
+Run from `apps/api` with `DATABASE_URL` set as above. The harness first reuses the
+Phase 2 setup/authorization checks, then switches runtime connections to a
+non-owner PostgreSQL role. It exercises real caller authentication, signed JWT
+verification, delegated and unconfigured requests on both MCP endpoints, Guard
+dispatch, revocation, outages, concurrent identity isolation and audit persistence.
+Only JWKS document retrieval is injected; the IdP network/TLS deployment is not
+tested. No external identity service or model provider is contacted. Omit
+`FEDERATION_RESTRICTED_TEST=1` to separately test table-owner behavior.
+
+The isolated database user must be able to create the restricted test role and
+grant table privileges. CI provisions a dedicated database and runs this harness;
+missing database prerequisites fail the job, rather than skipping the test.
+
 ## Migration contention regression
 
 Use a fresh disposable loopback database named `conduct_migration_test`, set

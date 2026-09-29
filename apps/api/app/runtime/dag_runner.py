@@ -1044,6 +1044,8 @@ def _execute_dag(
         _lrv_ref = [_logic_routes_version]
 
         def _dispatch(blk: dict, blk_state: dict) -> dict:
+            from app.modules.auth.federation.workflow import check_run
+            check_run(db, workspace_id_str, run_id, blk["id"])
             return _dispatch_single_block(
                 blk, blk_state,
                 compiled=compiled,

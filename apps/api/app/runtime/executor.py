@@ -235,6 +235,10 @@ def execute_run(run_id: str):
 
         # Accumulated state — includes previous run segment outputs on resume
         state: dict[str, Any] = dict(run.state or {})
+        from app.modules.auth.federation.workflow import check_run
+        if check_run(db, run.workspace_id, run.id) is not None:
+            # Delegated runs recover credentials only from server-issued token rows.
+            state.pop("__conduct_run_token__", None)
 
         env_id = version.workflow.environment_id
         workspace_id_str = version.workflow.workspace_id
@@ -433,8 +437,12 @@ def execute_run(run_id: str):
         _enqueue_online_eval(str(run.id))
 
     except Exception as e:
-        log.exception("run.executor_crash", run_id=run_id)
-        if settings.sentry_dsn:
+        from app.modules.auth.federation.resolver import FederationDenied
+        if isinstance(e, FederationDenied):
+            log.warning("run.federation_denied", run_id=run_id, code=e.code)
+        else:
+            log.exception("run.executor_crash", run_id=run_id)
+        if settings.sentry_dsn and not isinstance(e, FederationDenied):
             import sentry_sdk
             with sentry_sdk.push_scope() as scope:
                 scope.set_tag("run_id", str(run_id))

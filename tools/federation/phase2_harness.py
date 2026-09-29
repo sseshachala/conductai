@@ -41,14 +41,15 @@ def main():
     admin_token = "cond_api_" + secrets.token_hex(32)
     developer_token = "cond_agt_" + secrets.token_hex(32)
     developer_agent = str(uuid4())
+    admin_agent = str(uuid4())
     with SessionLocal() as db:
-        assert db.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0154"
+        assert db.execute(text("SELECT version_num FROM alembic_version")).scalar() in ("0154", "0155")
         db.add_all([Workspace(id=ws, name="Federation harness"),
                     Workspace(id=other, name="Foreign harness")])
         db.flush()
         db.add_all([Integration(id=integration, workspace_id=ws, service="generic", auth_method="oidc", handle="fixture"),
                     Integration(id=foreign, workspace_id=other, service="generic", auth_method="oidc", handle="fixture")])
-        for token, kind, identity in [(admin_token, "api", str(uuid4())),
+        for token, kind, identity in [(admin_token, "api", admin_agent),
                                       (developer_token, "cli", developer_agent)]:
             db.add(AgentIdentity(id=identity, workspace_id=ws, name="Synthetic harness",
                                  token_prefix=token[:13], token_encrypted=encrypt({"token": token}),
@@ -81,7 +82,7 @@ def main():
         assert client.get(path.replace(str(ws), str(other)), headers=headers).status_code == 403
         assert client.get(path.replace(str(integration), str(foreign)), headers=headers).status_code == 404
         assert client.put(path, headers=headers, json={"expected_revision": 1,
-                          "config": dict(config, status="active")}).status_code == 422
+                          "config": dict(config, status="unknown")}).status_code == 422
         updated = client.put(path, headers=headers, json={"expected_revision": 1,
                              "config": dict(config, status="disabled")})
         assert updated.status_code == 200 and updated.json()["revision"] == 2
@@ -101,6 +102,8 @@ def main():
             raise AssertionError("Database accepted a cross-workspace integration")
     print("PASS: real auth, developer denial, tenant boundaries, revisions, audit, and database constraint")
     print("Synthetic rows retained only in the disposable database; stop its container after testing.")
+    return {"workspace": ws, "other": other, "connection": saved["id"], "config": config,
+            "path": path, "headers": headers, "developer_headers": denied, "caller_id": admin_agent}
 
 
 if __name__ == "__main__":

@@ -19,6 +19,12 @@ from unittest.mock import MagicMock, AsyncMock, patch
 import pytest
 
 
+@pytest.fixture(autouse=True)
+def no_configured_rate_limits(monkeypatch):
+    # Reach the audit failure under test regardless of local Redis availability.
+    monkeypatch.setattr("app.modules.guard.rate_limit._resolve_limits", lambda *a: (None, None, "none"))
+
+
 # ─── Fixtures for the stream harness ────────────────────────────────────
 
 

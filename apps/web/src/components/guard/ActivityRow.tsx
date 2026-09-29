@@ -7,6 +7,7 @@ import { LifecyclePill } from "./LifecyclePill"
 import { ALL_COLUMNS, type ColumnKey } from "./common/GuardToolbar"
 import { formatTokensUsed } from "./common/formatTokens"
 import { AskLensLink } from "@/components/glens/AskLensLink"
+import { AttributionDetails, type FederationAttribution } from "@/components/federation/AttributionDetails"
 
 // Per-column grid weights — kept in one place so ActivityHeader and
 // ActivityRow can't drift. Mirrors the historical 8-column template.
@@ -61,6 +62,7 @@ import { AgentAvatar } from "./AgentAvatar"
 import Link from "next/link"
 
 export interface AuditEvent {
+  federation?: FederationAttribution | null
   id: string
   ts: string
   user_email: string | null
@@ -618,7 +620,8 @@ export function ActivityRow({ ev, compact = false, isLast = false, visibleColumn
             <span className="mono" style={{ color: "var(--text-2)" }}>{[ev.provider, ev.model].filter(Boolean).join(" / ")}</span>
           </div>
         )}
-        {ev.routing_meta && (
+        {ev.federation && <AttributionDetails value={ev.federation} />}
+        {ev.routing_meta && (ev.routing_meta.tier_form || ev.routing_meta.resolved_model || ev.routing_meta.resolution_source) && (
           <div>
             <span style={{ color: "var(--text-muted)", fontWeight: 600, marginRight: 6 }}>Routed</span>
             <span className="mono" style={{ color: "var(--text-2)" }}>

@@ -21,6 +21,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from sqlalchemy import text
 
 from app.core.config import settings
+from app.modules.auth.federation.resolver import FederationDenied
 
 
 log = structlog.get_logger(__name__)
@@ -238,6 +239,15 @@ async def handle_gateway_request(
             _is_internal = _auth_result.is_internal
             _agent_identity_id = _auth_result.agent_identity_id
             _agent_risk_tier = _auth_result.agent_risk_tier
+        from app.modules.auth.federation.gateway import prepare_gateway, recheck_gateway, delegated_policy_check
+        from app.modules.auth.federation.ingress import provenance
+        _federation = await run_in_threadpool(
+            prepare_gateway, request, workspace_id, token, _internal_key, operation,
+        )
+        if isinstance(_federation, JSONResponse):
+            return _federation
+        if _federation and _agent_identity_id is None:
+            _agent_identity_id = str(_federation.caller.agent_identity_id)
         # Admission acquire — immediately after auth, before any further
         # DB work. Overload rejected fast without checking out a
         # connection.
@@ -288,6 +298,8 @@ async def handle_gateway_request(
         # v2 profile. The generic "inference" label cannot distinguish
         # Chat Completions from Responses usage.
         _routing_meta = {**(_routing_meta or {}), "operation": upstream_path}
+        if _federation:
+            _routing_meta["federation"] = provenance(_federation)
         if operation != "inference":
             _routing_meta = {
                 **(_routing_meta or {}),
@@ -400,6 +412,8 @@ async def handle_gateway_request(
 
         # 4b. Run context from brain block headers (workflow runs only)
         _run_id = request.headers.get("x-conductai-run-id") or None
+        if _federation and _federation.run_id:
+            _run_id = str(_federation.run_id)
         _workflow = request.headers.get("x-conductai-workflow") or None
         _workflow_id = request.headers.get("x-conductai-workflow-id") or None
         _environment_id = request.headers.get("x-conductai-environment-id") or None
@@ -682,6 +696,8 @@ async def handle_gateway_request(
             "content-type",
             "accept",
             "user-agent",
+            "conduct-subject-token",
+            "conduct-federation-connection",
         }
         extra_headers = {
             k.lower(): v for k, v in request.headers.items()
@@ -920,6 +936,7 @@ async def handle_gateway_request(
                 # ``openai-organization``, ...) reach v2 targets via a
                 # v2-side allowlist (stricter than v1's blanket forward).
                 _v2_client_headers = _v2_allowlisted_headers(extra_headers)
+                _policy_check = delegated_policy_check(_policy_check, _federation)
                 # ── PR-A2b: dispatch boundary ──
                 # Flip BEFORE bytes fly. Any exception past this point
                 # is treated as "may have dispatched" -> settle marks
@@ -957,6 +974,7 @@ async def handle_gateway_request(
                         _v2_upstream_body_bytes = None
             else:
                 # ── PR-A2b: dispatch boundary (legacy path) ──
+                await run_in_threadpool(recheck_gateway, _federation)
                 _dispatched = True
                 _response = await transport.forward(
                     sender=_forward,
@@ -1579,6 +1597,9 @@ async def handle_gateway_request(
             _admission_streamed = True
             _admission_ticket.defer()
         return _response
+    except FederationDenied as error:
+        from app.modules.auth.federation.gateway import error_response
+        return error_response(error)
     finally:
         # Outer admission cleanup — fires on every exit path (early return
         # in DB block, gap failure between DB and upstream try, exception,

@@ -1,0 +1,24 @@
+.root { min-width: 0; color: var(--text); font-size: 13px; letter-spacing: 0; }
+.head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin: 18px 0; }
+.head h2 { font-size: 16px; font-weight: 650; margin: 0; }
+.actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.form { border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); padding: 20px 0; margin: 16px 0; }
+.grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.field { display: flex; flex-direction: column; min-width: 0; gap: 6px; font-weight: 500; }
+.field input, .field select { width: 100%; min-width: 0; height: 38px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; color: var(--text); background: var(--surface); font: inherit; }
+.field input:focus, .field select:focus { outline: 2px solid var(--accent); outline-offset: 2px; }
+.checks { border: 0; padding: 0; margin: 18px 0; display: flex; flex-wrap: wrap; gap: 12px 20px; }
+.checks legend { padding: 0; margin-bottom: 8px; font-weight: 600; }
+.checks label { display: inline-flex; align-items: center; gap: 6px; overflow-wrap: anywhere; }
+.tableWrap { width: 100%; overflow-x: auto; }
+.table { width: 100%; border-collapse: collapse; text-align: left; }
+.table th, .table td { padding: 12px 10px; border-bottom: 1px solid var(--border); vertical-align: top; overflow-wrap: anywhere; min-width: 100px; max-width: 310px; }
+.table th { color: var(--text-3); font-size: 12px; font-weight: 600; }
+.muted { color: var(--text-3); font-size: 12px; overflow-wrap: anywhere; }
+.error { padding: 12px; margin: 12px 0; border-left: 3px solid var(--err); color: var(--err); background: var(--surface-2); overflow-wrap: anywhere; }
+.notice { padding: 14px 0; overflow-wrap: anywhere; }
+.confirm { padding: 16px; margin: 12px 0; border: 1px solid var(--border); border-radius: 6px; background: var(--surface-2); }
+.root button:disabled { opacity: .5; cursor: not-allowed; }
+.mappings { margin: 18px 0; display: grid; gap: 10px; }
+.mapping { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 36px; gap: 8px; align-items: end; }
+@media (max-width: 640px) { .grid { grid-template-columns: minmax(0, 1fr); } }

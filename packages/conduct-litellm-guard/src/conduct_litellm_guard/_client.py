@@ -51,6 +51,8 @@ class GuardCheckClient:
         model: str | None = None,
         provider: str | None = None,
         session_id: str | None = None,
+        federation_connection: str | None = None,
+        subject_token: str | None = None,
     ) -> str:
         """Call the ``guard_check_prompt`` tool and return the text payload.
 
@@ -87,14 +89,33 @@ class GuardCheckClient:
             headers["X-Workspace-Id"] = self._workspace_id
         if session_id:
             headers["X-Conduct-Session-Id"] = session_id
+        if federation_connection:
+            headers["Conduct-Federation-Connection"] = federation_connection
+        if subject_token:
+            headers["Conduct-Subject-Token"] = subject_token
 
         response = await self._client.post(
             f"{self._base}/mcp",
             json=payload,
             headers=headers,
         )
+        # Identity denial is never eligible for legacy transport fail-open.
+        if response.status_code in (401, 403):
+            raise IdentityRequiredError("Conduct identity verification denied")
+        try:
+            body = response.json()
+        except ValueError:
+            body = {}
+        if not isinstance(body, dict):
+            raise GuardCheckError("Invalid Conduct response", {})
+        error = body.get("error") or {}
+        result = body.get("result") or {}
+        if not isinstance(error, dict) or not isinstance(result, dict):
+            raise GuardCheckError("Invalid Conduct response", {})
+        marker = error.get("data") or result.get("structuredContent") or {}
+        if isinstance(marker, dict) and marker.get("identity_required"):
+            raise IdentityRequiredError("Conduct identity verification denied")
         response.raise_for_status()
-        body = response.json()
 
         # JSON-RPC 2.0 error envelope.
         if "error" in body:
@@ -105,6 +126,8 @@ class GuardCheckClient:
         # Fall back to the raw payload if the shape doesn't match — we log
         # the raw string upstream so operators can debug.
         result = body.get("result") or {}
+        if result.get("isError"):
+            raise GuardCheckError("Conduct policy check failed", {})
         for item in result.get("content", []) or []:
             if item.get("type") == "text":
                 return item.get("text", "")
@@ -120,3 +143,7 @@ class GuardCheckError(RuntimeError):
     def __init__(self, message: str, envelope: dict[str, Any]) -> None:
         super().__init__(message)
         self.envelope = envelope
+
+
+class IdentityRequiredError(RuntimeError):
+    """Non-bypassable identity failure, with no raw remote/token content."""

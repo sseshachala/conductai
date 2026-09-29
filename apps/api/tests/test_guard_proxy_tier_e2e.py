@@ -21,6 +21,8 @@ from app.guard.policy_types import PolicyAction, PolicyDecision
 
 @pytest.fixture
 def client_and_capture(monkeypatch):
+    # This routing fixture has no configured rate limits or live Redis dependency.
+    monkeypatch.setattr("app.modules.guard.rate_limit._resolve_limits", lambda *a: (None, None, "none"))
     """Mount the proxy router with all external deps mocked; return a
     (TestClient, captured_forward_calls) tuple."""
     from app.modules.guard.routers import gateway_proxy

@@ -78,6 +78,7 @@ def _build_gctx(ctx, db):
         user_email=getattr(ctx, "user_email", None),
         ai_tool=getattr(ctx, "surface", "http") or "http",
         session_id=getattr(ctx, "session_id", None) or "",
+        identity=getattr(ctx, "identity", None),
     )
 
 
@@ -96,6 +97,15 @@ def _wrap(named_impl: Callable[..., str]) -> Callable[..., Any]:
         db = SessionLocal()
         try:
             gctx = _build_gctx(ctx, db)
+            if gctx.identity is not None:
+                from app.modules.auth.federation.resolver import FederationDenied, recheck
+                from sqlalchemy.exc import SQLAlchemyError
+                action = "mcp." + named_impl.__name__.removesuffix("_impl")
+                try:
+                    recheck(db, gctx.identity, action)
+                except SQLAlchemyError:
+                    raise FederationDenied("federation_storage_unavailable", 503) from None
+                db.info["federation_identity"] = gctx.identity
             return named_impl(gctx, **kwargs)
         finally:
             db.close()

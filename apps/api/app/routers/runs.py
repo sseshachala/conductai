@@ -236,6 +236,7 @@ def list_runs(
 def create_run(
     workflow_id: UUID,
     body: RunCreate,
+    request: Request = None,
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
     _: str = Depends(require_permission("platform.workflows.run")),
@@ -243,6 +244,8 @@ def create_run(
 ):
     from app.core.workspace_context import set_workspace_rls
     set_workspace_rls(db, workspace_id)
+    from app.modules.auth.federation.workflow import prepare_run, attach_run
+    federation = prepare_run(request, workspace_id)
     workflow = _get_workflow(workflow_id, workspace_id, db)
     if not workflow.current_version_id:
         raise HTTPException(status_code=400, detail="Workflow has no published version")
@@ -359,6 +362,7 @@ def create_run(
         ))
 
     db.add(run)
+    attach_run(db, run, federation)
     db.commit()  # single commit — session + run land together or neither does
     db.refresh(run)
 

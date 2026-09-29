@@ -38,6 +38,7 @@ def platform(accounting):
     runs = projection(Run, ["id", "workspace_id", "workflow_version_id", "triggered_by", "status",
                             "current_block_id", "created_at", "started_at", "completed_at"])
     steps = projection(RunEvent, ["id", "run_id", "block_id", "kind", "created_at"])
+    db.execute(text("ALTER TABLE run_events ADD COLUMN payload JSON"))
     def activity(source="gateway", user="alice", run_id=None, **kwargs):
         row = event(**kwargs)
         db.execute(text("UPDATE guard_audit_events SET source=:source, clerk_user_id=:user, conductai_run_id=:run WHERE id=:id"),

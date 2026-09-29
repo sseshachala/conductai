@@ -529,6 +529,7 @@ def _run_execute_run(run, version, *, dag_mock=None, dag_raises=None):
     db = _make_db(run, version)
 
     with patch("app.runtime.executor.SessionLocal", MagicMock(return_value=db)), \
+         patch("app.modules.auth.federation.workflow.check_run", return_value=None), \
          patch("app.runtime.executor._emit_run_analytics", mock_analytics), \
          patch("app.runtime.executor._enqueue_online_eval", mock_eval), \
          patch("app.runtime.executor.get_all_credentials",

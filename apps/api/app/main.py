@@ -65,6 +65,8 @@ from app.routers.compliance import router as compliance_router
 from app.routers.cedar_import import router as cedar_import_router
 from app.routers.okta_sync import router as okta_sync_router
 from app.modules.auth.federation.router import router as federation_router
+from app.modules.auth.federation.delegation_router import router as federation_delegation_router
+from app.modules.auth.federation.management import router as federation_management_router
 from app.routers.whoami import router as whoami_router
 from app.routers.governance import router as governance_router
 from app.routers.sdd import router as sdd_router
@@ -86,6 +88,7 @@ log = structlog.get_logger(__name__)
 
 if settings.sentry_dsn:
     import sentry_sdk
+    from app.core.telemetry import event_scrubber
     from sentry_sdk.integrations.fastapi import FastApiIntegration
     from sentry_sdk.integrations.starlette import StarletteIntegration
     sentry_sdk.init(
@@ -94,6 +97,7 @@ if settings.sentry_dsn:
         traces_sample_rate=0.1,
         environment=settings.environment,
         release=settings.app_version,
+        event_scrubber=event_scrubber(),
     )
 
 app = FastAPI(title="Marshal API", version="0.1.0")
@@ -293,6 +297,8 @@ app.include_router(compliance_router)
 app.include_router(cedar_import_router)
 app.include_router(okta_sync_router)
 app.include_router(federation_router)
+app.include_router(federation_delegation_router)
+app.include_router(federation_management_router)
 app.include_router(whoami_router)
 app.include_router(governance_router)
 app.include_router(sdd_router)
