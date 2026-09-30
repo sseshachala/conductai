@@ -11,8 +11,11 @@ export const MCP_PROVIDERS: McpProvider[] = [
   // Conduct
   { value: "conduct",    label: "Conduct AI",          serverUrl: "https://api.conductai.ai/guard/mcp",          transport: "sse",  credentialKey: "CONDUCT_GUARD_TOKEN",  description: "Conduct AI Guard — policy enforcement and audit" },
   // AI providers
-  { value: "openai",     label: "OpenAI",               serverUrl: "https://mcp.openai.com",                      transport: "http", credentialKey: "OPENAI_API_KEY",       description: "OpenAI models and tools" },
-  { value: "anthropic",  label: "Claude (Anthropic)",   serverUrl: "https://mcp.anthropic.com",                   transport: "http", credentialKey: "ANTHROPIC_API_KEY",    description: "Claude AI tools" },
+  // OpenAI (mcp.openai.com) and Anthropic (mcp.anthropic.com) removed — neither
+  // vendor runs a public MCP server; the entries were dead URLs (NXDOMAIN) that
+  // returned "Name or service not known" on connect. Claude is an MCP *client*,
+  // not a server. Use the direct API path (ANTHROPIC_API_KEY / OPENAI_API_KEY)
+  // instead of the MCP transport.
   { value: "gemini",     label: "Gemini (Google)",      serverUrl: "https://mcp.googleapis.com",                  transport: "http", credentialKey: "GEMINI_API_KEY",       description: "Google Gemini models" },
   // Dev tools
   { value: "github",     label: "GitHub",               serverUrl: "http://localhost:3000",           transport: "http", credentialKey: "GITHUB_TOKEN",         description: "Self-hosted — docker run ghcr.io/github/github-mcp-server" },
