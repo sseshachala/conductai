@@ -74,6 +74,22 @@ def main():
         overview = client.get(base + "/overview", headers=headers).json()
         assert len(overview["connections"]) == 2 and len(overview["principals"]) == 1
         assert overview["grants"][0]["id"] == grant
+        assert overview["principals"][0]["display_name"] is None
+        principal_path = f"{base}/principals/{principal}"
+        renamed = client.put(principal_path, headers=headers, json={
+            **principal_body, "expected_revision": 1, "display_name": " Alice Test "})
+        assert renamed.status_code == 200 and renamed.json()["display_name"] == "Alice Test"
+        assert client.get(base + "/overview", headers=headers).json()["principals"][0]["display_name"] == "Alice Test"
+        # An old client can still update approvals without deleting the label.
+        legacy = client.put(principal_path, headers=headers, json={**principal_body, "expected_revision": 2})
+        assert legacy.status_code == 200 and legacy.json()["display_name"] == "Alice Test"
+        assert client.put(principal_path, headers=headers, json={
+            **principal_body, "expected_revision": 3, "subject": "changed", "display_name": "Other"}).status_code == 409
+        assert client.put(principal_path, headers=fixture["developer_headers"], json={
+            **principal_body, "expected_revision": 3, "display_name": "Other"}).status_code == 403
+        cleared = client.put(principal_path, headers=headers, json={
+            **principal_body, "expected_revision": 3, "display_name": ""})
+        assert cleared.status_code == 200 and cleared.json()["display_name"] is None
         assert all(set(c) == {"id", "name"} for c in overview["callers"])
         assert "encrypted_credentials" not in str(overview) and "token_prefix" not in str(overview)
         result = client.put(f"{base}/grants/{grant}", headers=headers,

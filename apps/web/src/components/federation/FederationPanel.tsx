@@ -6,7 +6,7 @@ import { useAuthFetch } from "@/hooks/useAuthFetch"
 import { API } from "@/lib/api"
 import { ApprovalForm } from "./ApprovalForm"
 import { ConnectionForm } from "./ConnectionForm"
-import { Approval, ApprovalKind, Connection, Overview, Save, apiError, approvalBody, connectionPath } from "./types"
+import { Approval, ApprovalKind, Connection, Overview, Save, apiError, approvalBody, connectionPath, principalLabel } from "./types"
 import s from "./federation.module.css"
 
 const labels: Record<ApprovalKind, string> = { principals: "Principals", bindings: "Caller bindings", grants: "Grants" }
@@ -92,13 +92,13 @@ export function FederationPanel({ workspace, mode }: { workspace: string; mode: 
       <h2>{mode === "connections" ? "OIDC connections" : "External identity and delegation"}</h2>
       <div className={s.actions}>
         <button className="btn btn-ghost btn-icon" title="Refresh" aria-label="Refresh federation" disabled={busy || loading} onClick={() => void refresh()}><RefreshCw size={16} /></button>
-        {data && !(mode === "connections" && edit) && <button className="btn btn-primary" disabled={busy || loading} onClick={() => { setEdit("new"); setPending(null); setNotice("") }}><Plus size={16} />{mode === "connections" ? "New connection" : `Add ${tab === "bindings" ? "binding" : tab.slice(0, -1)}`}</button>}
+        {data && !edit && <button className="btn btn-primary" disabled={busy || loading} onClick={() => { setEdit("new"); setPending(null); setNotice("") }}><Plus size={16} />{mode === "connections" ? "New connection" : `Add ${tab === "bindings" ? "binding" : tab.slice(0, -1)}`}</button>}
       </div>
     </div>
     {error && <div role="alert" className={s.error}>{error}</div>}
     {notice && <div role="status" className={s.notice}>{notice}</div>}
     {loading ? <p role="status">Loading federation...</p> : data && <>
-      {mode === "delegation" && <TabBar tabs={["principals", "bindings", "grants"] as const} labels={labels} activeTab={tab} idPrefix="federation" onSelect={value => { setTab(value); setEdit(null); setPending(null) }} />}
+      {mode === "delegation" && <TabBar tabs={["principals", "bindings", "grants"] as const} labels={labels} activeTab={tab} idPrefix="federation" onSelect={value => { setTab(value); setEdit(null); setPending(null); setNotice("") }} />}
       {pending && <div role="alertdialog" aria-label="Confirm authorization change" className={s.confirm}>
         <p>{pending.message}</p><div className={s.actions}>
           <button className="btn btn-primary" disabled={busy} onClick={() => void save(pending.path, pending.body)}>Confirm</button>
@@ -126,11 +126,11 @@ export function FederationPanel({ workspace, mode }: { workspace: string; mode: 
         {!data[tab].length ? <p className={s.notice}>No {labels[tab].toLowerCase()} configured.</p> : <div className={s.tableWrap}><table className={s.table}>
           <thead><tr><th>{tab === "principals" ? "Principal" : tab === "bindings" ? "Service caller" : "Delegation"}</th><th>Approved actions</th><th>Status / expiry</th><th>Actions</th></tr></thead>
           <tbody>{data[tab].map(row => <tr key={row.id}>
-            <td>{tab === "principals" ? <>{row.subject}<div className={s.muted}>{row.kind} / {row.issuer}</div></> : tab === "bindings" ? <>{callerName(row.caller_id)}<div className={s.muted}>{data.connections.find(c => c.id === row.connection_id)?.name}</div></> : <>{bindingName(row.binding_id)}<div className={s.muted}>{data.principals.find(p => p.id === row.principal_id)?.subject ?? row.principal_id}</div></>}<div className={s.muted}>Revision {row.revision}</div></td>
+            <td>{tab === "principals" ? <>{principalLabel(row)}{row.display_name?.trim() && <div className={s.muted}>{row.subject}</div>}<div className={s.muted}>{row.kind} / {row.issuer}</div></> : tab === "bindings" ? <>{callerName(row.caller_id)}<div className={s.muted}>{data.connections.find(c => c.id === row.connection_id)?.name}</div></> : <>{bindingName(row.binding_id)}<div className={s.muted}>{principalLabel(data.principals.find(p => p.id === row.principal_id)) || row.principal_id}</div></>}<div className={s.muted}>Revision {row.revision}</div></td>
             <td>{row.actions.map(a => <div key={a}>{a}</div>)}</td>
             <td>{row.expires_at && Date.parse(row.expires_at) <= Date.now() ? "expired" : row.status}{row.expires_at && <div className={s.muted}>{new Date(row.expires_at).toLocaleString()} ({Intl.DateTimeFormat().resolvedOptions().timeZone})</div>}</td>
             <td><div className={s.actions}>
-              <button className="btn btn-ghost btn-icon" title="Edit approval" aria-label={`Edit ${row.subject ?? row.id}`} disabled={busy} onClick={() => setEdit(row.id)}><Pencil size={16} /></button>
+              <button className="btn btn-ghost btn-icon" title="Edit approval" aria-label={`Edit ${tab === "principals" ? principalLabel(row) : row.id}`} disabled={busy} onClick={() => { setEdit(row.id); setNotice(""); setPending(null) }}><Pencil size={16} /></button>
               <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => changeApproval(row)}>{row.status === "active" ? "Revoke" : "Enable"}</button>
             </div></td>
           </tr>)}</tbody>

@@ -14,6 +14,7 @@ class FederationPrincipal(Base):
     workspace_id = Column(UUID(as_uuid=True), ForeignKey("workspaces.id"), nullable=False)
     issuer = Column(String(512), nullable=False)
     subject = Column(String(512), nullable=False)
+    display_name = Column(String(200), nullable=True)
     kind = Column(String(16), nullable=False)
     status = Column(String(16), nullable=False)
     actions = Column(JSONB, nullable=False)
