@@ -316,6 +316,9 @@ app.include_router(team_os_router)
 
 @app.on_event("startup")
 def _startup() -> None:
+    from app.core.auth_deployment import validate_api_auth
+    validate_api_auth(settings)
+
     import threading
     from app.routers.eval import _cached_report
 

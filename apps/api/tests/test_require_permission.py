@@ -139,17 +139,23 @@ class TestNonMember:
 
 
 class TestDevMode:
-    def test_dev_mode_skips_check(self):
+    def test_dev_mode_skips_check(self, monkeypatch):
+        from app.core.config import settings
+        monkeypatch.setattr(settings, "auth_mode", "development")
+        monkeypatch.setattr(settings, "environment", "development")
         db = MagicMock()
         db.execute.side_effect = RuntimeError("DB should not be called in dev mode")
-        with patch("app.core.auth._clerk_enabled", return_value=False):
-            result = _call(db, "guard.settings.edit")
+        result = check_permission(user_id="dev", workspace_id=_WS, credentials=None,
+                                  db=db, permission="guard.settings.edit")
         assert result == "admin"
 
-    def test_dev_mode_never_hits_db(self):
+    def test_dev_mode_never_hits_db(self, monkeypatch):
+        from app.core.config import settings
+        monkeypatch.setattr(settings, "auth_mode", "development")
+        monkeypatch.setattr(settings, "environment", "development")
         db = MagicMock()
-        with patch("app.core.auth._clerk_enabled", return_value=False):
-            _call(db, "platform.eval.view")
+        check_permission(user_id="dev", workspace_id=_WS, credentials=None,
+                         db=db, permission="platform.eval.view")
         db.execute.assert_not_called()
 
 

@@ -65,6 +65,21 @@ The isolated database user must be able to create the restricted test role and
 grant table privileges. CI provisions a dedicated database and runs this harness;
 missing database prerequisites fail the job, rather than skipping the test.
 
+## Console authentication foundation (#2297)
+
+After migrating the disposable database above, run from `apps/api`:
+
+```sh
+rtk proxy env PYTHONPATH=. python ../../tools/federation/console_foundation_harness.py
+```
+
+This reuses the database safety gate and synthetic credential setup. It checks
+real RSA-signed Clerk-compatible fixtures, existing workspace roles, cross-tenant
+denial, machine credentials, SSE transport authorization, and missing-config
+rejection. Only signing-key retrieval is substituted; authentication, database
+membership and RBAC are not mocked. It does not test live Clerk, proxy login,
+Keycloak sessions or HPE deployment. No production credentials are needed.
+
 ## Migration contention regression
 
 Use a fresh disposable loopback database named `conduct_migration_test`, set
