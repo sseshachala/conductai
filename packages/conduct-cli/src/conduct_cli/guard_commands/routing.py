@@ -1,4 +1,6 @@
 """Resolve and apply optional inference routing for the selected deployment."""
+from __future__ import annotations
+
 import json
 import os
 import sys
