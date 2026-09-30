@@ -1,0 +1,10 @@
+{
+  "self_hosted_idp": false,
+  "egress_blocked_services_and_clients": false,
+  "cold_start_without_downloads": false,
+  "internal_inference_only": false,
+  "network_logs_reviewed": false,
+  "zero_provider_calls_during_denial": false,
+  "jwks_outage_rotation_verified": false,
+  "customer_url_browser_verified": false
+}

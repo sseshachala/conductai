@@ -6,8 +6,10 @@ import { marked } from "marked"
 import oktaTrackingMd from "../../../../../../docs/reference/okta-tracking.md"
 // @ts-expect-error - .md imported as raw string via webpack asset/source
 import oidcSetupMd from "../../../../../../docs/reference/oidc-setup.md"
+// @ts-expect-error - .md imported as raw string via webpack asset/source
+import onpremDeploymentMd from "../../../../../../docs/reference/onprem-deployment.md"
 
-const VALID_TABS = ["overview", "guard", "mcp-tools", "getting-started", "blocks", "api", "integrations"] as const
+const VALID_TABS = ["overview", "guard", "mcp-tools", "getting-started", "blocks", "api", "integrations", "on-prem"] as const
 
 // ── Shared components ──────────────────────────────────────────────────────────
 
@@ -84,6 +86,7 @@ const TABS = [
   { id: "blocks",          label: "Blocks" },
   { id: "api",             label: "API reference" },
   { id: "integrations",    label: "Integrations" },
+  { id: "on-prem",         label: "On-Prem" },
 ] as const
 
 type TabId = typeof TABS[number]["id"]
@@ -91,6 +94,7 @@ type TabId = typeof TABS[number]["id"]
 // ── Sidebar sections per tab ───────────────────────────────────────────────────
 
 const TAB_NAV: Record<TabId, { href: string; label: string }[]> = {
+  "on-prem": [{ href: "#on-prem-deployment", label: "Installation & acceptance" }],
   "overview": [
     { href: "#try-in-60-seconds", label: "Try in 60 seconds" },
     { href: "#how-it-works",      label: "Architecture" },
@@ -2589,6 +2593,9 @@ export default function DocsPage() {
           {activeTab === "guard"           && <TabGuard />}
           {activeTab === "mcp-tools"       && <TabMcpTools />}
           {activeTab === "integrations"    && <TabIntegrations />}
+          {activeTab === "on-prem" && <section id="on-prem-deployment"
+            className="min-w-0 break-words [&_h2]:text-xl [&_h2]:font-bold [&_h2]:mb-4 [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:mt-8 [&_h3]:mb-3 [&_h4]:font-semibold [&_h4]:mt-6 [&_h4]:mb-3 [&_p]:text-sm [&_p]:leading-relaxed [&_p]:mb-4 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:text-sm [&_li]:mb-2 [&_pre]:overflow-x-auto [&_pre]:bg-stone-100 [&_pre]:p-4 [&_pre]:mb-4 [&_code]:text-xs [&_table]:w-full [&_table]:table-fixed [&_table]:text-sm [&_table]:mb-4 [&_th]:text-left [&_th]:p-2 [&_td]:p-2 [&_td]:align-top [&_td]:border-b [&_a]:underline"
+            dangerouslySetInnerHTML={{ __html: marked.parse(onpremDeploymentMd, { async: false }) as string }} />}
         </main>
       </div>
     </div>
