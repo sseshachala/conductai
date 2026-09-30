@@ -122,7 +122,7 @@ def test_generated_shell_env_uses_custom_gateway(isolated, monkeypatch, windows)
     monkeypatch.setenv("SHELL", "/bin/zsh")
     writer = gateway._write_proxy_env_windows if windows else gateway._write_proxy_env
     writer("cond_agt_synthetic", CUSTOM["gateway_url"])
-    content = (directory / ("env.ps1" if windows else "env")).read_text()
+    content = (directory / ("env.ps1" if windows or gateway.sys.platform == "win32" else "env")).read_text()
     assert CUSTOM["gateway_url"] + "/anthropic" in content
     assert CUSTOM["gateway_url"] + "/openai/v1" in content
     assert "conductai.ai" not in content

@@ -2,7 +2,7 @@ import type { Metadata } from "next"
 import Script from "next/script"
 import "./globals.css"
 import { ClerkProvider } from "@clerk/nextjs"
-import { ConsoleProvider } from "@/lib/auth/client"
+import { ClerkAuthBridge, ConsoleProvider } from "@/lib/auth/client"
 import { deploymentConfig, serializeRuntime } from "@/lib/auth/runtime"
 
 export const dynamic = "force-dynamic"
@@ -163,7 +163,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         signUpUrl: "/sign-up",
         signInFallbackRedirectUrl: "/theguard",
         signUpFallbackRedirectUrl: "/theguard/try",
-        children,
+        children: <ClerkAuthBridge>{children}</ClerkAuthBridge>,
       })
     : runtime.authMode === "proxy" ? <ConsoleProvider>{children}</ConsoleProvider> : children
 

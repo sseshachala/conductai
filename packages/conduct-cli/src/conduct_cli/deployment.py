@@ -1,4 +1,6 @@
 """Deployment endpoints shared by CLI commands, generated configs, and hooks."""
+from __future__ import annotations
+
 from dataclasses import dataclass
 from urllib.parse import urlsplit
 

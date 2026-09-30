@@ -11,6 +11,20 @@ type ConsoleContext = {
   getToken: (options?: { skipCache?: boolean }) => Promise<string | null>
 }
 const Context = createContext<ConsoleContext>({ loaded: false, session: null, getToken: async () => null })
+const ClerkContext = createContext<{
+  auth: ReturnType<typeof useClerkAuth>
+  user: ReturnType<typeof useClerkUser>
+  session: ReturnType<typeof useClerkSession>
+  clerk: ReturnType<typeof useClerkSdk>
+} | null>(null)
+
+export function ClerkAuthBridge({ children }: { children: React.ReactNode }) {
+  const auth = useClerkAuth()
+  const user = useClerkUser()
+  const session = useClerkSession()
+  const clerk = useClerkSdk()
+  return <ClerkContext.Provider value={{ auth, user, session, clerk }}>{children}</ClerkContext.Provider>
+}
 const developmentContext: ConsoleContext = {
   loaded: true, session: { token: "", expires_at: 0, user: { id: "dev", name: "Developer" } },
   getToken: async () => null,
@@ -54,18 +68,18 @@ export function ConsoleProvider({ children }: { children: React.ReactNode }) {
   return <Context.Provider value={{ loaded, session, getToken }}>{children}</Context.Provider>
 }
 
-// Deployment mode is fixed for the lifetime of the document, so these hook
-// branches never change during a component's lifetime.
 export function useAuth() {
-  if (runtimeConfig().authMode === "clerk") return useClerkAuth()
+  const clerk = useContext(ClerkContext)
   const state = useConsoleContext()
+  if (clerk) return clerk.auth
   return { isLoaded: state.loaded, isSignedIn: !!state.session, userId: state.session?.user.id ?? null,
     sessionId: state.session?.user.id ?? null, getToken: state.getToken } as ReturnType<typeof useClerkAuth>
 }
 
 export function useUser() {
-  if (runtimeConfig().authMode === "clerk") return useClerkUser()
+  const clerk = useContext(ClerkContext)
   const { loaded, session } = useConsoleContext()
+  if (clerk) return clerk.user
   return { isLoaded: loaded, isSignedIn: !!session, user: session ? {
     id: session.user.id, fullName: session.user.name, firstName: session.user.name,
     lastName: "", imageUrl: "", primaryEmailAddress: null,
@@ -73,15 +87,17 @@ export function useUser() {
 }
 
 export function useSession() {
-  if (runtimeConfig().authMode === "clerk") return useClerkSession()
+  const clerk = useContext(ClerkContext)
   const { loaded, session } = useConsoleContext()
+  if (clerk) return clerk.session
   return { isLoaded: loaded, isSignedIn: !!session, session: session ? {
     id: session.user.id, status: "active",
   } : null } as ReturnType<typeof useClerkSession>
 }
 
 export function useClerk() {
-  if (runtimeConfig().authMode === "clerk") return useClerkSdk()
+  const clerk = useContext(ClerkContext)
+  if (clerk) return clerk.clerk
   return { signOut: async () => {
     // POST has a same-origin check; the response contains only a fixed local logout URL.
     const response = await fetch("/api/auth/logout", { method: "POST", credentials: "same-origin" })

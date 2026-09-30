@@ -9,7 +9,7 @@ const mocks = vi.hoisted(() => ({
   workspace: { activeWorkspace: { id: "ws-1" } as unknown },
 }))
 
-vi.mock("@clerk/nextjs", () => ({
+vi.mock("@/lib/auth/client", () => ({
   useAuth: () => mocks.auth,
   useUser: () => mocks.user,
 }))

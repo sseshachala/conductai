@@ -1,4 +1,6 @@
 """Resolve explicit deployment endpoints without guessing console hostnames."""
+from __future__ import annotations
+
 from urllib.parse import urlsplit
 
 

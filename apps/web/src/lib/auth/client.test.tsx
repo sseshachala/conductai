@@ -7,11 +7,29 @@ vi.mock("@clerk/nextjs", () => ({
   useSession: vi.fn(() => { throw new Error("Clerk must not run in proxy mode") }),
   useClerk: vi.fn(() => { throw new Error("Clerk must not run in proxy mode") }),
 }))
-import { ConsoleProvider, useAuth, useUser } from "./client"
+import * as clerk from "@clerk/nextjs"
+import { ClerkAuthBridge, ConsoleProvider, useAuth, useUser, useSession, useClerk } from "./client"
 
 afterEach(() => { cleanup(); vi.unstubAllEnvs(); vi.unstubAllGlobals() })
 
 describe("console client adapter", () => {
+  it("preserves Clerk hook results through the Clerk provider bridge", () => {
+    const auth = { isLoaded: true, isSignedIn: true, userId: "clerk_alice" }
+    const user = { isLoaded: true, user: { id: "clerk_alice" } }
+    const session = { isLoaded: true, session: { id: "session_alice" } }
+    const sdk = { signOut: vi.fn() }
+    vi.mocked(clerk.useAuth).mockReturnValueOnce(auth as ReturnType<typeof clerk.useAuth>)
+    vi.mocked(clerk.useUser).mockReturnValueOnce(user as ReturnType<typeof clerk.useUser>)
+    vi.mocked(clerk.useSession).mockReturnValueOnce(session as ReturnType<typeof clerk.useSession>)
+    vi.mocked(clerk.useClerk).mockReturnValueOnce(sdk as unknown as ReturnType<typeof clerk.useClerk>)
+    const fetcher = vi.fn()
+    vi.stubGlobal("fetch", fetcher)
+    const { result } = renderHook(() => ({ auth: useAuth(), user: useUser(), session: useSession(), sdk: useClerk() }),
+      { wrapper: ClerkAuthBridge })
+    expect(result.current).toEqual({ auth, user, session, sdk })
+    expect(fetcher).not.toHaveBeenCalled()
+  })
+
   it("loads and refreshes a proxy session without invoking Clerk", async () => {
     vi.stubEnv("AUTH_MODE", "proxy")
     const fetcher = vi.fn().mockResolvedValueOnce(Response.json({ token: "conduct-session", expires_at: Date.now() / 1000 + 60,
