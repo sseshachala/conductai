@@ -1,6 +1,7 @@
 """ConductGuard SessionStart hook — prints context after compaction."""
 from __future__ import annotations
 
+from conduct_cli.deployment import api_url as deployment_api_url
 import json
 import re
 import sys
@@ -91,7 +92,7 @@ def _check_instructions_staleness() -> None:
     try:
         import urllib.request as _req
         cfg = load_config()
-        api_url = cfg.get("api_url", "https://api.conductai.ai").rstrip("/")
+        api_url = deployment_api_url(cfg)
         agent_token = cfg.get("agent_token", "")
         local_version = cfg.get("instructions_version")
         if not agent_token or not local_version:

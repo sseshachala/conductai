@@ -1,7 +1,10 @@
 "use client"
 
+import { apiUrl } from "@/lib/auth/runtime"
+
+
 import { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from "react"
-import { useAuth, useSession } from "@clerk/nextjs"
+import { useAuth, useSession } from "@/lib/auth/client"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { sessionFetch, type GetSessionToken } from "./sessionFetch"
@@ -94,8 +97,8 @@ function WorkspaceProviderInner({
     setLoading(true)
     setError(null)
     try {
-      const api = process.env.NEXT_PUBLIC_API_URL
-      if (api === undefined) {
+      const api = apiUrl()
+      if (!api) {
         setError("Workspace API is not configured. Set NEXT_PUBLIC_API_URL and restart the web server.")
         return
       }

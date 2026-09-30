@@ -8,7 +8,7 @@ const auth = vi.hoisted(() => ({
 }))
 const navigation = vi.hoisted(() => ({ pathname: '/theguard/try' }))
 vi.mock('next/navigation', () => ({ usePathname: () => navigation.pathname }))
-vi.mock('@clerk/nextjs', () => ({
+vi.mock('@/lib/auth/client', () => ({
   useAuth: () => auth,
   useSession: () => ({ session: { status: auth.status } }),
 }))

@@ -8,6 +8,7 @@ from contextlib import nullcontext
 from pathlib import Path
 
 from dotenv import dotenv_values
+import transport_checks
 from otp_broker import DEFAULT_TOKEN_FILE, GmailClient, OtpBrokerError, authorize, discover_client_file, serve
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -30,12 +31,30 @@ def main() -> int:
     parser.add_argument("--allow-disposable-workspaces", action="store_true")
     parser.add_argument("--grep", help="Run only production canaries matching this pattern")
     parser.add_argument("--gateway-preflight", action="store_true", help="Read-only Gateway fixture check; no cleanup, mutations, or inference")
+    parser.add_argument("--restore-gateway-fixtures", action="store_true", help="Restore dedicated v2 fixtures from existing Vault credentials and explicit upstream models")
+    parser.add_argument("--fixture-anthropic-model", help="Upstream Anthropic model ID for fixture creation only")
+    parser.add_argument("--fixture-openai-model", help="Upstream OpenAI model ID for fixture creation only")
     parser.add_argument("--authorize-gmail", action="store_true")
     parser.add_argument("--gmail-client-file", type=Path)
     parser.add_argument("--gmail-token-file", type=Path, default=DEFAULT_TOKEN_FILE)
     parser.add_argument("--manual-otp", action="store_true")
     parser.add_argument("--headed", action="store_true")
+    parser.add_argument("--transport-only", action="store_true", help="Run shared transport checks without browser provisioning or membership changes")
+    transport_checks.add_arguments(parser)
     args = parser.parse_args()
+    if (args.fixture_anthropic_model or args.fixture_openai_model) and not args.restore_gateway_fixtures:
+        parser.error("Fixture model options require --restore-gateway-fixtures")
+    if args.restore_gateway_fixtures and (args.gateway_preflight or args.transport_config or args.transport_only or args.authorize_gmail):
+        parser.error("Fixture restoration must run separately with disposable-workspace consent")
+    if (args.gateway_preflight or args.authorize_gmail) and (args.transport_config or args.transport_only):
+        parser.error("Transport checks cannot be combined with Gateway preflight or Gmail authorization")
+    if args.transport_config or args.transport_only:
+        try:
+            transport_checks.validate_arguments(args, "saas")
+        except ValueError as error:
+            parser.error(str(error))
+    if args.transport_only:
+        return transport_checks.run(args, "saas")
     try:
         if args.authorize_gmail:
             client_file = args.gmail_client_file or discover_client_file()
@@ -62,9 +81,16 @@ def main() -> int:
     environment["PROD_E2E_ALLOW_MUTATION"] = "1"
     environment["PROD_E2E_HEADLESS"] = "0" if args.headed else "1"
     environment["PROD_E2E_GATEWAY_PREFLIGHT"] = "1" if args.gateway_preflight else "0"
+    environment["PROD_E2E_RESTORE_GATEWAY_FIXTURES"] = "1" if args.restore_gateway_fixtures else "0"
+    for provider in ("anthropic", "openai"):
+        key = f"PROD_E2E_FIXTURE_{provider.upper()}_MODEL"
+        environment.pop(key, None)
+        model = getattr(args, f"fixture_{provider}_model")
+        if model:
+            environment[key] = model
 
     command = playwright_command()
-    if args.gateway_preflight:
+    if args.gateway_preflight or args.restore_gateway_fixtures:
         command.extend(["--grep", "@prod-gateway-fixture"])
     elif args.grep:
         command.extend(["--grep", args.grep])
@@ -96,7 +122,10 @@ def main() -> int:
                     for value in secrets_to_redact:
                         line = line.replace(value, "[redacted]")
                     print(line, end="", flush=True)
-                return process.wait()
+                status = process.wait()
+                if status == 0 and args.transport_config:
+                    return transport_checks.run(args, "saas")
+                return status
     except OtpBrokerError as error:
         parser.error(str(error))
 

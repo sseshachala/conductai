@@ -9,6 +9,7 @@ import { API } from "@/lib/api/client"
 import { AskLensLink } from "@/components/glens/AskLensLink"
 
 interface TrialSession {
+  setup_required?: boolean
   plan: string
   expired: boolean
   ineligible?: boolean
@@ -279,7 +280,7 @@ export default function GuardTryPage() {
             <h1 className="text-2xl font-semibold text-stone-900">Try Guard in 30 seconds</h1>
             <p className="text-sm text-stone-600">
               Watch Guard allow a normal call, warn on a suspicious one, block a dangerous one,
-              and hand you an audit-chain row for each — on your own agent identity, without configuring anything.
+              and hand you an audit-chain row for each — on your own agent identity.
             </p>
           </div>
 
@@ -302,6 +303,12 @@ export default function GuardTryPage() {
               <Link href="/theguard/settings" className="inline-block text-sm px-3 py-1.5 rounded border border-amber-800 bg-amber-900 text-white hover:bg-amber-700">
                 Connect provider
               </Link>
+            </div>
+          )}
+
+          {session?.setup_required && (
+            <div role="status" className="border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+              Demo provider unavailable. Contact your deployment administrator.
             </div>
           )}
 

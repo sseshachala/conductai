@@ -5,6 +5,7 @@ bare `pip install conduct-cli` with no shell rc sourced.
 """
 from __future__ import annotations
 
+from conduct_cli.deployment import api_url as deployment_api_url
 import base64
 import hashlib
 import json
@@ -211,7 +212,7 @@ def _refresh_policy_from_api() -> None:
         cfg = load_config()
         workspace_id = cfg.get("workspace_id")
         agent_token = cfg.get("agent_token", "")
-        api_url = cfg.get("api_url", "https://api.conductai.ai").rstrip("/")
+        api_url = deployment_api_url(cfg)
         if not agent_token:
             return
         url = f"{api_url}/guard/policies/sync"
@@ -316,7 +317,7 @@ def run_drain_daemon() -> None:
                     pause = {}
                 if pause.get("credential") == credential_fingerprint and pause.get("retry_after", 0) > time.time():
                     continue
-                api_url = cfg.get("api_url", "https://api.conductai.ai").rstrip("/")
+                api_url = deployment_api_url(cfg)
                 if entry.get("api_url", "").rstrip("/") != api_url:
                     raise ValueError("journal API URL does not match active configuration")
                 endpoint = entry.get("endpoint", "/guard/events")
@@ -539,7 +540,7 @@ def post_event(
         "receipt_id":      receipt_id,
         **({"execution_status": execution_status} if execution_status is not None else {}),
     })
-    api_url = cfg.get("api_url", "https://api.conductai.ai").rstrip("/")
+    api_url = deployment_api_url(cfg)
     journal_append(payload, api_url)
     ensure_drain_daemon(drain_via)
 
@@ -574,9 +575,10 @@ def hook_receipt_url(receipt_id: str) -> Optional[str]:
     cfg = load_config()
     if not cfg.get("workspace_id"):
         return None
-    web_url = cfg.get("web_url") or web_url_from_api(
-        cfg.get("api_url", "https://api.conductai.ai")
-    )
+    from conduct_cli.deployment import resolve
+    web_url = resolve(cfg).web
+    if not web_url:
+        return None
     return f"{web_url.rstrip('/')}/theguard/blocks/{receipt_id}"
 
 

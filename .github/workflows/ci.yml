@@ -112,6 +112,8 @@ jobs:
           python -c "import os; from sqlalchemy import create_engine, text; from sqlalchemy.engine import make_url; e=create_engine(make_url(os.environ['DATABASE_URL']).set(database='postgres'), isolation_level='AUTOCOMMIT'); c=e.connect(); c.execute(text('CREATE DATABASE conduct_federation_test')); c.close(); e.dispose()"
           python -m alembic upgrade head
           python ../../tools/federation/phase3_harness.py
+          python ../../tools/federation/console_foundation_harness.py
+          python ../../tools/federation/console_proxy_harness.py
         working-directory: apps/api
       - name: Install isolated LiteLLM integration harness
         run: |

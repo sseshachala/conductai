@@ -14,6 +14,7 @@ from pathlib import Path
 import yaml
 
 from conduct_cli import api
+from conduct_cli import deployment
 from conduct_cli import guard as _guard
 
 RESET  = "\033[0m"
@@ -34,6 +35,8 @@ def _auto_update() -> None:
     """Check PyPI for a newer conduct-cli version and upgrade + re-exec if found."""
     # Skip inside CI or if explicitly disabled
     if os.environ.get("CONDUCT_NO_AUTOUPDATE") or os.environ.get("CI"):
+        return
+    if any(arg == "--server" or arg.startswith("--server=") for arg in sys.argv) or deployment.api_url(_load_config()) != deployment.SAAS_API:
         return
 
     now = time.time()
@@ -114,6 +117,13 @@ def _require_auth(args):
     server     = _resolve(args, "server") or cfg.get("api_url", "")
     workspace  = _resolve(args, "workspace") or cfg.get("workspace_id") or cfg.get("workspace")
     token      = _resolve(args, "token") or cfg.get("agent_token")
+
+    saved_server = cfg.get("api_url") or cfg.get("server")
+    if (server and saved_server and server.rstrip("/") != saved_server.rstrip("/")
+            and not getattr(args, "token", None)):
+        print("Server differs from the saved login. Log in to that deployment first, "
+              "or supply an explicit token and workspace.")
+        raise SystemExit(1)
 
     if not server:
         print(f"{RED}No server set. Run: conduct login{RESET}")
@@ -234,13 +244,16 @@ def _poll_run(server: str, workflow_id: str, run_id: str, hdrs: dict) -> bool:
 # `npx -y mcp-remote <url> --header "Authorization: Bearer <token>"` is what
 # Claude.ai / Claude Code / Cursor / Codex / VS Code Copilot all speak — one
 # bridge, one endpoint. Native Python bridge tracked in #1229.
-_MCP_URL_DEFAULT = "https://gateway.conductai.ai/mcp"
+_MCP_URL_DEFAULT = deployment.SAAS_API + "/mcp"
 
 
 def _mcp_remote_args(api_url: str, token: str) -> list:
     """Args list for the mcp-remote invocation. Kept as a helper so JSON and
     TOML writers stay in sync."""
-    return ["-y", "mcp-remote", api_url.rstrip("/") + "/mcp",
+    cfg = _load_config()
+    if deployment.api_url(cfg) != api_url.rstrip("/"):
+        cfg = {"api_url": api_url}
+    return ["-y", "mcp-remote", deployment.resolve(cfg).mcp,
             "--header", f"Authorization: Bearer {token}"]
 
 
@@ -453,7 +466,7 @@ def cmd_mcp_install(args):
     import subprocess
 
     cfg = _load_config()
-    api_url = (cfg.get("api_url") or _DEFAULT_API_URL).rstrip("/")
+    api_url = deployment.api_url(cfg)
     token = cfg.get("agent_token") or ""
     if not token:
         print(f"{RED}No Conduct token found — run `conduct login` first, then re-run `conduct mcp install`.{RESET}")
@@ -486,7 +499,7 @@ def cmd_mcp_install(args):
 
     if registered:
         print(f"{GREEN}✓ Conduct MCP registered in: {', '.join(registered)}{RESET}")
-        print(f"{GRAY}  Bridge: npx -y mcp-remote {api_url}/mcp{RESET}")
+        print(f"{GRAY}  Bridge: npx -y mcp-remote {deployment.resolve(cfg).mcp}{RESET}")
         print(f"{GRAY}  MCP surface consolidated — the old `conductguard-mcp` binary and{RESET}")
         print(f"{GRAY}  `/guard/mcp` URL are being retired in favor of one `/mcp` endpoint (#1219).{RESET}")
         print(f"{GRAY}  Restart your AI tools to pick up the new server.{RESET}")
@@ -512,8 +525,8 @@ def cmd_mcp_install(args):
         pass
 
 
-_DEFAULT_API_URL = "https://api.conductai.ai"
-_DEFAULT_WEB_URL = "https://app.conductai.ai"
+_DEFAULT_API_URL = deployment.SAAS_API
+_DEFAULT_WEB_URL = deployment.SAAS_WEB
 
 
 def _find_free_port() -> int:
@@ -670,12 +683,29 @@ def _token_login_flow(agent_token: str, api_url: str) -> dict:
 
 
 def cmd_login(args):
-    api_url = (getattr(args, "server", None) or _load_config().get("api_url", _DEFAULT_API_URL)).rstrip("/")
-    web_url = _DEFAULT_WEB_URL
+    from conduct_cli.login_config import endpoints
+    cfg = _load_config()
+    try:
+        api_url, web_url = endpoints(args, cfg, _DEFAULT_API_URL, _DEFAULT_WEB_URL)
+    except ValueError as exc:
+        print(f"{RED}{exc}{RESET}")
+        raise SystemExit(1) from None
+    # Workspace IDs and refresh credentials must not cross deployment boundaries.
+    if api_url != deployment.api_url(cfg):
+        cfg = {}
+    for name in ("gateway_url", "mcp_url"):
+        value = getattr(args, name, None)
+        if value:
+            cfg[name] = value
+    try:
+        deployment.resolve({**cfg, "api_url": api_url, "web_url": web_url})
+    except ValueError as exc:
+        print(f"{RED}{exc}{RESET}")
+        raise SystemExit(1) from None
 
     # Capture the workspace the user was on BEFORE login — so we can restore
     # it after the login flow (which always returns the account's default).
-    prior_ws = _load_config().get("workspace_id") or _load_config().get("workspace") or ""
+    prior_ws = cfg.get("workspace_id") or cfg.get("workspace") or ""
 
     # --token escape hatch: paste agent_token directly (no browser)
     manual_token = getattr(args, "token", None)
@@ -689,17 +719,22 @@ def cmd_login(args):
 
     # Write config
     import datetime as _dt
-    cfg = _load_config()
     cfg["api_url"]          = api_url
+    if web_url:
+        cfg["web_url"] = web_url
     cfg["agent_token"]      = result["agent_token"]
     cfg["workspace"]        = result["workspace_id"]
     cfg["workspace_id"]     = result["workspace_id"]
     cfg["token_expires_at"] = (_dt.datetime.now(_dt.timezone.utc) + _dt.timedelta(hours=8)).isoformat()
     if result.get("refresh_token"):
         cfg["refresh_token"] = result["refresh_token"]
+    else:
+        cfg.pop("refresh_token", None)
     # Clear legacy api_key — agent_token is the credential now
     cfg.pop("api_key", None)
-    _atomic_write(CONFIG_PATH, cfg)
+    cfg.pop("token", None)
+    cfg.pop("server", None)
+    _atomic_write(CONFIG_PATH, cfg, merge=False)
 
     # Restore prior workspace if login returned a different default. Otherwise
     # every `conduct login` silently blows away the last `conduct switch`.
@@ -738,14 +773,15 @@ def cmd_login(args):
         print(f"{GREEN}✓ Logged in{RESET} — workspace {GRAY}{result['workspace_id']}{RESET}")
 
     # Auto-sync: register hooks + pull policy
-    try:
-        import conduct_cli.guard as _g
-        import types
-        _g.cmd_guard_sync(types.SimpleNamespace())
-    except SystemExit:
-        pass
-    except Exception:
-        pass
+    if not getattr(args, "no_sync", False):
+        try:
+            import conduct_cli.guard as _g
+            import types
+            _g.cmd_guard_sync(types.SimpleNamespace())
+        except SystemExit:
+            pass
+        except Exception:
+            pass
 
     # Nudge if the account has multiple workspaces — the web UI and CLI hold
     # workspace context independently, so users routinely forget which one
@@ -1504,11 +1540,11 @@ def _build_state(issue: dict, repo_full_name: str) -> dict:
     return {"github_issue": trigger, "_trigger": trigger}
 
 
-def _atomic_write(path: Path, data: dict) -> None:
-    """Write data to path atomically via a .tmp sibling. Merges into existing config."""
+def _atomic_write(path: Path, data: dict, *, merge: bool = True) -> None:
+    """Write atomically; login replaces credentials instead of retaining stale keys."""
     path.parent.mkdir(parents=True, exist_ok=True)
     existing = {}
-    if path.exists():
+    if merge and path.exists():
         try:
             existing = json.loads(path.read_text())
         except Exception:
@@ -2666,7 +2702,7 @@ def _rotate_agent_token(cfg: dict) -> bool:
     refresh_token = cfg.get("refresh_token", "")
     if not refresh_token:
         return False
-    api_url = cfg.get("api_url", _DEFAULT_API_URL).rstrip("/")
+    api_url = deployment.api_url(cfg)
     try:
         import json as _json
         req = urllib.request.Request(
@@ -2743,7 +2779,7 @@ def cmd_test_guard(args):
 
     workspace_id = cfg.get("workspace_id")
     api_key      = cfg.get("agent_token", "")
-    api_url      = cfg.get("api_url", "https://api.conductai.ai").rstrip("/")
+    api_url      = deployment.api_url(cfg)
 
     print(f"\n{BOLD}▶ conduct test-guard — {len(rules)} rule(s){RESET}\n")
 
@@ -3228,7 +3264,7 @@ def main():
     # when already migrated or user has a custom URL — never blocks the CLI.
     try:
         from conduct_cli.guard import _migrate_proxy_env_if_stale
-        if _migrate_proxy_env_if_stale():
+        if deployment.api_url(_load_config()) == deployment.SAAS_API and _migrate_proxy_env_if_stale():
             print("conduct: migrated ~/.conduct/env to gateway.conductai.ai (0.14.9). Re-source your shell or open a new terminal.")
     except Exception:
         pass
@@ -3247,6 +3283,10 @@ def main():
     # conduct login
     login_p = sub.add_parser("login", help="Authenticate with Conduct (opens browser)")
     login_p.add_argument("--server", help="API base URL (default: https://api.conductai.ai)")
+    login_p.add_argument("--web-url", help="Console origin for browser login (required for a new custom server)")
+    login_p.add_argument("--gateway-url", help="Optional Gateway base URL including /gateway/v1")
+    login_p.add_argument("--mcp-url", help="Optional separate MCP URL (default: API origin plus /mcp)")
+    login_p.add_argument("--no-sync", action="store_true", help="Authenticate without installing or changing tool hooks")
     login_p.add_argument("--token",  help="Paste an agent token directly instead of opening a browser")
 
     # conduct agents

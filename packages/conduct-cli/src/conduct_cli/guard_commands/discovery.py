@@ -218,7 +218,7 @@ def cmd_guard_discover(args):
     cfg = _guard_shared._load_guard_config()
     report = collect(getattr(args, "config_only", False))
     if getattr(args, "verify_gateway", True):
-        verify_gateway(report, cfg.get("agent_token", ""))
+        verify_gateway(report, cfg.get("agent_token", ""), cfg)
         print("Gateway check uses the CLI credential; it does not prove this tool's inference traffic.")
     report["triggered_by"] = "cli"
     print(f"\nDiscovery: {len(report['agents'])} local findings ({report['status']})")

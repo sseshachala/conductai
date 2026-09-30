@@ -43,7 +43,7 @@ def main():
     developer_agent = str(uuid4())
     admin_agent = str(uuid4())
     with SessionLocal() as db:
-        assert db.execute(text("SELECT version_num FROM alembic_version")).scalar() in ("0154", "0155", "0156")
+        assert db.execute(text("SELECT version_num FROM alembic_version")).scalar() in ("0154", "0155", "0156", "0157")
         db.add_all([Workspace(id=ws, name="Federation harness"),
                     Workspace(id=other, name="Foreign harness")])
         db.flush()

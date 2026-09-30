@@ -1,11 +1,14 @@
 "use client"
 
+import { apiUrl } from "@/lib/auth/runtime"
+
+
 import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
-import { useAuth } from "@clerk/nextjs"
+import { useAuth } from "@/lib/auth/client"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 
-const API = process.env.NEXT_PUBLIC_API_URL ?? ""
+const API = apiUrl() ?? ""
 
 // ── Data ─────────────────────────────────────────────────────────────────────
 

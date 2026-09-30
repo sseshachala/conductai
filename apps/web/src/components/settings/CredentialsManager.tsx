@@ -1,5 +1,8 @@
 "use client"
 
+import { publicApiUrl } from "@/lib/auth/runtime"
+
+
 import { useState, useEffect } from "react"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 import { useAuthFetch } from "@/hooks/useAuthFetch"
@@ -62,7 +65,7 @@ const SERVICES: ServiceDef[] = [
         label: "Signing secret",
         placeholder: "a1b2c3…",
         optional: true,
-        tip: `Required for Approve/Reject buttons. Slack app → Basic Information → Signing Secret. Set Interactivity URL to: ${process.env.NEXT_PUBLIC_API_URL}/webhooks/slack/interactions`,
+        tip: `Required for Approve/Reject buttons. Slack app → Basic Information → Signing Secret. Set Interactivity URL to: ${publicApiUrl()}/webhooks/slack/interactions`,
       },
     ],
   },

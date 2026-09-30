@@ -1,9 +1,12 @@
 "use client"
 
+import { authEnabled } from "@/lib/auth/runtime"
+
+
 import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { useAuth } from "@clerk/nextjs"
+import { useAuth } from "@/lib/auth/client"
 import AppShell from "@/components/AppShell"
 import { statusStyle as _statusStyle, formatTrigger, timeAgo } from "@/lib/runUtils"
 import { useWorkspace } from "@/lib/WorkspaceContext"
@@ -134,7 +137,7 @@ function SpendArc({ pct, warn }: { pct: number, warn: boolean }) {
 }
 
 export default function DashboardPage() {
-  const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+  const clerkEnabled = authEnabled()
   if (clerkEnabled) return <DashboardWithAuth />
   return <DashboardContent getToken={null} />
 }

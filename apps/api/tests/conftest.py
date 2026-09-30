@@ -56,6 +56,15 @@ import pytest  # noqa: E402
 
 
 @pytest.fixture
+def local_development_auth(monkeypatch):
+    """Explicit opt-in for endpoint tests that do not exercise authentication."""
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "auth_mode", "development")
+    monkeypatch.setattr(settings, "environment", "local")
+
+
+@pytest.fixture
 def real_require_permission():
     """Opt-in: restore the real require_permission factory. Note: routes
     already-registered still use the permissive closure — this only affects

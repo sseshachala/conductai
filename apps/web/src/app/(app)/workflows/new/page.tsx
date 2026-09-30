@@ -1,8 +1,11 @@
 "use client"
 
+import { authEnabled } from "@/lib/auth/runtime"
+
+
 import { useState, useEffect, useRef } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import { useAuth } from "@clerk/nextjs"
+import { useAuth } from "@/lib/auth/client"
 import { useAuthFetch } from "@/hooks/useAuthFetch"
 import { API } from "@/lib/api"
 import AppShell from "@/components/AppShell"
@@ -61,7 +64,7 @@ const TEMPLATES = [
 ]
 
 export default function NewWorkflowPage() {
-  const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+  const clerkEnabled = authEnabled()
   if (clerkEnabled) return <NewWorkflowWithAuth />
   return <NewWorkflowForm getToken={null} />
 }

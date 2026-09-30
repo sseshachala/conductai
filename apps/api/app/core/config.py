@@ -1,4 +1,5 @@
 from pydantic_settings import BaseSettings
+from app.core.auth_deployment import AuthMode, validate_auth_mode
 
 
 class Settings(BaseSettings):
@@ -22,7 +23,13 @@ class Settings(BaseSettings):
     app_url: str = "https://conductai.ai"
     # Slack signing secret for verifying interactive component payloads
     slack_signing_secret: str = ""
-    # Clerk (optional — if unset, all requests use the dev workspace)
+    # Deployment choice; missing credentials never select development access.
+    auth_mode: AuthMode = "clerk"
+    console_oidc_issuer: str = ""
+    console_oidc_client_id: str = ""
+    console_oidc_jwks_url: str = ""
+    console_oidc_ca_file: str | None = None
+    console_proxy_secret: str = ""
     clerk_secret_key: str = ""
     clerk_frontend_api: str = ""  # e.g. "clerk.your-domain.com"
     clerk_audience: str = ""      # set to the expected aud claim to enable audience verification
@@ -363,6 +370,7 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+validate_auth_mode(settings)
 
 _DEFAULT_ENCRYPTION_KEY = "dev-only-32-byte-key-change-this!"
 if settings.environment not in ("local", "development") and settings.encryption_key == _DEFAULT_ENCRYPTION_KEY:

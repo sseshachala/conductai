@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useState, useEffect } from "react"
-import { useAuth } from "@clerk/nextjs"
+import { useAuth } from "@/lib/auth/client"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 import { useAuthFetch } from "@/hooks/useAuthFetch"
 import { projects as projectsApi } from "@/lib/api"

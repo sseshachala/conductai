@@ -86,7 +86,8 @@ def _require_guard_config() -> dict:
 
 
 def _api_url(cfg: dict) -> str:
-    return cfg.get("api_url", "https://api.conductai.ai").rstrip("/")
+    from conduct_cli.deployment import api_url
+    return api_url(cfg)
 
 
 def _copilot_home() -> Path:

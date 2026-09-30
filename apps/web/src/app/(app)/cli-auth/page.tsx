@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { useAuth } from "@clerk/nextjs"
+import { useAuth } from "@/lib/auth/client"
 import { useSearchParams } from "next/navigation"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 

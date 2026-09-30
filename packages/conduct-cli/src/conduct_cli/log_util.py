@@ -32,7 +32,6 @@ _COLORS = {
 }
 _RESET = "\033[0m"
 
-_API_BASE = os.environ.get("CONDUCT_API_URL", "https://api.conductai.ai").rstrip("/")
 _CONFIG   = Path.home() / ".conduct" / "config.json"
 _LOG_FILE = Path(
     os.environ.get("CONDUCT_LOG_FILE")
@@ -85,16 +84,6 @@ def _write_local(event_type: str, message: str, tb: str | None, ctx: dict) -> No
 
 
 @lru_cache(maxsize=1)
-def _read_creds() -> tuple[str | None, str | None]:
-    """(member_token, workspace_id) from ~/.conduct/config.json, or (None, None)."""
-    try:
-        cfg = json.loads(_CONFIG.read_text())
-        return cfg.get("member_token"), cfg.get("workspace_id")
-    except Exception:
-        return None, None
-
-
-@lru_cache(maxsize=1)
 def _version() -> str:
     try:
         from importlib.metadata import version
@@ -104,7 +93,16 @@ def _version() -> str:
 
 
 def _post_event_sync(event_type: str, message: str, tb: str | None, ctx: dict) -> None:
-    token, workspace_id = _read_creds()
+    from conduct_cli.deployment import api_url
+    try:
+        cfg = json.loads(_CONFIG.read_text())
+        base = api_url(cfg)
+        override = os.environ.get("CONDUCT_API_URL")
+        if override and override.rstrip("/") != base:
+            return  # Never send saved credentials to a different environment endpoint.
+        token, workspace_id = cfg.get("member_token"), cfg.get("workspace_id")
+    except Exception:
+        return
     if not token:
         return  # no creds = no telemetry, silent
     body = json.dumps({
@@ -125,7 +123,7 @@ def _post_event_sync(event_type: str, message: str, tb: str | None, ctx: dict) -
         headers["X-Workspace-Id"] = workspace_id
     try:
         req = urllib.request.Request(
-            f"{_API_BASE}/telemetry/events",
+            f"{base}/telemetry/events",
             data=body,
             headers=headers,
             method="POST",

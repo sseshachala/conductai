@@ -1,7 +1,10 @@
 "use client"
 
+import { authEnabled } from "@/lib/auth/runtime"
+
+
 import { useState, useEffect, useCallback } from "react"
-import { useAuth } from "@clerk/nextjs"
+import { useAuth } from "@/lib/auth/client"
 import { useAuthFetch } from "@/hooks/useAuthFetch"
 import { API } from "@/lib/api"
 import AppShell from "@/components/AppShell"
@@ -69,7 +72,7 @@ function formatDate(iso: string): string {
 // ── Clerk guard ───────────────────────────────────────────────────────────────
 
 export default function IntegrationsPage() {
-  const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+  const clerkEnabled = authEnabled()
   if (clerkEnabled) return <IntegrationsPageWithAuth />
   return <IntegrationsPageInner getToken={null} wsId="" />
 }

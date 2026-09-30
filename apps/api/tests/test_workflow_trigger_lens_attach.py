@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import uuid
+import pytest
 from datetime import datetime, timezone
 from types import SimpleNamespace
 
@@ -15,6 +16,8 @@ from fastapi.testclient import TestClient
 
 from app.core.database import get_db
 from app.main import app
+
+pytestmark = pytest.mark.usefixtures("local_development_auth")
 
 
 class _DummyRedis:

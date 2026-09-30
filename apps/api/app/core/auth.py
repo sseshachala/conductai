@@ -1,8 +1,7 @@
 """
-Optional Clerk JWT verification middleware.
+Clerk and machine-token authentication dependencies.
 
-When CLERK_SECRET_KEY is set, validates Bearer tokens from Clerk.
-Falls back to the dev workspace when no key is configured (local dev only).
+Development access requires explicit AUTH_MODE=development in a local environment.
 
 Usage in routes:
     from app.core.auth import get_workspace_id, get_user_id, require_workspace_role
@@ -24,6 +23,8 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.core.auth_deployment import development_auth_enabled
+from app.core.console_identity import console_identity
 from app.core.database import get_db
 
 log = structlog.get_logger(__name__)
@@ -70,7 +71,16 @@ def _get_jwks(force_refresh: bool = False) -> dict:
         return _jwks_cache
 
 
+def _verify_console_token(token: str, db: Session) -> dict | None:
+    if settings.auth_mode == "proxy":
+        from app.modules.auth.console.session import verify_session
+        return verify_session(token, db)
+    return _verify_clerk_token(token)
+
+
 def _verify_clerk_token(token: str) -> dict | None:
+    if settings.auth_mode != "clerk" or not _clerk_enabled_dispatch():
+        return None
     try:
         import jwt as pyjwt
         from jwt.algorithms import RSAAlgorithm
@@ -120,7 +130,7 @@ def _verify_clerk_token(token: str) -> dict | None:
 
 
 def _clerk_enabled() -> bool:
-    return bool(settings.clerk_secret_key and settings.clerk_frontend_api)
+    return settings.auth_mode == "clerk" and bool(settings.clerk_secret_key and settings.clerk_frontend_api)
 
 
 def _clerk_enabled_dispatch() -> bool:
@@ -446,7 +456,7 @@ def get_user_id(
     db: Session = Depends(get_db),
 ) -> str | None:
     """Returns the Clerk user_id (sub claim), 'dev' in local dev mode, or None for machine API tokens."""
-    if not _clerk_enabled_dispatch():
+    if development_auth_enabled() and not credentials:
         return DEV_USER_ID
 
     if not credentials:
@@ -465,15 +475,10 @@ def get_user_id(
     if _resolve_okta_jwt(credentials.credentials, db) is not None:
         return None
 
-    claims = _verify_clerk_token(credentials.credentials)
-    if not claims:
-        raise HTTPException(status_code=401, detail="Invalid or expired token")
-
-    user_id = claims.get("sub")
-    if not user_id:
-        raise HTTPException(status_code=401, detail="No user ID in token")
-
-    return user_id
+    return console_identity(
+        _verify_console_token(credentials.credentials, db),
+        mode=settings.auth_mode, clerk_issuer=f"https://{settings.clerk_frontend_api}",
+    ).user_id
 
 
 def _assert_workspace_member(db: Session, workspace_id: str, user_id: str) -> None:
@@ -510,10 +515,10 @@ def get_workspace_id(
     1. ?workspace_id= query param (explicit — preferred)
     2. X-Workspace-Id header (backward compat)
     3. Bearer token (cond_run_* / cond_agt_* / cond_api_* / Clerk JWT)
-    4. Dev workspace (when Clerk is not configured)
+    4. Dev workspace (explicit local development mode, without credentials)
     """
     explicit_ws = ws_id or x_workspace_id
-    if not _clerk_enabled_dispatch():
+    if development_auth_enabled() and not credentials:
         return explicit_ws or DEV_WORKSPACE_ID
 
     if not credentials:
@@ -559,11 +564,11 @@ def get_workspace_id(
             raise HTTPException(status_code=403, detail="Okta JWT does not belong to the requested workspace")
         return explicit_ws or token_ws
 
-    claims = _verify_clerk_token(credentials.credentials)
-    if not claims:
-        raise HTTPException(status_code=401, detail="Invalid or expired token")
-
-    user_id = claims.get("sub")
+    identity = console_identity(
+        _verify_console_token(credentials.credentials, db),
+        mode=settings.auth_mode, clerk_issuer=f"https://{settings.clerk_frontend_api}",
+    )
+    user_id = identity.user_id
 
     if explicit_ws:
         # Validate the user actually belongs to the requested workspace
@@ -577,8 +582,9 @@ def get_workspace_id(
     import uuid as _uuid
     _uuid_re = r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
 
-    org_claim = claims.get("org_id")
+    org_claim = identity.organization_id
     if org_claim and _re.match(_uuid_re, str(org_claim), _re.I):
+        _assert_workspace_member(db, str(org_claim), user_id)
         return str(org_claim)
 
     # Fallback: resolve the user's own workspace from the DB. Owner path
@@ -622,7 +628,7 @@ def get_user_workspace_role(
     Returns the authenticated user's role in the requested workspace.
     Raises 403 if the user is not a member. Skips check in dev mode.
     """
-    if not _clerk_enabled_dispatch():
+    if development_auth_enabled() and user_id == DEV_USER_ID:
         return "admin"
 
     # workspace_id must be a valid UUID — Clerk user_ids (user_xxx) are not.
@@ -692,17 +698,18 @@ def audit(
 
 def get_guard_org_id(
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)] = None,
+    db: Session = Depends(get_db),
 ) -> str:
     """Extract org/user ID for Guard endpoints.
 
     Accepts: Clerk Bearer JWT — returns org_id or sub claim.
     """
-    if not _clerk_enabled_dispatch():
+    if development_auth_enabled() and not credentials:
         return "dev-org"
 
     if not credentials:
         raise HTTPException(status_code=401, detail="Authentication required")
-    claims = _verify_clerk_token(credentials.credentials)
+    claims = _verify_console_token(credentials.credentials, db)
     if not claims:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
     org_id = claims.get("org_id") or claims.get("sub")
@@ -716,7 +723,7 @@ def get_guard_hook_auth(
     db: Session = Depends(get_db),
 ) -> str:
     """Auth for hook/CLI endpoints. Accepts cond_agt_* agent token or Clerk JWT."""
-    if not _clerk_enabled_dispatch():
+    if development_auth_enabled() and not credentials:
         return "dev-org"
 
     if not credentials:
@@ -737,7 +744,7 @@ def get_guard_hook_auth(
         return str(ai.workspace_id)
 
     # Clerk JWT
-    claims = _verify_clerk_token(token)
+    claims = _verify_console_token(token, db)
     if claims:
         org_id = claims.get("org_id") or claims.get("sub")
         if org_id:
@@ -798,18 +805,13 @@ def check_permission(
     Returns the effective role on success. Raises HTTPException(403) on failure.
 
     Callable directly from unit tests: pass a mocked db (or a real one) and a
-    workspace/user pair; get the same behavior FastAPI routes get. Patch
-    _clerk_enabled at the module level to simulate the dev-bypass path.
+    workspace/user pair; get the same behavior FastAPI routes get.
 
     See require_permission() below for the FastAPI wrapper used by routers.
     """
     from sqlalchemy import text as _text
 
-    # Use an explicit dict lookup so that unittest.mock.patch reliably replaces
-    # _clerk_enabled at test time.  Python 3.11's LOAD_GLOBAL inline cache can
-    # serve a stale pointer to the original function even after setattr() updates
-    # the module __dict__; going through globals() forces a fresh dict read.
-    if not _clerk_enabled_dispatch():
+    if development_auth_enabled() and user_id == DEV_USER_ID and not credentials:
         return "admin"
 
     import re as _re

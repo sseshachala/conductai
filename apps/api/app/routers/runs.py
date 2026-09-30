@@ -16,7 +16,8 @@ log = structlog.get_logger(__name__)
 def _now() -> datetime:
     return datetime.now(timezone.utc)
 
-from app.core.auth import get_workspace_id, get_user_id, require_permission, audit, _verify_clerk_token, _clerk_enabled, DEV_WORKSPACE_ID, DEV_USER_ID
+from app.core.auth import get_workspace_id, get_user_id, require_permission, audit, DEV_USER_ID
+from app.core.stream_auth import get_workspace_id_sse, get_user_workspace_role_sse
 from app.core.config import settings
 from app.core.database import get_db
 from app.models.run import Run, RunEvent
@@ -48,117 +49,6 @@ def _enqueue_run(run_id: str) -> None:
     r.rpush(QUEUE_KEY, run_id)
 
 
-def get_workspace_id_sse(
-    request: Request,
-    db: Session = Depends(get_db),
-) -> str:
-    """Auth dependency for SSE endpoints.
-    EventSource cannot set custom headers, so token and workspace_id come via query params."""
-    auth_header = request.headers.get("Authorization", "")
-    x_ws = request.headers.get("x-workspace-id") or request.query_params.get("workspace_id")
-
-    if not _clerk_enabled():
-        return x_ws or DEV_WORKSPACE_ID
-
-    # SSE clients (EventSource) can't set headers, so bearer token may come
-    # via ?token= query param instead of Authorization header.
-    raw_token = None
-    if auth_header.startswith("Bearer "):
-        raw_token = auth_header.removeprefix("Bearer ")
-    elif request.query_params.get("token"):
-        raw_token = request.query_params.get("token")
-
-    if not raw_token:
-        raise HTTPException(status_code=401, detail="Authorization required")
-
-    # cond_agt_* / cond_api_* agent tokens
-    if raw_token.startswith(("cond_agt_", "cond_api_")):
-        from app.core.auth import _resolve_agent_token
-        from app.core.database import get_db as _get_db
-        _db = next(_get_db())
-        try:
-            ai, _ = _resolve_agent_token(raw_token, _db)
-            return x_ws or str(ai.workspace_id)
-        finally:
-            _db.close()
-
-    claims = _verify_clerk_token(raw_token)
-    if not claims:
-        raise HTTPException(status_code=401, detail="Invalid or expired token")
-
-    ws = x_ws or claims.get("org_id") or claims.get("sub")
-    if not ws:
-        raise HTTPException(status_code=401, detail="No workspace in token claims")
-    return ws
-
-
-def _get_user_id_from_request(request: Request) -> str:
-    """Extract user_id from Authorization header or ?token= query param for SSE endpoints."""
-    if not _clerk_enabled():
-        return DEV_USER_ID
-    auth_header = request.headers.get("Authorization", "")
-    raw_token = None
-    if auth_header.startswith("Bearer "):
-        raw_token = auth_header.removeprefix("Bearer ")
-    elif request.query_params.get("token"):
-        raw_token = request.query_params.get("token")
-    if not raw_token:
-        raise HTTPException(status_code=401, detail="Authorization required")
-
-    # cond_agt_* agent tokens
-    if raw_token.startswith(("cond_agt_", "cond_api_")):
-        from app.core.auth import _resolve_agent_token
-        from app.core.database import get_db as _get_db
-        _db = next(_get_db())
-        try:
-            _, clerk_user_id = _resolve_agent_token(raw_token, _db)
-            return clerk_user_id or DEV_USER_ID
-        finally:
-            _db.close()
-
-    claims = _verify_clerk_token(raw_token)
-    if not claims:
-        raise HTTPException(status_code=401, detail="Invalid or expired token")
-    user_id = claims.get("sub")
-    if not user_id:
-        raise HTTPException(status_code=401, detail="No user ID in token")
-    return user_id
-
-
-def get_user_workspace_role_sse(
-    request: Request,
-    workspace_id: str = Depends(get_workspace_id_sse),
-    db: Session = Depends(get_db),
-) -> str:
-    """Role-checking dependency for SSE endpoints (mirrors get_user_workspace_role)."""
-    if not _clerk_enabled():
-        return "admin"
-
-    # API key auth — workspace was already validated by get_workspace_id_sse, grant admin
-    api_key_val = request.headers.get("x-api-key") or request.query_params.get("api_key")
-    if api_key_val:
-        return "admin"
-
-    user_id = _get_user_id_from_request(request)
-
-    import re as _re
-    if not _re.match(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", workspace_id, _re.I):
-        raise HTTPException(status_code=403, detail="Invalid workspace ID — please select a workspace")
-
-    from sqlalchemy import text
-    row = db.execute(
-        text("SELECT role FROM workspace_users WHERE workspace_id = :ws AND clerk_user_id = :uid"),
-        {"ws": workspace_id, "uid": user_id},
-    ).fetchone()
-    if not row:
-        owner_row = db.execute(
-            text("SELECT owner_id FROM workspaces WHERE id = :ws AND owner_id = :uid"),
-            {"ws": workspace_id, "uid": user_id},
-        ).fetchone()
-        if not owner_row:
-            raise HTTPException(status_code=403, detail="Not a member of this workspace")
-        return "admin"
-    return row.role
 
 
 def require_workspace_role_sse(*allowed_roles: str):

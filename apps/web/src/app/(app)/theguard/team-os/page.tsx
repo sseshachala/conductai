@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react"
 import Link from "next/link"
-import { useUser } from "@clerk/nextjs"
+import { useUser } from "@/lib/auth/client"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 import AppShell from "@/components/AppShell"
 import { useAuthFetch } from "@/hooks/useAuthFetch"

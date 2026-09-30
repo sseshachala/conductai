@@ -1,8 +1,11 @@
 "use client"
 
+import { authEnabled, apiUrl } from "@/lib/auth/runtime"
+
+
 import { useEffect, useState, useCallback } from "react"
 import { useParams } from "next/navigation"
-import { useAuth } from "@clerk/nextjs"
+import { useAuth } from "@/lib/auth/client"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 import Link from "next/link"
 import AppShell from "@/components/AppShell"
@@ -155,7 +158,7 @@ function BenchmarkContent({
     async function load() {
       setLoading(true)
       setError(null)
-      const base = process.env.NEXT_PUBLIC_API_URL
+      const base = apiUrl()
       const headers: Record<string, string> = {}
       try {
         if (getToken) {
@@ -394,7 +397,7 @@ function BenchmarkWithAuth({ editionSlug }: { editionSlug: string }) {
 export default function BenchmarkEditionPage() {
   const params = useParams()
   const edition = Array.isArray(params.edition) ? params.edition[0] : (params.edition as string)
-  const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+  const clerkEnabled = authEnabled()
   if (clerkEnabled) return <BenchmarkWithAuth editionSlug={edition} />
   return <BenchmarkContent editionSlug={edition} getToken={null} workspaceId={null} />
 }

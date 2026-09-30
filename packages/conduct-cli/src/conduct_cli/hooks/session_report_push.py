@@ -7,6 +7,7 @@ Usage (internal):
 """
 from __future__ import annotations
 
+from conduct_cli.deployment import api_url as deployment_api_url
 import getpass
 import json
 import shutil
@@ -32,7 +33,7 @@ def _load_config() -> dict:
 
 def run(session_id: str = "") -> None:
     cfg = _load_config()
-    server = (cfg.get("api_url") or cfg.get("server") or "https://api.conductai.ai").rstrip("/")
+    server = deployment_api_url(cfg)
     agent_token = cfg.get("agent_token", "")
     member_token = cfg.get("member_token", "")
     workspace_id = cfg.get("workspace_id", "")

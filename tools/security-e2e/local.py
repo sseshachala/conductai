@@ -69,14 +69,23 @@ def web_preflight(environment):
 
 
 def main():
+    import transport_checks
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action', choices=['check', 'infra', 'up', 'test', 'web-test', 'stop', 'status'])
+    parser.add_argument('action', choices=['check', 'infra', 'up', 'test', 'web-test', 'transport-test', 'stop', 'status'])
     parser.add_argument('--credentials-file', type=Path)
     parser.add_argument('--allow-test-users', action='store_true')
     parser.add_argument('--database-mode', choices=['restricted', 'owner'], default='restricted')
     parser.add_argument('--grep', help='Run only matching Playwright test titles')
     parser.add_argument('--initialize-local-key', action='store_true', help='Explicitly create a key if no configured/container key exists')
+    transport_checks.add_arguments(parser)
     args = parser.parse_args()
+    if args.transport_config or args.action == 'transport-test':
+        try:
+            transport_checks.validate_arguments(args, 'local')
+        except ValueError as error:
+            parser.error(str(error))
+    if args.action == 'transport-test':
+        return transport_checks.run(args, 'local')
     action = args.action
     environment = os.environ.copy()
     environment['E2E_DATABASE_ROLE'] = 'conduct_e2e_owner' if args.database_mode == 'owner' else 'conduct_e2e_app'
@@ -142,7 +151,10 @@ def main():
                     if environment.get(key):
                         line = line.replace(environment[key], '[redacted]')
                 print(line, end='', flush=True)
-            return process.wait()
+            status = process.wait()
+            if status == 0 and args.transport_config:
+                return transport_checks.run(args, 'local')
+            return status
     return subprocess.run(commands[action], cwd=cwd, env=environment).returncode
 
 

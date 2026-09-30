@@ -7,6 +7,7 @@ COPY apps/web/src ./apps/web/src
 COPY apps/web/public ./apps/web/public
 COPY apps/web/next.config.js apps/web/next-env.d.ts apps/web/tsconfig.json apps/web/tailwind.config.ts apps/web/postcss.config.js ./apps/web/
 COPY docs ./docs
+COPY config ./config
 ARG NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
 ENV NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=$NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
 ENV NEXT_PUBLIC_API_URL=/api NEXT_TELEMETRY_DISABLED=1

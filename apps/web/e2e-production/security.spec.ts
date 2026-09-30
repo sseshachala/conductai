@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto"
 import { expect, test, type APIResponse, type Browser, type BrowserContext, type Page } from "@playwright/test"
-import { legacyCatalogModels, publishedGatewayFixture, type LegacyCatalogProfile } from "./gateway-fixture"
+import { publishedCatalogModels, publishedGatewayFixture, restorationPlan } from "./gateway-fixture"
+import { expectMcpInvocation } from "../e2e-security/support/mcp"
 
 type Account = { email: string; password: string }
 type Session = { context: BrowserContext; page: Page; userId: string }
@@ -391,7 +392,7 @@ test.describe("bounded production security canaries", () => {
       const workspaceB = await ownedWorkspace(b)
       if (workspaceA.id === workspaceB.id) throw new Error("Production test workspaces must be distinct")
 
-      if (process.env.PROD_E2E_GATEWAY_PREFLIGHT === "1") {
+      if (process.env.PROD_E2E_GATEWAY_PREFLIGHT === "1" || process.env.PROD_E2E_RESTORE_GATEWAY_FIXTURES === "1") {
         harness = { a, b, workspaceA, workspaceB, originalMembersB: [] }
         return
       }
@@ -424,6 +425,7 @@ test.describe("bounded production security canaries", () => {
     try {
       const current = await members(b.page, workspaceB.id).catch(() => [])
       if (process.env.PROD_E2E_GATEWAY_PREFLIGHT !== "1"
+          && process.env.PROD_E2E_RESTORE_GATEWAY_FIXTURES !== "1"
           && !originalMembersB.some(member => member.clerk_user_id === a.userId)
           && current.some(member => member.clerk_user_id === a.userId)) {
         await removeMember(b, workspaceB.id, a.userId).catch(() => undefined)
@@ -435,6 +437,34 @@ test.describe("bounded production security canaries", () => {
 
   test("@prod-gateway-fixture published profiles are ready", async () => {
     const { a, b, workspaceA, workspaceB } = harness
+    if (process.env.PROD_E2E_RESTORE_GATEWAY_FIXTURES === "1") {
+      const plans = []
+      const errors: string[] = []
+      for (const [session, workspace, provider] of [[a, workspaceA, "anthropic"], [b, workspaceB, "openai"]] as const) {
+        const read = async (path: string) => {
+          const response = await api(session.page, path, "GET", undefined, workspace.id)
+          expect(response.status(), "Fixture metadata read must succeed").toBe(200)
+          return response.json()
+        }
+        try {
+          plans.push({ session, workspace, plan: await restorationPlan(read, workspace.id, provider, process.env[`PROD_E2E_FIXTURE_${provider.toUpperCase()}_MODEL`]) })
+        } catch (error) {
+          errors.push(error instanceof Error ? error.message : "Fixture metadata validation failed")
+        }
+      }
+      expect(errors, errors.join("\n")).toEqual([])
+      // Validate both plans before making either persistent change.
+      for (const { session, workspace, plan } of plans) {
+        if (!plan) continue
+        const base = `/workspaces/${workspace.id}/gateway-profiles-v2`
+        const created = await api(session.page, base, "POST", plan, workspace.id)
+        expect(created.status(), "Create dedicated canary draft").toBe(201)
+        const { id } = await created.json() as { id: string }
+        const published = await api(session.page, `${base}/${id}/publish`, "POST", {}, workspace.id)
+        expect(published.ok(), "Publish dedicated canary fixture; failed draft is retained for inspection").toBe(true)
+        console.log("Dedicated Gateway fixture published")
+      }
+    }
     const errors: string[] = []
     for (const [session, workspace, provider] of [[a, workspaceA, "anthropic"], [b, workspaceB, "openai"]] as const) {
       try {
@@ -477,11 +507,14 @@ test.describe("bounded production security canaries", () => {
     expect(invalid.status()).toBe(401)
   })
 
-  test("@prod-gateway Claude legacy model discovery exposes only persisted default deployments", async () => {
+  test("@prod-gateway Claude model discovery exposes only published v2 routing IDs", async () => {
     const { a, workspaceA } = harness
-    const profilesResponse = await api(a.page, `/workspaces/${workspaceA.id}/gateways`, "GET", undefined, workspaceA.id)
-    expect(profilesResponse.status()).toBe(200)
-    const profiles = await profilesResponse.json() as LegacyCatalogProfile[]
+    const expectedModels = await publishedCatalogModels(async path => {
+      const response = await api(a.page, path, "GET", undefined, workspaceA.id)
+      expect(response.status()).toBe(200)
+      return response.json()
+    }, workspaceA.id)
+    expect(expectedModels.length).toBeGreaterThan(0)
     const token = await gatewayToken(a.page, workspaceA.id)
     const since = new Date(Date.now() - 1_000).toISOString()
     const response = await a.page.request.get(`${apiBase}/gateway/v1/anthropic/v1/models?limit=1000`, {
@@ -493,7 +526,7 @@ test.describe("bounded production security canaries", () => {
     })
     expect(response.status()).toBe(200)
     const body = await response.json() as { data: { id: string; display_name?: string }[] }
-    expect(body.data.map(model => model.id)).toEqual(legacyCatalogModels(profiles))
+    expect(body.data.map(model => model.id)).toEqual(expectedModels)
     expectNoCredentialMaterial(body)
 
     const event = await waitForGuardEvent(
@@ -535,7 +568,7 @@ test.describe("bounded production security canaries", () => {
       since,
       candidate => candidate.hook_session_id === hookSession,
     )
-    expect(event.routing_meta).toMatchObject({ operation: "token_count", billable: false })
+    expect(event.routing_meta).toMatchObject({ operation: "anthropic_count_tokens", billable: false })
     expect(event.routing_meta).toMatchObject({ gateway_version: "v2", revision_id: profile.revisionId })
     expect(event.cost_usd_after).toBeNull()
     expectNoCredentialMaterial(event)
@@ -787,7 +820,7 @@ test.describe("bounded production security canaries", () => {
     expect(response.status()).toBe(401)
   })
 
-  test("@prod owner token can list MCP tools in its workspace", async () => {
+  test("@prod owner token lists and invokes MCP tools in its workspace", async () => {
     const { a, workspaceA } = harness
     const issued = await exchange(a.page, workspaceA.id)
     expect(issued.status()).toBe(200)
@@ -797,6 +830,7 @@ test.describe("bounded production security canaries", () => {
     const response = await mcp(a.page, workspaceA.id, pair.access_token)
     expect(response.status()).toBe(200)
     expect(Array.isArray((await response.json()).result?.tools)).toBe(true)
+    await expectMcpInvocation(a.page, `${apiBase}/mcp?workspace_id=${workspaceA.id}`, pair.access_token)
   })
 
   test("@prod foreign and unknown workspaces cannot issue credentials", async () => {

@@ -79,7 +79,6 @@ def _ensure_persona(workspace_id: str, base_url: str) -> str:
 def cmd_guard_install(args):
     """Called automatically from `conduct login`. Sets up Guard: downloads policies, installs hook + MCP."""
     agent_token = getattr(args, "agent_token", None)
-    server      = (getattr(args, "server", None) or "https://api.conductai.ai").rstrip("/")
 
     # Load workspace_id (and fallback agent_token) from ~/.conduct/config.json
     conduct_cfg_path = Path.home() / ".conduct" / "config.json"
@@ -90,6 +89,7 @@ def cmd_guard_install(args):
         except Exception:
             pass
 
+    server = _guard_shared._api_url({**conduct_cfg, **({"api_url": args.server} if getattr(args, "server", None) else {})})
     workspace_id = conduct_cfg.get("workspace")
     if not agent_token:
         agent_token = conduct_cfg.get("agent_token")
@@ -232,7 +232,7 @@ def cmd_guard_join(args):
 
     # Use configured API URL or default
     existing_cfg = _guard_shared._load_guard_config()
-    base_url     = existing_cfg.get("api_url", "https://api.conductai.ai").rstrip("/")
+    base_url     = _guard_shared._api_url(existing_cfg)
 
     print(f"\nJoining workspace with invite code {_guard_shared.CYAN}{invite_code}{_guard_shared.RESET}…")
 
@@ -404,7 +404,11 @@ def _proactive_token_refresh() -> None:
 
 
 def cmd_guard_sync(args):
-    _proactive_token_refresh()
+    from conduct_cli.deployment import SAAS_API, resolve
+    from .routing import resolve_routing, apply_routing
+    dry_run = getattr(args, "dry_run", False)
+    if not dry_run:
+        _proactive_token_refresh()
     cfg          = _guard_shared._require_guard_config()
     workspace_id = cfg.get("workspace_id") or cfg.get("workspace")
     agent_token  = cfg.get("agent_token", "")
@@ -413,15 +417,14 @@ def cmd_guard_sync(args):
 
     # Persona selection — prompt once, skip if already chosen
 
-    dry_run = getattr(args, "dry_run", False)
-
     if getattr(args, "reset_instructions", False):
         print("Removing ConductGuard blocks from instruction files…")
         _guard_instructions._reset_tool_instruction_files()
         return
 
     print(f"{'[dry-run] ' if dry_run else ''}Syncing policy…")
-    _check_and_upgrade_packages()
+    if base_url == SAAS_API and not dry_run:
+        _check_and_upgrade_packages()
 
     try:
         policy = _guard_shared._req(
@@ -469,6 +472,15 @@ def cmd_guard_sync(args):
             print(f"  {_guard_shared.GREEN}No changes{_guard_shared.RESET}")
         return
 
+    try:
+        selected = resolve(cfg)
+        proxy_url = resolve_routing(cfg, args)
+    except ValueError as exc:
+        print(f"Guard sync stopped: {exc}", file=sys.stderr)
+        raise SystemExit(1) from None
+    if proxy_url:
+        cfg["gateway_url"] = proxy_url
+    cfg["mcp_url"] = selected.mcp
     _guard_policy._save_policy(policy)
     print(f"  {_guard_shared.GREEN}Policy refreshed:{_guard_shared.RESET} {rule_count} hook rule(s). Proxy and non-hook rules run server-side.")
 
@@ -489,42 +501,12 @@ def cmd_guard_sync(args):
             print(f"  {_guard_shared.YELLOW}Warning: server returned no token — proxy env may be stale{_guard_shared.RESET}")
     except Exception as e:
         print(f"  {_guard_shared.YELLOW}Warning: could not fetch installation metadata ({e}){_guard_shared.RESET}")
+    _guard_shared._save_guard_config(cfg)
 
     # Write LLM proxy env vars so any AI tool (Claude Code, Cursor, Codex, …)
     # routes through Conduct Guard. Customer-overridable via --proxy-url or
     # CONDUCT_PROXY_URL env var; otherwise fetched from server (workspace_config).
-    explicit_proxy_url = getattr(args, "proxy_url", None) or os.environ.get("CONDUCT_PROXY_URL")
-    proxy_url = explicit_proxy_url
-    if not proxy_url:
-        try:
-            import urllib.request as _ur, urllib.error as _ue
-            _headers = {"Content-Type": "application/json"}
-            _token = cfg.get("agent_token", "")
-            if _token:
-                _headers["Authorization"] = f"Bearer {_token}"
-            _r = _ur.Request(f"{base_url}/guard/proxy-config", headers=_headers)
-            with _ur.urlopen(_r, timeout=10) as _resp:
-                proxy_url = json.loads(_resp.read()).get("conduct_proxy_url") or _guard_gateway.DEFAULT_PROXY_URL
-        except Exception:
-            proxy_url = _guard_gateway.DEFAULT_PROXY_URL
-    if not explicit_proxy_url:
-        proxy_url = _guard_gateway._gateway_v1_url(proxy_url)
-    agent_token = cfg.get("agent_token", "")
-    rc_path, newly_sourced = _guard_gateway._write_proxy_env(agent_token, proxy_url)
-    if agent_token:
-        env_name = "env.ps1" if sys.platform == "win32" else "env"
-        activate_cmd = f". {rc_path}" if sys.platform == "win32" else f"source {rc_path}"
-        print(f"  {_guard_shared.GREEN}Proxy env written:{_guard_shared.RESET} ~/.conduct/{env_name} → {proxy_url}")
-        if newly_sourced:
-            print(f"  {_guard_shared.CYAN}Run `{activate_cmd}` (or open a new shell) to activate.{_guard_shared.RESET}")
-    if not getattr(args, "no_codex_proxy", False) and agent_token:
-        if _guard_gateway._configure_codex_proxy(proxy_url):
-            _guard_gateway._configure_codex_launch_env(agent_token)
-            print(f"  {_guard_shared.GREEN}Codex proxy enabled:{_guard_shared.RESET} Responses API via Conduct (restart Codex)")
-            print(f"  {_guard_shared.CYAN}New terminal sessions load the managed credential. "
-                  f"Fully quit and reopen Codex; running apps keep their old environment.{_guard_shared.RESET}")
-        else:
-            print(f"  {_guard_shared.YELLOW}Codex proxy skipped:{_guard_shared.RESET} ~/.codex is not installed")
+    apply_routing(cfg, args, proxy_url)
 
     _guard_hooks._install_copilot_hooks(_guard_shared.GUARD_DIR / "hook.py")
     _tools = _guard_discovery._detect_ai_tools()
@@ -539,9 +521,9 @@ def cmd_guard_sync(args):
         print()
 
     _cd = next((t for t in _tools if t["name"] == "claude-desktop" and not t.get("proxy_routed")), None)
-    if _cd:
+    if _cd and proxy_url:
         print(f"  {_guard_shared.CYAN}Claude Desktop detected — patching apiBaseUrl to route through Guard proxy{_guard_shared.RESET}")
-        _guard_mcp._patch_claude_desktop_proxy(cfg.get("api_url", "https://api.conductai.ai"), agent_token)
+        _guard_mcp._patch_claude_desktop_proxy(base_url, agent_token, gateway_url=proxy_url)
 
     # Local key audit — scan known config files for real provider keys that
     # may have been pasted before the dev onboarded onto Conduct. Findings
@@ -575,7 +557,8 @@ def cmd_guard_sync(args):
     print(f"  {_guard_shared.GREEN}Hook script updated{_guard_shared.RESET}")
 
     # Auto-init Agent Booster if installed but not yet set up in this project
-    _guard_booster._ensure_booster(Path.cwd())
+    if base_url == SAAS_API:
+        _guard_booster._ensure_booster(Path.cwd())
 
     # Capture savings from RTK and Agent Booster
     _guard_reporting._report_savings(cfg, base_url)
@@ -603,7 +586,7 @@ def cmd_guard_sync(args):
     # Print remote MCP URL for any MCP-compatible client
     agent_token = cfg.get("agent_token", "")
     if workspace_id and agent_token:
-        mcp_url = "https://gateway.conductai.ai/mcp"
+        mcp_url = selected.mcp
         masked = agent_token[:13] + "•" * 20
         print(f"\n{_guard_shared.BOLD}MCP server{_guard_shared.RESET} (Claude.ai, Copilot, Cursor, Windsurf, any MCP client):")
         print(f"  URL:    {_guard_shared.CYAN}{mcp_url}{_guard_shared.RESET}")

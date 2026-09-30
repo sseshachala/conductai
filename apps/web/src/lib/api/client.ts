@@ -1,7 +1,8 @@
 /** Typed alias for the authFetch function returned by useAuthFetch. */
 export type AuthFetch = (url: string, opts?: RequestInit) => Promise<Response>
 
-export const API = process.env.NEXT_PUBLIC_API_URL ?? ""
+import { apiUrl } from "@/lib/auth/runtime"
+export const API = apiUrl()
 
 export async function json<T>(f: AuthFetch, url: string, opts?: RequestInit): Promise<T> {
   const res = await f(url, opts)

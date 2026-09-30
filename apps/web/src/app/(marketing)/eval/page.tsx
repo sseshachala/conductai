@@ -1,8 +1,11 @@
 "use client"
 
+import { authEnabled, apiUrl } from "@/lib/auth/runtime"
+
+
 import { useEffect, useState, useCallback, type MouseEvent as ReactMouseEvent } from "react"
 import Link from "next/link"
-import { useAuth } from "@clerk/nextjs"
+import { useAuth } from "@/lib/auth/client"
 import AppShell from "@/components/AppShell"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 
@@ -133,7 +136,7 @@ function EvalContent({ getToken, workspaceId }: { getToken: (() => Promise<strin
         }
         if (workspaceId) headers["X-Workspace-Id"] = workspaceId
 
-        const playbooksRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/eval/playbooks`, { headers })
+        const playbooksRes = await fetch(`${apiUrl()}/eval/playbooks`, { headers })
 
         if (cancelled) return
 
@@ -281,7 +284,7 @@ function EvalWithAuth() {
 }
 
 export default function EvalPage() {
-  const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+  const clerkEnabled = authEnabled()
   if (clerkEnabled) return <EvalWithAuth />
   return <EvalContent getToken={null} workspaceId={null} />
 }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createHmac } from 'crypto';
 import { auth, currentUser } from '@clerk/nextjs/server';
+import { deploymentConfig } from '@/lib/auth/runtime';
 
 function sign(payload: string) {
   return createHmac('sha256', process.env.MCP_OAUTH_SECRET ?? 'dev-secret').update(payload).digest('hex');
@@ -24,6 +25,9 @@ function verifyStateCookie(val: string) {
 }
 
 export async function GET(req: NextRequest) {
+  if (deploymentConfig(process.env).authMode === 'proxy') {
+    return NextResponse.json({ error: 'Use the API OAuth discovery and authorization endpoints for this deployment.' }, { status: 410 });
+  }
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://app.conductai.ai';
   const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? 'https://api.conductai.ai';
 

@@ -12,7 +12,7 @@ const displayEmail = (v: string | null | undefined): string => {
 }
 import { useEffect, useState, useCallback, useRef, type MouseEvent as ReactMouseEvent } from "react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
-import { useAuth, useUser } from "@clerk/nextjs"
+import { useAuth, useUser } from "@/lib/auth/client"
 import AppShell from "@/components/AppShell"
 import ToolActivityTable from "@/components/guard/ToolActivityTable"
 import { useGuardTeam } from "@/hooks/useGuardTeam"

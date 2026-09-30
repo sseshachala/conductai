@@ -1,9 +1,12 @@
 "use client"
 
+import { authEnabled, apiUrl } from "@/lib/auth/runtime"
+
+
 import { useEffect, useState, type MouseEvent as ReactMouseEvent } from "react"
 import Link from "next/link"
 import { useParams } from "next/navigation"
-import { useAuth } from "@clerk/nextjs"
+import { useAuth } from "@/lib/auth/client"
 import AppShell from "@/components/AppShell"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 
@@ -473,7 +476,7 @@ function EvalDetailContent({
         }
         if (workspaceId) headers["X-Workspace-Id"] = workspaceId
 
-        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/eval/playbooks/${encodeURIComponent(slug)}`, { headers })
+        const res = await fetch(`${apiUrl()}/eval/playbooks/${encodeURIComponent(slug)}`, { headers })
 
         if (cancelled) return
 
@@ -635,7 +638,7 @@ function EvalDetailWithAuth({ slug }: { slug: string }) {
 export default function EvalDetailPage() {
   const params = useParams()
   const slug = Array.isArray(params.slug) ? params.slug[0] : (params.slug as string)
-  const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+  const clerkEnabled = authEnabled()
   if (clerkEnabled) return <EvalDetailWithAuth slug={slug} />
   return <EvalDetailContent slug={slug} getToken={null} workspaceId={null} />
 }

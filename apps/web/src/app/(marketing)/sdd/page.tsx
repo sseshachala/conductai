@@ -1,5 +1,8 @@
 "use client"
 
+import { apiUrl } from "@/lib/auth/runtime"
+
+
 import { useState } from "react"
 
 export default function SDDPage() {
@@ -344,7 +347,7 @@ function SpecGenSection() {
   const [activeTab, setActiveTab] = useState("SPEC.md")
   const [copiedTab, setCopiedTab] = useState("")
 
-  const base = process.env.NEXT_PUBLIC_API_URL ?? ""
+  const base = apiUrl() ?? ""
 
   const GENERATING_STEPS = [
     "Reading description",

@@ -1,12 +1,15 @@
 "use client"
 
+import { authEnabled, apiUrl, runtimeConfig } from "@/lib/auth/runtime"
+
+
 import { useEffect } from "react"
 import { usePathname, useRouter } from "next/navigation"
-import { useAuth } from "@clerk/nextjs"
+import { useAuth } from "@/lib/auth/client"
 import { WorkspaceProvider, useWorkspace } from "@/lib/WorkspaceContext"
 import { GuardRoleClerkProvider, GuardRoleAdminProvider } from "@/lib/GuardRoleContext"
 
-const API = process.env.NEXT_PUBLIC_API_URL ?? ""
+const API = apiUrl() ?? ""
 const SETUP_VERIFIED_KEY = "conduct_setup_verified"
 
 function WorkspaceReady({ children }: { children: React.ReactNode }) {
@@ -25,7 +28,7 @@ function WorkspaceReady({ children }: { children: React.ReactNode }) {
 }
 
 function GuardRoleProviderBranch({ children }: { children: React.ReactNode }) {
-  const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+  const clerkEnabled = authEnabled()
   if (clerkEnabled) return <GuardRoleClerkProvider>{children}</GuardRoleClerkProvider>
   return <GuardRoleAdminProvider>{children}</GuardRoleAdminProvider>
 }
@@ -69,12 +72,12 @@ if (pathname === "/setup") router.replace("/theguard")
 }
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
-  const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+  const clerkEnabled = authEnabled()
   return (
     <WorkspaceProvider clerkEnabled={clerkEnabled}>
       <WorkspaceReady>
       <GuardRoleProviderBranch>
-        {clerkEnabled ? <SetupGate>{children}</SetupGate> : children}
+        {runtimeConfig().authMode === "clerk" ? <SetupGate>{children}</SetupGate> : children}
       </GuardRoleProviderBranch>
       </WorkspaceReady>
     </WorkspaceProvider>

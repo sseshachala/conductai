@@ -1,0 +1,103 @@
+name: conduct-console-e2e
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: conduct_console_e2e
+      POSTGRES_HOST_AUTH_METHOD: trust
+    networks: [data]
+    healthcheck:
+      test: [CMD, pg_isready, -U, postgres, -d, conduct_console_e2e]
+      interval: 3s
+      retries: 30
+    tmpfs: [/var/lib/postgresql/data]
+  redis:
+    image: redis:7-alpine
+    networks: [data]
+  api:
+    build:
+      context: ../..
+      dockerfile: tools/security-e2e/api.Dockerfile
+    command: [uvicorn, app.main:app, --host, 0.0.0.0, --port, '8000', --no-access-log, --no-proxy-headers]
+    environment:
+      AUTH_MODE: proxy
+      ENVIRONMENT: production
+      DATABASE_URL: postgresql://postgres@postgres/conduct_console_e2e
+      REDIS_URL: redis://redis:6379
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?Launch with local.py}
+      CONSOLE_PROXY_SECRET: ${CONSOLE_PROXY_SECRET:?Launch with local.py}
+      CONSOLE_OIDC_ISSUER: ${CONSOLE_OIDC_ISSUER:?Launch with local.py}
+      CONSOLE_OIDC_CLIENT_ID: ${CONSOLE_OIDC_CLIENT_ID:?Launch with local.py}
+      CONSOLE_OIDC_JWKS_URL: ${CONSOLE_OIDC_JWKS_URL:?Launch with local.py}
+      CONDUCT_WEB_URL: https://localhost:3443
+      CONDUCT_OAUTH_ISSUER: https://localhost:3444
+      APP_URL: https://localhost:3443
+      API_BASE_URL: https://localhost:3444
+      CONDUCT_PROXY_URL: https://localhost:3444/gateway/v1
+      ALLOWED_ORIGINS: https://localhost:3443
+      TEST_ADMIN_SUBJECT: ${TEST_ADMIN_SUBJECT:?Launch with local.py}
+      TEST_VIEWER_SUBJECT: ${TEST_VIEWER_SUBJECT:?Launch with local.py}
+    volumes: [./bootstrap.py:/harness/console_bootstrap.py:ro]
+    networks: [data, backend, outbound]
+    depends_on:
+      postgres:
+        condition: service_healthy
+  web:
+    build:
+      context: ../..
+      dockerfile: tools/security-e2e/web.Dockerfile
+    environment:
+      AUTH_MODE: proxy
+      APP_URL: https://localhost:3443
+      API_URL: http://api:8000
+      API_BASE_URL: https://localhost:3444
+      CONSOLE_PROXY_SECRET: ${CONSOLE_PROXY_SECRET:?Launch with local.py}
+    networks: [backend]
+  proxy:
+    image: quay.io/oauth2-proxy/oauth2-proxy:v7.15.0
+    command:
+      - --provider=keycloak-oidc
+      - --http-address=0.0.0.0:4180
+      - --upstream=http://web:3000
+      - --redirect-url=https://localhost:3443/oauth2/callback
+      - --scope=openid profile email
+      - --code-challenge-method=S256
+      - --insecure-oidc-skip-nonce=false
+      - --email-domain=*
+      - --pass-authorization-header=true
+      - --skip-auth-strip-headers=true
+      - --pass-access-token=false
+      - --skip-jwt-bearer-tokens=false
+      - --reverse-proxy=true
+      - --cookie-name=__Host-conduct-console-test
+      - --cookie-secure=true
+      - --cookie-httponly=true
+      - --cookie-samesite=lax
+      - --cookie-refresh=1m
+      - --cookie-expire=1h
+      - --skip-auth-route=^/signed-out$$
+      - --api-route=^/api/
+      - --skip-provider-button=true
+      - --request-logging=false
+      - --auth-logging=false
+    environment:
+      OAUTH2_PROXY_OIDC_ISSUER_URL: ${CONSOLE_OIDC_ISSUER:?Launch with local.py}
+      OAUTH2_PROXY_CLIENT_ID: ${CONSOLE_OIDC_CLIENT_ID:?Launch with local.py}
+      OAUTH2_PROXY_CLIENT_SECRET: ${OAUTH2_PROXY_CLIENT_SECRET:?Launch with local.py}
+      OAUTH2_PROXY_COOKIE_SECRET: ${OAUTH2_PROXY_COOKIE_SECRET:?Launch with local.py}
+    networks: [backend, outbound]
+  ingress:
+    image: caddy:2.10.2-alpine
+    ports: ['127.0.0.1:3443:3443', '127.0.0.1:3444:3444']
+    volumes: [./Caddyfile:/etc/caddy/Caddyfile:ro, certificates:/data]
+    networks: [backend, outbound]
+
+networks:
+  data:
+    internal: true
+  backend:
+    internal: true
+  outbound: {}
+volumes:
+  certificates: {}

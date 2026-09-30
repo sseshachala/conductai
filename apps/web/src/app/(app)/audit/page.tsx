@@ -1,6 +1,6 @@
 "use client"
 
-import { useAuth } from "@clerk/nextjs"
+import { useAuth } from "@/lib/auth/client"
 import AppShell from "@/components/AppShell"
 import AuditLog from "@/components/settings/AuditLog"
 

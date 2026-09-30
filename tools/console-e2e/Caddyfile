@@ -1,0 +1,23 @@
+{
+    admin off
+    auto_https disable_redirects
+}
+
+https://localhost:3443 {
+    tls internal
+    reverse_proxy proxy:4180 {
+        header_up -Authorization
+        header_up -X-Conduct-Proxy-Secret
+        header_up -X-Auth-Request-User
+        header_up -X-Auth-Request-Email
+        header_up -X-Forwarded-User
+        header_up -X-Forwarded-Email
+    }
+}
+
+https://localhost:3444 {
+    tls internal
+    reverse_proxy api:8000 {
+        header_up -X-Conduct-Proxy-Secret
+    }
+}

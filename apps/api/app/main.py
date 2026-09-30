@@ -234,6 +234,8 @@ app.include_router(audit_log_router)
 app.include_router(workspace_preferences_router)
 app.include_router(notifications_router)
 app.include_router(projects.router)
+from app.modules.auth.console.router import router as console_auth_router
+app.include_router(console_auth_router)
 app.include_router(playbooks.router)
 app.include_router(playbooks_catalog_router)
 app.include_router(workflows.router)
@@ -316,6 +318,13 @@ app.include_router(team_os_router)
 
 @app.on_event("startup")
 def _startup() -> None:
+    from app.core.auth_deployment import validate_api_auth
+    validate_api_auth(settings)
+    if settings.auth_mode == "proxy":
+        from app.modules.auth.oauth.deployment import issuer_url, web_url
+        issuer_url()
+        web_url()
+
     import threading
     from app.routers.eval import _cached_report
 

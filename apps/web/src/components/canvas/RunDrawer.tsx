@@ -1,5 +1,8 @@
 "use client"
 
+import { apiUrl } from "@/lib/auth/runtime"
+
+
 import { useEffect, useRef, useState } from "react"
 import { cn } from "@/lib/utils"
 import { useWorkspace } from "@/lib/WorkspaceContext"
@@ -100,7 +103,7 @@ export default function RunDrawer({ workflowId, runId, getToken, onBlockStatus, 
       if (cancelled) return
       const qs = params.toString() ? `?${params.toString()}` : ""
       es = new EventSource(
-        `${process.env.NEXT_PUBLIC_API_URL}/workflows/${workflowId}/runs/${runId}/stream${qs}`
+        `${apiUrl()}/workflows/${workflowId}/runs/${runId}/stream${qs}`
       )
 
       es.onmessage = (e) => {

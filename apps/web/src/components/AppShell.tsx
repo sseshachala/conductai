@@ -1,11 +1,14 @@
 "use client"
 
+import { authEnabled, apiUrl } from "@/lib/auth/runtime"
+
+
 import { useState, useRef, useEffect, useCallback, type MouseEvent as ReactMouseEvent } from "react"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { LensPanel } from "@/components/glens/LensPanel"
 import { LENS_ENTRY_EVENT, lensEntryHref, lensEntryQuestion, type LensEntry } from "@/lib/lens-entry"
-import { useAuth, useUser, useClerk } from "@clerk/nextjs"
+import { useAuth, useUser, useClerk } from "@/lib/auth/client"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 import { setActiveGuardWorkspace } from "@/lib/guardStorage"
 import { PreferencesProvider } from "@/lib/PreferencesContext"
@@ -15,7 +18,7 @@ import { useAuthFetch } from "@/hooks/useAuthFetch"
 import { reportLayoutsApi, type ReportLayout } from "@/lib/reportBuilder/api"
 import { workspaces as workspacesApi, projects as projectsApi, organizations, runs, guard, workflows } from "@/lib/api"
 import { GUARD_SECTIONS } from "@/lib/navigation/guardSections"
-import { Search, Sparkles, PanelLeftClose, PanelLeftOpen } from "lucide-react"
+import { Search, Sparkles, PanelLeftClose, PanelLeftOpen, UserRound } from "lucide-react"
 
 interface Project { id: string; name: string; agent_count: number; project_type?: string }
 
@@ -168,7 +171,7 @@ export default function AppShell({ children, noPadding }: { children: React.Reac
 }
 
 function AppShellInner({ children, noPadding }: { children: React.ReactNode; noPadding?: boolean }) {
-  const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+  const clerkEnabled = authEnabled()
   if (clerkEnabled) return <AppShellInnerWithAuth noPadding={noPadding}>{children}</AppShellInnerWithAuth>
   return <AppShellInnerContent noPadding={noPadding} getToken={null} userId={null}>{children}</AppShellInnerContent>
 }
@@ -1526,7 +1529,7 @@ function EnableGuardButton({ getToken, workspaceId }: { getToken?: (() => Promis
       const h: Record<string, string> = {}
       if (getToken) { const t = await getToken(); if (t) h["Authorization"] = `Bearer ${t}` }
       const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/guard/config?workspace_id=${workspaceId}`,
+        `${apiUrl()}/guard/config?workspace_id=${workspaceId}`,
         { headers: h }
       )
       if (res.ok) {
@@ -1623,7 +1626,7 @@ function SideNavItem({
 // ── UserChip ──────────────────────────────────────────────────────────────────
 
 function UserChip({ collapsed, userRole, topbar }: { collapsed: boolean; userRole: UserRole; topbar?: boolean }) {
-  const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+  const clerkEnabled = authEnabled()
   if (!clerkEnabled) return null
   return <UserChipInner collapsed={collapsed} userRole={userRole} topbar={topbar} />
 }
@@ -1640,7 +1643,7 @@ function UserChipInner({ collapsed, userRole, topbar }: { collapsed: boolean; us
   const lastName = user?.lastName ?? ""
   const initials = firstName && lastName
     ? `${firstName[0]}${lastName[0]}`.toUpperCase()
-    : email ? email[0].toUpperCase() : "?"
+    : email ? email[0].toUpperCase() : ""
   const fullName = [firstName, lastName].filter(Boolean).join(" ") || email || "User"
   const roleLabel = userRole ?? "member"
   const avatarUrl = user?.imageUrl
@@ -1657,6 +1660,9 @@ function UserChipInner({ collapsed, userRole, topbar }: { collapsed: boolean; us
     <div ref={chipRef} style={{ position: "relative" }}>
       <button
         onClick={() => setMenuOpen(v => !v)}
+        aria-label={`Account menu for ${fullName}`}
+        aria-expanded={menuOpen}
+        title={fullName}
         style={{
           display: "flex",
           alignItems: "center",
@@ -1680,8 +1686,8 @@ function UserChipInner({ collapsed, userRole, topbar }: { collapsed: boolean; us
           overflow: "hidden",
         }}>
           {avatarUrl
-            ? <img src={avatarUrl} alt={initials} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-            : initials}
+            ? <img src={avatarUrl} alt={fullName} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+            : initials || <UserRound size={16} aria-hidden="true" />}
         </div>
         {!collapsed && !topbar && (
           <div style={{ flex: 1, minWidth: 0 }}>

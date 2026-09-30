@@ -44,6 +44,20 @@ customer IdP or network/TLS deployment works.
 Phase 3 must add live principal/delegation enforcement and configured/unconfigured
 MCP/Gateway end-to-end tests. Passing this harness is not that acceptance test.
 
+## Live IdP Acceptance
+
+`live.py --config PATH --manual-browser` runs the real PKCE login and delegated
+MCP positive/negative paths. The non-secret JSON includes `api_url`, `issuer`,
+`client_id`, `audience`, `connection_id`, `redirect_uri` (explicit loopback callback),
+and ordered `users` with `username`, `subject`, and `expect` (`accepted` then
+`denied`). This fixture uses RS256 and `token_use=access`. Service credentials are
+prompted privately, not stored in this config. Use `--ca` for the local test CA.
+
+`--revoke` additionally pauses for operator revocation of a dedicated grant and
+checks denial of the same unexpired token. It does not revoke or restore grants
+automatically. This is identity enforcement, not a substitute for a real LiteLLM
+authentication adapter or provider inference test.
+
 ## Phase 3 MCP harness
 
 On a fresh disposable `conduct_federation_test` database, migrate to head and run:
@@ -64,6 +78,21 @@ tested. No external identity service or model provider is contacted. Omit
 The isolated database user must be able to create the restricted test role and
 grant table privileges. CI provisions a dedicated database and runs this harness;
 missing database prerequisites fail the job, rather than skipping the test.
+
+## Console authentication foundation (#2297)
+
+After migrating the disposable database above, run from `apps/api`:
+
+```sh
+rtk proxy env PYTHONPATH=. python ../../tools/federation/console_foundation_harness.py
+```
+
+This reuses the database safety gate and synthetic credential setup. It checks
+real RSA-signed Clerk-compatible fixtures, existing workspace roles, cross-tenant
+denial, machine credentials, SSE transport authorization, and missing-config
+rejection. Only signing-key retrieval is substituted; authentication, database
+membership and RBAC are not mocked. It does not test live Clerk, proxy login,
+Keycloak sessions or HPE deployment. No production credentials are needed.
 
 ## Migration contention regression
 

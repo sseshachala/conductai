@@ -1,11 +1,14 @@
 "use client"
-import { useAuth } from "@clerk/nextjs"
+
+import { authEnabled } from "@/lib/auth/runtime"
+
+import { useAuth } from "@/lib/auth/client"
 
 // ponytail: split so useAuth is only called when Clerk is actually wired up.
 // Preview builds without NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY get the plain link;
 // prod/preview with Clerk get the auth-aware version. Same pattern as
 // WorkspaceProvider (lib/WorkspaceContext.tsx).
-const CLERK_ENABLED = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+const CLERK_ENABLED = authEnabled()
 
 type Props = { className: string; children?: React.ReactNode }
 

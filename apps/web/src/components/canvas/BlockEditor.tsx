@@ -1,5 +1,8 @@
 "use client"
 
+import { publicApiUrl } from "@/lib/auth/runtime"
+
+
 import React, { useState, useEffect, useRef } from "react"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 import { BLOCK_STYLES, type BlockType } from "@/lib/block-types"
@@ -1985,7 +1988,7 @@ export default function BlockEditor({
           : []
 
         // Webhook URL helpers (reused from existing logic)
-        const webhookBase = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "")
+        const webhookBase = (publicApiUrl() || "").replace(/\/$/, "")
         const workspaceId = wsId
         const idPrefix = workflowId ? workflowId.replace(/-/g, "").slice(0, 8) : ""
         const githubWebhookUrl = projectSlug && playbookSlug && idPrefix
@@ -2240,7 +2243,7 @@ export default function BlockEditor({
                         {/* Logic block — available variables hint */}
                         {/* GitHub issue-labeled — webhook URL card + compact register panel */}
                         {blockType === "trigger" && field.key === "config.event_type" && triggerEventType === "github_issue_labeled" && (() => {
-                          const base = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "")
+                          const base = (publicApiUrl() || "").replace(/\/$/, "")
                           const idP = workflowId ? workflowId.replace(/-/g, "").slice(0, 8) : ""
                           const webhookUrl = projectSlug && playbookSlug && idP
                             ? `${base}/webhooks/github/${projectSlug}/agent-${playbookSlug}-${idP}`
@@ -2277,12 +2280,12 @@ export default function BlockEditor({
 
                         {/* Inbound webhook URL panel */}
                         {blockType === "trigger" && field.key === "config.event_type" && triggerEventType === "webhook" && (() => {
-                          const base = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "")
+                          const base = (publicApiUrl() || "").replace(/\/$/, "")
                           const idP = workflowId ? workflowId.replace(/-/g, "").slice(0, 8) : ""
                           const githubUrl = projectSlug && playbookSlug && idP
                             ? `${base}/webhooks/github/${projectSlug}/agent-${playbookSlug}-${idP}`
                             : wsId ? `${base}/webhooks/github?workspace_id=${wsId}` : null
-                          const inboundUrl = `${(process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "")}/webhooks/inbound/${workflowId}`
+                          const inboundUrl = `${(publicApiUrl() || "").replace(/\/$/, "")}/webhooks/inbound/${workflowId}`
                           const webhookUrl = githubHookRepo ? githubUrl : inboundUrl
                           const displayUrl = webhookUrl ?? inboundUrl
                           return (
@@ -2329,7 +2332,7 @@ export default function BlockEditor({
                         {/* Vercel deployment trigger URL + auto-register panel */}
                         {blockType === "trigger" && field.key === "config.event_type" && isVercelTrigger && (() => {
                           const webhookUrl = wsId
-                            ? `${(process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "")}/webhooks/vercel?workspace_id=${wsId}`
+                            ? `${(publicApiUrl() || "").replace(/\/$/, "")}/webhooks/vercel?workspace_id=${wsId}`
                             : null
                           return (
                             <div className="mt-2 space-y-2">

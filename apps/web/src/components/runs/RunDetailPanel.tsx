@@ -1,7 +1,7 @@
 "use client"
 
 import { Component, useEffect, useState } from "react"
-import { useAuth } from "@clerk/nextjs"
+import { useAuth } from "@/lib/auth/client"
 import Link from "next/link"
 import RunTrace from "@/components/runs/RunTrace"
 import ConversationTrace from "@/components/runs/ConversationTrace"

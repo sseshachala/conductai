@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { useAuth } from "@clerk/nextjs"
+import { useAuth } from "@/lib/auth/client"
 import { useTokenGuardrails, patchTokenGuardrails } from "@/hooks/useTokenGuardrails"
 import { API } from "@/lib/api/client"
 import { GuardToggle } from "@/features/guard/GuardToggle"

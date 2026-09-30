@@ -23,7 +23,7 @@ import pytest
 from tests.regression.conftest import requires_db
 
 
-pytestmark = requires_db
+pytestmark = [requires_db, pytest.mark.usefixtures("local_development_auth")]
 
 
 # ─── Seed helpers ────────────────────────────────────────────────────────

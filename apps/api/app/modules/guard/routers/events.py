@@ -22,14 +22,13 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.core.auth import (
-    _clerk_enabled,
     _resolve_agent_token,
-    _verify_clerk_token,
     get_workspace_id,
     get_user_id,
     require_permission,
 )
 from app.core.config import settings
+from app.core.stream_auth import stream_credentials
 from app.core.database import SessionLocal, get_db
 from app.core.pii import redact_secrets
 from app.models.workspace import Workspace
@@ -1345,22 +1344,10 @@ async def stream_events(
     if not workspace_id:
         return _Resp(status_code=422, content="Provide workspace_id")
 
-    if _clerk_enabled():
-        if not token:
-            return _Resp(status_code=403, content="Invalid or missing token")
-        claims = _verify_clerk_token(token)
-        if not claims:
-            return _Resp(status_code=403, content="Invalid or missing token")
-        # Verify caller is a member of the requested workspace
-        user_id = claims.get("sub")
-        if user_id:
-            from sqlalchemy import text as _text
-            is_member = db.execute(
-                _text("SELECT 1 FROM workspace_users WHERE workspace_id = :ws AND clerk_user_id = :uid LIMIT 1"),
-                {"ws": workspace_id, "uid": user_id},
-            ).fetchone()
-            if not is_member:
-                return _Resp(status_code=403, content="Not a member of this workspace")
+    workspace_id = get_workspace_id(
+        credentials=stream_credentials(request), ws_id=workspace_id,
+        x_workspace_id=None, db=db,
+    )
 
     async def event_generator():
         cursor: tuple[datetime, str] = (_now(), _SSE_NIL_UUID)

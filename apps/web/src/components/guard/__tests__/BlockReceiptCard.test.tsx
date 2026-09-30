@@ -1,9 +1,13 @@
-import { describe, it, expect } from "vitest"
+import { describe, it, expect, vi } from "vitest"
 import { render } from "@testing-library/react"
 import { screen } from "@testing-library/dom"
 
 import { BlockReceiptCard } from "../BlockReceiptCard"
 import type { BlockReceipt } from "@/lib/api/guard"
+
+vi.mock("@/hooks/useAuthFetch", () => ({
+  useAuthFetch: () => ({ authFetch: vi.fn(), workspaceId: "test-workspace" }),
+}))
 
 const receipt: BlockReceipt = {
   receipt_id: "01JAX00000000000000000000",

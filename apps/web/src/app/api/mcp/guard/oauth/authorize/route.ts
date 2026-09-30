@@ -6,6 +6,9 @@ function sign(payload: string) {
 }
 
 export async function GET(req: NextRequest) {
+  if (process.env.AUTH_MODE === 'proxy') {
+    return NextResponse.json({ error: 'Use the API OAuth discovery and authorization endpoints for this deployment.' }, { status: 410 });
+  }
   const { searchParams } = req.nextUrl;
   const redirectUri = searchParams.get('redirect_uri');
   const state = searchParams.get('state');
