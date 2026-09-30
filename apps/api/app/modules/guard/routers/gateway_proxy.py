@@ -25,7 +25,10 @@ from app.core.auth import get_workspace_id, resolve_agent_token, token_is_expire
 from app.core.database import get_db
 from app.core.workspace_context import set_workspace_rls
 from app.guard.audit import record as _record_audit
-from app.modules.guard.gateway_runtime import TransportResolver
+from app.core.config import settings
+from app.models.gateway_profile import GatewayProfile, GatewayProfileRevision
+from app.modules.guard.gateway_config import GatewayProfileV2
+from pydantic import ValidationError
 from app.modules.guard.gateway_handler import handle_gateway_request
 from app.modules.guard.completions_shim import gateway_completions_impl
 
@@ -101,39 +104,34 @@ def _gateway_principal(
     return workspace_id, clerk_user_id, _identity_id
 
 
-def _anthropic_catalog(profile, limit: int) -> list[dict[str, str]]:
-    """Return only models explicitly exposed by the selected Gateway Profile.
-
-    Anthropic's public ``GET /v1/models`` contract requires every entry
-    to carry ``type: "model"`` alongside ``id`` and ``display_name`` — a
-    subset that Claude Code's client relies on when parsing the response
-    (missing ``type`` makes the client fall back to bundled defaults or
-    reject the response, depending on version). We were returning only
-    ``{id, display_name?}`` which passes JSON parsing but fails the
-    downstream shape check.
-
-    Reference: https://docs.anthropic.com/en/api/models-list
-    """
-    catalog: list[dict[str, str]] = []
-    seen: set[str] = set()
-    for deployment in profile.deployments if profile else ():
-        raw_id = deployment.model.strip()
-        # Strip the LiteLLM-style ``anthropic/`` prefix that appears in
-        # some workspace profiles. Anthropic's own API rejects it —
-        # a client that reads it here and sends it back on
-        # ``POST /v1/messages`` gets a 404 "model: anthropic/…" from
-        # upstream. The prefix is an internal routing detail; the public
-        # gateway catalog should look like the public Anthropic catalog.
-        model_id = raw_id[len("anthropic/"):] if raw_id.startswith("anthropic/") else raw_id
-        if not model_id or model_id in seen:
+def _anthropic_catalog(db: Session, workspace_id: str, limit: int) -> list[dict[str, str]]:
+    """Advertise only published v2 routing IDs from this workspace."""
+    if not settings.gateway_profile_v2_enabled_for(workspace_id):
+        return []
+    rows = (
+        db.query(GatewayProfile, GatewayProfileRevision)
+        .join(GatewayProfileRevision,
+              (GatewayProfileRevision.id == GatewayProfile.active_revision_id)
+              & (GatewayProfileRevision.profile_id == GatewayProfile.id))
+        .filter(GatewayProfile.workspace_id == workspace_id,
+                GatewayProfile.schema_version == "2")
+        .order_by(GatewayProfile.cond_code)
+        .all()
+    )
+    catalog = []
+    for row, revision in rows:
+        try:
+            snapshot = GatewayProfileV2.model_validate(revision.snapshot)
+        except ValidationError:
+            log.warning("gateway.catalog.invalid_published_snapshot", profile_id=str(row.id))
             continue
-        seen.add(model_id)
-        entry: dict[str, str] = {
+        if "anthropic_messages" not in snapshot.accepts:
+            continue
+        catalog.append({
             "type": "model",
-            "id": model_id,
-            "display_name": deployment.alias or model_id,
-        }
-        catalog.append(entry)
+            "id": f"cond-{row.cond_code}-{snapshot.model_alias}",
+            "display_name": snapshot.model_alias,
+        })
         if len(catalog) >= limit:
             break
     return catalog
@@ -198,14 +196,7 @@ async def gateway_anthropic_models(
 ) -> JSONResponse:
     started = time.monotonic()
     workspace_id, clerk_user_id, agent_identity_id = principal
-    environment_id = request.headers.get("x-conductai-environment-id") or None
-    profile = TransportResolver().resolve_profile(
-        db,
-        workspace_id,
-        "anthropic",
-        environment_id,
-    )
-    data = _anthropic_catalog(profile, limit)
+    data = _anthropic_catalog(db, workspace_id, limit)
     background.add_task(
         _record_audit,
         workspace_id,

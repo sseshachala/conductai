@@ -13,9 +13,8 @@ import {
 
 // #2007 — Gateway Profile v2 draft editor. Loads a profile's working_copy,
 // renders it as a form (name, model_alias, accepts, timeouts, ordered
-// target list with add/remove/reorder), and saves back via
-// PUT /working_copy. Matches the styling of the sibling GatewayProfileSettings
-// (v1) component so both settings pages feel like one product.
+// target list with add/remove/reorder), and saves the draft through the
+// Gateway Profile v2 API.
 
 // LLM Model Primitives is the single source of truth for the model
 // catalog. No hardcoded fallback — if the fetch fails the editor

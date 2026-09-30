@@ -138,6 +138,20 @@ Failure output contains counts and exclusion reasons, never credential values
 or profile snapshots. A zero-match result requires fixing the fixture, not
 merely setting a model identifier. The normal suite includes the same check.
 
+To restore missing dedicated Gateway profiles from existing provider metadata,
+run `production.py --credentials-file PATH --allow-disposable-workspaces
+--restore-gateway-fixtures`. This separate mode authenticates the two test
+accounts, verifies workspace ownership, and checks both restoration plans before
+creating profiles. Each workspace must have exactly one eligible environment-
+scoped provider credential and an explicit upstream model supplied with
+`--fixture-anthropic-model` / `--fixture-openai-model`.
+These creation options are separate from `PROD_E2E_*_MODEL`, which selects an
+already-published Conduct profile identifier for test execution. It never reveals keys,
+creates credentials, guesses models, or overwrites existing profiles. Missing or
+ambiguous prerequisites stop restoration. A failed publish retains its draft for
+inspection; successful fixtures persist for subsequent canary runs. This mode
+does not run stale-resource cleanup, membership mutations, or inference.
+
 The production suite does not create or delete accounts or workspaces. Its 30
 independently reported canaries check account/workspace preflight, anonymous
 and forged-header rejection, owner MCP access, foreign and unknown workspace
@@ -168,10 +182,10 @@ Set `PROD_E2E_ANTHROPIC_MODEL` and `PROD_E2E_OPENAI_MODEL` as shell environment
 variables locally or GitHub environment variables in `production-e2e` to pin
 profiles explicitly. Otherwise exactly one eligible profile per workspace is
 required; missing or ambiguous fixtures fail, never skip or fall back to v1.
-The separate model-discovery test still checks the legacy v1 catalog contract,
-including an empty catalog when no persisted default v1 profile exists. It
-does not claim v2 profile discovery coverage. The runner never creates or
-changes profiles or provider credentials.
+The model-discovery test checks published v2 routing identifiers against active
+revision snapshots. Drafts and upstream model identifiers must not appear in
+the catalog. Normal test runs never create or change profiles or provider
+credentials; fixture restoration is a separate opt-in command.
 
 The first command is a one-time Gmail read-only authorization. It discovers the
 single OAuth desktop-client JSON in `~/.conduct/e2e/otpbroker/` and writes the

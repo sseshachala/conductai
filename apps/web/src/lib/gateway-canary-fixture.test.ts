@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest"
-import { legacyCatalogModels, publishedGatewayFixture } from "../../e2e-production/gateway-fixture"
+import { publishedCatalogModels, publishedGatewayFixture } from "../../e2e-production/gateway-fixture"
 
 const profile = { id: "p1", cond_code: "abcdefgh", active_revision_id: "r1", working_copy: { model_alias: "draft" } }
 const snapshot = {
@@ -64,12 +64,11 @@ describe("production Gateway fixture", () => {
   })
 })
 
-describe("legacy model discovery contract", () => {
-  const legacy = { id: "v1", environment_id: null, provider: "anthropic", deployments: [{ model: "anthropic/claude-test" }, { model: "claude-test" }] }
-  it("does not advertise synthetic or environment-scoped defaults", () => {
-    expect(legacyCatalogModels([{ ...legacy, id: null }, { ...legacy, environment_id: "env" }])).toEqual([])
+describe("published model discovery contract", () => {
+  it("uses the served alias and excludes drafts", async () => {
+    expect(await publishedCatalogModels(reader([profile, { ...profile, id: "draft", active_revision_id: null! }]), "ws")).toEqual(["cond-abcdefgh-claude-canary"])
   })
-  it("filters by provider and strips internal prefixes before deduplicating", () => {
-    expect(legacyCatalogModels([{ ...legacy, provider: "openai" }, legacy])).toEqual(["claude-test"])
+  it("does not expose profiles without Anthropic message support", async () => {
+    expect(await publishedCatalogModels(reader([profile], { ...snapshot, accepts: ["openai_responses"] }), "ws")).toEqual([])
   })
 })

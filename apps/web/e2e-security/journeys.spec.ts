@@ -822,6 +822,7 @@ test('@prod-canary Codex Flight Recorder persists correlated pre/post events', a
   const session = await login(browser, owner)
   try {
     const ws = await workspace(session.page, 'canary-flight-recorder')
+    expect((await api(session.page, '/guard/config', 'GET', undefined, ws.id)).status()).toBe(200)
     const issued = await exchange(session.page, ws.id)
     expect(issued.status()).toBe(200)
     const { access_token: accessToken } = await issued.json() as { access_token: string }
@@ -831,15 +832,21 @@ test('@prod-canary Codex Flight Recorder persists correlated pre/post events', a
       ai_tool: 'codex-desktop',
       tool_call: 'read',
       decision: 'allowed',
-      session_id: hookSessionId,
       hook_session_id: hookSessionId,
     }
-    expect((await guardEvent(session.page, accessToken, common)).status()).toBe(201)
-    expect((await guardEvent(session.page, accessToken, {
-      ...common,
-      execution_status: 'success',
-      result_summary: 'canary complete',
-    })).status()).toBe(201)
+    const created = await guardEvent(session.page, accessToken, common)
+    expect(created.status()).toBe(201)
+    const preEvent = await created.json() as { id: string }
+    const updated = await session.page.request.post(`${base}/api/guard/events/usage`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      data: {
+        workspace_id: ws.id, hook_session_id: hookSessionId, tool_name: 'read',
+        ai_tool: 'codex-desktop', tokens_input: 7, tokens_output: 3, duration_ms: 5,
+        execution_status: 'success', result_summary: 'canary complete',
+      },
+    })
+    expect(updated.status()).toBe(200)
+    expect(await updated.json()).toEqual({ updated: true })
 
     const listed = await session.page.request.get(`${base}/api/guard/events?workspace_id=${ws.id}&limit=50`, {
       headers: { Authorization: `Bearer ${accessToken}` },
@@ -847,8 +854,8 @@ test('@prod-canary Codex Flight Recorder persists correlated pre/post events', a
     expect(listed.status()).toBe(200)
     const rows = await listed.json() as Array<Record<string, unknown>>
     const pair = rows.filter(row => row.hook_session_id === hookSessionId)
-    expect(pair).toHaveLength(2)
-    expect(pair.every(row => row.ai_tool === 'codex-desktop')).toBe(true)
-    expect(pair.some(row => row.execution_status === 'success')).toBe(true)
+    expect(pair).toHaveLength(1)
+    expect(pair[0].session_id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
+    expect(pair[0]).toMatchObject({ id: preEvent.id, ai_tool: 'codex-desktop', tokens_before: 7, tokens_after: 3, execution_status: 'success' })
   } finally { await session.context.close() }
 })

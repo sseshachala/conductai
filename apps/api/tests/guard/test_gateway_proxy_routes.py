@@ -138,23 +138,13 @@ def test_gateway_principal_rejects_cross_workspace_header(monkeypatch):
 
 
 @pytest.mark.anyio
-async def test_gateway_anthropic_models_are_limited_to_profile_deployments(monkeypatch):
-    profile = SimpleNamespace(
-        deployments=[
-            SimpleNamespace(alias="sonnet", model="anthropic/claude-sonnet-4-6"),
-            SimpleNamespace(alias="sonnet-copy", model="anthropic/claude-sonnet-4-6"),
-            SimpleNamespace(alias="opus", model="claude-opus-4-6"),
-        ]
-    )
+async def test_gateway_anthropic_models_use_published_catalog(monkeypatch):
+    def catalog(db, workspace_id, limit):
+        assert workspace_id == "workspace-test"
+        assert limit == 1000
+        return [{"type": "model", "id": "cond-abcdefgh-served", "display_name": "served"}]
 
-    class _Resolver:
-        def resolve_profile(self, db, workspace_id, provider, environment_id):
-            assert workspace_id == "workspace-test"
-            assert provider == "anthropic"
-            assert environment_id == "environment-test"
-            return profile
-
-    monkeypatch.setattr(gateway_proxy, "TransportResolver", _Resolver)
+    monkeypatch.setattr(gateway_proxy, "_anthropic_catalog", catalog)
     background = BackgroundTasks()
     response = await gateway_proxy.gateway_anthropic_models(
         _request({"x-conductai-environment-id": "environment-test"}),
@@ -164,14 +154,9 @@ async def test_gateway_anthropic_models_are_limited_to_profile_deployments(monke
         object(),
     )
 
-    # #1926 fix: entries must carry ``type: "model"`` (Claude Code parser
-    # requirement) AND must NOT leak the ``anthropic/`` LiteLLM-style
-    # prefix — the client will echo the id back on POST /v1/messages and
-    # Anthropic upstream returns 404 for ``anthropic/claude-…``.
     assert json.loads(response.body) == {
         "data": [
-            {"type": "model", "id": "claude-sonnet-4-6", "display_name": "sonnet"},
-            {"type": "model", "id": "claude-opus-4-6", "display_name": "opus"},
+            {"type": "model", "id": "cond-abcdefgh-served", "display_name": "served"},
         ]
     }
     assert response.headers["cache-control"] == "private, max-age=300"

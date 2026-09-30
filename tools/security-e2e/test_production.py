@@ -12,6 +12,16 @@ spec.loader.exec_module(production)
 
 
 class PlaywrightCommandTests(unittest.TestCase):
+    def test_restore_requires_explicit_mutation_consent(self):
+        with patch.object(sys, 'argv', ['production', '--credentials-file', 'fixture.env', '--restore-gateway-fixtures']), \
+             self.assertRaises(SystemExit):
+            production.main()
+
+    def test_restore_cannot_be_combined_with_read_only_preflight(self):
+        with patch.object(sys, 'argv', ['production', '--gateway-preflight', '--restore-gateway-fixtures']), \
+             self.assertRaises(SystemExit):
+            production.main()
+
     def test_transport_only_reuses_shared_checks_without_browser_credentials(self):
         with patch.object(sys, 'argv', ['production', '--transport-only', '--transport-config', 'test.json']), \
              patch.object(production.transport_checks, 'validate_arguments') as validate, \
