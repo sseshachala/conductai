@@ -1,9 +1,12 @@
 "use client"
 
+import { authEnabled } from "@/lib/auth/runtime"
+
+
 import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from "react"
 import Link from "next/link"
 import { useParams, useRouter } from "next/navigation"
-import { useAuth } from "@clerk/nextjs"
+import { useAuth } from "@/lib/auth/client"
 import AppShell from "@/components/AppShell"
 import AgentStatusPill from "@/components/workflows/AgentStatusPill"
 import { formatTrigger, timeAgo, duration, effectiveStatus } from "@/lib/runUtils"
@@ -58,7 +61,7 @@ function RunStatusBadge({ status }: { status: string }) {
 }
 
 export default function ProjectPage() {
-  const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+  const clerkEnabled = authEnabled()
   if (clerkEnabled) return <ProjectWithAuth />
   return <ProjectContent getToken={null} currentUserId={null} />
 }
@@ -87,7 +90,7 @@ function ProjectContent({ getToken, currentUserId }: {
   const { id: projectId } = useParams<{ id: string }>()
   const router = useRouter()
   const { activeWorkspace } = useWorkspace()
-  const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+  const clerkEnabled = authEnabled()
   const [project, setProject] = useState<Project | null>(null)
   const [workflows, setWorkflows] = useState<Workflow[]>([])
   const [loading, setLoading] = useState(true)

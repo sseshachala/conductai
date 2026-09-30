@@ -20,6 +20,9 @@ function verifyPkce(verifier: string, challenge: string) {
 }
 
 export async function POST(req: NextRequest) {
+  if (process.env.AUTH_MODE === 'proxy') {
+    return NextResponse.json({ error: 'Use the API OAuth token endpoint for this deployment.' }, { status: 410 });
+  }
   let body: Record<string, string> = {};
   const ct = req.headers.get('content-type') ?? '';
   if (ct.includes('application/x-www-form-urlencoded')) {

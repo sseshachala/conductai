@@ -192,6 +192,8 @@ def list_templates(db: Session = Depends(get_db)):
 
 def _accept_pending_invites(user_id: str, db: Session) -> None:
     """Resolve any email-based pending invites for the authenticated user on first login."""
+    if settings.auth_mode == "proxy":
+        return
     email = get_clerk_user_email(user_id)
     if not email:
         return
@@ -301,6 +303,9 @@ def list_projects(
     has_pending_or_accepted_invite = email_for_invite_check and db.execute(text("""
         SELECT 1 FROM workspace_invites WHERE invited_email = :email LIMIT 1
     """), {"email": email_for_invite_check}).fetchone()
+
+    if not rows and settings.auth_mode == "proxy":
+        return []
 
     if not rows and not has_pending_or_accepted_invite:
         project_id = uuid.uuid4()
@@ -580,9 +585,14 @@ def list_members(
         WHERE workspace_id = :ws
         ORDER BY joined_at
     """), {"ws": workspace_id}).fetchall()
+    names = {}
+    if settings.auth_mode == "proxy":
+        from app.modules.auth.console.profiles import member_names
+        names = member_names(db, [r.clerk_user_id for r in rows])
     out = []
     for r in rows:
-        info = get_clerk_user_info(r.clerk_user_id)
+        info = ({"email": None, "name": names.get(r.clerk_user_id)}
+                if settings.auth_mode == "proxy" else get_clerk_user_info(r.clerk_user_id))
         out.append(MemberOut(
             clerk_user_id=r.clerk_user_id, role=r.role,
             invited_by=r.invited_by, joined_at=r.joined_at,
@@ -676,6 +686,12 @@ def add_member(
     from app.core.auth import get_valid_roles
     if body.role not in get_valid_roles(db):
         raise HTTPException(status_code=422, detail=f"Invalid role '{body.role}'")
+    if settings.auth_mode == "proxy":
+        from app.modules.auth.console.models import ConsoleIdentityMapping
+        if body.email:
+            raise HTTPException(422, "Proxy console users require explicit identity provisioning, not email invitations")
+        if not db.query(ConsoleIdentityMapping).filter_by(user_id=body.clerk_user_id, active=True).first():
+            raise HTTPException(422, "Console identity is not provisioned")
     now = datetime.now(timezone.utc)
 
     # Email invite path — store as pending invite

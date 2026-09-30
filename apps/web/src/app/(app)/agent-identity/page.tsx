@@ -1,8 +1,11 @@
 "use client"
 
+import { authEnabled } from "@/lib/auth/runtime"
+
+
 import { useState, useEffect, useCallback, useRef } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import { useAuth } from "@clerk/nextjs"
+import { useAuth } from "@/lib/auth/client"
 import AppShell from "@/components/AppShell"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 import { useAuthFetch } from "@/hooks/useAuthFetch"
@@ -135,7 +138,7 @@ const LIFECYCLE_STYLE: Record<string, { bg: string; fg: string; label: string }>
 }
 
 export default function AgentIdentityPage() {
-  const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+  const clerkEnabled = authEnabled()
   if (clerkEnabled) return <WithAuth />
   return <Inner getToken={null} />
 }

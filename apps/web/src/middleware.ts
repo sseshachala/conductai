@@ -1,6 +1,7 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server"
 import { type NextRequest, NextResponse } from "next/server"
 import { clerkDevelopmentOrigin } from "./lib/clerk-development-origin"
+import { consoleAppOrigin, deploymentConfig } from "./lib/auth/runtime"
 
 const isPublicRoute = createRouteMatcher(["/", "/sign-in(.*)", "/sign-up(.*)", "/compare", "/privacy", "/terms", "/benchmark(.*)", "/eval(.*)", "/registry", "/playbooks", "/token-guardrails", "/docs(.*)", "/accept-invite(.*)", "/sdd(.*)", "/tools(.*)", "/about(.*)", "/blog(.*)", "/share(.*)", "/solutions(.*)", "/partners(.*)", "/guard", "/evidence", "/mcp-gateway", "/security", "/deployment", "/pricing", "/open-source", "/router", "/team-os", "/frameworks(.*)", "/discovery", "/book-demo", "/use-cases", "/what-is-conduct-ai", "/api/mcp/guard/oauth/(.*)", "/.well-known/(.*)",])
 
@@ -33,7 +34,8 @@ function _cspFor(pathname: string, enforce: boolean): string {
   // 'unsafe-inline' on script-src is retained on marketing because the current
   // theme init and JSON-LD are inlined; tighten in a follow-up once we
   // migrate those to a nonce-based approach.
-  const developmentOrigin = clerkDevelopmentOrigin(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || "")
+  const runtime = deploymentConfig(process.env)
+  const developmentOrigin = clerkDevelopmentOrigin(runtime.clerkPublishableKey)
   const _selfClerk = ["'self' https://cdn.clerk.com https://clerk.conductai.ai https://challenges.cloudflare.com", developmentOrigin].filter(Boolean).join(" ")
   // img.clerk.com — Clerk's UserButton avatar loader uses fetch() (not
   // an <img> tag), so it goes through connect-src instead of img-src.
@@ -41,7 +43,8 @@ function _cspFor(pathname: string, enforce: boolean): string {
   // wildcard covered it. Silent break: user avatars fail + Clerk's SDK
   // logs repeated CSP violations, which correlates with a session-token
   // stall we saw around the same time.
-  const _connect = "'self' https://api.conductai.ai https://clerk.conductai.ai https://clerk.com https://*.clerk.accounts.dev https://img.clerk.com wss:"
+  const apiOrigin = runtime.apiUrl.startsWith("https://") ? new URL(runtime.apiUrl).origin : ""
+  const _connect = `'self' ${apiOrigin} https://api.conductai.ai https://clerk.conductai.ai https://clerk.com https://*.clerk.accounts.dev https://img.clerk.com wss:`
   const _img = "'self' data: https:"
   const _font = "'self' https://fonts.gstatic.com data:"
   const _style = "'self' 'unsafe-inline' https://fonts.googleapis.com"
@@ -150,9 +153,47 @@ const clerkHandler = clerkMiddleware(async (auth, req) => {
     signIn.searchParams.set("redirect_url", req.url)
     return NextResponse.redirect(signIn)
   }
-})
+}, () => ({ publishableKey: deploymentConfig(process.env).clerkPublishableKey }))
 
 export default async function middleware(req: NextRequest, evt: unknown) {
+  let mode
+  try { mode = deploymentConfig(process.env).authMode } catch {
+    return new NextResponse("Auth not configured", { status: 503 })
+  }
+  if (mode === "proxy") {
+    let origin: string
+    try { origin = consoleAppOrigin(process.env) } catch {
+      return new NextResponse("Auth not configured", { status: 503 })
+    }
+    const path = req.nextUrl.pathname
+    const isApi = path.startsWith("/api/")
+    let response: NextResponse
+    if (path === "/signed-out") {
+      response = NextResponse.next()
+    } else if (path.startsWith("/sign-in") || path.startsWith("/sign-up")) {
+      const requested = req.nextUrl.searchParams.get("redirect_url") || "/theguard"
+      const safe = requested.startsWith("/") && !requested.startsWith("//")
+        && !/[\\\x00-\x20]/.test(requested) && !requested.startsWith("/oauth2/")
+      const target = new URL("/oauth2/start", origin)
+      target.searchParams.set("rd", safe ? requested : "/theguard")
+      response = NextResponse.redirect(target)
+    } else if (!req.headers.get("authorization")?.startsWith("Bearer ")) {
+      response = isApi ? NextResponse.json({ error: "Authentication required" }, { status: 401 })
+        : NextResponse.redirect(new URL("/sign-in", origin))
+    } else if (path === "/") {
+      response = NextResponse.redirect(new URL("/theguard", origin))
+    } else {
+      // Header presence gates the shell only. The API verifies signed evidence
+      // and explicit mapping before any authenticated data is returned.
+      response = NextResponse.next()
+    }
+    response.headers.set("Cache-Control", "no-store")
+    response.headers.set("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; form-action 'self'; base-uri 'self'; object-src 'none'")
+    response.headers.set("X-Content-Type-Options", "nosniff")
+    response.headers.set("Referrer-Policy", "no-referrer")
+    response.headers.set("X-Frame-Options", "DENY")
+    return response
+  }
   // Marketing → app subdomain redirect. Fires before Clerk so unauthed
   // navigations to /sign-in, /sign-up, /theguard/*, etc. from the
   // marketing domain end up on app.conductai.ai — matches where Clerk
@@ -170,9 +211,9 @@ export default async function middleware(req: NextRequest, evt: unknown) {
   // Run the Clerk handler first — it may redirect, in which case we still
   // want CSP headers on the redirect response so the browser never sees
   // an unprotected error page.
-  const _clerkResp = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+  const _clerkResp = mode === "clerk" && deploymentConfig(process.env).clerkPublishableKey
     ? await clerkHandler(req, evt as never)
-    : (process.env.NODE_ENV === "production"
+    : (mode !== "development"
         ? new NextResponse("Auth not configured", { status: 503 })
         : NextResponse.next())
 

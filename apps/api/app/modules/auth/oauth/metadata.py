@@ -13,7 +13,8 @@ from typing import Any
 
 
 def _issuer() -> str:
-    return os.getenv("CONDUCT_OAUTH_ISSUER") or "https://api.conductai.ai"
+    from .deployment import issuer_url
+    return issuer_url()
 
 
 def build_authorization_server_metadata() -> dict[str, Any]:

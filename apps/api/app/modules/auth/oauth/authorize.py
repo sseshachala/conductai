@@ -25,6 +25,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.core.auth import _assert_workspace_member, _verify_clerk_token
+from app.core.config import settings
 from app.models.oauth import OauthAuthCode, OauthClient
 
 _PENDING_TTL = timedelta(minutes=5)   # time user has to complete Clerk sign-in
@@ -32,11 +33,13 @@ _ISSUED_TTL = timedelta(seconds=60)   # window between /confirm and /token
 
 
 def _web_url() -> str:
-    return os.getenv("CONDUCT_WEB_URL") or "https://app.conductai.ai"
+    from .deployment import web_url
+    return web_url()
 
 
 def _issuer() -> str:
-    return os.getenv("CONDUCT_OAUTH_ISSUER") or "https://api.conductai.ai"
+    from .deployment import issuer_url
+    return issuer_url()
 
 
 def _hash_code(raw: str) -> str:
@@ -105,7 +108,11 @@ def confirm_authorize(body: ConfirmRequest, db: Session) -> dict:
     except (ValueError, TypeError):
         raise HTTPException(400, detail="invalid_request: request_id must be a UUID")
 
-    claims = _verify_clerk_token(body.clerk_token)
+    if settings.auth_mode == "proxy":
+        from app.modules.auth.console.session import verify_session
+        claims = verify_session(body.clerk_token, db)
+    else:
+        claims = _verify_clerk_token(body.clerk_token)
     if not claims:
         raise HTTPException(401, detail="invalid_clerk_token")
     clerk_user_id = claims.get("sub")

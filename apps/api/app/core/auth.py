@@ -24,7 +24,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.auth_deployment import development_auth_enabled
-from app.core.console_identity import clerk_identity
+from app.core.console_identity import console_identity
 from app.core.database import get_db
 
 log = structlog.get_logger(__name__)
@@ -69,6 +69,13 @@ def _get_jwks(force_refresh: bool = False) -> dict:
             return _jwks_cache
         _jwks_cache = _fetch_jwks()
         return _jwks_cache
+
+
+def _verify_console_token(token: str, db: Session) -> dict | None:
+    if settings.auth_mode == "proxy":
+        from app.modules.auth.console.session import verify_session
+        return verify_session(token, db)
+    return _verify_clerk_token(token)
 
 
 def _verify_clerk_token(token: str) -> dict | None:
@@ -468,9 +475,9 @@ def get_user_id(
     if _resolve_okta_jwt(credentials.credentials, db) is not None:
         return None
 
-    return clerk_identity(
-        _verify_clerk_token(credentials.credentials),
-        issuer=f"https://{settings.clerk_frontend_api}",
+    return console_identity(
+        _verify_console_token(credentials.credentials, db),
+        mode=settings.auth_mode, clerk_issuer=f"https://{settings.clerk_frontend_api}",
     ).user_id
 
 
@@ -557,9 +564,9 @@ def get_workspace_id(
             raise HTTPException(status_code=403, detail="Okta JWT does not belong to the requested workspace")
         return explicit_ws or token_ws
 
-    identity = clerk_identity(
-        _verify_clerk_token(credentials.credentials),
-        issuer=f"https://{settings.clerk_frontend_api}",
+    identity = console_identity(
+        _verify_console_token(credentials.credentials, db),
+        mode=settings.auth_mode, clerk_issuer=f"https://{settings.clerk_frontend_api}",
     )
     user_id = identity.user_id
 
@@ -691,6 +698,7 @@ def audit(
 
 def get_guard_org_id(
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)] = None,
+    db: Session = Depends(get_db),
 ) -> str:
     """Extract org/user ID for Guard endpoints.
 
@@ -701,7 +709,7 @@ def get_guard_org_id(
 
     if not credentials:
         raise HTTPException(status_code=401, detail="Authentication required")
-    claims = _verify_clerk_token(credentials.credentials)
+    claims = _verify_console_token(credentials.credentials, db)
     if not claims:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
     org_id = claims.get("org_id") or claims.get("sub")
@@ -736,7 +744,7 @@ def get_guard_hook_auth(
         return str(ai.workspace_id)
 
     # Clerk JWT
-    claims = _verify_clerk_token(token)
+    claims = _verify_console_token(token, db)
     if claims:
         org_id = claims.get("org_id") or claims.get("sub")
         if org_id:

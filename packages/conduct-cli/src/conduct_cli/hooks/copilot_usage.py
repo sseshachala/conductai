@@ -5,6 +5,7 @@ shutdown tokenDetails are accepted; prompts and tool arguments never leave disk.
 """
 from __future__ import annotations
 
+from conduct_cli.deployment import api_url as deployment_api_url
 import hashlib
 import json
 import os
@@ -50,7 +51,7 @@ def shutdowns(path: Path) -> list[dict]:
 
 
 def context(cfg: dict) -> tuple:
-    return (cfg.get("api_url", "https://api.conductai.ai").rstrip("/"),
+    return (deployment_api_url(cfg),
             cfg.get("workspace_id"), cfg.get("clerk_user_id"))
 
 

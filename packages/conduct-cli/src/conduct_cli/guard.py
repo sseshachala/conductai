@@ -55,6 +55,7 @@ from conduct_cli.guard_commands.hooks import (  # noqa: F401
 )
 
 from conduct_cli.guard_commands.mcp import (  # noqa: F401
+    _deployment,
     _vscode_mcp_paths,
     _MCP_TARGETS,
     _register_mcp,

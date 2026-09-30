@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react"
 import { CtaLink } from "@/components/marketing/CtaLink"
+import { runtimeConfig } from "@/lib/auth/runtime"
 
 // Audit P06: WorkspaceProvider used to wrap this layout so its refresh()
 // hit /projects on every marketing pageload (home, blog, docs, ...).
@@ -15,6 +16,7 @@ import { CtaLink } from "@/components/marketing/CtaLink"
 // get an auto-selected workspace — they pick one after clicking into the
 // app, same as any other cold entry point.
 export default function MarketingLayout({ children }: { children: React.ReactNode }) {
+  if (runtimeConfig().authMode === "proxy") return <main>{children}</main>
   return (
     <>
       <div className="marketing-v2 min-h-screen bg-white flex flex-col">

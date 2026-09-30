@@ -91,7 +91,7 @@ PROXY_ENV_FILE     = CONDUCT_DIR / "env"
 PROXY_OVERRIDE     = CONDUCT_DIR / "env-override"
 
 
-DEFAULT_PROXY_URL  = "https://gateway.conductai.ai/gateway/v1"
+from conduct_cli.deployment import SAAS_GATEWAY as DEFAULT_PROXY_URL
 
 
 SHELL_RC_MARKER    = "# Conduct Guard Proxy — managed by `conduct guard sync`"

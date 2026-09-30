@@ -39,6 +39,9 @@ AUTH_DEPS = {
 # Endpoints that are intentionally public — no auth required.
 # Format: "routers/filename.py::function_name"
 ALLOWLIST = {
+    # Server-only exchange: shared proxy secret AND signed Keycloak identity,
+    # followed by an explicit active console identity mapping. No cookie fallback.
+    "modules/auth/console/router.py::exchange_identity",
     # Health / readiness
     "routers/health.py::health",
     "routers/health.py::ready",

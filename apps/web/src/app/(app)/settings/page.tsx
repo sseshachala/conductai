@@ -1,9 +1,12 @@
 "use client"
 
+import { authEnabled } from "@/lib/auth/runtime"
+
+
 import { useState, useEffect, useRef } from "react"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
-import { useAuth } from "@clerk/nextjs"
+import { useAuth } from "@/lib/auth/client"
 import { useAuthFetch } from "@/hooks/useAuthFetch"
 import { API } from "@/lib/api"
 import { SettingsShell, type SettingsTab } from "@/components/SettingsShell"
@@ -28,7 +31,7 @@ const TABS: readonly SettingsTab<Tab>[] = [
 ]
 
 export default function SettingsPage() {
-  const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+  const clerkEnabled = authEnabled()
   if (clerkEnabled) return <SettingsPageWithAuth />
   return <SettingsPageInner isAdmin={true} workspaceId="" getToken={null} />
 }

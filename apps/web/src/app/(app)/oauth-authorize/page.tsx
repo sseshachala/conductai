@@ -1,13 +1,16 @@
 "use client"
 
+import { apiUrl } from "@/lib/auth/runtime"
+
+
 import { useEffect, useRef, useState } from "react"
-import { useAuth } from "@clerk/nextjs"
+import { useAuth } from "@/lib/auth/client"
 import { useSearchParams } from "next/navigation"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 
 type State = "loading" | "success" | "error"
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "https://api.conductai.ai"
+const API_BASE = apiUrl() || "https://api.conductai.ai"
 
 export default function OauthAuthorizePage() {
   const { getToken, isLoaded, isSignedIn } = useAuth()

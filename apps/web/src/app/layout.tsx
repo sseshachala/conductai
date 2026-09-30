@@ -2,6 +2,10 @@ import type { Metadata } from "next"
 import Script from "next/script"
 import "./globals.css"
 import { ClerkProvider } from "@clerk/nextjs"
+import { ConsoleProvider } from "@/lib/auth/client"
+import { deploymentConfig, serializeRuntime } from "@/lib/auth/runtime"
+
+export const dynamic = "force-dynamic"
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://conductai.ai"),
@@ -73,7 +77,6 @@ export const metadata: Metadata = {
   },
 }
 
-const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
 
 const softwareAppJsonLd = {
   "@context": "https://schema.org",
@@ -109,6 +112,7 @@ const softwareAppJsonLd = {
 }
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const runtime = deploymentConfig(process.env)
   const jsonLd = (
     <script
       type="application/ld+json"
@@ -152,19 +156,21 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   // ever compromised. Moved to (marketing)/layout.tsx so only public pages
   // load them. CSP set by src/middleware.ts enforces this at the browser
   // as belt-and-braces against a rogue future import.
-  const content = clerkEnabled
+  const content = runtime.authMode === "clerk"
     ? await ClerkProvider({
+        publishableKey: runtime.clerkPublishableKey,
         signInUrl: "/sign-in",
         signUpUrl: "/sign-up",
         signInFallbackRedirectUrl: "/theguard",
         signUpFallbackRedirectUrl: "/theguard/try",
         children,
       })
-    : children
+    : runtime.authMode === "proxy" ? <ConsoleProvider>{children}</ConsoleProvider> : children
 
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
+        <script id="conduct-runtime" type="application/json" dangerouslySetInnerHTML={{ __html: serializeRuntime(runtime) }} />
         {jsonLd}
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>

@@ -1,8 +1,11 @@
 "use client"
 
+import { apiUrl } from "@/lib/auth/runtime"
+
+
 import { useCallback, useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from "react"
 import Link from "next/link"
-import { useAuth } from "@clerk/nextjs"
+import { useAuth } from "@/lib/auth/client"
 import AppShell from "@/components/AppShell"
 import { timeAgo } from "@/lib/runUtils"
 import { buildWorkspaceHeaders } from "@/lib/workspaceHeaders"
@@ -71,7 +74,7 @@ export default function AlertsPage() {
   const load = useCallback(async (off: number, type: string, sev: string, replace: boolean) => {
     const token = await getToken()
     const headers = buildWorkspaceHeaders(token)
-    const base = process.env.NEXT_PUBLIC_API_URL ?? ""
+    const base = apiUrl() ?? ""
     const params = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String(off) })
     if (type) params.set("event_type", type)
     if (sev) params.set("severity", sev)
@@ -101,7 +104,7 @@ export default function AlertsPage() {
     setResolveError(null)
     const token = await getToken()
     const headers = buildWorkspaceHeaders(token)
-    const base = process.env.NEXT_PUBLIC_API_URL ?? ""
+    const base = apiUrl() ?? ""
     try {
       const res = await fetch(`${base}/observability/alerts/${id}/resolve`, { method: "POST", headers })
       if (res.ok) {
@@ -125,7 +128,7 @@ export default function AlertsPage() {
     setResolveError(null)
     const token = await getToken()
     const headers = buildWorkspaceHeaders(token)
-    const base = process.env.NEXT_PUBLIC_API_URL ?? ""
+    const base = apiUrl() ?? ""
     try {
       const results = await Promise.allSettled(
         open.map(a => fetch(`${base}/observability/alerts/${a.id}/resolve`, { method: "POST", headers })

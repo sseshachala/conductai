@@ -1,18 +1,19 @@
 "use client"
 
+import { authEnabled } from "@/lib/auth/runtime"
+
+
 import { useCallback } from "react"
-import { useAuth } from "@clerk/nextjs"
+import { useAuth } from "@/lib/auth/client"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 import { sessionFetch } from "@/lib/sessionFetch"
 
-// Local-dev bypass: when Clerk publishable key is unset, ClerkProvider is
-// not mounted (see apps/web/src/app/layout.tsx). Calling useAuth() in that
-// state throws. Route around it with a hook-shaped stub so pages continue
-// to render — the API grants DEV_WORKSPACE_ID/admin without a token.
-const CLERK_ENABLED = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+// Only explicit development mode bypasses browser authentication. Missing
+// Clerk configuration is not a signal to grant local-development access.
+const CLERK_ENABLED = authEnabled()
 
 function useAuthSafe() {
-  // CLERK_ENABLED is a module-level compile-time constant, so the branch
+  // CLERK_ENABLED is fixed for the lifetime of this document, so the branch
   // is stable across renders — Rules of Hooks is not actually violated.
   // eslint-disable-next-line react-hooks/rules-of-hooks
   if (CLERK_ENABLED) return useAuth()

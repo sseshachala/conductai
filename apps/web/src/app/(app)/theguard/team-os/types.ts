@@ -1,3 +1,4 @@
+import { apiUrl } from "@/lib/auth/runtime"
 export interface Instructions {
   content: string
   version: string
@@ -26,7 +27,7 @@ export const MOCK_ADOPTION: AdoptionRow[] = [
 ]
 
 export async function apiFetch(path: string, token: string, opts?: RequestInit) {
-  const base = process.env.NEXT_PUBLIC_API_URL ?? "https://api.conductai.ai"
+  const base = apiUrl() ?? "https://api.conductai.ai"
   return fetch(`${base}${path}`, {
     ...opts,
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", ...opts?.headers },

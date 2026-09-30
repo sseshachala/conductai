@@ -1,8 +1,11 @@
 "use client"
 
+import { authEnabled } from "@/lib/auth/runtime"
+
+
 import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from "react"
 import { useRouter } from "next/navigation"
-import { useAuth } from "@clerk/nextjs"
+import { useAuth } from "@/lib/auth/client"
 import { useAuthFetch } from "@/hooks/useAuthFetch"
 import { API } from "@/lib/api"
 import Link from "next/link"
@@ -484,7 +487,7 @@ function RunsTable({ runs }: RunsTableProps) {
 }
 
 export default function RunsPage() {
-  const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+  const clerkEnabled = authEnabled()
   if (clerkEnabled) return <RunsWithAuth />
   return <RunsContent getToken={null} />
 }

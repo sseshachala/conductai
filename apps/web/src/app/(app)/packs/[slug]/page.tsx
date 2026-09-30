@@ -1,9 +1,12 @@
 "use client"
 
+import { apiUrl } from "@/lib/auth/runtime"
+
+
 import { useEffect, useState } from "react"
 import Link from "next/link"
 import { useParams } from "next/navigation"
-import { useAuth } from "@clerk/nextjs"
+import { useAuth } from "@/lib/auth/client"
 import AppShell from "@/components/AppShell"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 import { API } from "@/lib/api/client"
@@ -118,7 +121,7 @@ export default function PackDetailPage() {
         const token = await getToken()
         const headers: Record<string, string> = {}
         if (token) headers["Authorization"] = `Bearer ${token}`
-        const base = process.env.NEXT_PUBLIC_API_URL ?? ""
+        const base = apiUrl() ?? ""
         const res = await fetch(`${base}/compliance/packs/${slug}?workspace_id=${workspaceId}`, { headers })
         if (!cancelled) {
           if (res.ok) setPack(await res.json())
@@ -148,7 +151,7 @@ export default function PackDetailPage() {
       const token = await getToken()
       const headers: Record<string, string> = {}
       if (token) headers["Authorization"] = `Bearer ${token}`
-      const base = process.env.NEXT_PUBLIC_API_URL ?? ""
+      const base = apiUrl() ?? ""
       const res = await fetch(`${base}/guard/registry/packs/${slug}/cedar?workspace_id=${workspaceId}`, { headers })
       if (res.ok) setCedarText(await res.text())
       else if (res.status === 404) setCedarError("Cedar rendering not available for this pack.")
@@ -176,7 +179,7 @@ export default function PackDetailPage() {
       const token = await getToken()
       const headers: Record<string, string> = { "Content-Type": "application/json" }
       if (token) headers["Authorization"] = `Bearer ${token}`
-      const base = process.env.NEXT_PUBLIC_API_URL ?? ""
+      const base = apiUrl() ?? ""
       const method = pack.installed ? "DELETE" : "POST"
       const path = pack.installed ? "uninstall" : "install"
       const res = await fetch(`${base}/compliance/packs/${slug}/${path}?workspace_id=${workspaceId}`, {

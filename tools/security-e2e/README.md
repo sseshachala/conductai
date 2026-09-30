@@ -1,5 +1,9 @@
 # Local Authenticated Security E2E
 
+For the cross-environment coverage map and shared MCP/LiteLLM additions, see
+[Acceptance coverage](ACCEPTANCE.md). The existing local and production runners
+remain the entry points; there is no separate replacement acceptance framework.
+
 This harness is separate from the dev-admin smoke suite. It is a local
 precursor to staging, not proof of production security or ingress behavior.
 The tests call the real API with real Clerk sessions; no permission factory

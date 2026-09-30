@@ -25,6 +25,11 @@ class Settings(BaseSettings):
     slack_signing_secret: str = ""
     # Deployment choice; missing credentials never select development access.
     auth_mode: AuthMode = "clerk"
+    console_oidc_issuer: str = ""
+    console_oidc_client_id: str = ""
+    console_oidc_jwks_url: str = ""
+    console_oidc_ca_file: str | None = None
+    console_proxy_secret: str = ""
     clerk_secret_key: str = ""
     clerk_frontend_api: str = ""  # e.g. "clerk.your-domain.com"
     clerk_audience: str = ""      # set to the expected aud claim to enable audience verification

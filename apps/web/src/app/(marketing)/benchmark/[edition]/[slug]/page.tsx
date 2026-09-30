@@ -1,9 +1,12 @@
 "use client"
 
+import { authEnabled, apiUrl } from "@/lib/auth/runtime"
+
+
 import { useEffect, useState, useCallback } from "react"
 import Link from "next/link"
 import { useParams } from "next/navigation"
-import { useAuth } from "@clerk/nextjs"
+import { useAuth } from "@/lib/auth/client"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 import AppShell from "@/components/AppShell"
 import {
@@ -575,7 +578,7 @@ function DeepDiveContent({
       setLoading(true)
       setError(null)
 
-      const base = process.env.NEXT_PUBLIC_API_URL
+      const base = apiUrl()
       const headers: Record<string, string> = {}
 
       try {
@@ -795,7 +798,7 @@ export default function BenchmarkDeepDivePage() {
   const params = useParams()
   const editionSlug  = Array.isArray(params.edition) ? params.edition[0] : (params.edition as string)
   const playbookSlug = Array.isArray(params.slug)    ? params.slug[0]    : (params.slug    as string)
-  const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+  const clerkEnabled = authEnabled()
   if (clerkEnabled) return <DeepDiveWithAuth editionSlug={editionSlug} playbookSlug={playbookSlug} />
   return <DeepDiveContent editionSlug={editionSlug} playbookSlug={playbookSlug} getToken={null} workspaceId={null} />
 }

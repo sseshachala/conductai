@@ -94,14 +94,21 @@ def _managed_hook(entries):
 def _gateway(value, provider):
     if not isinstance(value, str):
         return False
-    url = urlparse(value)
-    return (url.scheme == "https" and url.hostname == "gateway.conductai.ai" and url.port in (None, 443)
-            and not url.username and not url.password and not url.query and not url.fragment
-            and url.path.rstrip("/") in {f"/gateway/v1/{provider}", f"/gateway/v1/{provider}/v1"})
+    from conduct_cli.deployment import resolve
+    from .shared import _load_guard_config
+    gateway = resolve(_load_guard_config()).gateway
+    return bool(gateway and value.rstrip("/") in
+                {f"{gateway}/{provider}", f"{gateway}/{provider}/v1"})
 
 
-def verify_gateway(report, token):
-    """Probe only Conduct's fixed origin; never follow redirects or send prompts."""
+def verify_gateway(report, token, config=None):
+    """Probe the configured Gateway only; never follow redirects or send prompts."""
+    from conduct_cli.deployment import resolve
+    from .shared import _load_guard_config
+    gateway = resolve(config if config is not None else _load_guard_config()).gateway
+    if not gateway:
+        return
+    endpoint = urlparse(gateway)
     results = {}
     for item in report["agents"]:
         evidence = item["evidence"]
@@ -113,9 +120,10 @@ def verify_gateway(report, token):
             if not token or not token.startswith("cond_agt_"):
                 status = "authentication_failed"
             else:
-                connection = http.client.HTTPSConnection("gateway.conductai.ai", timeout=8)
+                transport = http.client.HTTPSConnection if endpoint.scheme == "https" else http.client.HTTPConnection
+                connection = transport(endpoint.netloc, timeout=8)
                 try:
-                    connection.request("GET", f"/gateway/v1/{provider}/v1/models", headers={"Authorization": f"Bearer {token}"})
+                    connection.request("GET", f"{endpoint.path}/{provider}/v1/models", headers={"Authorization": f"Bearer {token}"})
                     response = connection.getresponse()
                     if response.status in (401, 403):
                         status = "authentication_failed"

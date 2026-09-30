@@ -1,5 +1,8 @@
 "use client"
 
+import { apiUrl as configuredApiUrl } from "@/lib/auth/runtime"
+
+
 import React, { createContext, useContext, useEffect, useState, useCallback } from "react"
 
 interface Preferences {
@@ -36,7 +39,7 @@ export function PreferencesProvider({
   const [prefs, setPrefs] = useState<Preferences>(DEFAULTS)
   const [loading, setLoading] = useState(true)
 
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL
+  const apiUrl = configuredApiUrl()
 
   const headers = useCallback(async (): Promise<Record<string, string>> => {
     const h: Record<string, string> = { "Content-Type": "application/json" }

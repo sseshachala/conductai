@@ -26,6 +26,7 @@ from app.core.crypto import decrypt
 from app.core.database import get_db
 from app.modules.guard.trial_seed import TRIAL_IDENTITY_NAME, seed_trial
 from app.modules.guard.trial_upstream import TRIAL_DAILY_CAP, get_trial_cap_used
+from app.modules.guard.trial_configuration import setup_reason
 
 log = structlog.get_logger(__name__)
 
@@ -43,6 +44,7 @@ class TrialSessionOut(BaseModel):
     workspace_id: str  # /theguard/try browser sends this in X-Conductai-Workspace-Id
     cap_used: int
     cap_max: int
+    setup_required: bool = False
 
 
 def _workspace_is_active(db: Session, workspace_id: str) -> bool:
@@ -82,6 +84,13 @@ def get_trial_session(
     _perm: str = Depends(require_permission("platform.workflows.view")),
     db: Session = Depends(get_db),
 ) -> TrialSessionOut:
+    reason = setup_reason(settings)
+    if reason:
+        return TrialSessionOut(
+            plan="", expired=False, reason=reason, setup_required=True,
+            days_remaining=0, token=None, gateway_url="", workspace_id=workspace_id,
+            cap_used=0, cap_max=TRIAL_DAILY_CAP,
+        )
     plan_row = db.execute(
         text("SELECT plan FROM workspaces WHERE id = :ws"),
         {"ws": workspace_id},
@@ -211,6 +220,10 @@ def run_demo_verb(
     audit chain exactly as a real customer call would.
     """
     import httpx
+
+    if setup_reason(settings):
+        return TrialDemoOut(verb=verb, verdict="error", upstream_status=503,
+                            upstream_body='{"error":"deployment_trial_setup_required"}')
 
     if verb not in _DEMO_VERBS:
         return TrialDemoOut(

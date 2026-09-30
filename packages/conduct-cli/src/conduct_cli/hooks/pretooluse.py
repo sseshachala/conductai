@@ -1,6 +1,7 @@
 """ConductGuard PreToolUse hook — enforces team policies, tracks all tool calls."""
 from __future__ import annotations
 
+from conduct_cli.deployment import api_url as deployment_api_url
 import json
 import os
 import re
@@ -134,7 +135,7 @@ def _maybe_sync_policy() -> None:
         cfg = load_config()
         workspace_id = cfg.get("workspace_id") or cfg.get("workspace")
         agent_token  = cfg.get("agent_token", "")
-        api_url      = cfg.get("api_url", "https://api.conductai.ai").rstrip("/")
+        api_url      = deployment_api_url(cfg)
         if not workspace_id:
             return
 
@@ -228,7 +229,7 @@ def _fetch_budget_status():
         return False, None
     workspace_id  = cfg.get("workspace_id") or cfg.get("workspace")
     clerk_user_id = cfg.get("clerk_user_id") or ""
-    api_url       = cfg.get("api_url", "https://api.conductai.ai").rstrip("/")
+    api_url       = deployment_api_url(cfg)
     if not workspace_id:
         return False, "unconfigured"
     # ai_tool lets the server scope enforcement per-tool so an overspend in
@@ -678,7 +679,7 @@ def _guard_approval_request(
         cfg = load_config()
         workspace_id = cfg.get("workspace_id") or cfg.get("workspace")
         agent_token  = cfg.get("agent_token", "")
-        api_url      = cfg.get("api_url", "https://api.conductai.ai").rstrip("/")
+        api_url      = deployment_api_url(cfg)
         if not workspace_id or not agent_token:
             return "unavailable"
 

@@ -26,3 +26,13 @@ def clerk_identity(claims: Mapping | None, issuer: str) -> ConsoleIdentity:
         provider="clerk", issuer=issuer, subject=subject, user_id=subject,
         organization_id=organization if isinstance(organization, str) else None,
     )
+
+
+def console_identity(claims: Mapping | None, *, mode: str, clerk_issuer: str) -> ConsoleIdentity:
+    if mode != "proxy":
+        return clerk_identity(claims, clerk_issuer)
+    if not claims or not all(isinstance(claims.get(key), str) and claims[key]
+                             for key in ("sub", "external_subject", "external_issuer")):
+        raise HTTPException(401, "Invalid console identity")
+    return ConsoleIdentity(provider="proxy", issuer=claims["external_issuer"],
+                           subject=claims["external_subject"], user_id=claims["sub"])

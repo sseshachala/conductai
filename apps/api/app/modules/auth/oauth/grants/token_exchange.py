@@ -9,6 +9,7 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from app.core.auth import _verify_clerk_token
+from app.core.config import settings
 from app.modules.auth.cli_token import _AGENT_TOKEN_TTL, _upsert_identity
 
 _TOKEN_TYPE_JWT = "urn:ietf:params:oauth:token-type:jwt"
@@ -24,7 +25,11 @@ def handle(
     if subject_token_type != _TOKEN_TYPE_JWT:
         raise HTTPException(400, detail=f"unsupported_token_type: {subject_token_type}")
 
-    claims = _verify_clerk_token(subject_token)
+    if settings.auth_mode == "proxy":
+        from app.modules.auth.console.session import verify_session
+        claims = verify_session(subject_token, db)
+    else:
+        claims = _verify_clerk_token(subject_token)
     if not claims:
         raise HTTPException(401, detail="invalid_subject_token")
 

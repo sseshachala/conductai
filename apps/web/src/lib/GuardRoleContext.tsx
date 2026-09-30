@@ -1,7 +1,10 @@
 "use client"
 
+import { apiUrl } from "@/lib/auth/runtime"
+
+
 import { createContext, useContext, useState, useEffect, type ReactNode } from "react"
-import { useAuth, useUser } from "@clerk/nextjs"
+import { useAuth, useUser } from "@/lib/auth/client"
 import { useWorkspace } from "./WorkspaceContext"
 
 export type GuardRole = "admin" | "security" | "developer" | "viewer"
@@ -87,7 +90,7 @@ export function GuardRoleClerkProvider({ children }: { children: ReactNode }) {
         const controller = new AbortController()
         const timeout = setTimeout(() => controller.abort(), 8000)
         const res = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL}/me/permissions?${params}`,
+          `${apiUrl()}/me/permissions?${params}`,
           { headers: { Authorization: `Bearer ${token}` }, signal: controller.signal }
         )
         clearTimeout(timeout)

@@ -1,8 +1,11 @@
 "use client"
 
+import { authEnabled } from "@/lib/auth/runtime"
+
+
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
-import { useAuth } from "@clerk/nextjs"
+import { useAuth } from "@/lib/auth/client"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 import {
   ReactFlow,
@@ -1919,7 +1922,7 @@ function EnvironmentPanel({
 }
 
 export default function CanvasEditor({ workflowId }: { workflowId: string }) {
-  const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+  const clerkEnabled = authEnabled()
   if (clerkEnabled) return <CanvasEditorWithClerk workflowId={workflowId} />
   return (
     <ReactFlowProvider>

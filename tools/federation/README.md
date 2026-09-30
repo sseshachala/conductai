@@ -44,6 +44,20 @@ customer IdP or network/TLS deployment works.
 Phase 3 must add live principal/delegation enforcement and configured/unconfigured
 MCP/Gateway end-to-end tests. Passing this harness is not that acceptance test.
 
+## Live IdP Acceptance
+
+`live.py --config PATH --manual-browser` runs the real PKCE login and delegated
+MCP positive/negative paths. The non-secret JSON includes `api_url`, `issuer`,
+`client_id`, `audience`, `connection_id`, `redirect_uri` (explicit loopback callback),
+and ordered `users` with `username`, `subject`, and `expect` (`accepted` then
+`denied`). This fixture uses RS256 and `token_use=access`. Service credentials are
+prompted privately, not stored in this config. Use `--ca` for the local test CA.
+
+`--revoke` additionally pauses for operator revocation of a dedicated grant and
+checks denial of the same unexpired token. It does not revoke or restore grants
+automatically. This is identity enforcement, not a substitute for a real LiteLLM
+authentication adapter or provider inference test.
+
 ## Phase 3 MCP harness
 
 On a fresh disposable `conduct_federation_test` database, migrate to head and run:

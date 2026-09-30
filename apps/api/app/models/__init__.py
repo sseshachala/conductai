@@ -12,6 +12,7 @@ from app.models.project import Project
 from app.models.environment import Environment  # noqa — must be before Workflow to satisfy Workspace.environments relationship
 from app.models.workflow import Workflow, WorkflowVersion
 from app.models.integration import Integration
+from app.modules.auth.console.models import ConsoleIdentityMapping  # noqa: F401
 from app.modules.auth.federation.models import FederationConnection  # noqa: F401
 from app.modules.auth.federation.delegation_models import FederationPrincipal, FederationCallerBinding, FederationGrant  # noqa: F401
 from app.models.run import Run, RunEvent

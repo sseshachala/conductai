@@ -1,9 +1,12 @@
 "use client"
 
+import { authEnabled } from "@/lib/auth/runtime"
+
+
 import { useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { useAuth } from "@clerk/nextjs"
+import { useAuth } from "@/lib/auth/client"
 import { useAuthFetch } from "@/hooks/useAuthFetch"
 import { API } from "@/lib/api"
 import AppShell from "@/components/AppShell"
@@ -53,7 +56,7 @@ function statusKey(label: string): string {
 const STATUS_SORT_ORDER = ["run", "wait", "err", "idle", "ok"]
 
 export default function WorkflowsPage() {
-  const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+  const clerkEnabled = authEnabled()
   if (clerkEnabled) return <WorkflowsWithAuth />
   return <WorkflowsContent getToken={null} currentUserId={null} />
 }
@@ -71,7 +74,7 @@ function WorkflowsWithAuth() {
 }
 
 function WorkflowsContent({ getToken, currentUserId }: { getToken: (() => Promise<string | null>) | null; currentUserId: string | null }) {
-  const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+  const clerkEnabled = authEnabled()
   const router = useRouter()
   const { activeWorkspace } = useWorkspace()
   const [workflows, setWorkflows] = useState<Workflow[]>([])

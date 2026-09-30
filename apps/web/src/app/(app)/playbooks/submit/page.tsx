@@ -1,8 +1,11 @@
 "use client"
 
+import { apiUrl } from "@/lib/auth/runtime"
+
+
 import { useCallback, useEffect, useRef, useState } from "react"
 import Link from "next/link"
-import { useAuth, useUser } from "@clerk/nextjs"
+import { useAuth, useUser } from "@/lib/auth/client"
 
 const SITE_KEY = process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY ?? ""
 
@@ -92,7 +95,7 @@ export default function SubmitPlaybookPage() {
     setSubmitting(true)
 
     try {
-      const base = process.env.NEXT_PUBLIC_API_URL ?? ""
+      const base = apiUrl() ?? ""
       const headers: Record<string, string> = { "Content-Type": "application/json" }
 
       let recaptchaToken: string | null = null

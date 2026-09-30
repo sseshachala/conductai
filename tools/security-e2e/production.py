@@ -8,6 +8,7 @@ from contextlib import nullcontext
 from pathlib import Path
 
 from dotenv import dotenv_values
+import transport_checks
 from otp_broker import DEFAULT_TOKEN_FILE, GmailClient, OtpBrokerError, authorize, discover_client_file, serve
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -35,7 +36,18 @@ def main() -> int:
     parser.add_argument("--gmail-token-file", type=Path, default=DEFAULT_TOKEN_FILE)
     parser.add_argument("--manual-otp", action="store_true")
     parser.add_argument("--headed", action="store_true")
+    parser.add_argument("--transport-only", action="store_true", help="Run shared transport checks without browser provisioning or membership changes")
+    transport_checks.add_arguments(parser)
     args = parser.parse_args()
+    if (args.gateway_preflight or args.authorize_gmail) and (args.transport_config or args.transport_only):
+        parser.error("Transport checks cannot be combined with Gateway preflight or Gmail authorization")
+    if args.transport_config or args.transport_only:
+        try:
+            transport_checks.validate_arguments(args, "saas")
+        except ValueError as error:
+            parser.error(str(error))
+    if args.transport_only:
+        return transport_checks.run(args, "saas")
     try:
         if args.authorize_gmail:
             client_file = args.gmail_client_file or discover_client_file()
@@ -96,7 +108,10 @@ def main() -> int:
                     for value in secrets_to_redact:
                         line = line.replace(value, "[redacted]")
                     print(line, end="", flush=True)
-                return process.wait()
+                status = process.wait()
+                if status == 0 and args.transport_config:
+                    return transport_checks.run(args, "saas")
+                return status
     except OtpBrokerError as error:
         parser.error(str(error))
 

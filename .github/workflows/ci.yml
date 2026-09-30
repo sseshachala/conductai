@@ -113,6 +113,7 @@ jobs:
           python -m alembic upgrade head
           python ../../tools/federation/phase3_harness.py
           python ../../tools/federation/console_foundation_harness.py
+          python ../../tools/federation/console_proxy_harness.py
         working-directory: apps/api
       - name: Install isolated LiteLLM integration harness
         run: |

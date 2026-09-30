@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState, useCallback, useRef } from "react"
-import { useUser } from "@clerk/nextjs"
+import { useUser } from "@/lib/auth/client"
 import AppShell from "@/components/AppShell"
 import { useAuthFetch } from "@/hooks/useAuthFetch"
 import { teamMemory } from "@/lib/api"

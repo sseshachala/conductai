@@ -64,9 +64,14 @@ def test_worker_mode_validation_does_not_require_clerk_credentials():
     validate_api_auth(config(clerk_secret_key="present", clerk_frontend_api="id.example"))
 
 
-def test_proxy_reserved_until_verifier_is_implemented():
-    with pytest.raises(ValueError, match="not available"):
-        validate_auth_mode(config(auth_mode="proxy"))
+def test_proxy_worker_mode_does_not_require_browser_credentials():
+    validate_auth_mode(config(auth_mode="proxy"))
+
+
+def test_proxy_api_requires_complete_trust():
+    with pytest.raises(ValueError):
+        validate_api_auth(Settings(_env_file=None, auth_mode="proxy", console_oidc_issuer="",
+                                   console_oidc_client_id="", console_oidc_jwks_url=""))
 
 
 @pytest.mark.parametrize("dependency", [auth.get_user_id, auth.get_workspace_id,

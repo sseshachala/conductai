@@ -1,6 +1,7 @@
 """ConductGuard PostToolUse hook — token tracking."""
 from __future__ import annotations
 
+from conduct_cli.deployment import api_url as deployment_api_url
 import json
 import subprocess
 import sys
@@ -209,7 +210,7 @@ def _post_usage(session_id, tool_name, tokens_input, tokens_output, duration_ms,
         "execution_status": execution_status,
         "result_summary":   result_summary,
     })
-    api_url = cfg.get("api_url", "https://api.conductai.ai").rstrip("/")
+    api_url = deployment_api_url(cfg)
     journal_append(payload, api_url, endpoint="/guard/events/usage")
     ensure_drain_daemon(GUARD_DIR / "hook.py")
 

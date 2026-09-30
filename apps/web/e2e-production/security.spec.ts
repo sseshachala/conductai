@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto"
 import { expect, test, type APIResponse, type Browser, type BrowserContext, type Page } from "@playwright/test"
 import { legacyCatalogModels, publishedGatewayFixture, type LegacyCatalogProfile } from "./gateway-fixture"
+import { expectMcpInvocation } from "../e2e-security/support/mcp"
 
 type Account = { email: string; password: string }
 type Session = { context: BrowserContext; page: Page; userId: string }
@@ -787,7 +788,7 @@ test.describe("bounded production security canaries", () => {
     expect(response.status()).toBe(401)
   })
 
-  test("@prod owner token can list MCP tools in its workspace", async () => {
+  test("@prod owner token lists and invokes MCP tools in its workspace", async () => {
     const { a, workspaceA } = harness
     const issued = await exchange(a.page, workspaceA.id)
     expect(issued.status()).toBe(200)
@@ -797,6 +798,7 @@ test.describe("bounded production security canaries", () => {
     const response = await mcp(a.page, workspaceA.id, pair.access_token)
     expect(response.status()).toBe(200)
     expect(Array.isArray((await response.json()).result?.tools)).toBe(true)
+    await expectMcpInvocation(a.page, `${apiBase}/mcp?workspace_id=${workspaceA.id}`, pair.access_token)
   })
 
   test("@prod foreign and unknown workspaces cannot issue credentials", async () => {

@@ -5,7 +5,7 @@ import { useEffect, useRef, useState, useCallback, useMemo } from "react"
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
 } from "recharts"
-import { useAuth, useUser } from "@clerk/nextjs"
+import { useAuth, useUser } from "@/lib/auth/client"
 import AppShell from "@/components/AppShell"
 import { useAuthFetch } from "@/hooks/useAuthFetch"
 import { guard } from "@/lib/api"
@@ -464,6 +464,7 @@ function GuardDashboard() {
   const [agentCount, setAgentCount]   = useState<number | null>(null)
   const [proxyCount, setProxyCount]   = useState<number | null>(null)
   const [trialSession, setTrialSession] = useState<{
+    setup_required?: boolean
     ineligible: boolean
     expired: boolean
     cap_used: number
@@ -774,7 +775,9 @@ function GuardDashboard() {
               New here? See Guard allow, warn, block, and prove — in 30 seconds.
             </div>
             <div style={{ fontSize: 12, color: "var(--brand-text-2, #065f46)" }}>
-              Uses a 7-day trial identity. No provider key needed.
+              {trialSession.setup_required
+                ? "A deployment administrator needs to configure the demo provider."
+                : "Uses a 7-day trial identity. No personal provider key needed."}
             </div>
           </div>
           <Link

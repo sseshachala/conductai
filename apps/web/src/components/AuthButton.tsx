@@ -1,11 +1,15 @@
 "use client"
 
-import { useClerk, useUser } from "@clerk/nextjs"
+import { authEnabled } from "@/lib/auth/runtime"
+
+
+import { useClerk, useUser } from "@/lib/auth/client"
 import { useRouter } from "next/navigation"
 import { useState, useRef, useEffect } from "react"
 import { useWorkspace } from "@/lib/WorkspaceContext"
+import { UserRound } from "lucide-react"
 
-const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+const clerkEnabled = authEnabled()
 
 export default function AuthButton({ afterSignOutUrl = "/", dropUp = false }: { afterSignOutUrl?: string; dropUp?: boolean }) {
   if (!clerkEnabled) return null
@@ -21,7 +25,8 @@ function AccountMenu({ afterSignOutUrl, dropUp }: { afterSignOutUrl: string; dro
   const ref = useRef<HTMLDivElement>(null)
 
   const email = user?.primaryEmailAddress?.emailAddress ?? ""
-  const initials = email ? email[0].toUpperCase() : "?"
+  const initials = email ? email[0].toUpperCase() : ""
+  const accountName = user?.fullName || email || "User"
   const orgName = activeWorkspace?.name ?? ""
 
   useEffect(() => {
@@ -37,9 +42,11 @@ function AccountMenu({ afterSignOutUrl, dropUp }: { afterSignOutUrl: string; dro
       <button
         onClick={() => setOpen(v => !v)}
         className="w-7 h-7 rounded-full bg-violet-600 text-white text-[11px] font-bold flex items-center justify-center hover:bg-violet-700 transition-colors"
-        title={email}
+        title={accountName}
+        aria-label={`Account menu for ${accountName}`}
+        aria-expanded={open}
       >
-        {initials}
+        {initials || <UserRound size={16} aria-hidden="true" />}
       </button>
 
       {open && (

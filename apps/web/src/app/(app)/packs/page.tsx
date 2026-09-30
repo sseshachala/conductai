@@ -1,9 +1,12 @@
 "use client"
 
+import { authEnabled, apiUrl } from "@/lib/auth/runtime"
+
+
 import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from "react"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
-import { useAuth } from "@clerk/nextjs"
+import { useAuth } from "@/lib/auth/client"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 import AppShell from "@/components/AppShell"
 import ModulesManager from "@/components/settings/ModulesManager"
@@ -261,7 +264,7 @@ const PACK_CATALOG = [
 ]
 
 export default function RegistryPage() {
-  const clerkEnabled = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+  const clerkEnabled = authEnabled()
   if (clerkEnabled) return <RegistryWithAuth />
   return <RegistryContent getToken={null} />
 }
@@ -296,7 +299,7 @@ function RegistryContent({ getToken }: { getToken: (() => Promise<string | null>
     const wsId = activeWorkspace?.id ?? null
     if (!wsId) return
     authHeaders().then(h =>
-      fetch(`${process.env.NEXT_PUBLIC_API_URL}/compliance/packs/installed?workspace_id=${wsId}`, { headers: h })
+      fetch(`${apiUrl()}/compliance/packs/installed?workspace_id=${wsId}`, { headers: h })
         .then(r => r.ok ? r.json() : null)
         .then(d => { if (d?.installed) setInstalledPacks(new Set(d.installed)) })
         .catch(() => {})
@@ -307,7 +310,7 @@ function RegistryContent({ getToken }: { getToken: (() => Promise<string | null>
   // Load pack catalog once from the server. Falls back to the hardcoded
   // PACK_CATALOG (already the initial state) if the fetch fails.
   useEffect(() => {
-    fetch(`${process.env.NEXT_PUBLIC_API_URL}/compliance/packs/catalog`)
+    fetch(`${apiUrl()}/compliance/packs/catalog`)
       .then(r => r.ok ? r.json() : null)
       .then(d => {
         if (Array.isArray(d?.packs) && d.packs.length > 0) {
@@ -327,7 +330,7 @@ function RegistryContent({ getToken }: { getToken: (() => Promise<string | null>
     if (yamlCache.has(slug)) return
     setYamlLoading(true)
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/playbooks/${slug}`)
+      const res = await fetch(`${apiUrl()}/workflows/playbooks/${slug}`)
       if (res.ok) {
         const data = await res.json()
         if (data.yaml_source) {
@@ -376,7 +379,7 @@ function RegistryContent({ getToken }: { getToken: (() => Promise<string | null>
     try {
       const h = await authHeaders()
       const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/workflows/${wfId}?workspace_id=${wsId}`,
+        `${apiUrl()}/workflows/${wfId}?workspace_id=${wsId}`,
         { method: "DELETE", headers: h },
       )
       if (res.ok) {
@@ -394,8 +397,8 @@ function RegistryContent({ getToken }: { getToken: (() => Promise<string | null>
       if (workspaceId) headers["X-Workspace-Id"] = workspaceId
 
       const [pbRes, wfRes] = await Promise.all([
-        fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/playbooks`),
-        fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows`, { headers }),
+        fetch(`${apiUrl()}/workflows/playbooks`),
+        fetch(`${apiUrl()}/workflows`, { headers }),
       ])
 
       let loadedPlaybooks: Playbook[] = []
@@ -423,7 +426,7 @@ function RegistryContent({ getToken }: { getToken: (() => Promise<string | null>
         const scoreHeaders = await authHeaders()
         const scoreResults = await Promise.allSettled(
           loadedPlaybooks.map(p =>
-            fetch(`${process.env.NEXT_PUBLIC_API_URL}/playbooks/${p.slug}/score`, { headers: scoreHeaders })
+            fetch(`${apiUrl()}/playbooks/${p.slug}/score`, { headers: scoreHeaders })
               .then(r => (r.ok ? r.json() as Promise<PlaybookScore> : null))
               .catch(() => null)
           )
@@ -453,7 +456,7 @@ function RegistryContent({ getToken }: { getToken: (() => Promise<string | null>
       if (workspaceId) headers["X-Workspace-Id"] = workspaceId
 
       const promises: Promise<void>[] = [
-        fetch(`${process.env.NEXT_PUBLIC_API_URL}/workspaces/${workspaceId}/projects`, { headers }).then(async res => {
+        fetch(`${apiUrl()}/workspaces/${workspaceId}/projects`, { headers }).then(async res => {
           if (res.ok) {
             const raw: Project[] = await res.json()
             const seen = new Set<string>()
@@ -466,14 +469,14 @@ function RegistryContent({ getToken }: { getToken: (() => Promise<string | null>
             setSelectedProjectId(data[0]?.id ?? "")
           }
         }),
-        fetch(`${process.env.NEXT_PUBLIC_API_URL}/environments`, { headers }).then(async res => {
+        fetch(`${apiUrl()}/environments`, { headers }).then(async res => {
           if (res.ok) {
             const data: Environment[] = await res.json()
             setEnvironments(data)
             setSelectedEnvId(data[0]?.id ?? "")
           }
         }),
-        fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows/playbooks/${slug}`).then(async res => {
+        fetch(`${apiUrl()}/workflows/playbooks/${slug}`).then(async res => {
           if (res.ok) {
             const data = await res.json()
             const inputs: Record<string, PlaybookInput> = data.inputs ?? {}
@@ -513,7 +516,7 @@ function RegistryContent({ getToken }: { getToken: (() => Promise<string | null>
     setReposLoading(true)
     setReposError(null)
     authHeaders().then(h =>
-      fetch(`${process.env.NEXT_PUBLIC_API_URL}/credentials/github/repos?environment_id=${encodeURIComponent(selectedEnvId)}`, { headers: h })
+      fetch(`${apiUrl()}/credentials/github/repos?environment_id=${encodeURIComponent(selectedEnvId)}`, { headers: h })
         .then(async res => {
           if (cancelled) return
           if (!res.ok) {
@@ -557,7 +560,7 @@ function RegistryContent({ getToken }: { getToken: (() => Promise<string | null>
       if (needsRepo && selectedRepo) mergedInputs.repo = selectedRepo
       if (Object.keys(mergedInputs).length > 0) body.inputs = mergedInputs
 
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/workflows`, {
+      const res = await fetch(`${apiUrl()}/workflows`, {
         method: "POST",
         headers,
         body: JSON.stringify(body),
@@ -612,7 +615,7 @@ function RegistryContent({ getToken }: { getToken: (() => Promise<string | null>
       const token = getToken ? await getToken() : null
       const h: Record<string, string> = { "Content-Type": "application/json" }
       if (token) h["Authorization"] = `Bearer ${token}`
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/compliance/packs/${packId}/install?workspace_id=${wsId}`, { method: "POST", headers: h })
+      const res = await fetch(`${apiUrl()}/compliance/packs/${packId}/install?workspace_id=${wsId}`, { method: "POST", headers: h })
       if (res.ok) setInstalledPacks(prev => new Set([...prev, packId]))
     } catch {}
     finally { setPackInstalling(null) }
@@ -626,7 +629,7 @@ function RegistryContent({ getToken }: { getToken: (() => Promise<string | null>
       const token = getToken ? await getToken() : null
       const h: Record<string, string> = {}
       if (token) h["Authorization"] = `Bearer ${token}`
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/compliance/packs/${packId}/uninstall?workspace_id=${wsId}`, { method: "DELETE", headers: h })
+      const res = await fetch(`${apiUrl()}/compliance/packs/${packId}/uninstall?workspace_id=${wsId}`, { method: "DELETE", headers: h })
       if (res.ok) setInstalledPacks(prev => { const s = new Set(prev); s.delete(packId); return s })
     } catch {}
     finally { setPackInstalling(null) }

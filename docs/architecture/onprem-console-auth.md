@@ -2,11 +2,13 @@
 
 ## Delivery status
 
-This first foundation slice adds explicit API authentication mode selection,
-startup validation, normalized Clerk console identity, and shared HTTP/SSE
-authorization. It does **not** enable proxy login or claim air-gap readiness.
-Proxy mode intentionally fails startup until the verified identity handoff exists.
-No production configuration is changed by this branch.
+The foundation adds explicit API authentication mode selection, startup validation,
+normalized console identity, and shared HTTP/SSE authorization. PR2 adds the
+Keycloak proxy identity exchange, explicit account provisioning, short-lived
+console sessions, a provider-neutral web adapter, and runtime web configuration.
+Signed-fixture and real-database verification do not establish live browser SSO
+or air-gap readiness. No production configuration is changed by this branch.
+See [proxy deployment](onprem-console-proxy.md) for configuration and acceptance gaps.
 
 ## Deployment modes
 
@@ -16,7 +18,7 @@ No production configuration is changed by this branch.
 | --- | --- |
 | `clerk` (default) | Existing Clerk browser authentication and Conduct machine credentials. API startup requires `CLERK_SECRET_KEY` and `CLERK_FRONTEND_API`. Missing keys never grant access. |
 | `development` | Explicit unauthenticated local access, only when `ENVIRONMENT` is exactly `local` or `development`. Supplied bearer credentials still undergo verification. |
-| `proxy` | Reserved, rejected until the console adapter is implemented. Do not deploy this setting yet. |
+| `proxy` | Dedicated Keycloak ID-token handoff through oauth2-proxy; explicit local identity mapping and existing Conduct memberships. Requires deployment trust and a server-only exchange secret. Live browser acceptance remains pending. |
 
 Unknown modes are rejected. A worker importing shared settings validates mode and
 environment but does not require Clerk browser credentials. API/Gateway HTTP
@@ -33,7 +35,7 @@ future proxy contract requires an explicitly configured issuer and audience.
 | --- | --- | --- |
 | Render API/Gateway | Default `AUTH_MODE=clerk`; retain Clerk keys and all service settings. Check keys before deploying the startup validation. | Verify configured console evidence; preserve machine bearer authentication. |
 | Render worker | Retain existing worker settings. No new Clerk secret is required. | Preserve verified principal context and recheck grants at execution. |
-| Vercel web | Unchanged Clerk configuration; this API slice does not add a web mode switch. | Provider-neutral frontend with server-authoritative runtime public configuration. |
+| Vercel web | Existing SaaS Clerk mode remains the default. | PR2 adds provider-neutral hooks and allowlisted runtime configuration. |
 | Docker/Helm | Keep current service URLs, database/Redis, encryption and secret references. | Add proxy settings, customer issuer/client, exact callback URLs and private CA trust. |
 
 For isolated development without Clerk, explicitly set both
@@ -56,11 +58,12 @@ parallel authorization system or link accounts by email. Inventory the remaining
 existing runtime `FederationPrincipal` represents delegation approval and is not
 automatically a console account or workspace membership.
 
-## Proxy-to-application contract (required before enabling proxy mode)
+## Proxy-to-application contract
 
 - Use an established OIDC proxy for authorization-code login and browser sessions.
 - Accept only verifiable, issuer/audience-bound identity evidence at the backend.
-  Select the exact supported proxy evidence format and version in PR 2. ID tokens
+  PR2 accepts RS256 Keycloak ID tokens with the dedicated client audience and
+  authorized-party claim, and the Keycloak `typ=ID` payload marker. ID tokens
   and delegated API access tokens remain distinct; do not reuse the runtime
   federation endpoint as a general console-session validator.
 - Strip browser-supplied identity headers. Bare `X-Auth-User`/email headers cannot
@@ -87,7 +90,7 @@ roles as Conduct authorization. Additional users require explicit provisioning o
 approved invitations. Group-based provisioning is deferred until its mapping and
 revocation rules are specified and tested.
 
-## Web/runtime configuration contract (pending implementation)
+## Web/runtime configuration contract
 
 The web server owns the deployment mode and returns only an allowlisted public
 mode and routing configuration; it must agree with the API. Reuse existing
@@ -96,11 +99,13 @@ adding a competing URL configuration. Keep public URLs separate from internal
 service addresses. Never expose client secrets, cookie secrets, provider keys or
 backend credentials. Mode is fixed at startup, not request-controlled.
 
-Currently `NEXT_PUBLIC_*` values are compiled into the web bundle. PR 2 must
-replace relevant build-time assumptions before claiming one image works with
-two customer URL configurations. Clerk provider mounting, middleware,
-`useAuthFetch`, organization/member/invitation UI, CLI browser authorization and
-MCP OAuth consent must all be checked. No Clerk network calls in proxy mode.
+Relevant auth and browser API settings now come from an allowlisted runtime
+document emitted by the web server. Proxy browser API requests use a same-origin
+server proxy, which exchanges identity evidence and forwards only the minted
+Conduct credential and selected headers. No Keycloak ID token is returned to
+browser JavaScript. Two deployed URLs using the same built image remain an
+acceptance gate. Legacy web-only MCP OAuth routes are not enabled in proxy mode;
+use the API OAuth discovery, consent and token endpoints instead.
 
 ## Verification and remaining gates
 

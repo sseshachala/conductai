@@ -12,6 +12,21 @@ spec.loader.exec_module(production)
 
 
 class PlaywrightCommandTests(unittest.TestCase):
+    def test_transport_only_reuses_shared_checks_without_browser_credentials(self):
+        with patch.object(sys, 'argv', ['production', '--transport-only', '--transport-config', 'test.json']), \
+             patch.object(production.transport_checks, 'validate_arguments') as validate, \
+             patch.object(production.transport_checks, 'run', return_value=0) as run, \
+             patch.object(production.subprocess, 'Popen') as popen:
+            self.assertEqual(production.main(), 0)
+            self.assertEqual(validate.call_args.args[1], 'saas')
+            self.assertEqual(run.call_args.args[1], 'saas')
+            popen.assert_not_called()
+
+    def test_read_only_gateway_preflight_cannot_run_inference_stage(self):
+        with patch.object(sys, 'argv', ['production', '--gateway-preflight', '--transport-config', 'test.json']), \
+             self.assertRaises(SystemExit):
+            production.main()
+
     def test_uses_rtk_when_available(self):
         with patch.object(production.shutil, 'which', return_value='/usr/local/bin/rtk'):
             self.assertEqual(production.playwright_command()[:3], ['rtk', 'proxy', 'npx'])

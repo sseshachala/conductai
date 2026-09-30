@@ -3,9 +3,17 @@ from __future__ import annotations
 
 from pathlib import Path
 import json
+from conduct_cli.deployment import api_url as configured_api, resolve
 
 from . import instructions as _guard_instructions
 from . import shared as _guard_shared
+
+
+def _deployment(api_url: str):
+    cfg = _guard_shared._load_guard_config()
+    if configured_api(cfg) != api_url.rstrip("/"):
+        cfg = {"api_url": api_url}
+    return resolve(cfg)
 
 
 def _vscode_mcp_paths() -> list[tuple[Path, str]]:
@@ -44,7 +52,11 @@ def _register_mcp(workspace_id: str, agent_token: str, api_url: str, dry_run: bo
     token guard sync writes to ~/.conduct/config.json — treat as sensitive.
     """
     import shutil
-    _mcp_url = api_url.rstrip("/") + "/mcp"
+    selected = _deployment(api_url)
+    _mcp_url = selected.mcp
+    if dry_run:
+        print(f"  Would register Conduct MCP at {_mcp_url}; no files written")
+        return
     servers: dict[str, dict] = {
         "conduct": {
             "command": "npx",
@@ -99,21 +111,25 @@ def _register_mcp(workspace_id: str, agent_token: str, api_url: str, dry_run: bo
 
     # Claude Desktop doesn't source shell env — patch apiBaseUrl directly in config
     # so all LLM calls route through the Guard proxy (PII blocking, spend limits, audit).
-    _patch_claude_desktop_proxy(api_url, agent_token)
+    if selected.gateway:
+        _patch_claude_desktop_proxy(api_url, agent_token, gateway_url=selected.gateway)
 
     # Cursor global rules — write Guard policies as user rules so they apply across all projects.
     _guard_instructions._patch_cursor_global_rules()
     _guard_instructions._patch_tool_instruction_files(agent_token, api_url, dry_run=dry_run)
 
 
-def _patch_claude_desktop_proxy(api_url: str, agent_token: str) -> None:
+def _patch_claude_desktop_proxy(api_url: str, agent_token: str, *, gateway_url: str | None = None) -> None:
     """Patch Claude Desktop config to route LLM calls through the Guard proxy.
 
     Claude Desktop reads apiBaseUrl from its config JSON — it does not source
     shell env vars, so ANTHROPIC_BASE_URL has no effect. We write the proxy
     URL directly so PII blocking, spend limits, and audit apply to Desktop too.
     """
-    proxy_url = f"{api_url.rstrip('/')}/gateway/v1/anthropic"
+    base = gateway_url or _deployment(api_url).gateway
+    if not base:
+        return
+    proxy_url = base.rstrip("/") + "/anthropic"
     candidates = [
         Path.home() / "Library" / "Application Support" / "Claude" / "claude_desktop_config.json",
         Path.home() / "AppData" / "Roaming" / "Claude" / "claude_desktop_config.json",
@@ -140,7 +156,7 @@ def _patch_copilot_mcp(agent_token: str, api_url: str) -> None:
     import shutil
     sse_entry = {
         "type": "http",
-        "url": f"{api_url}/mcp",
+        "url": _deployment(api_url).mcp,
         "headers": {"Authorization": f"Bearer {agent_token}"},
     }
     booster_entry = {"command": "booster", "args": ["serve"]} if shutil.which("booster") else None
@@ -196,7 +212,12 @@ def _write_mcp_file(
             and not any(key.lower() == "authorization" for key in current.get("headers", {}))
         )
     )
-    if preserve_oauth:
+    if preserve_oauth and current.get("url") != sse_entry.get("url"):
+        # OAuth registrations belong to the old issuer; never carry them across.
+        mcp[guard_key] = {"type": current.get("type", "http"), "url": sse_entry["url"]}
+        changed = True
+        print(f"  Conduct MCP endpoint updated in {label}; sign in again for this deployment.")
+    elif preserve_oauth:
         print(f"  {_guard_shared.GRAY}conduct-guard native OAuth configuration preserved in {label}{_guard_shared.RESET}")
     elif current != sse_entry:
         mcp[guard_key] = sse_entry

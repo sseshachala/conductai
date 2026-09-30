@@ -1,5 +1,8 @@
 "use client"
 
+import { apiUrl } from "@/lib/auth/runtime"
+
+
 import { useEffect, useState } from "react"
 import { useParams } from "next/navigation"
 
@@ -232,7 +235,7 @@ export default function SharePage() {
 
   useEffect(() => {
     if (!token) return
-    const base = process.env.NEXT_PUBLIC_API_URL ?? ""
+    const base = apiUrl() ?? ""
     fetch(`${base}/share/${token}`)
       .then(r => {
         if (!r.ok) throw new Error(r.status === 404 ? "Share link not found or expired." : "Failed to load.")
