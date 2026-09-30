@@ -2,7 +2,7 @@
 from typing import Literal
 from uuid import UUID
 
-from pydantic import AwareDatetime, Field
+from pydantic import AwareDatetime, Field, field_validator
 
 from .contracts import ContractModel, Identifier
 
@@ -20,6 +20,12 @@ class PrincipalWrite(ApprovalWrite):
     issuer: Identifier
     subject: Identifier
     kind: Literal["human", "workload"]
+    display_name: str | None = Field(default=None, max_length=200, strict=True)
+
+    @field_validator("display_name")
+    @classmethod
+    def normalize_display_name(cls, value):
+        return value.strip() or None if value is not None else None
 
 
 class BindingWrite(ApprovalWrite):

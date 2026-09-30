@@ -41,6 +41,9 @@ def save(db, model, identifier, workspace, body, immutable, user, role):
     if body.expected_revision != (row.revision if row else 0):
         raise HTTPException(409, detail="federation_revision_conflict")
     values = body.model_dump(exclude={"expected_revision"})
+    if model is FederationPrincipal and "display_name" not in body.model_fields_set:
+        # Older clients must not clear a name when updating approval status/actions.
+        values["display_name"] = row.display_name if row else None
     if model is FederationCallerBinding:
         values["caller_id"] = str(values["caller_id"])
     if row and any(getattr(row, key) != values[key] for key in immutable):

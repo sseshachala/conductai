@@ -1,7 +1,7 @@
 "use client"
 import { useState } from "react"
 import { Save as SaveIcon } from "lucide-react"
-import { Approval, ApprovalKind, Overview, Save, approvalBody } from "./types"
+import { Approval, ApprovalKind, Overview, Save, approvalBody, principalLabel } from "./types"
 import s from "./federation.module.css"
 
 export function ApprovalForm({ kind, row, data, workspace, save, busy, close }: {
@@ -27,6 +27,7 @@ export function ApprovalForm({ kind, row, data, workspace, save, busy, close }: 
       <legend className={s.notice}>{row ? "Edit" : "Approve"} {label}</legend>
       <div className={s.grid}>
         {kind === "principals" && <>
+          <label className={s.field}>Name (optional)<input maxLength={200} value={draft.display_name ?? ""} onChange={e => update({ display_name: e.target.value })} /></label>
           <label className={s.field}>Issuer<select required disabled={!!row} value={draft.issuer} onChange={e => update({ issuer: e.target.value })}>
             <option value="">Select issuer</option>
             {[...new Set([...data.connections.map(c => c.config.issuer), ...(row?.issuer ? [row.issuer] : [])])].map(issuer => <option key={issuer}>{issuer}</option>)}
@@ -53,7 +54,7 @@ export function ApprovalForm({ kind, row, data, workspace, save, busy, close }: 
           </select></label>
           <label className={s.field}>Principal<select required disabled={!!row} value={draft.principal_id} onChange={e => update({ principal_id: e.target.value, actions: [] })}>
             <option value="">Select principal</option>
-            {data.principals.filter(p => p.id === row?.principal_id || (p.status === "active" && p.issuer === connection?.config.issuer)).map(p => <option key={p.id} value={p.id}>{p.subject}</option>)}
+            {data.principals.filter(p => p.id === row?.principal_id || (p.status === "active" && p.issuer === connection?.config.issuer)).map(p => <option key={p.id} value={p.id}>{principalLabel(p)}{p.display_name?.trim() ? ` (${p.subject})` : ""}</option>)}
           </select></label>
           <label className={s.field}>Expires at (UTC)<input type="datetime-local" required value={draft.expires_at ? new Date(draft.expires_at).toISOString().slice(0, 16) : ""} onChange={e => update({ expires_at: e.target.value ? new Date(`${e.target.value}Z`).toISOString() : "" })} /></label>
         </>}

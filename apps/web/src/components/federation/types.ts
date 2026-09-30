@@ -15,7 +15,7 @@ export type Connection = {
 }
 export type Approval = {
   id: string; revision: number; status: "active" | "disabled"; actions: string[]
-  issuer?: string; subject?: string; kind?: "human" | "workload"
+  issuer?: string; subject?: string; display_name?: string | null; kind?: "human" | "workload"
   caller_id?: string; connection_id?: string; binding_id?: string; principal_id?: string; expires_at?: string
 }
 export type ApprovalKind = "principals" | "bindings" | "grants"
@@ -24,6 +24,8 @@ export type Overview = {
   callers: { id: string; name: string }[]; actions: string[]
 }
 export type Save = (path: string, body: unknown, method?: string) => Promise<boolean>
+
+export const principalLabel = (row?: Approval) => row?.display_name?.trim() || row?.subject || row?.id || ""
 
 export function approvalBody(row: Approval) {
   const { id, revision, ...values } = row

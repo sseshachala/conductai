@@ -14,6 +14,56 @@ const response = (body: unknown, status = 200) => ({ ok: status < 400, status, j
 describe("federation management", () => {
   beforeEach(() => authFetch.mockReset())
 
+  const principal = { id: "principal", revision: 1, status: "active" as const,
+    issuer: "https://identity.example", subject: "alice-subject", kind: "human" as const,
+    display_name: "Alice", actions: ["mcp.guard_check_prompt"] }
+  const binding = { id: "binding", revision: 1, status: "active" as const,
+    caller_id: "caller", connection_id: "connection", actions: principal.actions }
+  const grant = { id: "grant", revision: 1, status: "active" as const,
+    binding_id: binding.id, principal_id: principal.id, actions: principal.actions,
+    expires_at: "2099-01-01T00:00:00Z" }
+  const populated: Overview = { ...overview, principals: [principal], bindings: [binding], grants: [grant],
+    callers: [{ id: "caller", name: "Test caller" }] }
+
+  it("edits and persists the principal name without changing identity", async () => {
+    authFetch.mockResolvedValue(response(populated))
+    render(<FederationPanel workspace="workspace" mode="delegation" />)
+    fireEvent.click(await screen.findByRole("button", { name: "Edit Alice" }))
+    expect(screen.queryByRole("button", { name: "Add principal" })).not.toBeInTheDocument()
+    expect(screen.getByLabelText("Subject")).toBeDisabled()
+    expect(screen.getByLabelText("Issuer")).toBeDisabled()
+    fireEvent.change(screen.getByLabelText("Name (optional)"), { target: { value: "Alice Example" } })
+    fireEvent.click(screen.getByRole("button", { name: "Save approval" }))
+    await waitFor(() => expect(authFetch).toHaveBeenCalledWith(expect.stringContaining("/principals/principal"), expect.objectContaining({ method: "PUT" })))
+    const [, options] = authFetch.mock.calls.find(([, options]) => options?.method === "PUT")!
+    expect(JSON.parse(options.body)).toMatchObject({ display_name: "Alice Example", subject: "alice-subject", expected_revision: 1 })
+    expect(await screen.findByRole("button", { name: "Add principal" })).toBeVisible()
+  })
+
+  it.each([
+    ["Principals", "Edit Alice", "Add principal"],
+    ["Caller bindings", "Edit binding", "Add binding"],
+    ["Grants", "Edit grant", "Add grant"],
+  ])("hides add controls while editing %s and restores on cancel", async (tab, edit, add) => {
+    authFetch.mockResolvedValue(response(populated))
+    render(<FederationPanel workspace="workspace" mode="delegation" />)
+    fireEvent.click(await screen.findByRole("tab", { name: tab }))
+    fireEvent.click(screen.getByRole("button", { name: edit }))
+    expect(screen.queryByRole("button", { name: add })).not.toBeInTheDocument()
+    if (tab === "Grants") expect(screen.getByRole("option", { name: "Alice (alice-subject)" })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }))
+    expect(screen.getByRole("button", { name: add })).toBeVisible()
+  })
+
+  it("supports unnamed legacy principals and hides add while creating", async () => {
+    authFetch.mockResolvedValue(response({ ...overview, principals: [{ ...principal, display_name: null }] }))
+    render(<FederationPanel workspace="workspace" mode="delegation" />)
+    expect(await screen.findByRole("button", { name: "Edit alice-subject" })).toBeVisible()
+    fireEvent.click(screen.getByRole("button", { name: "Add principal" }))
+    expect(screen.getByLabelText("Name (optional)")).toHaveValue("")
+    expect(screen.queryByRole("button", { name: "Add principal" })).not.toBeInTheDocument()
+  })
+
   it("denies admin controls when the API denies access", async () => {
     authFetch.mockResolvedValue(response({ detail: "forbidden" }, 403))
     render(<FederationPanel workspace="workspace" mode="connections" />)
