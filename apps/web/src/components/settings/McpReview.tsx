@@ -1,7 +1,7 @@
 "use client"
 
-import { useState } from "react"
-import { Check, Search, ShieldOff, RotateCcw, KeyRound, ShieldCheck } from "lucide-react"
+import { useEffect, useState } from "react"
+import { Check, Search, ShieldOff, RotateCcw, KeyRound, ShieldCheck, Save } from "lucide-react"
 import { useAuthFetch } from "@/hooks/useAuthFetch"
 import { API } from "@/lib/api"
 
@@ -10,6 +10,7 @@ export type McpGovernance = {
   revision: number
   approved_digest?: string
   observed_digest?: string
+  response_mode?: "off" | "audit" | "block" | "redact"
 }
 
 type Tool = { name: string; description: string; inputSchema: unknown; outputSchema?: unknown; annotations?: unknown }
@@ -23,6 +24,8 @@ export function McpReview({ id, governance, onChange }: {
   const [inspection, setInspection] = useState<{ tools: Tool[]; digest: string | null } | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
+  const [responseMode, setResponseMode] = useState(governance?.response_mode ?? "off")
+  useEffect(() => { setResponseMode(governance?.response_mode ?? "off") }, [governance?.response_mode])
   const stopped = governance?.state === "quarantined" || governance?.state === "revoked"
 
   async function run(action: string) {
@@ -32,7 +35,8 @@ export function McpReview({ id, governance, onChange }: {
     try {
       const res = await authFetch(`${API}/mcp-servers/${id}/${action === "inspect" ? "inspect" : "review"}`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        ...(action === "inspect" ? {} : { body: JSON.stringify({ action, revision: governance?.revision ?? 0, digest: inspection?.digest ?? null }) }),
+        ...(action === "inspect" ? {} : { body: JSON.stringify({ action, revision: governance?.revision ?? 0, digest: inspection?.digest ?? null,
+          ...(action === "response_policy" ? { mode: responseMode } : {}) }) }),
       })
       const body = await res.json()
       if (!res.ok) throw new Error(typeof body.detail === "string" ? body.detail : "MCP review failed")
@@ -59,6 +63,15 @@ export function McpReview({ id, governance, onChange }: {
         {stopped && <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => run("restore")}><RotateCcw size={14} /> Restore for review</button>}
         {governance?.state !== "revoked" && <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => run("revoke")}><KeyRound size={14} /> Revoke saved credential</button>}
       </div>
+      {governance && <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 8, marginTop: 8 }}>
+        <label>JSON response inspection <select aria-label="JSON response inspection" value={responseMode} disabled={busy}
+          onChange={event => setResponseMode(event.target.value as typeof responseMode)}>
+          <option value="off">Off</option><option value="audit">Audit only</option>
+          <option value="block">Block</option><option value="redact">Redact secrets</option>
+        </select></label>
+        <button className="btn btn-ghost btn-sm btn-icon" title="Save response inspection" aria-label="Save response inspection"
+          disabled={busy || responseMode === (governance.response_mode ?? "off")} onClick={() => run("response_policy")}><Save size={14} /></button>
+      </div>}
       {error && <p role="alert" style={{ color: "var(--err)" }}>{error}</p>}
       {inspection && <div style={{ marginTop: 8, overflowWrap: "anywhere" }}>
         <div>{inspection.tools.length} tools · {inspection.digest === governance?.approved_digest ? "Matches approval" : "Review required"}</div>

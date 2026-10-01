@@ -38,7 +38,41 @@ MCP connection or the separate legacy credential-key execution path. Passive
 device discovery does not contact servers, enroll findings, or establish trust.
 Quarantine affects subsequent resolutions; an already-authorized in-flight call
 is not cancelled. Catalog hashes detect changes, not whether a tool is malicious.
-Tool-result inspection and redaction are not part of this change.
+
+## Inspect registered tool results
+
+For an enrolled server, set **JSON response inspection** in Integrations and save.
+The CLI uses the same setting:
+
+```sh
+conduct guard mcp-review response_policy --server SERVER_UUID --revision CURRENT_REVISION --mode block
+```
+
+- `off`: existing behavior, the default.
+- `audit`: record detected secret types and response-rule decisions; return the result unchanged.
+- `block`: withhold detected secrets and results denied by response rules.
+- `redact`: replace detected secrets; response-rule blocks still withhold the result.
+
+This applies to registered workflow MCP calls and registered Slack MCP output.
+It does not inspect an editor's direct MCP traffic. Response policy evaluation
+uses provider `mcp`, the tool name as model, and the `response` gate. Detection
+uses the existing secret patterns and configured response rules, not a general
+malicious-content classifier.
+
+Enabled inspection buffers a single JSON HTTP response before releasing it.
+The response is limited to 1 MiB, 10,000 inspected nodes and 32 nesting levels.
+Text and structured JSON are supported; SSE, binary/resource content, compressed
+responses and redirects are rejected. Calls are not retried or redirected to
+another transport. The existing catalog review still runs before invocation.
+
+Audit storage must be available before dispatch and before release. A changed
+registration, revoked approval, unavailable policy engine or failed inspection
+withholds the result, including in audit mode. This cannot undo upstream tool
+side effects. Audit entries contain decisions and finding types, not result text.
+
+Private-key fixture coverage is pending in [#2317](https://github.com/sseshachala/conductai/issues/2317)
+because ConductGuard blocks that synthetic fixture. No rule exception or bypass
+is included here.
 
 ## Link device inventory to registrations
 

@@ -49,14 +49,15 @@ def _execute_mcp(block: dict, state: dict, cred_store: object, workspace_id: str
 
     server_url: str | None = config.get("server_url") or None
     token: str | None = None
+    registration = None
 
     if (server_name or server_id) and not credential_key:
         from app.core.database import get_db as _get_db
-        from app.runtime.mcp_credentials import resolve_mcp_server
+        from app.runtime.mcp_credentials import resolve_mcp_registration
 
         db = next(_get_db())
         try:
-            resolved = resolve_mcp_server(
+            registration = resolve_mcp_registration(
                 server_name=server_name,
                 server_id=server_id,
                 workspace_id=workspace_id,
@@ -65,11 +66,11 @@ def _execute_mcp(block: dict, state: dict, cred_store: object, workspace_id: str
         finally:
             db.close()
 
-        if not resolved:
+        if not registration:
             label = server_name or server_id
             return {"skipped": True, "reason": f"MCP server '{label}' not registered in workspace"}
 
-        server_url, transport, token = resolved
+        server_url, transport, token = registration.url, registration.transport, registration.token
 
     elif credential_key:
         # Legacy path: resolve server from credential vault.
@@ -98,7 +99,8 @@ def _execute_mcp(block: dict, state: dict, cred_store: object, workspace_id: str
             "params": params,
         }
 
-    result = call_tool(server_url, token, tool_name, params, transport=transport)
+    result = registration.call_tool(tool_name, params) if registration else call_tool(
+        server_url, token, tool_name, params, transport=transport)
 
     if isinstance(result, dict):
         return {"tool": tool_name, **result}
