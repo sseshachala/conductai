@@ -21,7 +21,10 @@ router = APIRouter(prefix="/workspaces/{workspace_id}/federation", tags=["federa
 
 
 def owned(db, model, workspace, identifier):
-    row = db.query(model).filter(model.workspace_id == workspace, model.id == identifier).first()
+    query = db.query(model).filter(model.workspace_id == workspace, model.id == identifier)
+    if model is FederationConnection:
+        query = query.filter(FederationConnection.authentication_mode == "delegated")
+    row = query.first()
     if row is None:
         raise HTTPException(404, detail="federation_resource_not_found")
     return row

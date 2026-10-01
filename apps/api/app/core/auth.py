@@ -328,14 +328,14 @@ def _resolve_okta_jwt(token: str, db: Session):
     Returns (AgentIdentity, None) on success, matching the shape of
     `_resolve_agent_token(cond_api_*, ...)`. Returns None if the token is not
     a JWT or its `iss` is not configured for any workspace with
-    `okta_auth_enabled=true` — the caller falls through to the next auth path
+    Okta agent trust — the caller falls through to the next auth path
     (Clerk). Any real verification failure raises HTTPException(401).
     """
     if token.count(".") != 2:
         return None
 
     from app.core.okta_jwt import OktaJWTError, verify_okta_jwt
-    from app.models.integration import Integration
+    from app.modules.auth.federation.okta_agent import candidates, valid_config, workspace_scope
     from app.modules.agent_identity.models import AgentIdentity
     import jwt as _pyjwt
 
@@ -355,17 +355,7 @@ def _resolve_okta_jwt(token: str, db: Session):
     if not iss:
         return None
 
-    # ponytail: one indexed lookup per non-cond_ request. Add a global
-    # "any-okta-enabled" cache if this shows up in flame graphs.
-    rows = (
-        db.query(Integration)
-        .filter(
-            Integration.handle == "okta",
-            Integration.okta_issuer == iss,
-            Integration.okta_auth_enabled.is_(True),
-        )
-        .all()
-    )
+    rows = candidates(db, iss)
     if not rows:
         return None  # unconfigured issuer — fall through to Clerk
 
@@ -415,9 +405,12 @@ def _resolve_okta_jwt(token: str, db: Session):
             except Exception:
                 pass
 
-    last_error: Exception | None = None
+    last_error: Exception | None = OktaJWTError("trust is disabled or requires review")
+    matches = []
     for row in rows:
-        aud = row.okta_audience or ""
+        if row.config.get("status") != "active" or not valid_config(row.config):
+            continue
+        aud = row.config["audience"]
         try:
             claims = verify_okta_jwt(token, issuer=iss, audience=aud)
         except OktaJWTError as e:
@@ -427,15 +420,16 @@ def _resolve_okta_jwt(token: str, db: Session):
         if not sub:
             _emit_audit(workspace_id=row.workspace_id, decision="blocked", sub=unverified_sub, reason="missing sub claim")
             raise HTTPException(status_code=401, detail="Okta JWT missing sub claim")
-        ai = (
-            db.query(AgentIdentity)
-            .filter(
-                AgentIdentity.workspace_id == row.workspace_id,
-                AgentIdentity.source == "okta",
-                AgentIdentity.source_id == sub,
+        with workspace_scope(db, row.workspace_id):
+            ai = (
+                db.query(AgentIdentity)
+                .filter(
+                    AgentIdentity.workspace_id == row.workspace_id,
+                    AgentIdentity.source == "okta",
+                    AgentIdentity.source_id == sub,
+                )
+                .first()
             )
-            .first()
-        )
         if not ai:
             _emit_audit(workspace_id=row.workspace_id, decision="blocked", sub=sub, reason="identity not synced")
             raise HTTPException(status_code=401, detail="Okta identity not synced — run Okta sync in Conduct")
@@ -443,7 +437,14 @@ def _resolve_okta_jwt(token: str, db: Session):
         if lifecycle in ("deactivated", "expired"):
             _emit_audit(workspace_id=row.workspace_id, decision="blocked", sub=sub, reason=f"lifecycle={lifecycle}")
             raise HTTPException(status_code=401, detail=f"Agent identity is {lifecycle}")
-        _emit_audit(workspace_id=row.workspace_id, decision="allowed", sub=sub)
+        matches.append((ai, row.workspace_id, sub))
+
+    if len(matches) > 1:
+        _emit_audit(workspace_id=matches[0][1], decision="blocked", sub=matches[0][2], reason="ambiguous workspace trust")
+        raise HTTPException(status_code=401, detail="Okta identity matches multiple workspaces")
+    if matches:
+        ai, workspace, sub = matches[0]
+        _emit_audit(workspace_id=workspace, decision="allowed", sub=sub)
         return ai, None
 
     # All configured workspaces rejected the token

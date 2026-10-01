@@ -23,8 +23,8 @@ class Integration(Base):
     # delete_env_var write. Clients pass ``expected_revision`` on their
     # payload; a stale write returns 409 with the current revision.
     revision = Column(Integer, nullable=False, default=1, server_default="1")
-    # Okta JWT auth (#1056). okta_issuer indexed — reverse lookup from an
-    # unverified JWT `iss` to the workspace that trusts it. NULL on non-Okta rows.
+    # Rolling-deployment compatibility only. Migration 0158 mirrors writes into
+    # federation_connections; authentication reads trust there, not these fields.
     okta_issuer = Column(String(500), nullable=True)
     okta_audience = Column(String(500), nullable=True)
     okta_auth_enabled = Column(Boolean, nullable=False, default=False, server_default="false")

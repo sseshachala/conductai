@@ -254,6 +254,9 @@ def get_okta_config(
     if not cfg and not row:
         return OktaConfigOut(configured=False)
     cfg = cfg or {}
+    from app.modules.auth.federation.okta_agent import connection
+    trust = connection(db, row) if row else None
+    auth = trust.config if trust else {}
     tok = cfg.get("token") or ""
     return OktaConfigOut(
         configured=True,
@@ -263,9 +266,9 @@ def get_okta_config(
         last_import=cfg.get("last_import"),
         last_update=cfg.get("last_update"),
         last_error=cfg.get("last_error"),
-        issuer=(row.okta_issuer if row else None),
-        audience=(row.okta_audience if row else None),
-        jwt_auth_enabled=bool(row.okta_auth_enabled) if row else False,
+        issuer=auth.get("issuer"),
+        audience=auth.get("audience"),
+        jwt_auth_enabled=auth.get("status") == "active",
     )
 
 
@@ -293,7 +296,8 @@ def put_okta_config(
         existing.update({"domain": domain, "token": body.token})
         _save_config(db, workspace_id, existing)
 
-    # #1056 — update JWT auth columns on the Integration row.
+    # Transitional write bridge: the database synchronizes these compatibility
+    # columns into Okta agent trust, including writes from older API instances.
     row = db.query(Integration).filter(
         Integration.workspace_id == uuid.UUID(workspace_id),
         Integration.handle == _OKTA_HANDLE,
@@ -306,9 +310,20 @@ def put_okta_config(
         row.okta_audience = body.audience.strip() or None
     if body.jwt_auth_enabled is not None:
         row.okta_auth_enabled = bool(body.jwt_auth_enabled)
+    from app.modules.auth.federation.okta_agent import valid_config
+    if row.okta_auth_enabled and not valid_config({
+        "issuer": row.okta_issuer, "audience": row.okta_audience,
+        "jwks_uri": (row.okta_issuer or "").rstrip("/") + "/v1/keys",
+        "token_profile": "okta_agent_jwt", "algorithms": ["RS256"],
+    }):
+        db.rollback()
+        raise HTTPException(422, detail="Okta authentication requires an HTTPS issuer and audience")
     db.commit()
 
     tok = existing.get("token") or ""
+    from app.modules.auth.federation.okta_agent import connection
+    trust = connection(db, row)
+    auth = trust.config if trust else {}
     return OktaConfigOut(
         configured=True,
         domain=existing.get("domain"),
@@ -317,9 +332,9 @@ def put_okta_config(
         last_import=existing.get("last_import"),
         last_update=existing.get("last_update"),
         last_error=existing.get("last_error"),
-        issuer=row.okta_issuer,
-        audience=row.okta_audience,
-        jwt_auth_enabled=bool(row.okta_auth_enabled),
+        issuer=auth.get("issuer"),
+        audience=auth.get("audience"),
+        jwt_auth_enabled=auth.get("status") == "active",
     )
 
 
@@ -335,6 +350,18 @@ def delete_okta_config(
         Integration.handle == _OKTA_HANDLE,
     ).first()
     if row:
+        from app.modules.auth.federation.models import FederationConnection
+        from app.modules.auth.federation.okta_agent import workspace_scope
+        with workspace_scope(db, row.workspace_id):
+            trusts = db.query(FederationConnection).filter(
+                FederationConnection.integration_id == row.id,
+                FederationConnection.workspace_id == row.workspace_id,
+            ).all()
+            if any(trust.authentication_mode != "okta_agent" for trust in trusts):
+                raise HTTPException(409, detail="Integration has delegated identity trust and cannot be removed")
+            for trust in trusts:
+                db.delete(trust)
+            db.flush()
         db.delete(row)
         db.commit()
 

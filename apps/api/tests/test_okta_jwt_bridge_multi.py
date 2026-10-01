@@ -42,6 +42,9 @@ def _integration_row(*, issuer: str, audience: str, workspace_id: uuid.UUID):
     row.okta_issuer = issuer
     row.okta_audience = audience
     row.okta_auth_enabled = True
+    row.config = {"issuer": issuer, "audience": audience,
+                  "jwks_uri": issuer.rstrip("/") + "/v1/keys",
+                  "status": "active", "token_profile": "okta_agent_jwt", "algorithms": ["RS256"]}
     return row
 
 
@@ -54,11 +57,13 @@ def _ai_row(*, workspace_id: uuid.UUID, source_id: str):
     return ai
 
 
-def test_multi_workspace_same_issuer_first_valid_wins(monkeypatch):
+def test_multi_workspace_same_issuer_unique_valid_match(monkeypatch):
     """Two workspaces configured for the same Okta issuer but different
     expected audiences. Verifier fails against workspace A's audience,
     succeeds against B's. The bridge must land on B."""
     import app.core.auth as auth_mod
+    monkeypatch.setattr("app.modules.auth.federation.okta_agent.candidates",
+                        lambda db, issuer: db.query().filter().all())
 
     ws_a = uuid.uuid4()
     ws_b = uuid.uuid4()

@@ -68,6 +68,7 @@ def load_run_context(db, workspace_id, run_id, action="workflows.run"):
         ).one()
         connection = db.query(FederationConnection).filter(
             FederationConnection.workspace_id == workspace, FederationConnection.id == data["connection_id"],
+            FederationConnection.authentication_mode == "delegated",
         ).one()
         context = DelegatedIdentityContext(
             mode="delegated", workspace_id=workspace, request_id=data["request_id"], run_id=run_id,
