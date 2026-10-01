@@ -302,6 +302,9 @@ def _write_private_env(path: Path, content: str) -> None:
     descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(descriptor, "w") as output:
         os.chmod(path, 0o600)
+        if os.name == "nt":
+            from conduct_cli.hooks.base import restrict_to_owner
+            restrict_to_owner(path)
         output.write(content)
 
 

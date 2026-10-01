@@ -1,4 +1,5 @@
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -37,7 +38,8 @@ def test_managed_file_rotation_and_disable(home, monkeypatch, platform, filename
     assert "COPILOT_PROVIDER_WIRE_MODEL" not in first
     assert "COPILOT_MODEL=" not in first
     assert copilot.configured(cfg())
-    assert path.stat().st_mode & 0o077 == 0
+    if os.name != "nt":
+        assert path.stat().st_mode & 0o077 == 0
     gateway._write_proxy_env(TOKEN, URL)
     assert path.read_text() == first
     gateway._write_proxy_env(TOKEN + "_new", URL + "/new")
@@ -66,17 +68,25 @@ def test_valid_process_configuration(home, monkeypatch):
     assert copilot.configured(cfg())
 
 
-def test_overrides_preserved_and_dynamic_values_unknown(home):
+@pytest.mark.parametrize("platform,filename,literal,dynamic", [
+    ("linux", "env-override", 'export COPILOT_PROVIDER_BASE_URL="https://custom.example"\n',
+     'export COPILOT_PROVIDER_BASE_URL="$(anything)"\n'),
+    ("win32", "env-override.ps1", "$env:COPILOT_PROVIDER_BASE_URL = 'https://custom.example'\n",
+     '$env:COPILOT_PROVIDER_BASE_URL = "$(anything)"\n'),
+])
+def test_overrides_preserved_and_dynamic_values_unknown(home, monkeypatch, platform, filename, literal, dynamic):
+    monkeypatch.setattr(sys, "platform", platform)
     gateway._write_proxy_env(TOKEN, URL)
-    override = home / ".conduct/env-override"
-    override.write_text('export COPILOT_PROVIDER_BASE_URL="https://custom.example"\n')
+    override = home / ".conduct" / filename
+    override.write_text(literal)
     gateway._write_proxy_env(TOKEN, URL)
     assert "https://custom.example" in override.read_text()
     assert not copilot.configured(cfg())
-    override.write_text('export COPILOT_PROVIDER_BASE_URL="$(anything)"\n')
+    override.write_text(dynamic)
     assert not copilot.configured(cfg())
 
 
+@pytest.mark.skipif(os.name == "nt" or not shutil.which("bash"), reason="Requires native POSIX shell")
 def test_posix_sourcing_model_selection_and_disable(home):
     gateway._write_proxy_env(TOKEN, URL)
     code = '. "$HOME/.conduct/env"; printf "%s|%s|%s" "$COPILOT_MODEL" "$COPILOT_PROVIDER_WIRE_MODEL" "$COPILOT_PROVIDER_WIRE_API"'
@@ -111,7 +121,8 @@ def test_clear_managed_preserves_other_providers_and_overrides(home, monkeypatch
             assert line in content
     copilot.clear_managed()
     assert path.read_text() == content
-    assert path.stat().st_mode & 0o077 == 0
+    if os.name != "nt":
+        assert path.stat().st_mode & 0o077 == 0
 
 
 def test_clear_managed_does_not_touch_unmanaged_file(home):
@@ -121,3 +132,21 @@ def test_clear_managed_does_not_touch_unmanaged_file(home):
     path.write_text(content)
     copilot.clear_managed()
     assert path.read_text() == content
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Requires native Windows PowerShell")
+def test_powershell_sourcing_model_selection_and_disable(home):
+    shell = shutil.which("pwsh") or shutil.which("powershell")
+    assert shell, "Windows CI requires PowerShell"
+    gateway._write_proxy_env(TOKEN, URL)
+    path = str(home / ".conduct/env.ps1").replace("'", "''")
+    command = f". '{path}'; Write-Output \"$env:COPILOT_MODEL|$env:COPILOT_PROVIDER_WIRE_MODEL|$env:COPILOT_PROVIDER_WIRE_API\""
+    result = subprocess.run([shell, "-NoProfile", "-Command", command],
+                            env={**os.environ, "COPILOT_MODEL": "selected-model"},
+                            capture_output=True, text=True, check=True)
+    assert result.stdout.strip() == "selected-model||responses"
+    gateway._write_proxy_env(TOKEN, URL, copilot=False)
+    result = subprocess.run([shell, "-NoProfile", "-Command", f". '{path}'; Write-Output $env:COPILOT_PROVIDER_BEARER_TOKEN"],
+                            env={**os.environ, "COPILOT_PROVIDER_BEARER_TOKEN": TOKEN},
+                            capture_output=True, text=True, check=True)
+    assert result.stdout.strip() == ""
