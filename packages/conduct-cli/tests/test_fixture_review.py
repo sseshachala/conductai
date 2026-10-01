@@ -30,46 +30,46 @@ def test_digest_binds_whole_edit_tool_target_and_working_directory(tmp_path):
 
 
 @pytest.mark.parametrize(
-    "tool,payload,cwd",
+    "tool,payload,cwd,error",
     [
-        ("bash", {"command": "anything"}, "/repo"),
-        ("write", edit(path="src/main.py"), "/repo"),
-        ("write", edit(), "relative"),
-        ("apply_patch", {"command": "shell command"}, "/repo"),
-        ("write", edit("x" * 270000), "/repo"),
+        ("bash", {"command": "anything"}, None, "Only structured single-file"),
+        ("write", edit(path="src/main.py"), None, "restricted to test directories"),
+        ("write", edit(), "relative", "absolute working directory"),
+        ("apply_patch", {"command": "shell command"}, None, "complete patch"),
+        ("write", edit("x" * 270000), None, "exceeds review limits"),
     ],
 )
-def test_unsupported_actions_cannot_request_exception(tool, payload, cwd):
-    with pytest.raises(ValueError):
-        fixtures.fingerprint(tool, payload, cwd)
+def test_unsupported_actions_cannot_request_exception(tmp_path, tool, payload, cwd, error):
+    with pytest.raises(ValueError, match=error):
+        fixtures.fingerprint(tool, payload, cwd or str(tmp_path))
 
 
-def test_patch_restricted_to_single_add_or_update():
+def test_patch_restricted_to_single_add_or_update(tmp_path):
     patch = (
         "*** Begin Patch\n*** Add File: tests/fixture.txt\n+synthetic\n*** End Patch"
     )
-    assert fixtures.fingerprint("functions.apply_patch", {"patch": patch}, "/repo")
+    assert fixtures.fingerprint("functions.apply_patch", {"patch": patch}, str(tmp_path))
     for operation in [
         "*** Delete File: tests/fixture.txt",
         "*** Move to: tests/new.txt",
         "*** Add File: tests/other.txt",
     ]:
         changed = patch.replace("*** End Patch", operation + "\n*** End Patch")
-        with pytest.raises(ValueError):
-            fixtures.fingerprint("apply_patch", {"patch": changed}, "/repo")
+        with pytest.raises(ValueError, match="Only one test file"):
+            fixtures.fingerprint("apply_patch", {"patch": changed}, str(tmp_path))
 
 
 @pytest.mark.parametrize(
     "outcome", ["approved", "denied", "outage", "mismatch", "malformed"]
 )
-def test_consume_fail_closed_without_uploading_content(monkeypatch, outcome):
+def test_consume_fail_closed_without_uploading_content(monkeypatch, tmp_path, outcome):
     cfg = {
         "workspace_id": str(uuid4()),
         "agent_token": "fixture-token",
         "api_url": "https://local.example",
     }
     monkeypatch.setattr(fixtures, "load_config", lambda: cfg)
-    digest = fixtures.fingerprint("write", edit(), "/repo")
+    digest = fixtures.fingerprint("write", edit(), str(tmp_path))
     payload = {
         "approved": outcome != "denied",
         "id": str(uuid4()),
@@ -87,7 +87,7 @@ def test_consume_fail_closed_without_uploading_content(monkeypatch, outcome):
     if outcome == "outage":
         opener.open.side_effect = TimeoutError()
     monkeypatch.setattr(fixtures.urllib.request, "build_opener", lambda *_: opener)
-    assert fixtures.consume("write", edit(), "/repo") == (outcome == "approved")
+    assert fixtures.consume("write", edit(), str(tmp_path)) == (outcome == "approved")
     request = opener.open.call_args.args[0]
     assert request.full_url.startswith(
         "https://local.example/guard/fixture-approvals/consume"
