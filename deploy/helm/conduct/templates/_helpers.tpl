@@ -1,4 +1,4 @@
-{{/* Full name = release name (kept short — PCAI hostnames get long fast). */}}
+{{/* Use the release name for service names. */}}
 {{- define "conduct.fullname" -}}
 {{- .Release.Name | trunc 40 | trimSuffix "-" -}}
 {{- end -}}
@@ -40,9 +40,9 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 
 {{/* Image tag defaults to Chart.appVersion. */}}
 {{- define "conduct.apiImage" -}}
-{{ .Values.image.api.repository }}:{{ default .Chart.AppVersion .Values.image.api.tag }}
+{{ required "image.api.repository is required" .Values.image.api.repository }}:{{ required "image.api.tag is required" .Values.image.api.tag }}
 {{- end -}}
 
 {{- define "conduct.webImage" -}}
-{{ .Values.image.web.repository }}:{{ default .Chart.AppVersion .Values.image.web.tag }}
+{{ required "image.web.repository is required" .Values.image.web.repository }}:{{ required "image.web.tag is required" .Values.image.web.tag }}
 {{- end -}}

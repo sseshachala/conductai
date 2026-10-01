@@ -1,3 +1,4 @@
+{{- if .Values.postgres.enabled }}
 apiVersion: v1
 kind: Service
 metadata:
@@ -32,6 +33,10 @@ spec:
         app.kubernetes.io/component: postgres
     spec:
       serviceAccountName: {{ include "conduct.serviceAccountName" . }}
+      automountServiceAccountToken: false
+      {{- with .Values.image.pullSecrets }}
+      imagePullSecrets: {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
         - name: postgres
           image: {{ .Values.postgres.image | quote }}
@@ -76,3 +81,4 @@ spec:
         resources:
           requests:
             storage: {{ .Values.postgres.storage.size | quote }}
+{{- end }}

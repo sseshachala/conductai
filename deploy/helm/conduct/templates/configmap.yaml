@@ -1,23 +1,33 @@
+{{- $console := required "hosts.console is required" .Values.hosts.console -}}
+{{- $api := required "hosts.api is required" .Values.hosts.api -}}
+{{- $gateway := required "hosts.gateway is required" .Values.hosts.gateway -}}
+{{- if or (eq $console $api) (eq $console $gateway) (eq $api $gateway) -}}
+{{- fail "Use distinct console, API and Gateway hostnames" -}}
+{{- end -}}
+{{- $_ := required "secrets.existingSecret is required" .Values.secrets.existingSecret -}}
+{{- $_ := required "secrets.proxySecret is required" .Values.secrets.proxySecret -}}
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: {{ include "conduct.fullname" . }}
   labels: {{- include "conduct.labels" . | nindent 4 }}
 data:
-  REDIS_URL: "redis://{{ include "conduct.fullname" . }}-redis:6379"
-  API_BASE_URL: "http://{{ include "conduct.fullname" . }}-api:{{ .Values.api.service.port }}"
-  POSTGRES_USER: {{ .Values.config.postgresUser | quote }}
-  POSTGRES_DB: {{ .Values.config.postgresDb | quote }}
-  SQLALCHEMY_POOL_SIZE: {{ .Values.config.sqlalchemyPoolSize | quote }}
-  SQLALCHEMY_MAX_OVERFLOW: {{ .Values.config.sqlalchemyMaxOverflow | quote }}
-  GUARD_GATEWAY_PROFILE_V2: {{ .Values.config.guardGatewayProfileV2 | quote }}
-  GUARD_GATEWAY_PROFILE_V2_ROLLOUT_PCT: {{ .Values.config.guardGatewayProfileV2RolloutPct | quote }}
-  GUARD_GATEWAY_PROFILE_V2_ALLOWLIST: {{ .Values.config.guardGatewayProfileV2Allowlist | quote }}
-  GUARD_USE_DURABLE_AUDIT: {{ .Values.config.guardUseDurableAudit | quote }}
-  GUARD_DURABLE_AUDIT_ROLLOUT_PCT: {{ .Values.config.guardDurableAuditRolloutPct | quote }}
-  GUARD_DURABLE_AUDIT_ALLOWLIST: {{ .Values.config.guardDurableAuditAllowlist | quote }}
-  GUARD_DURABLE_AUDIT_FAIL_CLOSED: {{ .Values.config.guardDurableAuditFailClosed | quote }}
-  GATEWAY_ADMISSION_MAX_INFLIGHT: {{ .Values.config.gatewayAdmissionMaxInflight | quote }}
-  GATEWAY_ADMISSION_WORKSPACE_MAX: {{ .Values.config.gatewayAdmissionWorkspaceMax | quote }}
-  MCP_ADMISSION_MAX_INFLIGHT: {{ .Values.config.mcpAdmissionMaxInflight | quote }}
-  MCP_ADMISSION_WORKSPACE_MAX: {{ .Values.config.mcpAdmissionWorkspaceMax | quote }}
+  AUTH_MODE: proxy
+  ENVIRONMENT: production
+  APP_URL: {{ printf "https://%s" $console | quote }}
+  CONDUCT_WEB_URL: {{ printf "https://%s" $console | quote }}
+  API_BASE_URL: {{ printf "https://%s" $api | quote }}
+  CONDUCT_OAUTH_ISSUER: {{ printf "https://%s" $api | quote }}
+  CONDUCT_PROXY_URL: {{ printf "https://%s/gateway/v1" $gateway | quote }}
+  ALLOWED_ORIGINS: {{ printf "https://%s" $console | quote }}
+  CONSOLE_OIDC_ISSUER: {{ required "oidc.issuer is required" .Values.oidc.issuer | quote }}
+  CONSOLE_OIDC_CLIENT_ID: {{ required "oidc.clientId is required" .Values.oidc.clientId | quote }}
+  CONSOLE_OIDC_JWKS_URL: {{ required "oidc.jwksUrl is required" .Values.oidc.jwksUrl | quote }}
+  {{- if .Values.oidc.caConfigMap }}
+  CONSOLE_OIDC_CA_FILE: /etc/conduct/ca/ca.crt
+  SSL_CERT_FILE: /etc/conduct/ca/ca.crt
+  REQUESTS_CA_BUNDLE: /etc/conduct/ca/ca.crt
+  {{- end }}
+  {{- range $key, $value := .Values.config.extraEnv }}
+  {{ $key }}: {{ $value | toString | quote }}
+  {{- end }}

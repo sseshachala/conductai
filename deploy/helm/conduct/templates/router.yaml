@@ -1,0 +1,114 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "conduct.fullname" . }}-router
+data:
+  Caddyfile: |
+    {
+      admin off
+      auto_https off
+    }
+    :8080 {
+      @console host {{ .Values.hosts.console }}
+      handle @console {
+        reverse_proxy {{ include "conduct.fullname" . }}-proxy:4180 {
+          header_up -Authorization
+          header_up -X-Conduct-Proxy-Secret
+          header_up -X-Auth-Request-User
+          header_up -X-Auth-Request-Email
+          header_up -X-Forwarded-User
+          header_up -X-Forwarded-Email
+          header_up X-Forwarded-Proto https
+          header_up X-Forwarded-Host {{ .Values.hosts.console }}
+        }
+      }
+      @api host {{ .Values.hosts.api }}
+      handle @api {
+        reverse_proxy {{ include "conduct.fullname" . }}-api:{{ .Values.api.service.port }} {
+          header_up -X-Conduct-Proxy-Secret
+        }
+      }
+      @gateway host {{ .Values.hosts.gateway }}
+      handle @gateway {
+        reverse_proxy {{ include "conduct.fullname" . }}-gateway:{{ .Values.gateway.service.port }} {
+          header_up -X-Conduct-Proxy-Secret
+        }
+      }
+      respond 404
+    }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "conduct.fullname" . }}-router
+spec:
+  ports: [{name: http, port: 8080, targetPort: 8080}]
+  selector:
+    {{- include "conduct.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: router
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "conduct.fullname" . }}-router
+spec:
+  replicas: {{ .Values.router.replicas }}
+  selector:
+    matchLabels:
+      {{- include "conduct.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: router
+  template:
+    metadata:
+      annotations:
+        checksum/router: {{ printf "%s|%s|%s|%v|%v" .Values.hosts.console .Values.hosts.api .Values.hosts.gateway .Values.api.service.port .Values.gateway.service.port | sha256sum }}
+      labels:
+        {{- include "conduct.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: router
+    spec:
+      automountServiceAccountToken: false
+      {{- with .Values.image.pullSecrets }}
+      imagePullSecrets: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: router
+          image: {{ .Values.router.image | quote }}
+          ports: [{name: http, containerPort: 8080}]
+          readinessProbe: {tcpSocket: {port: http}}
+          volumeMounts:
+            - {name: config, mountPath: /etc/caddy, readOnly: true}
+          resources: {{- toYaml .Values.router.resources | nindent 12 }}
+      volumes:
+        - name: config
+          configMap: {name: {{ include "conduct.fullname" . }}-router}
+---
+{{- if .Values.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "conduct.fullname" . }}
+  {{- with .Values.ingress.annotations }}
+  annotations: {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with .Values.ingress.className }}
+  ingressClassName: {{ . | quote }}
+  {{- end }}
+  tls:
+    - secretName: {{ required "ingress.tlsSecretName is required" .Values.ingress.tlsSecretName }}
+      hosts:
+        {{- range .Values.hosts }}
+        - {{ . | quote }}
+        {{- end }}
+  rules:
+    {{- range .Values.hosts }}
+    - host: {{ . | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "conduct.fullname" $ }}-router
+                port: {number: 8080}
+    {{- end }}
+{{- end }}

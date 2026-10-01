@@ -1,13 +1,13 @@
 apiVersion: v2
 name: conduct
-description: Conduct — YAML playbook platform. Packaged for HPE Private Cloud AI (Ezmeral Runtime / AI Essentials Import Framework).
+description: Conduct with OIDC login, API, Gateway, worker, PostgreSQL and Redis.
 type: application
-version: 0.1.0
+version: 0.2.0
 appVersion: "0.1.0"
 kubeVersion: ">=1.27.0-0"
 home: https://conductai.ai
 sources:
-  - https://github.com/conductai/marshal
+  - https://github.com/sseshachala/conductai
 maintainers:
   - name: Conduct
     email: hello@conductai.ai

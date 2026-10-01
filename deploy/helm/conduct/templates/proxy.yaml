@@ -1,0 +1,83 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "conduct.fullname" . }}-proxy
+spec:
+  ports: [{name: http, port: 4180, targetPort: 4180}]
+  selector:
+    {{- include "conduct.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: proxy
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "conduct.fullname" . }}-proxy
+  labels: {{- include "conduct.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.oauth2Proxy.replicas }}
+  selector:
+    matchLabels:
+      {{- include "conduct.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: proxy
+  template:
+    metadata:
+      labels:
+        {{- include "conduct.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: proxy
+    spec:
+      automountServiceAccountToken: false
+      {{- with .Values.image.pullSecrets }}
+      imagePullSecrets: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: proxy
+          image: {{ .Values.oauth2Proxy.image | quote }}
+          ports: [{name: http, containerPort: 4180}]
+          args:
+            - --provider=keycloak-oidc
+            - --http-address=0.0.0.0:4180
+            - --upstream=http://{{ include "conduct.fullname" . }}-web:{{ .Values.web.service.port }}
+            - --redirect-url=https://{{ .Values.hosts.console }}/oauth2/callback
+            - --scope=openid profile email
+            - --code-challenge-method=S256
+            - --insecure-oidc-skip-nonce=false
+            {{- range .Values.oidc.emailDomains }}
+            - {{ printf "--email-domain=%s" . | quote }}
+            {{- end }}
+            - --pass-authorization-header=true
+            - --skip-auth-strip-headers=true
+            - --pass-access-token=false
+            - --skip-jwt-bearer-tokens=false
+            - --reverse-proxy=true
+            - --cookie-name=__Host-conduct-console
+            - --cookie-secure=true
+            - --cookie-httponly=true
+            - --cookie-samesite=lax
+            - --cookie-refresh=1m
+            - --cookie-expire=1h
+            - --skip-auth-route=^/signed-out$
+            - --api-route=^/api/
+            - --skip-provider-button=true
+            - --request-logging=false
+            - --auth-logging=false
+            {{- if .Values.oidc.caConfigMap }}
+            - --provider-ca-file=/etc/conduct/ca/ca.crt
+            {{- end }}
+          env:
+            - {name: OAUTH2_PROXY_OIDC_ISSUER_URL, value: {{ .Values.oidc.issuer | quote }}}
+            - {name: OAUTH2_PROXY_CLIENT_ID, value: {{ .Values.oidc.clientId | quote }}}
+            - name: OAUTH2_PROXY_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef: {name: {{ .Values.secrets.proxySecret }}, key: OAUTH2_PROXY_CLIENT_SECRET}
+            - name: OAUTH2_PROXY_COOKIE_SECRET
+              valueFrom:
+                secretKeyRef: {name: {{ .Values.secrets.proxySecret }}, key: OAUTH2_PROXY_COOKIE_SECRET}
+          readinessProbe:
+            httpGet: {path: /ping, port: http}
+          resources: {{- toYaml .Values.oauth2Proxy.resources | nindent 12 }}
+          {{- if .Values.oidc.caConfigMap }}
+          volumeMounts: [{name: ca, mountPath: /etc/conduct/ca, readOnly: true}]
+      volumes:
+        - name: ca
+          configMap: {name: {{ .Values.oidc.caConfigMap }}}
+          {{- end }}

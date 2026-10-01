@@ -1,0 +1,23 @@
+{{- if .Values.networkPolicy.enabled }}
+{{- range $component, $sources := dict "web" (list "proxy") "proxy" (list "router") "postgres" (list "api" "gateway" "worker") "redis" (list "api" "gateway" "worker") "api" (list "router" "web" "gateway" "worker") "gateway" (list "router") }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "conduct.fullname" $ }}-{{ $component }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "conduct.selectorLabels" $ | nindent 6 }}
+      app.kubernetes.io/component: {{ $component }}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        {{- range $sources }}
+        - podSelector:
+            matchLabels:
+              {{- include "conduct.selectorLabels" $ | nindent 14 }}
+              app.kubernetes.io/component: {{ . }}
+        {{- end }}
+{{- end }}
+{{- end }}
