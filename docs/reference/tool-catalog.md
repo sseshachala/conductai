@@ -79,7 +79,9 @@ References: [Cursor hooks](https://cursor.com/docs/hooks),
 
 ## Remaining epic scope
 
-Third-party adapter installation, per-version/platform declarations, runtime MCP
-schema integrity/response inspection, approval/quarantine enforcement, and
-session-to-spend reconciliation are not completed by this increment. Track
-these in #2309; do not close the epic on this foundation alone.
+Registered MCP server review and client usage categories are described in
+[MCP review and session usage](tool-review-and-usage.md).
+
+Third-party adapter installation, per-version/platform declarations, MCP response
+inspection, device-to-registry reconciliation, and session-to-Gateway spend
+reconciliation remain in #2309.

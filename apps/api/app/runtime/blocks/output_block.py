@@ -153,6 +153,7 @@ def _resolve_slack_mcp(workspace_id: str) -> tuple[str, str, str] | None:
     """Return (url, transport, token) for the workspace's Slack MCP server, or None."""
     if not workspace_id:
         return None
+    from app.runtime.mcp_governance import MCPGovernanceDenied
     try:
         from app.core.database import get_db as _get_db
         from app.runtime.mcp_credentials import resolve_mcp_server
@@ -164,8 +165,10 @@ def _resolve_slack_mcp(workspace_id: str) -> tuple[str, str, str] | None:
         if not resolved or not resolved[2]:
             return None
         return resolved
-    except Exception:
-        return None
+    except MCPGovernanceDenied:
+        raise
+    except Exception as exc:
+        raise MCPGovernanceDenied("MCP registration resolution unavailable") from exc
 
 
 def _execute_output(

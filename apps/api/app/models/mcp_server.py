@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime, timezone
 
 from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Index, String, Text, UniqueConstraint
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 
 from app.core.database import Base
 
@@ -26,6 +26,7 @@ class McpServer(Base):
     transport = Column(String, nullable=False, default="http")
     encrypted_auth = Column(Text, nullable=True)
     is_system = Column(Boolean, nullable=False, default=False)
+    governance = Column(JSONB, nullable=True)
     created_at = Column(
         DateTime(timezone=True),
         nullable=False,

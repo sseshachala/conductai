@@ -68,6 +68,7 @@ def _mock_row(row_id: str, name: str, url: str = "https://example.com/mcp") -> M
     r.transport = "http"
     r.encrypted_auth = None
     r.environment_id = None
+    r.governance = None
     return r
 
 

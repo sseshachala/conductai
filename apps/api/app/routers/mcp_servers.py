@@ -5,17 +5,23 @@ PATCH  /mcp-servers/{id}            — update MCP server
 DELETE /mcp-servers/{id}            — delete MCP server
 """
 import uuid
-from typing import Annotated, Optional
 from datetime import datetime, timezone
+from typing import Annotated, Literal, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException, Response
+from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_user_id, get_workspace_id, require_permission
-from app.core.crypto import encrypt, decrypt
+from app.core.crypto import decrypt, encrypt
 from app.core.database import get_db
+from app.runtime.mcp_governance import (
+    MCPGovernanceDenied,
+    assert_connectable,
+    fingerprint,
+    transition,
+)
 
 router = APIRouter(prefix="/mcp-servers", tags=["mcp-servers"])
 
@@ -38,6 +44,7 @@ class McpServerOut(BaseModel):
     has_auth: bool
     is_system: bool
     created_at: datetime
+    governance: dict | None = None
 
 
 def _row_to_out(r) -> McpServerOut:
@@ -51,6 +58,7 @@ def _row_to_out(r) -> McpServerOut:
         has_auth=bool(r.encrypted_auth),
         is_system=bool(r.is_system),
         created_at=r.created_at,
+        governance=getattr(r, "governance", None),
     )
 
 
@@ -105,7 +113,7 @@ def update_mcp_server(
     db: Session = Depends(get_db),
 ):
     encrypted = encrypt({"token": body.auth_token}) if body.auth_token else None
-    existing = db.execute(text("SELECT is_system, name FROM mcp_servers WHERE id = :id AND workspace_id = :ws"),
+    existing = db.execute(text("SELECT is_system, name FROM mcp_servers WHERE id = :id AND workspace_id = :ws FOR UPDATE"),
                           {"id": server_id, "ws": workspace_id}).fetchone()
     is_system = existing and existing.is_system
     is_conduct_managed = existing and existing.name == "Conduct AI Guard"
@@ -132,6 +140,14 @@ def update_mcp_server(
         }).fetchone()
     if not row:
         raise HTTPException(status_code=404, detail="MCP server not found")
+    if getattr(row, "governance", None):
+        import json
+        current = row.governance
+        state = current["state"] if current["state"] in {"quarantined", "revoked"} else "needs_review"
+        row = db.execute(text("UPDATE mcp_servers SET governance = CAST(:value AS jsonb) "
+                              "WHERE id = :id AND workspace_id = :ws RETURNING *"),
+                         {"id": server_id, "ws": workspace_id,
+                          "value": json.dumps({"state": state, "revision": current["revision"] + 1})}).fetchone()
     db.commit()
     return _row_to_out(row)
 
@@ -176,16 +192,24 @@ def test_mcp_connection(
     from app.runtime.integrations.mcp_client import list_tools
 
     token = body.auth_token or None
-    if not token and body.server_id:
+    if body.server_id:
         # Workspace-scoped lookup — never leak another workspace's token.
         row = db.execute(
             text(
-                "SELECT encrypted_auth FROM mcp_servers "
+                "SELECT encrypted_auth, url, governance FROM mcp_servers "
                 "WHERE id = :id AND workspace_id = :ws"
             ),
             {"id": body.server_id, "ws": workspace_id},
         ).fetchone()
-        if row and row.encrypted_auth:
+        if not row:
+            raise HTTPException(status_code=404, detail="MCP server not found")
+        if body.url != row.url:
+            raise HTTPException(status_code=422, detail="Saved credentials require the registered server URL")
+        try:
+            assert_connectable(row.governance)
+        except MCPGovernanceDenied as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        if not token and row.encrypted_auth:
             try:
                 token = decrypt(row.encrypted_auth).get("token")
             except Exception:
@@ -224,6 +248,9 @@ class McpToolOut(BaseModel):
     name: str
     description: str
     inputSchema: dict
+    outputSchema: dict | None = None
+    annotations: dict | None = None
+    title: str | None = None
 
 
 _MCP_TOOLS_CACHE_TTL = 300  # 5 minutes
@@ -231,6 +258,7 @@ _MCP_TOOLS_CACHE_TTL = 300  # 5 minutes
 
 def _redis_client():
     import redis as _redis
+
     from app.core.config import settings as _settings
     return _redis.from_url(_settings.redis_url, decode_responses=True)
 
@@ -241,6 +269,7 @@ def list_mcp_server_tools(
     workspace_id: Annotated[str, Depends(get_workspace_id)],
     _: Annotated[str, Depends(require_permission("platform.workflows.view"))],
     db: Session = Depends(get_db),
+    response: Response = None,
 ):
     """List tools exposed by an MCP server. Results are cached for 5 minutes."""
     from app.runtime.integrations.mcp_client import list_tools
@@ -252,11 +281,16 @@ def list_mcp_server_tools(
     if not row:
         raise HTTPException(status_code=404, detail="MCP server not found")
 
+    try:
+        assert_connectable(row.governance)
+    except MCPGovernanceDenied as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+
     cache_key = f"mcp_tools:{server_id}"
     try:
         r = _redis_client()
         cached = r.get(cache_key)
-        if cached:
+        if cached and not row.governance:
             import json as _json
             return _json.loads(cached)
     except Exception:
@@ -268,6 +302,26 @@ def list_mcp_server_tools(
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"MCP server unreachable: {exc!s:.200}")
 
+    if row.governance:
+        import json
+        try:
+            digest = fingerprint(tools)
+        except MCPGovernanceDenied as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+        observed = {**row.governance, "observed_digest": digest,
+                    "observed_at": datetime.now(timezone.utc).isoformat(), "tool_count": len(tools)}
+        # Do not overwrite concurrent quarantine, edits, or approvals during network I/O.
+        result = db.execute(text("UPDATE mcp_servers SET governance = CAST(:value AS jsonb) "
+                        "WHERE id = :id AND workspace_id = :ws AND governance = CAST(:previous AS jsonb)"),
+                   {"id": server_id, "ws": workspace_id, "value": json.dumps(observed),
+                    "previous": json.dumps(row.governance)})
+        if result.rowcount != 1:
+            db.rollback()
+            raise HTTPException(status_code=409, detail="MCP review changed; reload before retrying")
+        db.commit()
+        if response is not None:
+            response.headers["X-Conduct-MCP-Digest"] = digest
+
     try:
         import json as _json
         r = _redis_client()
@@ -276,6 +330,61 @@ def list_mcp_server_tools(
         pass
 
     return tools
+
+
+class McpReviewIn(BaseModel):
+    action: Literal["require_review", "approve", "quarantine", "revoke", "restore"]
+    revision: int = Field(ge=0, strict=True)
+    digest: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
+
+
+@router.post("/{server_id}/inspect")
+def inspect_mcp_server(
+    server_id: uuid.UUID,
+    workspace_id: Annotated[str, Depends(get_workspace_id)],
+    _: Annotated[str, Depends(require_permission("platform.credentials.manage"))],
+    db: Session = Depends(get_db),
+):
+    response = Response()
+    tools = list_mcp_server_tools(str(server_id), workspace_id, _, db, response)
+    return {"tools": tools, "digest": response.headers.get("X-Conduct-MCP-Digest")}
+
+
+@router.post("/{server_id}/review", response_model=McpServerOut)
+def review_mcp_server(
+    server_id: uuid.UUID,
+    body: McpReviewIn,
+    workspace_id: Annotated[str, Depends(get_workspace_id)],
+    actor: Annotated[str, Depends(get_user_id)],
+    _: Annotated[str, Depends(require_permission("platform.workspace.edit"))],
+    db: Session = Depends(get_db),
+):
+    import json
+
+    from app.models.audit_log import AuditLog
+
+    row = db.execute(text("SELECT * FROM mcp_servers WHERE id = :id AND workspace_id = :ws FOR UPDATE"),
+                     {"id": str(server_id), "ws": workspace_id}).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="MCP server not found")
+    if (row.governance or {}).get("revision", 0) != body.revision:
+        raise HTTPException(status_code=409, detail="MCP review changed; reload before retrying")
+    try:
+        updated = transition(row.governance, body.action, body.digest)
+    except MCPGovernanceDenied as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    updated["updated_at"] = datetime.now(timezone.utc).isoformat()
+    result = db.execute(text("UPDATE mcp_servers SET governance = CAST(:value AS jsonb), "
+                             "encrypted_auth = CASE WHEN :revoke THEN NULL ELSE encrypted_auth END "
+                             "WHERE id = :id AND workspace_id = :ws RETURNING *"),
+                        {"id": str(server_id), "ws": workspace_id, "value": json.dumps(updated),
+                         "revoke": body.action == "revoke"}).fetchone()
+    db.add(AuditLog(workspace_id=uuid.UUID(workspace_id), actor_id=actor,
+                    action="mcp." + body.action, resource_type="mcp_server", resource_id=str(server_id),
+                    meta={"state": updated["state"], "revision": updated["revision"],
+                          "digest": updated.get("approved_digest")}))
+    db.commit()
+    return _row_to_out(result)
 
 
 @router.delete("/{server_id}", status_code=204)

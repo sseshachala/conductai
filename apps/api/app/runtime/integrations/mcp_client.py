@@ -125,6 +125,7 @@ async def _list_tools_jsonrpc(server_url: str, token: str | None) -> list[dict]:
             "name": t.get("name", ""),
             "description": t.get("description", "") or "",
             "inputSchema": t.get("inputSchema") if isinstance(t.get("inputSchema"), dict) else {},
+            **{key: t[key] for key in ("outputSchema", "annotations", "title") if key in t},
         }
         for t in tools
     ]
@@ -177,6 +178,8 @@ def _tools_to_dicts(tools) -> list[dict]:
             "name": t.name,
             "description": t.description or "",
             "inputSchema": t.inputSchema if isinstance(t.inputSchema, dict) else {},
+            **{key: getattr(t, key) if not hasattr(getattr(t, key), "model_dump") else getattr(t, key).model_dump(exclude_none=True)
+               for key in ("outputSchema", "annotations", "title") if getattr(t, key, None) is not None},
         }
         for t in tools
     ]

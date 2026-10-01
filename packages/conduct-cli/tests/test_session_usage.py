@@ -291,3 +291,51 @@ def test_oversized_tool_line_and_partial_line_recovery(setup, monkeypatch):
     append(path, codex())
     assert collect(setup)
     assert json.loads(journal.call_args.args[0])["input_tokens"] == 100
+
+
+def test_model_switch_keeps_usage_slices_separate(setup):
+    _, path, _, journal = setup
+    collect(setup)
+    append(path, {"type": "session_meta", "payload": {"model_provider": "openai"}})
+    append(path, {"type": "turn_context", "payload": {"model": "model-a"}})
+    append(path, codex())
+    append(path, {"type": "turn_context", "payload": {"model": "model-b"}})
+    append(path, codex(200, 60))
+    assert collect(setup)
+    parts = json.loads(journal.call_args.args[0])["usage"]
+    assert [p["model"] for p in parts] == ["model-a", "model-b"]
+    assert sum(p["uncached_input_tokens"] + p["cache_read_tokens"] for p in parts) == 200
+    assert sum(p["output_tokens"] for p in parts) == 60
+
+
+def test_claude_cache_categories_and_model_without_inventing_provider(setup):
+    _, path, _, journal = setup
+    collect(setup, "claude-code")
+    event = claude()
+    event["message"]["model"] = "claude-test"
+    append(path, event)
+    collect(setup, "claude-code")
+    part = json.loads(journal.call_args.args[0])["usage"][0]
+    assert part == {"model": "claude-test", "provider": None, "uncached_input_tokens": 100,
+                    "cache_read_tokens": 50, "cache_write_tokens": 10, "output_tokens": 30}
+
+
+def test_private_model_metadata_is_not_uploaded(setup):
+    _, path, _, journal = setup
+    collect(setup)
+    append(path, {"type": "turn_context", "payload": {"model": "sk-private-fixture"}})
+    append(path, codex())
+    collect(setup)
+    assert "sk-private-fixture" not in journal.call_args.args[0]
+
+
+def test_unknown_cache_breakdown_does_not_invent_uncached_tokens(setup):
+    _, path, _, journal = setup
+    collect(setup)
+    event = codex()
+    del event["payload"]["info"]["total_token_usage"]["cached_input_tokens"]
+    append(path, event)
+    collect(setup)
+    payload = json.loads(journal.call_args.args[0])
+    assert "usage" not in payload
+    assert payload["input_tokens"] == 100

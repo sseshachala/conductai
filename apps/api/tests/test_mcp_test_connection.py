@@ -40,6 +40,8 @@ def _stub_deps(monkeypatch, *, workspace_id="ws-1", saved_token=None, saved_ws="
     if saved_token is not None and saved_ws == workspace_id:
         fake_row = MagicMock()
         fake_row.encrypted_auth = _encrypt({"token": saved_token})
+        fake_row.url = "https://example.com/mcp"
+        fake_row.governance = None
         fake_db.execute.return_value.fetchone.return_value = fake_row
     else:
         fake_db.execute.return_value.fetchone.return_value = None
@@ -114,10 +116,8 @@ def test_saved_token_ignored_when_server_id_from_other_workspace(monkeypatch):
             "server_id": "row-from-ws-B",
         },
     )
-    assert r.status_code == 200
-    # list_tools was called with None (row lookup returned no match under ws-A)
-    args, _ = mock_list.call_args
-    assert args[1] is None
+    assert r.status_code == 404
+    mock_list.assert_not_called()
 
 
 def test_no_server_id_no_token_falls_through_to_credential_key(monkeypatch):
@@ -139,3 +139,12 @@ def test_no_server_id_no_token_falls_through_to_credential_key(monkeypatch):
     assert r.status_code == 200
     args, _ = mock_list.call_args
     assert args[1] == "env-fallback-token"
+
+
+def test_saved_token_cannot_be_sent_to_another_destination(monkeypatch):
+    mock_list = _stub_deps(monkeypatch, saved_token="saved-token-xxx")
+    response = TestClient(app).post("/mcp-servers/test-connection", json={
+        "url": "https://different.example/mcp", "server_id": "row-1",
+    })
+    assert response.status_code == 422
+    mock_list.assert_not_called()

@@ -95,6 +95,10 @@ def collect(session_id: str, hook_path: Path, expected: tuple) -> bool:
                        "snapshot_id": record["id"], "observed_at": record["observed_at"],
                        "input_tokens": delta["input"] + delta["cache_read"] + delta["cache_write"],
                        "output_tokens": delta["output"]}
+            payload["usage"] = [{"uncached_input_tokens": delta["input"],
+                                 "cache_read_tokens": delta["cache_read"],
+                                 "cache_write_tokens": delta["cache_write"],
+                                 "output_tokens": delta["output"]}]
             if not base.journal_append(json.dumps(payload), expected[0], "/guard/events/session-usage"):
                 return queued
             _save(state, {**record, "context": context_key})

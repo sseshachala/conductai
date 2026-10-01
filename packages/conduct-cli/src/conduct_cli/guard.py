@@ -242,6 +242,13 @@ def register_guard_parser(sub):
     editor_p.add_argument("--tool", required=True, choices=["cursor", "windsurf"])
     editor_p.add_argument("--remove", action="store_true", help="Remove only Conduct's editor hook entries")
 
+    review_p = guard_sub.add_parser("mcp-review", help="Review registered MCP servers in the selected workspace")
+    review_p.add_argument("action", choices=["list", "inspect", "require_review", "approve", "quarantine", "revoke", "restore"])
+    review_p.add_argument("--server", help="Registered MCP server UUID")
+    review_p.add_argument("--revision", type=int, help="Current review revision from list")
+    review_p.add_argument("--digest", help="Reviewed catalog digest from inspect")
+    review_p.add_argument("--yes", action="store_true", help="Confirm removal of the saved registration credential")
+
     # conduct guard watch
     watch_p = guard_sub.add_parser("watch", help="Start background daemon — scans every 15 min, auto-pushes to Guard")
     watch_p.add_argument("--stop",   action="store_true", help="Stop the running watch daemon")
@@ -304,6 +311,9 @@ def dispatch_guard(args, guard_p):
         except (OSError, ValueError, TimeoutError):
             print("Editor hook configuration could not be updated; left unchanged.")
             raise SystemExit(1) from None
+    elif guard_command == "mcp-review":
+        from conduct_cli.guard_commands.mcp_review import run
+        run(args)
     elif guard_command == "watch":
         cmd_guard_watch(args)
     elif guard_command == "lint":

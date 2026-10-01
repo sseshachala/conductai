@@ -8,6 +8,7 @@ import { ALL_COLUMNS, type ColumnKey } from "./common/GuardToolbar"
 import { formatTokensUsed } from "./common/formatTokens"
 import { AskLensLink } from "@/components/glens/AskLensLink"
 import { AttributionDetails, type FederationAttribution } from "@/components/federation/AttributionDetails"
+import { SessionUsageDetails, type SessionUsageEvidence } from "./SessionUsageDetails"
 
 // Per-column grid weights — kept in one place so ActivityHeader and
 // ActivityRow can't drift. Mirrors the historical 8-column template.
@@ -90,6 +91,7 @@ export interface AuditEvent {
   evaluated_rules?: Array<{ rule_id: string | null; severity?: string; action?: string }> | null
   defense_score?: number | null
   routing_meta?: {
+    session_usage?: SessionUsageEvidence
     tier_form?: string | null
     resolved_model?: string | null
     endpoint_provider?: string | null
@@ -621,6 +623,7 @@ export function ActivityRow({ ev, compact = false, isLast = false, visibleColumn
           </div>
         )}
         {ev.federation && <AttributionDetails value={ev.federation} />}
+        {ev.routing_meta?.session_usage && <SessionUsageDetails value={ev.routing_meta.session_usage} />}
         {ev.routing_meta && (ev.routing_meta.tier_form || ev.routing_meta.resolved_model || ev.routing_meta.resolution_source) && (
           <div>
             <span style={{ color: "var(--text-muted)", fontWeight: 600, marginRight: 6 }}>Routed</span>
