@@ -25,6 +25,7 @@ from app.modules.guard.routers import notifications as guard_notifications
 from app.modules.guard.routers import trial as guard_trial
 from app.modules.guard.routers import inbox as guard_inbox
 from app.modules.guard.routers import approvals as guard_approvals
+from app.modules.guard.routers import fixture_approvals as guard_fixture_approvals
 from app.modules.guard.routers import blocks as guard_blocks
 from app.modules.guard.routers import session_reports as guard_session_reports
 from app.modules.guard.routers import mcp as guard_mcp
@@ -265,6 +266,7 @@ app.include_router(guard_notifications.router)
 app.include_router(guard_trial.router)
 app.include_router(guard_inbox.router)
 app.include_router(guard_approvals.router)
+app.include_router(guard_fixture_approvals.router)
 app.include_router(guard_blocks.router)
 app.include_router(guard_session_reports.router)
 app.include_router(guard_mcp.router)

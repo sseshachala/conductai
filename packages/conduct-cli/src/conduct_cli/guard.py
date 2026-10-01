@@ -250,6 +250,15 @@ def register_guard_parser(sub):
     review_p.add_argument("--mode", choices=["off", "audit", "block", "redact"], help="Registered MCP JSON response inspection mode")
     review_p.add_argument("--yes", action="store_true", help="Confirm removal of the saved registration credential")
 
+    fixtures_p = guard_sub.add_parser("fixture-review", help="Review an exact synthetic test edit for another workspace user")
+    fixtures_p.add_argument("action", choices=["fingerprint", "approve", "list", "revoke"])
+    fixtures_p.add_argument("--action-file", help="Local JSON with tool_name, tool_input and cwd; never uploaded")
+    fixtures_p.add_argument("--subject", help="Mapped user ID whose hook will make the edit")
+    fixtures_p.add_argument("--reason", help="Review reason; do not include fixture contents or secrets")
+    fixtures_p.add_argument("--reviewed-synthetic", action="store_true", help="Confirm the entire edit contains only synthetic fixture material")
+    fixtures_p.add_argument("--ttl-seconds", type=int, default=600)
+    fixtures_p.add_argument("--approval", help="Approval UUID to revoke")
+
     links_p = guard_sub.add_parser("mcp-links", help="Associate discovered MCP references with workspace registrations")
     links_p.add_argument("action", choices=["list", "link", "unlink"])
     links_p.add_argument("--installation", help="Inventory agent_id UUID from list")
@@ -322,6 +331,9 @@ def dispatch_guard(args, guard_p):
             raise SystemExit(1) from None
     elif guard_command == "mcp-review":
         from conduct_cli.guard_commands.mcp_review import run
+        run(args)
+    elif guard_command == "fixture-review":
+        from conduct_cli.guard_commands.fixture_review import run
         run(args)
     elif guard_command == "mcp-links":
         from conduct_cli.guard_commands.mcp_links import run
