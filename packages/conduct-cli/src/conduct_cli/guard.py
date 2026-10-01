@@ -259,6 +259,9 @@ def register_guard_parser(sub):
     fixtures_p.add_argument("--ttl-seconds", type=int, default=600)
     fixtures_p.add_argument("--approval", help="Approval UUID to revoke")
 
+    spend_p = guard_sub.add_parser("session-spend", help="Read reported session usage and linked Gateway receipt totals")
+    spend_p.add_argument("--event", required=True, help="Session usage event UUID from Activity")
+
     links_p = guard_sub.add_parser("mcp-links", help="Associate discovered MCP references with workspace registrations")
     links_p.add_argument("action", choices=["list", "link", "unlink"])
     links_p.add_argument("--installation", help="Inventory agent_id UUID from list")
@@ -334,6 +337,9 @@ def dispatch_guard(args, guard_p):
         run(args)
     elif guard_command == "fixture-review":
         from conduct_cli.guard_commands.fixture_review import run
+        run(args)
+    elif guard_command == "session-spend":
+        from conduct_cli.guard_commands.session_spend import run
         run(args)
     elif guard_command == "mcp-links":
         from conduct_cli.guard_commands.mcp_links import run

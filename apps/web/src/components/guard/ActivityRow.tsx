@@ -9,6 +9,7 @@ import { formatTokensUsed } from "./common/formatTokens"
 import { AskLensLink } from "@/components/glens/AskLensLink"
 import { AttributionDetails, type FederationAttribution } from "@/components/federation/AttributionDetails"
 import { SessionUsageDetails, type SessionUsageEvidence } from "./SessionUsageDetails"
+import { SessionSpend } from "./SessionSpend"
 
 // Per-column grid weights — kept in one place so ActivityHeader and
 // ActivityRow can't drift. Mirrors the historical 8-column template.
@@ -623,7 +624,10 @@ export function ActivityRow({ ev, compact = false, isLast = false, visibleColumn
           </div>
         )}
         {ev.federation && <AttributionDetails value={ev.federation} />}
-        {ev.routing_meta?.session_usage && <SessionUsageDetails value={ev.routing_meta.session_usage} />}
+        {ev.routing_meta?.session_usage && <>
+          <SessionUsageDetails value={ev.routing_meta.session_usage} />
+          <SessionSpend eventId={ev.id} />
+        </>}
         {ev.routing_meta && (ev.routing_meta.tier_form || ev.routing_meta.resolved_model || ev.routing_meta.resolution_source) && (
           <div>
             <span style={{ color: "var(--text-muted)", fontWeight: 600, marginRight: 6 }}>Routed</span>

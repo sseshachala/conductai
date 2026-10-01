@@ -1,5 +1,7 @@
 # MCP review and session usage
 
+For reported estimates and linked Gateway receipts, see [Session spend](session-spend.md).
+
 ## Review a registered MCP server
 
 In **Integrations**, select **Require review**, then **Inspect tools**.

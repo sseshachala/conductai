@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from typing import Literal
 from uuid import UUID
 
-from sqlalchemy import select, tuple_
+from sqlalchemy import and_, or_, select
 
 from app.models.llm_attempt_receipt import LlmAttemptReceipt
 from app.runtime.accounting.contracts import CONTRACT_VERSION
@@ -102,7 +102,7 @@ def _totals(attempts, *, request_count, missing_requests, coverage_complete):
     )
 
 
-def read_request_evidence(db, *, workspace_id: UUID, requests: dict[UUID, UUID]):
+def read_request_evidence(db, *, workspace_id: UUID, requests: dict[UUID, UUID | None]):
     """Caller must authorize each request/identity pair before invoking.
 
     Bounded batch, one receipt query, and one audit coverage query. Joins are
@@ -120,7 +120,8 @@ def read_request_evidence(db, *, workspace_id: UUID, requests: dict[UUID, UUID])
     fields = list(AttemptEvidence.__dataclass_fields__)
     rows = db.execute(select(*(getattr(model, key) for key in fields)).where(
         model.workspace_id == workspace_id,
-        tuple_(model.request_id, model.agent_identity_id).in_(list(requests.items())),
+        or_(*(and_(model.request_id == request_id, model.agent_identity_id == identity_id)
+              for request_id, identity_id in requests.items())),
     ).order_by(model.request_id, model.attempt_ordinal)).mappings().all()
     grouped = {request_id: [] for request_id in requests}
     for row in rows:
