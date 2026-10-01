@@ -18,7 +18,9 @@ log = structlog.get_logger(__name__)
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, PrivateAttr, model_validator
+
+from app.modules.guard.session_usage import UsageSlice, usage_evidence
 from sqlalchemy.orm import Session
 
 from app.core.auth import (
@@ -107,6 +109,7 @@ def _now() -> datetime:
 # ── Pydantic schemas ──────────────────────────────────────────────────────────
 
 class HookEvent(BaseModel):
+    _session_usage: dict | None = PrivateAttr(default=None)
     workspace_id: str
     clerk_user_id: str | None = None
     session_id: str | None = None
@@ -763,6 +766,16 @@ class SessionUsageReport(BaseModel):
     input_tokens: int = Field(ge=0, le=2**31 - 1, strict=True)
     output_tokens: int = Field(ge=0, le=2**31 - 1, strict=True)
     ai_tool: Literal["copilot-cli", "codex", "codex-cli", "codex-desktop", "claude-code"] = "copilot-cli"
+    usage: list[UsageSlice] | None = Field(default=None, max_length=100)
+
+    @model_validator(mode="after")
+    def usage_matches_totals(self):
+        if self.usage is not None and (
+            sum(p.input_tokens for p in self.usage) != self.input_tokens
+            or sum(p.output_tokens for p in self.usage) != self.output_tokens
+        ):
+            raise ValueError("usage slices must match reported token totals")
+        return self
 
 
 @router.post("/session-usage", response_model=EventOut, status_code=201)
@@ -797,8 +810,9 @@ def ingest_session_usage(
         tokens_before=body.input_tokens, tokens_after=body.output_tokens,
         rule_message=(f"{body.ai_tool} reported session usage since the previous usage snapshot. "
                       "Cache and reasoning tokens are included once. "
-                      f"Observed at {body.observed_at.isoformat()}. Cost unavailable; not Gateway usage."),
+                      f"Observed at {body.observed_at.isoformat()}. Client reported; not Gateway usage."),
     )
+    event._session_usage = usage_evidence(body)
     return ingest_event(event, request, background, db, auth_context)
 
 
@@ -869,6 +883,7 @@ def ingest_event(
         policy_hash=policy_hash,
         goal_id=body.goal_id,
         goal_name=body.goal_name,
+        routing_meta={"session_usage": body._session_usage} if body._session_usage else None,
     )
     db.add(event)
     db.flush()  # get event.id before commit

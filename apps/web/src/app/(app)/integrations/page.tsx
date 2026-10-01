@@ -10,10 +10,12 @@ import { API } from "@/lib/api"
 import AppShell from "@/components/AppShell"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 import { MCP_PROVIDERS, getProvider } from "@/lib/mcpProviders"
+import { McpReview, type McpGovernance } from "@/components/settings/McpReview"
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface McpServer {
+  governance?: McpGovernance | null
   id: string
   workspace_id: string
   environment_id: string | null
@@ -643,6 +645,8 @@ function IntegrationsPageInner({
                         </div>
                       </div>
                     </div>
+                    <McpReview id={server.id} governance={server.governance}
+                      onChange={governance => setServers(prev => prev.map(s => s.id === server.id ? { ...s, governance } : s))} />
                   </div>
                 )
               })}

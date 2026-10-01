@@ -43,7 +43,7 @@ def discover_mcp_tools(
     if body.server_id is not None:
         row = db.execute(
             text(
-                "SELECT url, transport, encrypted_auth"
+                "SELECT url, transport, encrypted_auth, governance"
                 " FROM mcp_servers"
                 " WHERE id = :id AND workspace_id = :ws"
             ),
@@ -51,6 +51,11 @@ def discover_mcp_tools(
         ).fetchone()
         if not row:
             raise HTTPException(status_code=404, detail="MCP server not found")
+        from app.runtime.mcp_governance import assert_connectable, MCPGovernanceDenied
+        try:
+            assert_connectable(row.governance)
+        except MCPGovernanceDenied as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
         server_url = row.url
         transport = row.transport or body.transport
         token = _decrypt(row.encrypted_auth).get("token") if row.encrypted_auth else None

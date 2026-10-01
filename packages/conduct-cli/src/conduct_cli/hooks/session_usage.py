@@ -19,6 +19,7 @@ from uuid import UUID, NAMESPACE_URL, uuid4, uuid5
 from conduct_cli.credential_lock import credential_lock
 from . import base
 from .copilot_usage import context, _save
+from .usage_details import FIELDS, add_delta, categories, identifier
 
 MAX_LINE = 16 * 1024 * 1024
 SURFACES = {"codex", "codex-cli", "codex-desktop", "claude-code"}
@@ -45,6 +46,8 @@ def _count(value):
 
 
 def _scan(path: Path, state: dict, surface: str) -> None:
+    state["pending_usage"] = []
+    state["usage_complete"] = True
     stat = path.stat()
     if state["offset"] > stat.st_size or state.get("inode", stat.st_ino) != stat.st_ino:
         raise ValueError("Transcript replaced or truncated")
@@ -76,6 +79,10 @@ def _scan(path: Path, state: dict, surface: str) -> None:
                 payload = event.get("payload") or {}
                 if not isinstance(payload, dict):
                     continue
+                if event.get("type") == "session_meta":
+                    state["provider"] = identifier(payload.get("model_provider"))
+                if event.get("type") == "turn_context":
+                    state["model"] = identifier(payload.get("model"))
                 if event.get("type") != "event_msg" or payload.get("type") != "token_count":
                     continue
                 info = payload.get("info") or {}
@@ -91,6 +98,11 @@ def _scan(path: Path, state: dict, surface: str) -> None:
                 # Output already includes reasoning; input already includes cache.
                 if state["counts"] is not None and any(a < b for a, b in zip(current, state["counts"])):
                     state["reset"] = True
+                detail = categories(usage, "codex")
+                if not add_delta(state["pending_usage"], detail, state.get("detail_counts"),
+                                 state.get("model"), state.get("provider")):
+                    state["usage_complete"] = False
+                state["detail_counts"] = detail
                 state["counts"] = current
             elif event.get("type") == "assistant":
                 message = event.get("message") or {}
@@ -108,6 +120,13 @@ def _scan(path: Path, state: dict, surface: str) -> None:
                     continue
                 key = hashlib.sha256(message_id.encode()).hexdigest()
                 previous = state["messages"].get(key, [0, 0])
+                detail = categories(usage, "claude")
+                old_detail = state["message_details"].get(key, dict.fromkeys(FIELDS, 0))
+                if detail is not None and old_detail is not None:
+                    detail = {k: max(detail[k], old_detail[k]) for k in FIELDS}
+                if not add_delta(state["pending_usage"], detail, old_detail, message.get("model")):
+                    state["usage_complete"] = False
+                state["message_details"][key] = detail
                 # Streaming transcript entries can repeat or extend one message.
                 current = [max(a, b) for a, b in zip(current, previous)]
                 state["counts"] = [a + b - c for a, b, c in zip(state["counts"], current, previous)]
@@ -128,13 +147,17 @@ def collect(data: dict, surface: str, expected: tuple) -> bool:
     with credential_lock(cursor, timeout=1):
         fresh = not cursor.exists()
         state = json.loads(cursor.read_text()) if not fresh else {}
-        fresh = fresh or state.get("context") != context_key
+        fresh = fresh or state.get("context") != context_key or state.get("version") != 2
         if fresh:
-            state = {"offset": 0, "counts": [0, 0], "messages": {}, "ai_tool": surface, "context": context_key, "epoch": str(uuid4())}
+            state = {"version": 2, "offset": 0, "counts": [0, 0], "messages": {}, "message_details": {},
+                     "detail_counts": dict.fromkeys(FIELDS, 0), "ai_tool": surface,
+                     "context": context_key, "epoch": str(uuid4())}
         stat = path.stat()
         if state["offset"] > stat.st_size or state.get("inode", stat.st_ino) != stat.st_ino:
             fresh = True
-            state = {"offset": 0, "counts": [0, 0], "messages": {}, "ai_tool": surface, "context": context_key, "epoch": str(uuid4())}
+            state = {"version": 2, "offset": 0, "counts": [0, 0], "messages": {}, "message_details": {},
+                     "detail_counts": dict.fromkeys(FIELDS, 0), "ai_tool": surface,
+                     "context": context_key, "epoch": str(uuid4())}
         # Refine old generic cursors without resetting their usage baseline.
         if state.get("ai_tool") == "codex" and surface in {"codex-cli", "codex-desktop"}:
             state["ai_tool"] = surface
@@ -151,9 +174,17 @@ def collect(data: dict, surface: str, expected: tuple) -> bool:
                        "snapshot_id": str(uuid5(NAMESPACE_URL, json.dumps([key, context_key, state["epoch"], state["offset"], before, after]))),
                        "observed_at": datetime.now(timezone.utc).isoformat(),
                        "input_tokens": _count(delta[0]), "output_tokens": _count(delta[1])}
+            parts = state["pending_usage"]
+            if state["usage_complete"] and (
+                sum(p[k] for p in parts for k in FIELDS[:3]) == delta[0]
+                and sum(p["output_tokens"] for p in parts) == delta[1]
+            ):
+                payload["usage"] = parts
             if not base.journal_append(json.dumps(payload), expected[0], "/guard/events/session-usage"):
                 return False
             queued = True
+        state.pop("pending_usage", None)
+        state.pop("usage_complete", None)
         _save(cursor, state)
     if queued:
         base.ensure_drain_daemon(base.GUARD_DIR / "hook.py")

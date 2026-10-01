@@ -33,6 +33,7 @@ def resolve_mcp_server(
     Returns None if the server isn't registered.
     """
     from sqlalchemy import text as _text
+
     from app.core.crypto import decrypt as _decrypt
 
     # ponytail: try UUID first (canvas path), then fall back to name lookup
@@ -42,17 +43,25 @@ def resolve_mcp_server(
     row = None
     if server_id:
         row = db.execute(
-            _text("SELECT url, transport, encrypted_auth, name, environment_id FROM mcp_servers WHERE id = :id AND workspace_id = :ws"),
+            _text("SELECT id, url, transport, encrypted_auth, name, environment_id, governance FROM mcp_servers WHERE id = :id AND workspace_id = :ws"),
             {"id": server_id, "ws": workspace_id},
         ).fetchone()
     if not row and server_name:
         row = db.execute(
-            _text("SELECT url, transport, encrypted_auth, name, environment_id FROM mcp_servers WHERE name = :name AND workspace_id = :ws"),
+            _text("SELECT id, url, transport, encrypted_auth, name, environment_id, governance FROM mcp_servers WHERE name = :name AND workspace_id = :ws"),
             {"name": server_name, "ws": workspace_id},
         ).fetchone()
 
     if not row:
         return None
+
+    from app.runtime.mcp_governance import (
+        MCPGovernanceDenied,
+        assert_callable,
+        fingerprint,
+    )
+    governance = getattr(row, "governance", None)
+    assert_callable(governance)
 
     token: str | None = None
 
@@ -68,6 +77,18 @@ def resolve_mcp_server(
             handle, field = handle_field
             token = _resolve_from_integration(handle, field, workspace_id, environment_id or row.environment_id, db)
 
+    if governance is not None:
+        from app.runtime.integrations.mcp_client import list_tools
+        try:
+            tools, _ = list_tools(row.url, token, row.transport or "http")
+        except Exception as exc:
+            raise MCPGovernanceDenied("MCP catalog verification unavailable") from exc
+        digest = fingerprint(tools)
+        latest = db.execute(_text("SELECT governance FROM mcp_servers WHERE id = :id AND workspace_id = :ws"),
+                            {"id": str(row.id), "ws": workspace_id}).fetchone()
+        if not latest or not latest.governance or latest.governance != governance:
+            raise MCPGovernanceDenied("MCP review changed during verification; retry required")
+        assert_callable(latest.governance, digest)
     return (row.url, row.transport or "http", token)
 
 
@@ -76,8 +97,8 @@ def _resolve_from_integration(
 ) -> str | None:
     """Look up a credential from the Integration store."""
     try:
-        from app.models.integration import Integration
         from app.core.crypto import decrypt as _decrypt
+        from app.models.integration import Integration
 
         q = db.query(Integration).filter(
             Integration.workspace_id == workspace_id,
