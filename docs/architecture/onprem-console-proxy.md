@@ -4,7 +4,7 @@
 
 Implementation and signed-fixture tests are available. On September 30, 2026,
 all 10 local browser canaries passed using hosted Keycloak and oauth2-proxy.
-Disconnected-network and customer HPE acceptance remain pending. See the
+Disconnected-network and customer deployment acceptance remain pending. See the
 [installation guide](../reference/onprem-deployment.md) for scope and the three
 additional acceptance stages. Do not describe this as verified air-gap support.
 

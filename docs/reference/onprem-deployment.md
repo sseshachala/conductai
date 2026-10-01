@@ -1,6 +1,6 @@
 ## On-prem deployment
 
-For HPE Private Cloud AI and other private-cloud installations, Conduct uses
+For on-premises and private-cloud installations, Conduct uses
 customer-controlled Keycloak for console login and existing Conduct permissions
 for authorization. SaaS continues to use Clerk. Workspace OIDC delegation is a
 separate trust relationship; console login never creates delegation grants.
@@ -9,7 +9,7 @@ separate trust relationship; console login never creates delegation grants.
 
 The September 30, 2026 verification recorded 33 passing SaaS canaries and 10
 passing local console canaries using hosted Keycloak. This is compatibility
-evidence, not HPE certification or air-gap acceptance. The current Docker console
+evidence, not deployment certification or air-gap acceptance. The current Docker console
 launcher is a disposable evaluation environment, not a production installer.
 The existing Helm chart needs proxy/runtime-auth packaging updates before it can
 be used as a turnkey Keycloak installation. Do not deploy it unchanged expecting
@@ -20,7 +20,7 @@ the tested console topology.
 | Path | Intended use | Required acceptance |
 | --- | --- | --- |
 | Docker evaluation | Validate identity and CLI integration with test users | Console browser and MCP checks |
-| Private cloud / HPE PCAI | Operator-managed TLS, registry, secrets, data services and ingress | Customer-specific deployment, backup/restore and security acceptance |
+| Private cloud | Operator-managed TLS, registry, secrets, data services and ingress | Customer-specific deployment, backup/restore and security acceptance |
 | Disconnected installation | All runtime dependencies and model serving inside the boundary | Cold start without internet, all functional checks and network evidence |
 
 ### Prerequisites
@@ -135,13 +135,13 @@ Use `SSL_CERT_FILE` for Python CLI trust if needed. Check generated endpoints be
 running a real sync. Console logout, CLI-token revocation and delegation-grant
 revocation are distinct operations.
 
-### HPE PCAI packaging
+### Kubernetes packaging
 
-The chart lives in `deploy/helm/conduct`. Before an HPE Import Framework delivery,
+The chart lives in `deploy/helm/conduct`. Before a customer deployment,
 complete the chart's proxy-auth packaging checklist and validate against the target
-PCAI version. Required operator inputs include the ingress gateway, customer DNS,
+Kubernetes distribution and version. Required operator inputs include the ingress gateway, customer DNS,
 TLS termination, storage classes, secret references and private-registry paths.
-Do not assume a universal HPE hostname, service account, storage class or resource size.
+Do not assume a universal hostname, service account, storage class or resource size.
 
 The packaging gate includes oauth2-proxy, runtime web settings, private CA mounts,
 header sanitization, separate machine ingress, explicit bootstrap, offline image
@@ -149,7 +149,6 @@ references and backup/restore. The current chart's embedded database services ar
 single replica, not an HA promise. Image tags, chart version and CLI version must
 be pinned together and tested before publishing a customer installation bundle.
 
-HPE documents its [Import Framework workflow](https://developer.hpe.com/blog/build-your-first-ai-chatbot-on-hpe-private-cloud-ai-using-flowise-and-hpe-mlis/).
 Keycloak documents [production container deployment](https://www.keycloak.org/server/containers);
 use the official [oauth2-proxy Keycloak configuration](https://github.com/oauth2-proxy/oauth2-proxy/blob/master/docs/docs/configuration/providers/keycloak_oidc.md).
 
@@ -219,7 +218,7 @@ recovery evidence. Failed internet probes alone do not prove isolation.
 
 Run the air-gap stage only inside this prepared environment. It reruns functional
 checks and records operator attestations separately; it does not install a firewall
-or certify HPE. Customer-domain browser acceptance must be recorded separately from
+or certify a deployment. Customer-domain browser acceptance must be recorded separately from
 the localhost fixture. No external email, telemetry, fonts, plugins, update checks,
 registry access or model downloads may be required for the accepted workflows.
 

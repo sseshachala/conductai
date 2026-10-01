@@ -108,7 +108,7 @@ def main(argv=None):
               "status": "incomplete", "checks": [],
               "airgap": {"status": "operator_attested" if digest else "not_verified",
                          "evidence_sha256": digest},
-              "limits": ["Not HPE certification", "Console automation targets the localhost fixture",
+              "limits": ["Not deployment certification", "Console automation targets the localhost fixture",
                          "Network isolation and provider logs require independent operator review"]}
     # Exclusive creation protects configs and existing acceptance records from overwrite.
     with args.report.open("x") as output:

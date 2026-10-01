@@ -2,7 +2,7 @@
 
 ## Status
 
-This chart is a packaging foundation, not a turnkey HPE PCAI or air-gapped
+This chart is a packaging foundation, not a turnkey private-cloud or air-gapped
 Keycloak installation. It predates the console proxy topology verified in
 PR #2304. Do not deploy it unchanged expecting that topology.
 
@@ -28,7 +28,7 @@ Resource defaults are not production sizing recommendations.
 - Run migrations as a controlled deployment step, not racing API replicas.
 - Add readiness, disruption, backup/restore and upgrade acceptance for the target environment.
 - Pin all images and publish an offline artifact inventory and checksums.
-- Validate HPE Import Framework inputs against the customer's PCAI version,
+- Validate deployment inputs against the customer's Kubernetes distribution and version,
   ingress, storage, registry and secret-management configuration.
 
 Use externally managed secrets through `secrets.existingSecret`; verify its key
