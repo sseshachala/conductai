@@ -231,7 +231,12 @@ def cmd_guard_discover(args):
     except (Exception, SystemExit):
         print("Upload failed; local findings only. Server evidence unavailable.")
     for item in report.get("server_inventory", {}).get("agents", report["agents"]):
-        print(f"  {item['framework']} [{item['detection']}] | hooks: {item.get('hooks_status', 'unverified')} | gateway: {item.get('gateway_status', 'unverified')}")
+        evidence = item.get("evidence", {})
+        hooks = item.get("hooks_status", "configured" if evidence.get("hooks_configured") else "unverified")
+        mcp = item.get("mcp_configured", evidence.get("mcp_configured", False))
+        gateway = item.get("gateway_status", evidence.get("gateway_connection_status",
+                           "configured" if evidence.get("gateway_configured") else "unverified"))
+        print(f"  {item['framework']} [{item['detection']}] | hooks: {hooks} | MCP: {'configured' if mcp else 'unverified'} | gateway: {gateway}")
     print("Configuration is not proof of enforcement. Run conduct guard sync for supported tool setup.")
     if getattr(args, "report", None):
         Path(args.report).write_text(json.dumps(report, indent=2))

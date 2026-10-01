@@ -18,6 +18,17 @@ beforeEach(() => {
 })
 afterEach(cleanup)
 
+it.each(["claude-code", "codex", "copilot-cli"])("shows connection verification separately from hook activity for %s", async framework => {
+  state.fetch.mockResolvedValue(new Response(JSON.stringify([{
+    id: "one", framework, device_id: "device-a", installation_id: "install-a",
+    freshness: "fresh", hooks_status: "unverified", gateway_status: "connection_verified", mcp_configured: true,
+    last_seen_at: "2026-10-01T00:00:00Z",
+  }])))
+  render(<ToolSetupPanel workspaceId="ws" isAdmin={false} />)
+  expect(await screen.findByText("Connection verified")).toBeInTheDocument()
+  expect(screen.queryByText("Activity observed")).toBeNull()
+})
+
 it("uses deployment-specific login commands and refuses unsafe URLs", () => {
   expect(setupCommand("https://api.conductai.ai", "https://app.conductai.ai")).toBe("conduct login")
   expect(setupCommand("https://localhost:3444", "https://localhost:3443")).toContain('--server "https://localhost:3444"')

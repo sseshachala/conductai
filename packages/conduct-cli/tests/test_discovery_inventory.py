@@ -130,3 +130,70 @@ def test_gateway_probe_never_sends_provider_credentials(monkeypatch):
     report = {"agents": [{"framework": "codex", "evidence": {"gateway_configured": True}}]}
     inventory.verify_gateway(report, "provider-test-key")
     assert report["agents"][0]["evidence"]["gateway_connection_status"] == "authentication_failed"
+
+
+@pytest.mark.parametrize("tool,provider,key", [
+    ("claude-code", "anthropic", "data"),
+    ("codex", "openai", "models"),
+    ("copilot-cli", "openai", "models"),
+])
+@pytest.mark.parametrize("status", [200, 302, 401, 403, 500])
+def test_all_clients_verify_the_selected_deployment(monkeypatch, tool, provider, key, status):
+    from unittest.mock import Mock
+    connection = Mock()
+    connection.getresponse.return_value = SimpleNamespace(
+        status=status, read=lambda limit: json.dumps({key: []}).encode())
+    factory = Mock(return_value=connection)
+    monkeypatch.setattr(inventory.http.client, "HTTPSConnection", factory)
+    report = {"agents": [{"framework": tool, "evidence": {"gateway_configured": True}}]}
+    config = {"api_url": "https://api.example", "gateway_url": "https://private.example/gateway/v1"}
+    inventory.verify_gateway(report, "cond_agt_test_only", config)
+    factory.assert_called_once_with("private.example", timeout=8)
+    connection.request.assert_called_once_with("GET", f"/gateway/v1/{provider}/v1/models",
+                                              headers={"Authorization": "Bearer cond_agt_test_only"})
+    expected = "connection_verified" if status == 200 else "authentication_failed" if status in (401, 403) else "unavailable"
+    assert report["agents"][0]["evidence"]["gateway_connection_status"] == expected
+    assert "cond_agt_" not in json.dumps(report)
+    connection.close.assert_called_once()
+
+
+def test_codex_and_copilot_share_one_probe_and_unknown_tools_are_not_verified(monkeypatch):
+    from unittest.mock import Mock
+    connection = Mock()
+    connection.getresponse.return_value = SimpleNamespace(status=200, read=lambda limit: b'{"models":[]}')
+    factory = Mock(return_value=connection)
+    monkeypatch.setattr(inventory.http.client, "HTTPSConnection", factory)
+    report = {"agents": [{"framework": tool, "evidence": {"gateway_configured": configured}}
+                         for tool, configured in [("codex", True), ("copilot-cli", True), ("claude-code", False), ("cursor", True)]]}
+    inventory.verify_gateway(report, "cond_agt_test_only")
+    factory.assert_called_once()
+    for item in report["agents"][:2]:
+        assert item["evidence"]["gateway_connection_status"] == "connection_verified"
+    for item in report["agents"][2:]:
+        assert "gateway_connection_status" not in item["evidence"]
+
+
+@pytest.mark.parametrize("body", [b'{"data":[]}', b'{"models":null}', b'{"models":{}}', b'{}', b'not-json'])
+def test_openai_probe_rejects_wrong_catalog_shape(monkeypatch, body):
+    from unittest.mock import Mock
+    connection = Mock()
+    connection.getresponse.return_value = SimpleNamespace(status=200, read=lambda limit: body)
+    monkeypatch.setattr(inventory.http.client, "HTTPSConnection", lambda *a, **kw: connection)
+    report = {"agents": [{"framework": "copilot-cli", "evidence": {"gateway_configured": True}}]}
+    inventory.verify_gateway(report, "cond_agt_test_only")
+    assert report["agents"][0]["evidence"]["gateway_connection_status"] == "unavailable"
+
+
+def test_local_discovery_prints_probe_and_mcp_results_when_upload_fails(local, monkeypatch, capsys):
+    from conduct_cli.guard_commands import discovery
+    report = {"status": "complete", "agents": [{"framework": "copilot-cli", "detection": "installed",
+              "evidence": {"gateway_configured": True, "gateway_connection_status": "connection_verified",
+                           "hooks_configured": True, "mcp_configured": True}}]}
+    monkeypatch.setattr(inventory, "collect", lambda *a: report)
+    monkeypatch.setattr(inventory, "verify_gateway", lambda *a: None)
+    monkeypatch.setattr(discovery._guard_shared, "_load_guard_config", lambda: {})
+    monkeypatch.setattr(discovery._guard_shared, "_req", lambda *a, **kw: (_ for _ in ()).throw(SystemExit(1)))
+    discovery.cmd_guard_discover(SimpleNamespace(config_only=True, report=None))
+    output = capsys.readouterr().out
+    assert "hooks: configured | MCP: configured | gateway: connection_verified" in output
+    assert "Upload failed" in output
