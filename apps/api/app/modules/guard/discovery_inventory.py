@@ -5,12 +5,13 @@ import uuid
 from sqlalchemy.dialects.postgresql import insert
 
 from app.modules.guard.models import DiscoveredAgent
+from app.core.tool_catalog import CATALOG, TOOLS as TOOL_CATALOG
 
 FRESH_FOR = timedelta(hours=24)
 SIGNALS = {"tool_installation", "running_executable", "dependency_manifest"}
-TOOLS = {"claude-code", "codex", "cursor", "windsurf", "copilot-cli"}
+TOOLS = set(TOOL_CATALOG)
 FRAMEWORKS = TOOLS | {"langchain", "crewai", "autogen", "openai-agents", "llama-index"}
-GATEWAY_CHECKS = {"connection_verified", "authentication_failed", "unavailable"}
+GATEWAY_CHECKS = set(CATALOG["gateway_check_statuses"])
 
 
 def clean_evidence(value):

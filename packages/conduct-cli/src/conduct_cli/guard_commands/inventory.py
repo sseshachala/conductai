@@ -11,7 +11,9 @@ import uuid
 from pathlib import Path
 from urllib.parse import urlparse
 
-TOOLS = ("claude-code", "codex", "cursor", "windsurf", "copilot-cli")
+from conduct_cli.tool_catalog import TOOLS as TOOL_CATALOG
+
+TOOLS = tuple(TOOL_CATALOG)
 DEPENDENCIES = {"langchain": "langchain", "crewai": "crewai", "autogen-agentchat": "autogen",
                 "openai-agents": "openai-agents", "llama-index": "llama-index",
                 "@langchain/core": "langchain", "@openai/agents": "openai-agents"}
@@ -112,7 +114,8 @@ def verify_gateway(report, token, config=None):
     results = {}
     for item in report["agents"]:
         evidence = item["evidence"]
-        provider = {"claude-code": "anthropic", "codex": "openai", "copilot-cli": "openai"}.get(item["framework"])
+        route = TOOL_CATALOG.get(item["framework"], {}).get("gateway")
+        provider = route["provider"] if route else None
         if not provider or not evidence.get("gateway_configured"):
             continue
         if provider not in results:
@@ -155,7 +158,7 @@ def collect(config_only=False):
 
     for tool in TOOLS:
         root = tool_root(tool)
-        executable = {"claude-code": "claude", "copilot-cli": "copilot"}.get(tool, tool)
+        executable = TOOL_CATALOG[tool]["executable"]
         if not root.exists() and not shutil.which(executable):
             continue
         evidence = record(tool)["evidence"]
