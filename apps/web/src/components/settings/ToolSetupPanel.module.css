@@ -1,0 +1,20 @@
+.panel { min-width: 0; color: var(--text); }
+.header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.header h2 { display: flex; align-items: center; gap: 8px; font-size: 18px; margin: 0; }
+.commands { margin: 20px 0 28px; }
+.command { display: flex; gap: 12px; align-items: center; justify-content: space-between; padding: 9px 0; border-bottom: 1px solid var(--border); }
+.command code { overflow-wrap: anywhere; font-size: 12px; }
+.command button { flex-shrink: 0; }
+.tool { padding: 18px 0; border-top: 1px solid var(--border); }
+.tool h3 { font-size: 15px; margin: 0 0 12px; }
+.table { overflow-x: auto; }
+.table table { width: 100%; border-collapse: collapse; font-size: 12px; text-align: left; }
+.table th { font-weight: 500; color: var(--text-3); }
+.table th, .table td { padding: 8px 12px 8px 0; vertical-align: top; min-width: 84px; }
+.table td { border-top: 1px solid var(--border); }
+.models { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 16px; font-size: 12px; margin-top: 12px; }
+.models strong { font-weight: 500; }
+.models code { overflow-wrap: anywhere; }
+.models span { color: var(--text-3); }
+.footer { display: flex; flex-wrap: wrap; gap: 16px; border-top: 1px solid var(--border); padding-top: 18px; font-size: 13px; }
+.footer a { color: var(--link); }

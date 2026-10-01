@@ -8,6 +8,7 @@ import urllib.request
 
 from . import gateway as _guard_gateway
 from . import shared as _guard_shared
+from .copilot import configured as copilot_configured
 
 
 def _detect_ai_tools() -> list[dict]:
@@ -124,7 +125,7 @@ def _detect_ai_tools() -> list[dict]:
         tools.append({
             "name": "copilot-cli", "mcp_registered": mcp_registered,
             "hook_registered": (_guard_shared._copilot_home() / "hooks" / "conduct-guard.json").exists(),
-            "proxy_routed": False,
+            "proxy_routed": copilot_configured(),
         })
 
     vscode_ext_dir = home / ".vscode" / "extensions"

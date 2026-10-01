@@ -168,6 +168,8 @@ def collect(config_only=False):
                 hooks = _document(root / "hooks.json").get("hooks", {})
                 evidence["hooks_configured"] = _managed_hook(hooks.get("PreToolUse", []))
             elif tool == "copilot-cli":
+                from .copilot import configured
+                evidence["gateway_configured"] = configured()
                 servers = _document(root / "mcp-config.json").get("mcpServers", {})
                 hooks = _document(root / "hooks" / "conduct-guard.json").get("hooks", {})
                 evidence["hooks_configured"] = _managed_hook(hooks.get("preToolUse", []))

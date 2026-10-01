@@ -204,14 +204,15 @@ def _remove_legacy_claude_bypass(content: str) -> str:
     )
 
 
-def _write_proxy_env_windows(agent_token: str, proxy_url: str) -> tuple[Path, bool]:
+def _write_proxy_env_windows(agent_token: str, proxy_url: str, *, copilot=True) -> tuple[Path, bool]:
     """Windows equivalent of _write_proxy_env — PowerShell profile + env.ps1."""
     CONDUCT_DIR.mkdir(parents=True, exist_ok=True)
     token = agent_token
     proxy = proxy_url.rstrip("/")
 
     ps1_file = CONDUCT_DIR / "env.ps1"
-    ps1_file.write_text("\n".join([
+    from .copilot import env_lines
+    _write_private_env(ps1_file, "\n".join([
         SHELL_RC_MARKER,
         "# Edit ~/.conduct/env-override.ps1 to add your own vars — sourced after this file.",
         "",
@@ -222,6 +223,7 @@ def _write_proxy_env_windows(agent_token: str, proxy_url: str) -> tuple[Path, bo
         f'$env:OPENAI_BASE_URL = "{proxy}/openai/v1"',
         f'$env:OPENAI_API_KEY  = "{token}"',
         '$env:CONDUCT_GATEWAY_TOKEN = $env:OPENAI_API_KEY',
+        *env_lines(token, proxy, windows=True, enabled=copilot),
         "",
         f'$env:PERPLEXITY_BASE_URL = "{proxy}/perplexity"',
         f'$env:PERPLEXITY_API_KEY  = "{token}"',
@@ -296,7 +298,14 @@ def _migrate_proxy_env_if_stale() -> bool:
     return changed
 
 
-def _write_proxy_env(agent_token: str, proxy_url: str) -> tuple[Path, bool]:
+def _write_private_env(path: Path, content: str) -> None:
+    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(descriptor, "w") as output:
+        os.chmod(path, 0o600)
+        output.write(content)
+
+
+def _write_proxy_env(agent_token: str, proxy_url: str, *, copilot=True) -> tuple[Path, bool]:
     """Write ~/.conduct/env with the 3 provider env-var pairs and ensure the
     user's shell rc sources it.
 
@@ -310,13 +319,14 @@ def _write_proxy_env(agent_token: str, proxy_url: str) -> tuple[Path, bool]:
         return Path(), False
 
     if sys.platform == "win32":
-        return _write_proxy_env_windows(agent_token, proxy_url)
+        return _write_proxy_env_windows(agent_token, proxy_url, copilot=copilot)
 
     CONDUCT_DIR.mkdir(parents=True, exist_ok=True)
     token = agent_token  # cond_agt_* used directly as the bearer value
     proxy = proxy_url.rstrip("/")
 
-    PROXY_ENV_FILE.write_text("\n".join([
+    from .copilot import env_lines
+    _write_private_env(PROXY_ENV_FILE, "\n".join([
         SHELL_RC_MARKER,
         "# Edit ~/.conduct/env-override to add your own vars — sourced after this file.",
         "",
@@ -327,6 +337,7 @@ def _write_proxy_env(agent_token: str, proxy_url: str) -> tuple[Path, bool]:
         f'export OPENAI_BASE_URL="{proxy}/openai/v1"',
         f'export OPENAI_API_KEY="{token}"',
         'export CONDUCT_GATEWAY_TOKEN="$OPENAI_API_KEY"',
+        *env_lines(token, proxy, enabled=copilot),
         "",
         f'export PERPLEXITY_BASE_URL="{proxy}/perplexity"',
         f'export PERPLEXITY_API_KEY="{token}"',

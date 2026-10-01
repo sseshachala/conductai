@@ -717,6 +717,9 @@ def cmd_login(args):
     else:
         result = _web_login_flow(api_url, web_url)
 
+    # Clear old managed Copilot credentials even if the subsequent sync fails.
+    from conduct_cli.guard_commands.copilot import clear_managed
+    clear_managed()
     # Write config
     import datetime as _dt
     cfg["api_url"]          = api_url
@@ -1640,6 +1643,8 @@ def cmd_switch(args):
         print(f"  {RED}✗ Cannot switch to {new_name}: {e}. Run `conduct login` and try again.{RESET}")
         sys.exit(1)
 
+    from conduct_cli.guard_commands.copilot import clear_managed
+    clear_managed()
     # Update ~/.conduct/config.json atomically
     cfg["workspace"] = new_id; cfg["workspace_id"] = new_id
     _atomic_write(CONFIG_PATH, cfg)

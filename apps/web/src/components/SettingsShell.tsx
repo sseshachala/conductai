@@ -19,6 +19,7 @@
 import { useEffect, useState, type ReactNode } from "react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import AppShell from "@/components/AppShell"
+import styles from "./SettingsShell.module.css"
 
 export interface SettingsTab<K extends string> {
   key: K
@@ -90,7 +91,7 @@ export function SettingsShell<K extends string>({
 
       {children}
 
-      <div style={{ display: "grid", gridTemplateColumns: "220px 1fr", gap: 32, alignItems: "start", marginTop: 8 }}>
+      <div className={styles.layout}>
         <nav role="tablist" aria-orientation="vertical" style={{ display: "flex", flexDirection: "column", gap: 2, borderRight: "1px solid var(--border)", paddingRight: 16 }}>
           {visibleTabs.map(t => {
             const active = activeTab === t.key
