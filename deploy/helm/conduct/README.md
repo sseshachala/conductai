@@ -1,53 +1,26 @@
-# Conduct private-cloud Helm chart
+# Conduct Helm install
 
-## Status
+Installs web, API, Gateway, worker, oauth2-proxy, PostgreSQL and Redis.
+Supply your images, DNS/TLS, Keycloak settings and Kubernetes Secrets.
 
-This chart is a packaging foundation, not a turnkey private-cloud or air-gapped
-Keycloak installation. It predates the console proxy topology verified in
-PR #2304. Do not deploy it unchanged expecting that topology.
-
-Start with the [on-prem deployment and acceptance guide](../../../docs/reference/onprem-deployment.md)
-for the working Docker evaluation, identity setup, configuration and acceptance
-commands. Hosted Keycloak compatibility does not establish disconnected acceptance.
-
-## Existing components
-
-The templates include API, Gateway, worker and web Deployments, single-replica
-PostgreSQL/pgvector and Redis StatefulSets, an Istio VirtualService and an optional
-Kyverno label policy. Inspect `values.yaml` and the rendered manifests before use.
-Resource defaults are not production sizing recommendations.
-
-## Required packaging work
-
-- Package oauth2-proxy with confidential OIDC, PKCE and secure session cookies.
-- Wire API/Gateway proxy authentication and web runtime configuration consistently.
-- Mount customer CA bundles and sanitize incoming identity headers.
-- Separate browser authentication ingress from machine API/Gateway traffic.
-- Support explicitly provisioned initial workspaces and identity mappings.
-- Support externally managed PostgreSQL/Redis without deploying unused StatefulSets.
-- Run migrations as a controlled deployment step, not racing API replicas.
-- Add readiness, disruption, backup/restore and upgrade acceptance for the target environment.
-- Pin all images and publish an offline artifact inventory and checksums.
-- Validate deployment inputs against the customer's Kubernetes distribution and version,
-  ingress, storage, registry and secret-management configuration.
-
-Use externally managed secrets through `secrets.existingSecret`; verify its key
-contract against the templates. Never put credentials in command-line flags or
-committed Helm values. Clerk mode requires its Clerk configuration; proxy mode
-requires the separate configuration documented in the deployment guide.
-
-## Packaging checks
-
-These commands validate/package the chart, not the deployed authentication flow:
+1. Use `customer.example.yaml` as your values file.
+2. Create the backend and login Secrets described in the [installation guide](../../../docs/reference/onprem-deployment.md#secrets).
+3. Install:
 
 ```sh
-helm lint deploy/helm/conduct
-helm template conduct deploy/helm/conduct --namespace conduct
-helm package deploy/helm/conduct
+helm upgrade --install conduct ./deploy/helm/conduct \
+  --namespace conduct --create-namespace \
+  --values customer-values.yaml --wait --timeout 10m
 ```
 
-Run console, delegation/revocation and controlled-outage acceptance on the deployed
-customer configuration. Disconnected acceptance additionally requires self-hosted
-identity, internal model serving, blocked external egress and cold-start evidence.
-Preserve PVCs during uninstall or rollback; data deletion is a separate,
-explicitly approved operation.
+Open your console hostname and sign in as the configured administrator.
+The chart creates the initial workspace and admin mapping during startup.
+
+Requires an ingress controller, a storage class, and a TLS Secret covering the
+three hostnames. Use HTTPS redirects at ingress. Network policies require a
+supporting CNI. Set `postgres.enabled=false` / `redis.enabled=false` to use your
+own data services. Keep provider credentials in Kubernetes Secrets or Conduct's vault.
+
+Check `values.yaml` for configuration. The chart uses the same components as the
+local test stack; customer-cluster installation is not yet verified.
+File problems at https://github.com/sseshachala/conductai/issues with redacted logs.

@@ -1,124 +1,112 @@
-# ─── Ezmeral (HPE PCAI) integration ────────────────────────────────────────
-# The two knobs the PCAI Import Framework asks for when uploading the chart.
-# `endpoint` is the hostname the app is reachable at (rendered into the Istio
-# VirtualService). `istioGateway` is the shared ingress gateway PCAI runs.
-ezua:
-  endpoint: "conduct.${DOMAIN_NAME}"
-  istioGateway: "istio-system/ezaf-gateway"
-
-# ─── Images ────────────────────────────────────────────────────────────────
-# API/Gateway/Worker share one image (apps/api/Dockerfile). Web is separate.
-# In air-gapped PCAI, push these to Harbor and update repository fields.
+# Set customer-specific values in your own values.yaml.
 image:
   api:
-    repository: ghcr.io/conductai/conduct-api
-    tag: ""            # empty ⇒ Chart.appVersion
-    pullPolicy: IfNotPresent
-  web:
-    repository: ghcr.io/conductai/conduct-web
+    repository: ""
     tag: ""
     pullPolicy: IfNotPresent
-  pullSecrets: []      # e.g. [{name: harbor-creds}]
+  web:
+    repository: ""
+    tag: ""
+    pullPolicy: IfNotPresent
+  pullSecrets: []
 
-# ─── Secrets ───────────────────────────────────────────────────────────────
-# Two ways to supply secrets:
-#  1. Inline (dev / trial): fill secrets.values.*.
-#  2. External (recommended): create your own Secret with the same keys and
-#     set secrets.existingSecret; the chart will not create its own Secret.
+hosts:
+  console: ""
+  api: ""
+  gateway: ""
+
+ingress:
+  enabled: true
+  className: ""
+  annotations: {}
+  tlsSecretName: ""
+
+oidc:
+  issuer: ""
+  clientId: ""
+  jwksUrl: ""
+  emailDomains: ["*"]
+  # Optional ConfigMap containing a complete PEM trust bundle under ca.crt.
+  caConfigMap: ""
+
+# Existing Kubernetes Secrets only. No credentials go in Helm values.
 secrets:
   existingSecret: ""
-  values:
-    anthropicApiKey: ""              # required (unless existingSecret)
-    encryptionKey: ""                # required, 32-char random — supply your own
-    postgresPassword: "changeme"     # used for the in-cluster Postgres StatefulSet
-    clerkSecretKey: ""               # optional
-    clerkFrontendApi: ""             # optional
-    modalTokenId: ""                 # optional (Modal sandbox)
-    modalTokenSecret: ""             # optional
-    guardTrialAnthropicKey: ""       # optional (funded trial flow)
+  proxySecret: ""
 
-# ─── Non-secret configuration ──────────────────────────────────────────────
+bootstrap:
+  enabled: true
+  workspaceId: ""
+  workspaceName: ""
+  adminSubject: ""
+  adminName: "Administrator"
+
 config:
   postgresUser: conduct
   postgresDb: conduct
-  sqlalchemyPoolSize: "5"
-  sqlalchemyMaxOverflow: "10"
-  # Gateway V2 profile execution.
-  guardGatewayProfileV2: "true"
-  guardGatewayProfileV2RolloutPct: "100"
-  guardGatewayProfileV2Allowlist: ""
-  # Durable audit (opt-in).
-  guardUseDurableAudit: "false"
-  guardDurableAuditRolloutPct: "0"
-  guardDurableAuditAllowlist: ""
-  guardDurableAuditFailClosed: "false"
-  # Admission caps (enforced only on the gateway pod).
-  gatewayAdmissionMaxInflight: "40"
-  gatewayAdmissionWorkspaceMax: "10"
-  mcpAdmissionMaxInflight: "40"
-  mcpAdmissionWorkspaceMax: "10"
+  # Additional non-secret API/Gateway/worker environment variables.
+  extraEnv: {}
 
-# ─── Components ────────────────────────────────────────────────────────────
 api:
-  # ponytail: replicas=1 keeps the alembic-on-start CMD safe. Above 1, two
-  # ponytail: pods can race the same migration on `helm upgrade`. Fix path:
-  # ponytail: override command to `uvicorn …` and add a pre-upgrade Job.
   replicas: 1
-  service:
-    port: 8000
+  service: {port: 8000}
+  extraEnv: []
   resources:
-    requests: { cpu: 250m, memory: 512Mi }
-    limits: { cpu: 1000m, memory: 1Gi }
-
+    requests: {cpu: 250m, memory: 512Mi}
+    limits: {cpu: 1000m, memory: 1Gi}
 gateway:
   replicas: 1
-  service:
-    port: 8000
+  service: {port: 8000}
+  extraEnv: []
   resources:
-    requests: { cpu: 250m, memory: 512Mi }
-    limits: { cpu: 1000m, memory: 1Gi }
-
+    requests: {cpu: 250m, memory: 512Mi}
+    limits: {cpu: 1000m, memory: 1Gi}
 worker:
   replicas: 1
+  extraEnv: []
   resources:
-    requests: { cpu: 250m, memory: 512Mi }
-    limits: { cpu: 1000m, memory: 1Gi }
-
+    requests: {cpu: 250m, memory: 512Mi}
+    limits: {cpu: 1000m, memory: 1Gi}
 web:
   replicas: 1
-  service:
-    port: 3000
-  # NEXT_PUBLIC_API_URL is baked at build time — leave "" and rely on the
-  # Istio VirtualService rewriting `/api/*` to the api Service (same-origin).
-  publicApiUrl: ""
+  service: {port: 3000}
+  extraEnv: []
   resources:
-    requests: { cpu: 100m, memory: 256Mi }
-    limits: { cpu: 500m, memory: 512Mi }
+    requests: {cpu: 100m, memory: 256Mi}
+    limits: {cpu: 500m, memory: 512Mi}
+
+oauth2Proxy:
+  image: quay.io/oauth2-proxy/oauth2-proxy:v7.15.0
+  replicas: 1
+  resources:
+    requests: {cpu: 50m, memory: 64Mi}
+    limits: {cpu: 500m, memory: 256Mi}
+router:
+  image: caddy:2.10.2-alpine
+  replicas: 1
+  resources:
+    requests: {cpu: 50m, memory: 64Mi}
+    limits: {cpu: 500m, memory: 256Mi}
 
 postgres:
+  enabled: true
   image: pgvector/pgvector:pg16
-  storage:
-    size: 20Gi
-    storageClass: ""    # empty ⇒ cluster default (set for PCAI's Ezmeral CSI)
+  storage: {size: 20Gi, storageClass: ""}
   resources:
-    requests: { cpu: 250m, memory: 512Mi }
-    limits: { cpu: 1000m, memory: 2Gi }
-
+    requests: {cpu: 250m, memory: 512Mi}
+    limits: {cpu: 1000m, memory: 2Gi}
 redis:
+  enabled: true
   image: redis:7-alpine
-  storage:
-    size: 5Gi
-    storageClass: ""
+  storage: {size: 5Gi, storageClass: ""}
   resources:
-    requests: { cpu: 100m, memory: 256Mi }
-    limits: { cpu: 500m, memory: 1Gi }
+    requests: {cpu: 100m, memory: 256Mi}
+    limits: {cpu: 500m, memory: 1Gi}
 
 serviceAccount:
   create: true
   name: ""
 
-# PCAI expects hpe-ezua/* labels on managed pods. The Kyverno ClusterPolicy
-# below stamps them automatically. Disable if your PCAI cluster already has
-# a blanket policy that covers this namespace.
-kyvernoLabelPolicy:
+# Restricts direct access to web/proxy/data services. Requires CNI support.
+networkPolicy:
   enabled: true

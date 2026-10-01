@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "definitions": {
+    "host": {"type": "string", "pattern": "^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$", "maxLength": 253},
+    "https": {"type": "string", "pattern": "^https://[^\\s/@?#]+(/[^\\s?#]*)?$"}
+  },
+  "properties": {
+    "hosts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["console", "api", "gateway"],
+      "properties": {
+        "console": {"$ref": "#/definitions/host"},
+        "api": {"$ref": "#/definitions/host"},
+        "gateway": {"$ref": "#/definitions/host"}
+      }
+    },
+    "oidc": {
+      "type": "object",
+      "properties": {
+        "issuer": {"$ref": "#/definitions/https"},
+        "jwksUrl": {"$ref": "#/definitions/https"},
+        "clientId": {"type": "string", "minLength": 1},
+        "emailDomains": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}}
+      }
+    },
+    "config": {
+      "type": "object",
+      "properties": {
+        "extraEnv": {
+          "type": "object",
+          "propertyNames": {
+            "pattern": "^[A-Z][A-Z0-9_]*$",
+            "not": {"enum": ["AUTH_MODE", "ENVIRONMENT", "APP_URL", "API_BASE_URL", "CONDUCT_WEB_URL", "CONDUCT_OAUTH_ISSUER", "CONDUCT_PROXY_URL", "ALLOWED_ORIGINS", "CONSOLE_OIDC_ISSUER", "CONSOLE_OIDC_CLIENT_ID", "CONSOLE_OIDC_JWKS_URL", "CONSOLE_OIDC_CA_FILE", "SSL_CERT_FILE", "REQUESTS_CA_BUNDLE"]}
+          }
+        }
+      }
+    },
+    "bootstrap": {
+      "type": "object",
+      "if": {"properties": {"enabled": {"const": true}}},
+      "then": {
+        "properties": {
+          "workspaceId": {"type": "string", "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"},
+          "workspaceName": {"type": "string", "minLength": 1},
+          "adminSubject": {"type": "string", "minLength": 1, "maxLength": 255}
+        }
+      }
+    }
+  }
+}

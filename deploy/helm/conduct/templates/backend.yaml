@@ -1,0 +1,123 @@
+{{- range $component := list "api" "gateway" "worker" }}
+{{- $settings := index $.Values $component }}
+{{- if ne $component "worker" }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "conduct.fullname" $ }}-{{ $component }}
+  labels: {{- include "conduct.labels" $ | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: {{ $settings.service.port }}
+      targetPort: 8000
+  selector:
+    {{- include "conduct.selectorLabels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ $component }}
+{{- end }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "conduct.fullname" $ }}-{{ $component }}
+  labels: {{- include "conduct.labels" $ | nindent 4 }}
+spec:
+  replicas: {{ $settings.replicas }}
+  selector:
+    matchLabels:
+      {{- include "conduct.selectorLabels" $ | nindent 6 }}
+      app.kubernetes.io/component: {{ $component }}
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") $ | sha256sum }}
+        checksum/bootstrap: {{ $.Files.Get "files/bootstrap.py" | sha256sum }}
+      labels:
+        {{- include "conduct.selectorLabels" $ | nindent 8 }}
+        app.kubernetes.io/component: {{ $component }}
+    spec:
+      serviceAccountName: {{ include "conduct.serviceAccountName" $ }}
+      automountServiceAccountToken: false
+      {{- with $.Values.image.pullSecrets }}
+      imagePullSecrets: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      initContainers:
+        - name: migrate
+          image: {{ include "conduct.apiImage" $ | quote }}
+          imagePullPolicy: {{ $.Values.image.api.pullPolicy }}
+          # Alembic uses the application's PostgreSQL advisory migration lock.
+          command: ["python", "-m", "alembic", "upgrade", "head"]
+          envFrom:
+            - configMapRef: {name: {{ include "conduct.fullname" $ }}}
+            - secretRef: {name: {{ include "conduct.secretName" $ }}}
+          {{- if $.Values.oidc.caConfigMap }}
+          volumeMounts:
+            - {name: ca, mountPath: /etc/conduct/ca, readOnly: true}
+          {{- end }}
+        {{- if and (eq $component "api") $.Values.bootstrap.enabled }}
+        - name: bootstrap
+          image: {{ include "conduct.apiImage" $ | quote }}
+          command: ["python", "/bootstrap/bootstrap.py"]
+          envFrom:
+            - configMapRef: {name: {{ include "conduct.fullname" $ }}}
+            - secretRef: {name: {{ include "conduct.secretName" $ }}}
+          env:
+            - name: PYTHONPATH
+              value: /app
+            - name: BOOTSTRAP_WORKSPACE_ID
+              value: {{ required "bootstrap.workspaceId is required" $.Values.bootstrap.workspaceId | quote }}
+            - name: BOOTSTRAP_WORKSPACE_NAME
+              value: {{ required "bootstrap.workspaceName is required" $.Values.bootstrap.workspaceName | quote }}
+            - name: BOOTSTRAP_ADMIN_SUBJECT
+              value: {{ required "bootstrap.adminSubject is required" $.Values.bootstrap.adminSubject | quote }}
+            - name: BOOTSTRAP_ADMIN_NAME
+              value: {{ $.Values.bootstrap.adminName | quote }}
+          volumeMounts:
+            - {name: bootstrap, mountPath: /bootstrap, readOnly: true}
+            {{- if $.Values.oidc.caConfigMap }}
+            - {name: ca, mountPath: /etc/conduct/ca, readOnly: true}
+            {{- end }}
+        {{- end }}
+      containers:
+        - name: {{ $component }}
+          image: {{ include "conduct.apiImage" $ | quote }}
+          imagePullPolicy: {{ $.Values.image.api.pullPolicy }}
+          {{- if eq $component "worker" }}
+          command: ["python", "-m", "app.worker"]
+          {{- else }}
+          command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--no-proxy-headers", "--no-access-log"]
+          ports: [{name: http, containerPort: 8000}]
+          startupProbe:
+            httpGet: {path: /health, port: http}
+            failureThreshold: 60
+            periodSeconds: 5
+          readinessProbe:
+            httpGet: {path: /health, port: http}
+          livenessProbe:
+            httpGet: {path: /health, port: http}
+            periodSeconds: 15
+          {{- end }}
+          envFrom:
+            - configMapRef: {name: {{ include "conduct.fullname" $ }}}
+            - secretRef: {name: {{ include "conduct.secretName" $ }}}
+          env:
+            - name: ADMISSION_ENABLED
+              value: {{ eq $component "gateway" | toString | quote }}
+            {{- with $settings.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- if $.Values.oidc.caConfigMap }}
+          volumeMounts:
+            - {name: ca, mountPath: /etc/conduct/ca, readOnly: true}
+          {{- end }}
+          resources: {{- toYaml $settings.resources | nindent 12 }}
+      volumes:
+        - name: bootstrap
+          configMap: {name: {{ include "conduct.fullname" $ }}-bootstrap}
+        {{- if $.Values.oidc.caConfigMap }}
+        - name: ca
+          configMap: {name: {{ $.Values.oidc.caConfigMap }}}
+        {{- end }}
+{{- end }}

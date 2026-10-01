@@ -1,0 +1,25 @@
+image:
+  api: {repository: registry.example.com/conduct-api, tag: "your-release"}
+  web: {repository: registry.example.com/conduct-web, tag: "your-release"}
+  # pullSecrets: [{name: registry-access}]
+hosts:
+  console: conduct.example.com
+  api: conduct-api.example.com
+  gateway: conduct-gateway.example.com
+ingress:
+  className: nginx
+  tlsSecretName: conduct-tls
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+oidc:
+  issuer: https://keycloak.example.com/realms/conduct
+  clientId: conduct-console-proxy
+  jwksUrl: https://keycloak.example.com/realms/conduct/protocol/openid-connect/certs
+secrets:
+  existingSecret: conduct-backend
+  proxySecret: conduct-login
+bootstrap:
+  workspaceId: bbbbbbbb-0000-4000-8000-000000000001
+  workspaceName: My workspace
+  adminSubject: replace-with-keycloak-user-id
+  adminName: Administrator

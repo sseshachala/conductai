@@ -2,15 +2,8 @@ apiVersion: v1
 kind: Service
 metadata:
   name: {{ include "conduct.fullname" . }}-web
-  labels:
-    {{- include "conduct.labels" . | nindent 4 }}
-    app.kubernetes.io/component: web
 spec:
-  type: ClusterIP
-  ports:
-    - name: http
-      port: {{ .Values.web.service.port }}
-      targetPort: 3000
+  ports: [{name: http, port: {{ .Values.web.service.port }}, targetPort: 3000}]
   selector:
     {{- include "conduct.selectorLabels" . | nindent 4 }}
     app.kubernetes.io/component: web
@@ -19,9 +12,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ include "conduct.fullname" . }}-web
-  labels:
-    {{- include "conduct.labels" . | nindent 4 }}
-    app.kubernetes.io/component: web
+  labels: {{- include "conduct.labels" . | nindent 4 }}
 spec:
   replicas: {{ .Values.web.replicas }}
   selector:
@@ -35,20 +26,30 @@ spec:
         app.kubernetes.io/component: web
     spec:
       serviceAccountName: {{ include "conduct.serviceAccountName" . }}
+      automountServiceAccountToken: false
+      {{- with .Values.image.pullSecrets }}
+      imagePullSecrets: {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
         - name: web
           image: {{ include "conduct.webImage" . | quote }}
           imagePullPolicy: {{ .Values.image.web.pullPolicy }}
-          ports:
-            - containerPort: 3000
-              name: http
+          ports: [{name: http, containerPort: 3000}]
           env:
-            - name: NEXT_PUBLIC_API_URL
-              value: {{ .Values.web.publicApiUrl | quote }}
+            - {name: HOSTNAME, value: "0.0.0.0"}
+            - {name: PORT, value: "3000"}
+            - {name: AUTH_MODE, value: proxy}
+            - {name: ENVIRONMENT, value: production}
+            - {name: APP_URL, value: {{ printf "https://%s" .Values.hosts.console | quote }}}
+            - {name: API_BASE_URL, value: {{ printf "https://%s" .Values.hosts.api | quote }}}
+            - {name: API_URL, value: {{ printf "http://%s-api:%v" (include "conduct.fullname" .) .Values.api.service.port | quote }}}
+            - name: CONSOLE_PROXY_SECRET
+              valueFrom:
+                secretKeyRef: {name: {{ include "conduct.secretName" . }}, key: CONSOLE_PROXY_SECRET}
+            {{- with .Values.web.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
           readinessProbe:
-            httpGet:
-              path: /
-              port: 3000
+            httpGet: {path: /signed-out, port: http}
             initialDelaySeconds: 10
-            periodSeconds: 5
           resources: {{- toYaml .Values.web.resources | nindent 12 }}
