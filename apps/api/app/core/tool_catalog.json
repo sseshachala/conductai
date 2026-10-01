@@ -1,0 +1,75 @@
+{
+  "schema_version": 1,
+  "gateway_check_statuses": [
+    "connection_verified",
+    "authentication_failed",
+    "unavailable"
+  ],
+  "tools": [
+    {
+      "id": "claude-code",
+      "label": "Claude Code",
+      "executable": "claude",
+      "surfaces": [
+        "claude-code"
+      ],
+      "gateway": {
+        "provider": "anthropic",
+        "operation": "anthropic_messages"
+      },
+      "setup_ui": true,
+      "live_acceptance": "pending"
+    },
+    {
+      "id": "codex",
+      "label": "Codex",
+      "executable": "codex",
+      "surfaces": [
+        "codex-cli",
+        "codex-desktop"
+      ],
+      "gateway": {
+        "provider": "openai",
+        "operation": "openai_responses"
+      },
+      "setup_ui": true,
+      "live_acceptance": "pending"
+    },
+    {
+      "id": "cursor",
+      "label": "Cursor",
+      "executable": "cursor",
+      "surfaces": [
+        "cursor"
+      ],
+      "gateway": null,
+      "setup_ui": true,
+      "live_acceptance": "pending"
+    },
+    {
+      "id": "windsurf",
+      "label": "Windsurf",
+      "executable": "windsurf",
+      "surfaces": [
+        "windsurf"
+      ],
+      "gateway": null,
+      "setup_ui": true,
+      "live_acceptance": "pending"
+    },
+    {
+      "id": "copilot-cli",
+      "label": "Copilot CLI",
+      "executable": "copilot",
+      "surfaces": [
+        "copilot-cli"
+      ],
+      "gateway": {
+        "provider": "openai",
+        "operation": "openai_responses"
+      },
+      "setup_ui": true,
+      "live_acceptance": "pending"
+    }
+  ]
+}

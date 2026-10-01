@@ -25,6 +25,18 @@ beforeEach(() => {
 })
 
 describe("discovery evidence", () => {
+  it("shows passive MCP references without claiming approval", async () => {
+    mocks.agents.mockResolvedValue([{ ...agent, evidence: { signals: [], mcp_servers: [
+      { id: "mcp-one", name: "github", scope: "project", transport: "http", disabled: false },
+      { id: "mcp-two", name: "filesystem", scope: "user", transport: "stdio", disabled: true },
+    ] } }])
+    render(<Page/>)
+    fireEvent.click(await screen.findByRole("button", { name: "Evidence" }))
+    expect(screen.getByText("MCP configuration")).toBeTruthy()
+    expect(screen.getByText("github")).toBeTruthy()
+    expect(screen.getByText("user · stdio · Disabled")).toBeTruthy()
+    expect(screen.queryByText("Approved")).toBeNull()
+  })
   it("shows separate states and evidence without claiming coverage", async () => {
     render(<Page/>)
     await screen.findByText("Codex")

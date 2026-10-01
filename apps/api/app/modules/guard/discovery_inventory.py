@@ -1,22 +1,48 @@
 """One evidence projection for the API, Lens, MCP and knowledge index."""
 from datetime import datetime, timedelta, timezone
 import uuid
+import re
 
 from sqlalchemy.dialects.postgresql import insert
 
 from app.modules.guard.models import DiscoveredAgent
+from app.core.tool_catalog import CATALOG, TOOLS as TOOL_CATALOG
 
 FRESH_FOR = timedelta(hours=24)
 SIGNALS = {"tool_installation", "running_executable", "dependency_manifest"}
-TOOLS = {"claude-code", "codex", "cursor", "windsurf", "copilot-cli"}
+TOOLS = set(TOOL_CATALOG)
 FRAMEWORKS = TOOLS | {"langchain", "crewai", "autogen", "openai-agents", "llama-index"}
-GATEWAY_CHECKS = {"connection_verified", "authentication_failed", "unavailable"}
+GATEWAY_CHECKS = set(CATALOG["gateway_check_statuses"])
+
+
+def clean_mcp_servers(value):
+    if not isinstance(value, list):
+        return []
+    records = {}
+    for item in value[:100]:
+        if not isinstance(item, dict):
+            continue
+        identity = item.get("id")
+        if not isinstance(identity, str) or not re.fullmatch(r"[a-f0-9]{64}", identity):
+            continue
+        name = item.get("name")
+        name = name if isinstance(name, str) and re.fullmatch(r"[A-Za-z][A-Za-z0-9_.-]{0,63}", name) else "redacted"
+        if re.match(r"(?i)(cond_|sk[-_]|gh[pousr]_|github_pat_|xox[baprs]-|AKIA)", name):
+            name = "redacted"
+        scope = item.get("scope")
+        transport = item.get("transport")
+        if scope not in ("user", "legacy-user", "project") or transport not in ("stdio", "http", "sse", "streamable-http", "unknown"):
+            continue
+        records[identity] = {"id": identity, "name": name, "scope": scope,
+                             "transport": transport, "disabled": item.get("disabled") is True}
+    return list(records.values())
 
 
 def clean_evidence(value):
     value = value if isinstance(value, dict) else {}
     signals = value.get("signals", [])
     return {
+        **({"mcp_servers": clean_mcp_servers(value["mcp_servers"])} if "mcp_servers" in value else {}),
         **({"gateway_connection_status": value["gateway_connection_status"]}
            if isinstance(value.get("gateway_connection_status"), str) and value["gateway_connection_status"] in GATEWAY_CHECKS else {}),
         "signals": sorted({s for s in signals if isinstance(s, str) and s in SIGNALS}) if isinstance(signals, list) else [],

@@ -4,6 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 import json
 from conduct_cli.deployment import api_url as configured_api, resolve
+from conduct_cli.tool_adapters import ADAPTERS
 
 from . import instructions as _guard_instructions
 from . import shared as _guard_shared
@@ -31,7 +32,7 @@ def _vscode_mcp_paths() -> list[tuple[Path, str]]:
 _MCP_TARGETS = [
     (Path.home() / ".claude"   / "settings.json", "Claude Code"),
     (Path.home() / ".cursor"   / "mcp.json",       "Cursor"),
-    (Path.home() / ".windsurf" / "mcp.json",        "Windsurf"),
+    (Path.home() / ".codeium" / "windsurf" / "mcp_config.json", "Windsurf"),
     (Path.home() / ".codex"    / "mcp.json",        "Codex"),
     # ~/.copilot/mcp-config.json handled separately by _patch_copilot_mcp (SSE + token)
     # Claude Desktop — only if already installed
@@ -71,13 +72,27 @@ def _register_mcp(workspace_id: str, agent_token: str, api_url: str, dry_run: bo
         servers["agent-booster"] = {"command": "booster", "args": ["serve"]}
 
     vscode_paths = _vscode_mcp_paths()
-    targets = list(_MCP_TARGETS) + vscode_paths
+    targets = []
+    for tool in ("claude-code", "cursor", "windsurf"):
+        adapter = ADAPTERS[tool]
+        if adapter.root().is_dir():
+            source = next(s for s in adapter.mcp_sources() if s.scope == "user")
+            targets.append((source.path, tool))
+    home = Path.home()
+    targets.extend((path, "Claude Desktop") for path in (
+        home / "Library/Application Support/Claude/claude_desktop_config.json",
+        home / "AppData/Roaming/Claude/claude_desktop_config.json",
+    ) if path.exists())
+    targets.extend(vscode_paths)
     vscode_cfg_paths = {p for p, _ in vscode_paths}
     found_any = False
     for cfg_path, label in targets:
+        if cfg_path.is_symlink():
+            print(f"  {label} MCP config is a symlink; left unchanged")
+            continue
         if not cfg_path.exists():
             # Create mcp.json for VS Code if Copilot is confirmed installed
-            if cfg_path in vscode_cfg_paths:
+            if cfg_path in vscode_cfg_paths or label in {"claude-code", "cursor", "windsurf"}:
                 cfg_path.write_text("{}")
             else:
                 continue
@@ -85,7 +100,11 @@ def _register_mcp(workspace_id: str, agent_token: str, api_url: str, dry_run: bo
         try:
             existing = json.loads(cfg_path.read_text())
         except (json.JSONDecodeError, OSError):
-            existing = {}
+            print(f"  {label} MCP config is unreadable; left unchanged.")
+            continue
+        if not isinstance(existing, dict) or not isinstance(existing.get("mcpServers", {}), dict):
+            print(f"  {label} MCP config is invalid; left unchanged.")
+            continue
         mcp = existing.setdefault("mcpServers", {})
         changed = False
         # Cut over from the retired `conductguard-mcp` binary if present —
@@ -95,6 +114,13 @@ def _register_mcp(workspace_id: str, agent_token: str, api_url: str, dry_run: bo
             mcp.pop("conductguard")
             changed = True
         for name, entry in servers.items():
+            prior = mcp.get(name)
+            if prior is not None and prior != entry and not (
+                isinstance(prior, dict) and prior.get("command") in {"npx", "conductguard-mcp", "conduct-mcp", "booster"}
+                and (prior.get("command") != "npx" or isinstance(prior.get("args"), list) and "mcp-remote" in prior["args"])
+            ):
+                print(f"  {name} MCP override in {label}; left unchanged")
+                continue
             if mcp.get(name) == entry:
                 print(f"  {_guard_shared.GRAY}{name} MCP already registered in {label}{_guard_shared.RESET}")
             else:
@@ -103,11 +129,16 @@ def _register_mcp(workspace_id: str, agent_token: str, api_url: str, dry_run: bo
                 print(f"  {_guard_shared.GREEN}{name} MCP registered in {label}{_guard_shared.RESET}")
         if changed:
             cfg_path.write_text(json.dumps(existing, indent=2))
+            cfg_path.chmod(0o600)
     if not found_any:
         print(f"  {_guard_shared.GRAY}No AI tool configs found for MCP registration{_guard_shared.RESET}")
 
     # Copilot CLI supports HTTP and stdio; use the authenticated central HTTP server.
     _patch_copilot_mcp(agent_token, api_url)
+    if ADAPTERS["codex"].root().is_dir():
+        from conduct_cli.main import _write_codex_mcp_config
+        if not _write_codex_mcp_config(api_url, agent_token):
+            print("  Codex MCP config could not be updated; left unchanged")
 
     # Claude Desktop doesn't source shell env — patch apiBaseUrl directly in config
     # so all LLM calls route through the Guard proxy (PII blocking, spend limits, audit).

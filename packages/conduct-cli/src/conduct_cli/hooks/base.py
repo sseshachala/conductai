@@ -120,8 +120,8 @@ def detect_repo() -> Optional[str]:
 def detect_ai_tool() -> str:
     """Return a string identifying the active AI coding tool / surface."""
     import os
-    if os.environ.get("CONDUCT_HOOK_SURFACE") == "copilot-cli":
-        return "copilot-cli"
+    if os.environ.get("CONDUCT_HOOK_SURFACE") in {"copilot-cli", "cursor", "windsurf"}:
+        return os.environ["CONDUCT_HOOK_SURFACE"]
     # ── Anthropic ─────────────────────────────────────────────────────────────
     if os.environ.get("CLAUDE_CODE_ENTRYPOINT") or os.environ.get("CLAUDECODE"):
         return "claude-code"

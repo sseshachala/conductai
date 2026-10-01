@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Conduct tool catalog v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "gateway_check_statuses",
+    "tools"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "gateway_check_statuses": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "connection_verified",
+          "authentication_failed",
+          "unavailable"
+        ]
+      }
+    },
+    "tools": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "label",
+          "executable",
+          "surfaces",
+          "gateway",
+          "setup_ui",
+          "live_acceptance"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]*$"
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1
+          },
+          "executable": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]*$"
+          },
+          "surfaces": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9-]*$"
+            }
+          },
+          "gateway": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "provider",
+                  "operation"
+                ],
+                "properties": {
+                  "provider": {
+                    "enum": [
+                      "anthropic",
+                      "openai"
+                    ]
+                  },
+                  "operation": {
+                    "enum": [
+                      "anthropic_messages",
+                      "openai_responses"
+                    ]
+                  }
+                }
+              }
+            ]
+          },
+          "setup_ui": {
+            "type": "boolean"
+          },
+          "live_acceptance": {
+            "enum": [
+              "pending",
+              "verified"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,3 +1,5 @@
+import { toolCatalog } from "./toolCatalog"
+
 export interface DiscoveryAgent {
   id: string
   framework: string | null
@@ -13,9 +15,17 @@ export interface DiscoveryAgent {
   hook_observed_at: string | null
   hook_event_id: string | null
   mcp_configured: boolean
-  evidence: { signals?: string[]; config_unreadable?: boolean }
+  evidence: { signals?: string[]; config_unreadable?: boolean; mcp_servers?: McpFinding[] }
   evidence_note: string
   remediation: { label: string; command: string | null; detail: string }
+}
+
+export interface McpFinding {
+  id: string
+  name: string
+  scope: "user" | "legacy-user" | "project"
+  transport: "stdio" | "http" | "sse" | "streamable-http" | "unknown"
+  disabled: boolean
 }
 
 export interface DiscoverySummary {
@@ -30,8 +40,8 @@ export interface DiscoverySummary {
 
 export function discoveryLabel(value: string | null | undefined): string {
   const labels: Record<string, string> = {
-    "claude-code": "Claude Code", codex: "Codex", cursor: "Cursor", windsurf: "Windsurf",
-    "copilot-cli": "Copilot CLI", possible_integration: "Possible integration",
+    ...Object.fromEntries(toolCatalog.map(tool => [tool.id, tool.label])),
+    possible_integration: "Possible integration",
     legacy_unverified: "Legacy / unverified", installed: "Installed", running: "Running at scan",
     observed: "Activity observed", configured: "Configured", unverified: "Unverified",
     fresh: "Recent scan", stale: "Stale scan", tool_installation: "Tool installation",

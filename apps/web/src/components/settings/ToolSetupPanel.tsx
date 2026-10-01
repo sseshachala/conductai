@@ -8,8 +8,8 @@ import { API, guard } from "@/lib/api"
 import { publicApiUrl } from "@/lib/auth/runtime"
 import { discoveryLabel, discoveryTime, type DiscoveryAgent } from "@/lib/discovery"
 import styles from "./ToolSetupPanel.module.css"
+import { setupTools } from "@/lib/toolCatalog"
 
-const TOOLS = ["claude-code", "codex", "copilot-cli"]
 type Model = { id: string; operations: string[] }
 
 export function setupCommand(api: string, web: string): string | null {
@@ -90,12 +90,14 @@ export default function ToolSetupPanel({ workspaceId, isAdmin, enabled = true }:
     {!workspaceId && <p>Select a workspace.</p>}
     {loading && <p role="status">Loading tool status...</p>}
     {error && <p role="alert">{error}</p>}
-    {TOOLS.map(tool => {
+    {setupTools.map(descriptor => {
+      const tool = descriptor.id
       const agents = current?.agents.filter(a => a.framework === tool) ?? []
-      const operation = tool === "claude-code" ? "anthropic_messages" : "openai_responses"
-      const models = current?.models.filter(m => m.operations.includes(operation)) ?? []
+      const operation = descriptor.gateway?.operation
+      const models = operation ? current?.models.filter(m => m.operations.includes(operation)) ?? [] : []
       return <section className={styles.tool} key={tool} aria-label={discoveryLabel(tool)}>
         <h3>{discoveryLabel(tool)}</h3>
+        {["cursor", "windsurf"].includes(tool) && <span className="text-sm text-stone-500">Live verification pending</span>}
         <div className={styles.table}>
           <table><thead><tr><th>Installation</th><th>Hooks</th><th>MCP</th><th>Gateway</th><th>Last scan</th></tr></thead>
             <tbody>{agents.length ? agents.map(agent => <tr key={agent.id}>
@@ -107,12 +109,12 @@ export default function ToolSetupPanel({ workspaceId, isAdmin, enabled = true }:
             </tr>) : <tr><td colSpan={5}>{current ? "No installations reported" : "Status unavailable"}</td></tr>}</tbody>
           </table>
         </div>
-        <div className={styles.models}><strong>Published models</strong>
+        {!descriptor.gateway ? <div className={styles.models}>Gateway adapter pending</div> : <div className={styles.models}><strong>Published models</strong>
           {!isAdmin ? <span>Ask a workspace administrator for approved model IDs.</span>
             : current?.modelError ? <span>Model list unavailable</span>
               : !current ? <span>Not loaded</span>
                 : models.length ? models.map(m => <code key={m.id}>{m.id}</code>) : <span>No compatible profiles published</span>}
-        </div>
+        </div>}
       </section>
     })}
     <footer className={styles.footer}>
