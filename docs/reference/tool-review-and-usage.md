@@ -73,6 +73,8 @@ side effects. Audit entries contain decisions and finding types, not result text
 Private-key fixture coverage is pending in [#2317](https://github.com/sseshachala/conductai/issues/2317)
 because ConductGuard blocks that synthetic fixture. No rule exception or bypass
 is included here.
+The separate [reviewed fixture workflow](reviewed-security-fixtures.md) requires
+the updated API/CLI and a different workspace administrator's approval.
 
 ## Link device inventory to registrations
 
