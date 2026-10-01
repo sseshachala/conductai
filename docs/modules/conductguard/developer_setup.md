@@ -7,8 +7,51 @@ This guide covers how a developer installs ConductGuard on their machine and sta
 ## Prerequisites
 
 - Python 3.10+ (Homebrew recommended on macOS — system Python on macOS has network restrictions)
-- Claude Code or Codex CLI installed
+- Claude Code, Codex CLI, or GitHub Copilot CLI installed
 - A Conduct workspace account (Guard is available to all workspace members by default)
+
+---
+
+## Tool Setup
+
+Open **Settings > Tool Setup** for installation status and deployment-specific
+login commands. Hooks, MCP, and Gateway are reported separately for each machine.
+
+```bash
+conduct login
+conduct guard sync
+conduct guard discover --verify-gateway
+```
+
+For a self-hosted deployment, use the `--server` and `--web-url` values shown in
+Tool Setup. Gateway routing requires a configured Gateway URL; MCP and hooks
+can work without one.
+
+Restart your shell and tool after syncing. Copilot uses the managed OpenAI
+Responses endpoint. Select a compatible published model explicitly:
+
+```bash
+copilot --model cond-<profile-code>-<model-alias>
+```
+
+Tool Setup lists published model IDs for administrators. Other members can ask
+their administrator for an approved ID. Copilot is a client, not a model provider.
+Do not set `COPILOT_PROVIDER_WIRE_MODEL`: it would override model switching.
+
+Managed configuration lives in `~/.conduct/env` (POSIX) or
+`~/.conduct/env.ps1` (PowerShell). User-owned `env-override` or
+`env-override.ps1` files run last and are preserved. A conflicting override
+can disable Conduct routing. Never share these files: they contain credentials.
+
+To disable Conduct-managed Copilot routing, run:
+
+```bash
+conduct guard sync --no-copilot-proxy
+```
+
+Restart the shell and Copilot afterward. This does not remove hooks or MCP.
+Configuration and connection status alone do not confirm a successful inference;
+check the request in Activity after calling a model.
 
 ---
 

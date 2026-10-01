@@ -107,6 +107,7 @@ from conduct_cli.guard_commands.gateway import (  # noqa: F401
     _NEW_GATEWAY_HOST,
     _migrate_proxy_env_if_stale,
     _write_proxy_env,
+    _write_private_env,
 )
 
 from conduct_cli.guard_commands.discovery import (  # noqa: F401
@@ -162,6 +163,7 @@ def register_guard_parser(sub):
 
     # conduct guard sync
     sync_p = guard_sub.add_parser("sync", help="Refresh policy and re-scan for AI tools")
+    sync_p.add_argument("--no-copilot-proxy", action="store_true", help="Clear managed Copilot routing; restart the shell and Copilot afterward")
     sync_p.add_argument("--cursor", action="store_true", help="Write active Guard policies to .cursorrules")
     sync_p.add_argument("--dry-run", action="store_true", help="Preview policy changes without writing anything")
     sync_p.add_argument("--reset-instructions", action="store_true", dest="reset_instructions",

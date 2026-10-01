@@ -17,12 +17,14 @@ import MembersManager from "@/components/settings/MembersManager"
 import PreferencesPanel from "@/components/settings/PreferencesPanel"
 import LLMPrimitivesPanel from "@/components/settings/LLMPrimitivesPanel"
 import RateLimitsPanel from "@/components/settings/RateLimitsPanel"
+import ToolSetupPanel from "@/components/settings/ToolSetupPanel"
 
-type Tab = "credentials" | "llm_primitives" | "members" | "preferences" | "canvas" | "proxy" | "rate_limits"
+type Tab = "credentials" | "llm_primitives" | "tool_setup" | "members" | "preferences" | "canvas" | "proxy" | "rate_limits"
 
 const TABS: readonly SettingsTab<Tab>[] = [
   { key: "credentials",    label: "Vault" },
   { key: "llm_primitives", label: "LLM Model Primitives" },
+  { key: "tool_setup", label: "Tool Setup" },
   { key: "preferences",    label: "Appearance" },
   { key: "canvas",         label: "Canvas" },
   { key: "proxy",          label: "Gateway → Guard" },
@@ -198,6 +200,7 @@ function SettingsPageInner({ isAdmin, workspaceId, getToken }: { isAdmin: boolea
   const panels: Partial<Record<Tab, React.ReactNode>> = {
     credentials:    <EnvironmentsManager isAdmin={isAdmin} />,
     llm_primitives: <LLMPrimitivesPanel workspaceId={workspaceId} isAdmin={isAdmin} />,
+    tool_setup: <ToolSetupPanel workspaceId={workspaceId} isAdmin={isAdmin} enabled={searchParams?.get("tab") === "tool_setup"} />,
     preferences:    <PreferencesPanel />,
     canvas:         <CanvasPanel />,
     proxy:          (

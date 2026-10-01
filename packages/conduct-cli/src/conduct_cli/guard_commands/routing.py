@@ -60,7 +60,8 @@ def apply_routing(cfg: dict, args, proxy_url: str | None) -> None:
     if not proxy_url:
         return
     agent_token = cfg.get("agent_token", "")
-    rc_path, newly_sourced = gateway._write_proxy_env(agent_token, proxy_url)
+    rc_path, newly_sourced = gateway._write_proxy_env(
+        agent_token, proxy_url, copilot=not getattr(args, "no_copilot_proxy", False))
     if agent_token:
         env_name = "env.ps1" if sys.platform == "win32" else "env"
         activate_cmd = f". {rc_path}" if sys.platform == "win32" else f"source {rc_path}"
