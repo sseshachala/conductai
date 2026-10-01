@@ -6,9 +6,19 @@ conduct_federation_test on loopback. Never point this at an existing workspace D
 import os
 import secrets
 from datetime import datetime, timezone
+from pathlib import Path
 from uuid import uuid4
 
 from sqlalchemy.engine import make_url
+
+
+def require_federation_schema(revision):
+    from alembic.script import ScriptDirectory
+
+    scripts = ScriptDirectory(str(Path(__file__).resolve().parents[2] / "apps/api/alembic"))
+    assert isinstance(revision, str) and revision, "Database is not migrated"
+    assert any(item.revision == "0154" for item in scripts.walk_revisions(base="base", head=revision)), \
+        "Database must include federation migration 0154"
 
 
 def main():
@@ -43,7 +53,7 @@ def main():
     developer_agent = str(uuid4())
     admin_agent = str(uuid4())
     with SessionLocal() as db:
-        assert db.execute(text("SELECT version_num FROM alembic_version")).scalar() in ("0154", "0155", "0156", "0157", "0158")
+        require_federation_schema(db.execute(text("SELECT version_num FROM alembic_version")).scalar_one())
         db.add_all([Workspace(id=ws, name="Federation harness"),
                     Workspace(id=other, name="Foreign harness")])
         db.flush()
