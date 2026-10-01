@@ -51,57 +51,17 @@ def _detect_ai_tools() -> list[dict]:
                     pass
         return False
 
+    from .inventory import collect
     tools = []
-
-    claude_dir = home / ".claude"
-    if claude_dir.exists():
-        settings = claude_dir / "settings.json"
+    for finding in collect(config_only=True)["agents"]:
+        if finding["detection"] != "installed":
+            continue
+        evidence = finding["evidence"]
         tools.append({
-            "name": "claude-code",
-            "mcp_registered": _check_json_mcp(settings),
-            "hook_registered": _check_json_hook(settings),
-            "proxy_routed": _guard_gateway._is_anthropic_proxied(),
-        })
-
-    codex_dir = home / ".codex"
-    if codex_dir.exists():
-        config = codex_dir / "config.toml"
-        is_desktop = _check_toml_str(config, "[desktop]")
-        # Codex Desktop uses the same provider configuration as Codex CLI.
-        # Do not report it as partial when the Conduct provider is selected.
-        codex_proxy = _check_toml_str(config, 'model_provider = "conduct"')
-        codex_mcp = _check_toml_str(config, "mcp_servers.conduct") or _check_toml_str(config, "conduct-mcp")
-        if is_desktop:
-            tools.append({
-                "name": "codex-desktop",
-                "mcp_registered": codex_mcp,
-                "hook_registered": _check_toml_str(config, "conductguard") or _check_toml_str(config, "conduct"),
-                "proxy_routed": codex_proxy,
-            })
-        else:
-            tools.append({
-                "name": "codex",
-                "mcp_registered": codex_mcp,
-                "hook_registered": _check_toml_str(config, "conductguard") or _check_toml_str(config, "conduct"),
-                "proxy_routed": _guard_gateway._is_openai_proxied(),
-            })
-
-    cursor_dir = home / ".cursor"
-    if cursor_dir.exists():
-        tools.append({
-            "name": "cursor",
-            "mcp_registered": _check_json_mcp(cursor_dir / "mcp.json"),
-            "hook_registered": False,
-            "proxy_routed": _guard_gateway._is_anthropic_proxied(),
-        })
-
-    windsurf_dir = home / ".codeium" / "windsurf"
-    if windsurf_dir.exists():
-        tools.append({
-            "name": "windsurf",
-            "mcp_registered": _check_json_mcp(windsurf_dir / "mcp_config.json"),
-            "hook_registered": False,
-            "proxy_routed": _guard_gateway._is_anthropic_proxied(),
+            "name": finding["framework"],
+            "mcp_registered": evidence.get("mcp_configured", False),
+            "hook_registered": evidence.get("hooks_configured", False),
+            "proxy_routed": evidence.get("gateway_configured", False),
         })
 
     claude_desktop_candidates = [
@@ -116,7 +76,7 @@ def _detect_ai_tools() -> list[dict]:
             "proxy_routed": _claude_desktop_proxied(),
         })
 
-    if _guard_shared._copilot_cli_installed():
+    if _guard_shared._copilot_cli_installed() and not any(t["name"] == "copilot-cli" for t in tools):
         try:
             copilot_mcp = json.loads((_guard_shared._copilot_home() / "mcp-config.json").read_text())
             mcp_registered = "conduct-guard" in copilot_mcp.get("mcpServers", {})
@@ -217,7 +177,8 @@ def cmd_guard_discover(args):
     """Report local facts and server-linked evidence using the same inventory as watch."""
     from .inventory import collect, verify_gateway
     cfg = _guard_shared._load_guard_config()
-    report = collect(getattr(args, "config_only", False))
+    project = getattr(args, "project", None)
+    report = collect(getattr(args, "config_only", False), project=project) if project else collect(getattr(args, "config_only", False))
     if getattr(args, "verify_gateway", True):
         verify_gateway(report, cfg.get("agent_token", ""), cfg)
         print("Gateway check uses the CLI credential; it does not prove this tool's inference traffic.")
@@ -237,6 +198,8 @@ def cmd_guard_discover(args):
         gateway = item.get("gateway_status", evidence.get("gateway_connection_status",
                            "configured" if evidence.get("gateway_configured") else "unverified"))
         print(f"  {item['framework']} [{item['detection']}] | hooks: {hooks} | MCP: {'configured' if mcp else 'unverified'} | gateway: {gateway}")
+        for server in evidence.get("mcp_servers", []):
+            print(f"    MCP {server['name']} [{server['scope']}; {server['transport']}] | {'disabled' if server['disabled'] else 'configured'}; activity unverified")
     print("Configuration is not proof of enforcement. Run conduct guard sync for supported tool setup.")
     if getattr(args, "report", None):
         Path(args.report).write_text(json.dumps(report, indent=2))

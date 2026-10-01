@@ -153,6 +153,8 @@ def cmd_guard_install(args):
     _guard_hooks._install_claude_hook(hook_path)
     _guard_hooks._install_codex_hook(hook_path)
     _guard_hooks._install_copilot_hooks(hook_path)
+    from .editor_setup import install as install_editor_hooks
+    install_editor_hooks()
 
     # Register MCP in all found AI tools — Cursor/Windsurf (advisory)
     _guard_mcp._register_mcp(workspace_id, agent_token or "", server)
@@ -509,6 +511,8 @@ def cmd_guard_sync(args):
     apply_routing(cfg, args, proxy_url)
 
     _guard_hooks._install_copilot_hooks(_guard_shared.GUARD_DIR / "hook.py")
+    from .editor_setup import install as install_editor_hooks
+    install_editor_hooks()
     _tools = _guard_discovery._detect_ai_tools()
     if _tools:
         print(f"\n  {'Tool':<20} {'Proxy Routed':<16} {'MCP':<8} {'Hooks'}")

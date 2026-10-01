@@ -12,6 +12,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from conduct_cli.tool_catalog import TOOLS as TOOL_CATALOG
+from conduct_cli.tool_adapters import ADAPTERS
 
 TOOLS = tuple(TOOL_CATALOG)
 DEPENDENCIES = {"langchain": "langchain", "crewai": "crewai", "autogen-agentchat": "autogen",
@@ -44,10 +45,8 @@ def canonical_tool(tool):
 
 
 def tool_root(tool):
-    home = Path.home()
-    return {"claude-code": home / ".claude", "codex": Path(os.getenv("CODEX_HOME", str(home / ".codex"))),
-            "cursor": home / ".cursor", "windsurf": home / ".codeium" / "windsurf",
-            "copilot-cli": Path(os.getenv("COPILOT_HOME", str(home / ".copilot"))).expanduser()}.get(tool)
+    adapter = ADAPTERS.get(tool)
+    return adapter.root() if adapter else None
 
 
 def installation_id(tool, root=None):
@@ -60,16 +59,20 @@ def installation_id(tool, root=None):
 def _document(path):
     if not path.exists():
         return {}
-    if path.stat().st_size > 1_000_000:
+    if not path.is_file() or path.stat().st_size > 1_000_000:
+        raise ValueError("Oversized configuration")
+    with path.open(encoding="utf-8") as stream:
+        raw = stream.read(1_000_001)
+    if len(raw) > 1_000_000:
         raise ValueError("Oversized configuration")
     if path.suffix == ".toml":
         try:
             import tomllib
         except ImportError:
             import tomli as tomllib
-        result = tomllib.loads(path.read_text())
+        result = tomllib.loads(raw)
     else:
-        result = json.loads(path.read_text())
+        result = json.loads(raw)
     if not isinstance(result, dict):
         raise ValueError("Expected an object")
     return result
@@ -143,7 +146,7 @@ def verify_gateway(report, token, config=None):
         evidence["gateway_connection_status"] = results[provider]
 
 
-def collect(config_only=False):
+def collect(config_only=False, project=None):
     records, errors = {}, set()
 
     def record(tool, root=None, detection="installed"):
@@ -187,7 +190,17 @@ def collect(config_only=False):
                     environment = data.get("env", {})
                     url = environment.get("ANTHROPIC_BASE_URL", os.environ.get("ANTHROPIC_BASE_URL"))
                     evidence["gateway_configured"] = _gateway(url, "anthropic")
-            evidence["mcp_configured"] = any(key in {"conduct", "conduct-guard"} for key in servers)
+                elif tool in {"cursor", "windsurf"}:
+                    from .editor_setup import EVENTS, owned
+                    evidence["hooks_configured"] = all(
+                        any(owned(entry, tool) for entry in hooks.get(event, []))
+                        for event, mode in EVENTS[tool].items() if mode == "pre")
+            from .mcp_inventory import summarize_servers
+            mcp_servers = summarize_servers(tool, installation_id(tool), _document, project)
+            if mcp_servers:
+                evidence["mcp_servers"] = mcp_servers
+            effective = {s["name"]: s for s in mcp_servers}
+            evidence["mcp_configured"] = any(s["name"] in {"conduct", "conduct-guard"} and not s["disabled"] for s in effective.values())
         except (OSError, ValueError, TypeError, AttributeError):
             evidence.clear()
             evidence.update(signals=["tool_installation"], config_unreadable=True)

@@ -43,7 +43,7 @@
         "cursor"
       ],
       "gateway": null,
-      "setup_ui": false,
+      "setup_ui": true,
       "live_acceptance": "pending"
     },
     {
@@ -54,7 +54,7 @@
         "windsurf"
       ],
       "gateway": null,
-      "setup_ui": false,
+      "setup_ui": true,
       "live_acceptance": "pending"
     },
     {

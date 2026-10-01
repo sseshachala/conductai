@@ -42,6 +42,15 @@ function Evidence({ agent, workspaceId, close }: { agent: DiscoveryAgent; worksp
     <ul className="my-3 list-disc pl-5 text-sm">{(agent.evidence.signals ?? []).map(s => <li key={s}>{discoveryLabel(s)}</li>)}</ul>
     {agent.evidence.config_unreadable && <p className="text-sm text-amber-700">Configuration could not be read.</p>}
     <p className="text-sm text-stone-500">{agent.evidence_note}</p>
+    {agent.evidence.mcp_servers && <section className="mt-6 border-t border-stone-200 pt-4">
+      <h3 className="text-sm font-semibold">MCP configuration</h3>
+      {agent.evidence.mcp_servers.length ? <ul className="mt-3 divide-y divide-stone-200">
+        {agent.evidence.mcp_servers.map(server => <li key={server.id} className="py-3 text-sm">
+          <strong className="break-all">{server.name}</strong>
+          <div className="text-stone-500">{server.scope} · {server.transport} · {server.disabled ? "Disabled" : "Configured"}</div>
+        </li>)}
+      </ul> : <p className="mt-3 text-sm text-stone-500">No servers reported.</p>}
+    </section>}
     <section className="mt-6 border-t border-stone-200 pt-4">
       <h3 className="font-semibold text-sm">{agent.remediation.label}</h3>
       <p className="my-3 text-sm">{agent.remediation.detail}</p>

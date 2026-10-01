@@ -15,9 +15,17 @@ export interface DiscoveryAgent {
   hook_observed_at: string | null
   hook_event_id: string | null
   mcp_configured: boolean
-  evidence: { signals?: string[]; config_unreadable?: boolean }
+  evidence: { signals?: string[]; config_unreadable?: boolean; mcp_servers?: McpFinding[] }
   evidence_note: string
   remediation: { label: string; command: string | null; detail: string }
+}
+
+export interface McpFinding {
+  id: string
+  name: string
+  scope: "user" | "legacy-user" | "project"
+  transport: "stdio" | "http" | "sse" | "streamable-http" | "unknown"
+  disabled: boolean
 }
 
 export interface DiscoverySummary {

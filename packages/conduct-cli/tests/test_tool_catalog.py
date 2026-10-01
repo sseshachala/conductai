@@ -28,7 +28,7 @@ def test_catalog_conforms_and_is_bundled():
             assert route["operation"] == {
                 "openai": "openai_responses", "anthropic": "anthropic_messages"
             }[route["provider"]]
-        assert not tool["setup_ui"] or route
+        assert tool["setup_ui"]
 
 
 @pytest.mark.parametrize("field,value", [

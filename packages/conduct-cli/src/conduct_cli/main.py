@@ -295,11 +295,25 @@ def _write_codex_mcp_config(api_url: str, token: str) -> bool:
     """Write the conduct MCP server entry into ~/.codex/config.toml (TOML,
     different format from JSON). Rewrites when a stale `conduct-mcp` command
     is present so upgrades cut over cleanly."""
-    config_path = Path.home() / ".codex" / "config.toml"
+    from conduct_cli.tool_adapters import ADAPTERS
+    config_path = ADAPTERS["codex"].root() / "config.toml"
+    if config_path.is_symlink():
+        return False
     if not config_path.parent.exists():
         return False
     try:
         content = config_path.read_text() if config_path.exists() else ""
+        try:
+            import tomllib
+        except ImportError:
+            import tomli as tomllib
+        parsed = tomllib.loads(content)
+        prior = parsed.get("mcp_servers", {}).get("conduct")
+        if prior is not None and not (
+            isinstance(prior, dict) and prior.get("command") in {"npx", "conduct-mcp", "conductguard-mcp"}
+            and (prior.get("command") != "npx" or "mcp-remote" in prior.get("args", []))
+        ):
+            return False
         _quoted_args = ", ".join('"' + a.replace('"', '\\"') + '"'
                                  for a in _mcp_remote_args(api_url, token))
         _snippet = (
@@ -321,105 +335,16 @@ def _write_codex_mcp_config(api_url: str, token: str) -> bool:
         ]
         content = "".join(_keep)
         config_path.write_text(content.rstrip() + _snippet)
+        config_path.chmod(0o600)
         return True
     except Exception:
         return False
 
 
 def _detect_ai_tools() -> list:
-    """
-    Detect which AI coding tools are installed and whether Guard/conduct-mcp is registered.
-    Returns list of {name, mcp_registered, hook_registered} for each detected tool.
-    Only includes tools whose config directory exists on this machine.
-    """
-    home = Path.home()
-    results = []
-
-    def _check_json_mcp(path: Path) -> bool:
-        try:
-            d = json.loads(path.read_text()) if path.exists() else {}
-            return "conduct" in d.get("mcpServers", {})
-        except Exception:
-            return False
-
-    def _check_json_hook(path: Path, hook_key: str = "hooks") -> bool:
-        try:
-            d = json.loads(path.read_text()) if path.exists() else {}
-            hooks = d.get(hook_key, {})
-            pre = hooks.get("PreToolUse", [])
-            return any("conductguard" in str(h) or "conduct" in str(h).lower() for h in pre)
-        except Exception:
-            return False
-
-    def _check_toml_str(path: Path, needle: str) -> bool:
-        try:
-            return needle in (path.read_text() if path.exists() else "")
-        except Exception:
-            return False
-
-    # Claude Code
-    claude_dir = home / ".claude"
-    if claude_dir.exists():
-        settings = claude_dir / "settings.json"
-        results.append({
-            "name": "claude-code",
-            "mcp_registered": _check_json_mcp(settings),
-            "hook_registered": _check_json_hook(settings),
-        })
-
-    # Codex
-    codex_dir = home / ".codex"
-    if codex_dir.exists():
-        config = codex_dir / "config.toml"
-        results.append({
-            "name": "codex",
-            "mcp_registered": _check_toml_str(config, "conduct-mcp"),
-            "hook_registered": _check_toml_str(config, "conductguard"),
-        })
-
-    # Cursor
-    cursor_dir = home / ".cursor"
-    if cursor_dir.exists():
-        results.append({
-            "name": "cursor",
-            "mcp_registered": _check_json_mcp(cursor_dir / "mcp.json"),
-            "hook_registered": False,  # Cursor uses MCP only, no hook
-        })
-
-    # Windsurf
-    windsurf_dir = home / ".codeium" / "windsurf"
-    if windsurf_dir.exists():
-        results.append({
-            "name": "windsurf",
-            "mcp_registered": _check_json_mcp(windsurf_dir / "mcp_config.json"),
-            "hook_registered": False,  # Windsurf uses MCP only
-        })
-
-    # VS Code (Copilot) — only report if Copilot extension is actually installed
-    vscode_ext_dir = home / ".vscode" / "extensions"
-    copilot_installed = vscode_ext_dir.exists() and any(
-        p.name.startswith("github.copilot") for p in vscode_ext_dir.iterdir()
-        if p.is_dir()
-    )
-    if copilot_installed:
-        vscode_settings_candidates = [
-            home / "Library" / "Application Support" / "Code" / "User" / "settings.json",
-            home / ".config" / "Code" / "User" / "settings.json",
-            home / ".vscode" / "settings.json",
-        ]
-        vscode_settings = next((p for p in vscode_settings_candidates if p.exists()), None)
-        try:
-            d = json.loads(vscode_settings.read_text()) if vscode_settings else {}
-            mcp_reg = "conduct" in d.get("mcp", {}).get("servers", {})
-        except Exception:
-            mcp_reg = False
-        results.append({
-            "name": "vscode",
-            "mcp_registered": mcp_reg,
-            "hook_registered": False,  # VS Code uses MCP only
-        })
-
-    return results
+    """Use the same configuration evidence as guard discovery."""
+    from conduct_cli.guard_commands.discovery import _detect_ai_tools as detect
+    return detect()
 
 
 def _report_tool_coverage() -> None:

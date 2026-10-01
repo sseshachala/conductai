@@ -232,10 +232,15 @@ def register_guard_parser(sub):
     # conduct guard discover
     discover_p = guard_sub.add_parser("discover", help="Scan for AI agents and show Guard coverage")
     discover_p.add_argument("--config-only", action="store_true", help="Skip process scan, config files only")
+    discover_p.add_argument("--project", help="Include MCP configuration in this project only (no recursive scan)")
     gateway_check = discover_p.add_mutually_exclusive_group()
     gateway_check.add_argument("--verify-gateway", dest="verify_gateway", action="store_true", default=True, help="Check Gateway authentication with the CLI credential (default; no inference request)")
     gateway_check.add_argument("--no-verify-gateway", dest="verify_gateway", action="store_false", help="Skip the Gateway connection check")
     discover_p.add_argument("--report", default=None, metavar="FILE", help="Write full JSON report to file")
+
+    editor_p = guard_sub.add_parser("editor-hooks", help="Manage Conduct-owned Cursor/Windsurf hooks")
+    editor_p.add_argument("--tool", required=True, choices=["cursor", "windsurf"])
+    editor_p.add_argument("--remove", action="store_true", help="Remove only Conduct's editor hook entries")
 
     # conduct guard watch
     watch_p = guard_sub.add_parser("watch", help="Start background daemon — scans every 15 min, auto-pushes to Guard")
@@ -290,6 +295,15 @@ def dispatch_guard(args, guard_p):
         cmd_guard_install(args)
     elif guard_command == "discover":
         cmd_guard_discover(args)
+    elif guard_command == "editor-hooks":
+        from conduct_cli.guard_commands.editor_setup import configure
+        from conduct_cli.guard_commands.hooks import _best_python
+        try:
+            changed = configure(args.tool, _best_python(), remove=args.remove)
+            print("Editor hooks updated." if changed else "No editor hook changes.")
+        except (OSError, ValueError, TimeoutError):
+            print("Editor hook configuration could not be updated; left unchanged.")
+            raise SystemExit(1) from None
     elif guard_command == "watch":
         cmd_guard_watch(args)
     elif guard_command == "lint":

@@ -7,6 +7,8 @@ describe("shared tool catalog", () => {
     expect(setupTools.map(tool => [tool.id, tool.gateway?.operation])).toEqual([
       ["claude-code", "anthropic_messages"],
       ["codex", "openai_responses"],
+      ["cursor", undefined],
+      ["windsurf", undefined],
       ["copilot-cli", "openai_responses"],
     ])
   })
