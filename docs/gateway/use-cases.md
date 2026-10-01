@@ -25,11 +25,36 @@ snippets below.
    | Anthropic SDK | `https://gateway.conductai.ai/gateway/v1/anthropic` |
    | OpenAI SDK (incl. OpenRouter passthrough) | `https://gateway.conductai.ai/gateway/v1/openai` |
 
-5. **Model field** is always the profile's cond-code identifier:
+5. **Model field** can use the profile's unambiguous cond-code identifier:
    ```
    cond-<8-char-code>-<alias>
    ```
    Grab it from the profile's "How to use" panel after publish.
+
+### Client model selection
+
+With Gateway v2 enabled, the canonical `/gateway/v1/...` endpoints also accept:
+
+- A published profile alias, such as `coding`.
+- An exact upstream model name, when every target in the matching profile uses
+  that model. Mixed-model fallback profiles require their alias or full cond ID.
+- `cheap`, `balanced`, or `smart`, resolved using LLM Model Primitives and the
+  workspace's preferred provider. A provider-qualified tier, such as
+  `openai/balanced`, uses that provider's primitives instead.
+
+The selected model must match a compatible published profile in the caller's
+workspace. Primitives do not publish or authorize profiles. Multiple matching
+profiles return HTTP 409; choose the full cond ID. An unknown model returns 404.
+An incompatible operation returns 400. No different model is silently selected.
+
+Claude Code uses Anthropic Messages. Codex and Copilot use OpenAI Responses.
+For Responses, publish an OpenAI profile accepting `openai_responses`; an
+Anthropic Messages profile cannot serve that wire format. Streaming and tool
+calls retain the existing transport capability checks.
+
+Policy, budgets, credentials, rate limits, and audit still run through the same
+Gateway path. Audit metadata records the original selection and pinned revision.
+Existing full cond IDs and non-canonical proxy routes retain their behavior.
 
 ---
 

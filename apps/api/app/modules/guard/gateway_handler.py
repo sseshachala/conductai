@@ -290,10 +290,19 @@ async def handle_gateway_request(
         # than fail-closed, so a partial rollout never surprises a
         # workspace that hasn't published a v2 profile yet.
 
-        # PR 2 Commit 3 — tier resolution touches DB via model_router; offload.
-        model, _routing_meta = await run_in_threadpool(
-            _apply_tier_resolution_owned, workspace_id, provider, body,
-        )
+        _selection = None
+        _v2_enabled = settings.gateway_profile_v2_enabled_for(workspace_id)
+        if canonical_profile and _v2_enabled and _extract_cond_code(body.get("model")) is None:
+            from app.modules.guard.gateway_model_selection import select_model_owned
+            _selection = await run_in_threadpool(
+                select_model_owned, workspace_id, body.get("model"), provider, upstream_path,
+            )
+            model = body["model"] = _selection.model_id
+            _routing_meta = _selection.metadata
+        else:
+            model, _routing_meta = await run_in_threadpool(
+                _apply_tier_resolution_owned, workspace_id, provider, body,
+            )
         # Keep the wire operation for audit normalization even without a
         # v2 profile. The generic "inference" label cannot distinguish
         # Chat Completions from Responses usage.
@@ -358,8 +367,7 @@ async def handle_gateway_request(
         # bucketing means a workspace never oscillates between v1 and v2
         # mid-session for a given rollout pct.
         _v2_plan = None
-        _v2_enabled = settings.gateway_profile_v2_enabled_for(workspace_id)
-        _cond_code = _extract_cond_code(body.get("model"))
+        _cond_code = _selection.cond_code if _selection else _extract_cond_code(body.get("model"))
         if _cond_code is not None and not _v2_enabled:
             from fastapi import HTTPException as _HTTPException
             raise _HTTPException(
@@ -382,6 +390,7 @@ async def handle_gateway_request(
                     provider=provider,
                     upstream_path=upstream_path,
                     body=body,
+                    **({"resolved": _selection.resolved} if _selection else {}),
                 )
                 if _v2_plan is not None:
                     _routing_meta = {
@@ -1722,6 +1731,7 @@ def _build_v2_plan_owned(
     provider: str,
     upstream_path: str,
     body: dict,
+    resolved=None,
 ) -> "_V2Plan | None":
     """Session-per-thread wrapper. Opens SessionLocal(), sets RLS,
     delegates to ``_build_v2_plan``, closes on exit regardless of path.
@@ -1740,6 +1750,7 @@ def _build_v2_plan_owned(
             provider=provider,
             upstream_path=upstream_path,
             body=body,
+            resolved=resolved,
         )
     finally:
         db.close()
@@ -1753,18 +1764,12 @@ def _build_v2_plan(
     provider: str,
     upstream_path: str,
     body: dict,
+    resolved=None,
 ) -> _V2Plan | None:
-    """Return a v2 execution plan or None (fall through to v1).
+    """Build a pinned v2 plan, rejecting unsupported operations or credentials.
 
-    Returns None on any of:
-      - unknown cond_code in this workspace (no active revision).
-      - the URL surface isn't in the v2 operation map yet.
-      - stream=true (Phase 1 non-streaming only — streaming lands in a
-        follow-up commit tracked on #2004).
-
-    Raises via HTTPException on credentials being partially resolvable —
-    that's a config error, not a silent degrade. The caller sees a 503
-    with the specific target id so ops can fix it in Vault.
+    ``resolved`` is an internal selection from the same authenticated workspace,
+    never client input. Reuse its revision rather than re-reading a publish pointer.
     """
     from app.runtime.gateway_v2_bridge import (
         CredentialsUnavailable,
@@ -1796,11 +1801,12 @@ def _build_v2_plan(
             ),
         )
 
-    resolved = resolve_v2(
-        db,
-        workspace_id=workspace_id,
-        cond_code=cond_code,
-    )
+    if resolved is None:
+        resolved = resolve_v2(
+            db,
+            workspace_id=workspace_id,
+            cond_code=cond_code,
+        )
     if resolved is None:
         raise _HTTPException(
             status_code=404,
