@@ -243,10 +243,11 @@ def register_guard_parser(sub):
     editor_p.add_argument("--remove", action="store_true", help="Remove only Conduct's editor hook entries")
 
     review_p = guard_sub.add_parser("mcp-review", help="Review registered MCP servers in the selected workspace")
-    review_p.add_argument("action", choices=["list", "inspect", "require_review", "approve", "quarantine", "revoke", "restore"])
+    review_p.add_argument("action", choices=["list", "inspect", "require_review", "approve", "quarantine", "revoke", "restore", "response_policy"])
     review_p.add_argument("--server", help="Registered MCP server UUID")
     review_p.add_argument("--revision", type=int, help="Current review revision from list")
     review_p.add_argument("--digest", help="Reviewed catalog digest from inspect")
+    review_p.add_argument("--mode", choices=["off", "audit", "block", "redact"], help="Registered MCP JSON response inspection mode")
     review_p.add_argument("--yes", action="store_true", help="Confirm removal of the saved registration credential")
 
     links_p = guard_sub.add_parser("mcp-links", help="Associate discovered MCP references with workspace registrations")

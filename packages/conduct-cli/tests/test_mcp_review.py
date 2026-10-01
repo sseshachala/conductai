@@ -43,3 +43,19 @@ def test_review_sends_exact_reviewed_digest_and_revision(api_mock, capsys):
     mcp_review.run(args(action="approve", server=str(uuid4()), revision=2, digest="a" * 64))
     assert mock.call_args.kwargs["body"] == {"action": "approve", "revision": 2, "digest": "a" * 64}
     assert "test-token" not in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("mode", ["off", "audit", "block", "redact"])
+def test_response_policy_uses_selected_workspace_and_revision(api_mock, mode):
+    mock, cfg = api_mock
+    mock.return_value = {"id": "server", "governance": {"state": "approved", "response_mode": mode}}
+    mcp_review.run(args(action="response_policy", server=str(uuid4()), revision=3, mode=mode))
+    assert cfg["workspace_id"] in mock.call_args.args[1]
+    assert mock.call_args.kwargs["body"] == {"action": "response_policy", "revision": 3, "digest": None, "mode": mode}
+
+
+def test_response_policy_requires_mode_before_request(api_mock):
+    mock, _ = api_mock
+    with pytest.raises(SystemExit, match="--mode"):
+        mcp_review.run(args(action="response_policy", server=str(uuid4()), revision=3))
+    mock.assert_not_called()

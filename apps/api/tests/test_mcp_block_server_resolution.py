@@ -24,7 +24,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from app.runtime.blocks.mcp_block import _execute_mcp
-from app.runtime.mcp_credentials import resolve_mcp_server
+from app.runtime.mcp_credentials import McpRegistration, resolve_mcp_server
 
 
 # ── resolve_mcp_server: id → name fallback ────────────────────────────────────
@@ -117,9 +117,9 @@ def _run_mcp_block(config: dict) -> dict:
     # local imports inside _execute_mcp.
     with patch("app.runtime.integrations.mcp_client.call_tool") as mock_call, \
          patch("app.core.database.get_db") as mock_get_db, \
-         patch("app.runtime.mcp_credentials.resolve_mcp_server") as mock_resolve:
+         patch("app.runtime.mcp_credentials.resolve_mcp_registration") as mock_resolve:
         mock_get_db.return_value = iter([MagicMock()])
-        mock_resolve.return_value = ("https://example.com/mcp", "http", "tok-xxx")
+        mock_resolve.return_value = McpRegistration("server", "ws-1", "https://example.com/mcp", "http", "tok-xxx")
         mock_call.return_value = {"verdict": "allowed"}
         result = _execute_mcp(block, state, cred_store=None, workspace_id="ws-1")
         return {"result": result, "resolve_call": mock_resolve.call_args}

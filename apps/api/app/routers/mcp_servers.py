@@ -147,7 +147,8 @@ def update_mcp_server(
         row = db.execute(text("UPDATE mcp_servers SET governance = CAST(:value AS jsonb) "
                               "WHERE id = :id AND workspace_id = :ws RETURNING *"),
                          {"id": server_id, "ws": workspace_id,
-                          "value": json.dumps({"state": state, "revision": current["revision"] + 1})}).fetchone()
+                          "value": json.dumps({"state": state, "revision": current["revision"] + 1,
+                                               **({"response_mode": current["response_mode"]} if "response_mode" in current else {})})}).fetchone()
     db.commit()
     return _row_to_out(row)
 
@@ -333,9 +334,10 @@ def list_mcp_server_tools(
 
 
 class McpReviewIn(BaseModel):
-    action: Literal["require_review", "approve", "quarantine", "revoke", "restore"]
+    action: Literal["require_review", "approve", "quarantine", "revoke", "restore", "response_policy"]
     revision: int = Field(ge=0, strict=True)
     digest: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
+    mode: Literal["off", "audit", "block", "redact"] | None = None
 
 
 @router.post("/{server_id}/inspect")
@@ -370,7 +372,7 @@ def review_mcp_server(
     if (row.governance or {}).get("revision", 0) != body.revision:
         raise HTTPException(status_code=409, detail="MCP review changed; reload before retrying")
     try:
-        updated = transition(row.governance, body.action, body.digest)
+        updated = transition(row.governance, body.action, body.digest, body.mode)
     except MCPGovernanceDenied as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     updated["updated_at"] = datetime.now(timezone.utc).isoformat()
@@ -382,7 +384,8 @@ def review_mcp_server(
     db.add(AuditLog(workspace_id=uuid.UUID(workspace_id), actor_id=actor,
                     action="mcp." + body.action, resource_type="mcp_server", resource_id=str(server_id),
                     meta={"state": updated["state"], "revision": updated["revision"],
-                          "digest": updated.get("approved_digest")}))
+                          "digest": updated.get("approved_digest"),
+                          "response_mode": updated.get("response_mode", "off")}))
     db.commit()
     return _row_to_out(result)
 

@@ -149,20 +149,21 @@ def _resolve_workspace_name(workspace_id: str) -> str:
 
 # ── block executor ────────────────────────────────────────────────────────────
 
-def _resolve_slack_mcp(workspace_id: str) -> tuple[str, str, str] | None:
-    """Return (url, transport, token) for the workspace's Slack MCP server, or None."""
+def _resolve_slack_mcp(workspace_id: str):
+    """Return the workspace's Slack MCP registration, or None."""
     if not workspace_id:
         return None
     from app.runtime.mcp_governance import MCPGovernanceDenied
     try:
         from app.core.database import get_db as _get_db
-        from app.runtime.mcp_credentials import resolve_mcp_server
+        from app.runtime.mcp_credentials import resolve_mcp_registration
         db = next(_get_db())
         try:
-            resolved = resolve_mcp_server(server_name="slack", workspace_id=workspace_id, db=db)
+            resolved = resolve_mcp_registration(server_name="slack", workspace_id=workspace_id, db=db)
         finally:
             db.close()
-        if not resolved or not resolved[2]:
+        from app.runtime.mcp_governance import response_mode
+        if not resolved or (not resolved.token and response_mode(resolved.governance) == "off"):
             return None
         return resolved
     except MCPGovernanceDenied:
@@ -219,14 +220,11 @@ def _execute_output(
                 mcp_slack = None if use_approval else _resolve_slack_mcp(workspace_id)
                 if mcp_slack:
                     # Route through Slack MCP server — no separate credential needed
-                    from app.runtime.integrations.mcp_client import call_tool
-                    mcp_url, mcp_transport, mcp_token = mcp_slack
                     try:
-                        r = call_tool(mcp_url, mcp_token or None, "post_message",
-                                      {"channel": channel, "text": body}, transport=mcp_transport)
+                        r = mcp_slack.call_tool("post_message", {"channel": channel, "text": body})
                         results["slack"] = r if isinstance(r, dict) else {"output": str(r)}
                     except (asyncio.TimeoutError, TimeoutError):
-                        results["slack"] = {"sent": False, "error": f"Slack MCP timeout — server at {mcp_url} did not respond within 30s"}
+                        results["slack"] = {"sent": False, "error": "Slack MCP timeout"}
                 elif use_approval:
                     if not slack_creds:
                         results["slack"] = {"sent": False, "reason": "No Slack credentials configured"}

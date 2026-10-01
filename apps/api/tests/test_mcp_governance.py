@@ -115,6 +115,6 @@ def test_slack_cannot_fallback_when_review_denies_or_database_is_down(monkeypatc
     monkeypatch.setattr("app.core.database.get_db", lambda: iter([MagicMock()]))
     for error in [MCPGovernanceDenied("quarantined"), ConnectionError("database unavailable")]:
         resolver = MagicMock(side_effect=error)
-        monkeypatch.setattr("app.runtime.mcp_credentials.resolve_mcp_server", resolver)
+        monkeypatch.setattr("app.runtime.mcp_credentials.resolve_mcp_registration", resolver)
         with pytest.raises(MCPGovernanceDenied):
             _resolve_slack_mcp(str(uuid4()))

@@ -51,9 +51,18 @@ def assert_callable(value, digest=None):
         raise MCPGovernanceDenied("MCP server requires approval or restoration")
     if digest is not None and digest != current.get("approved_digest"):
         raise MCPGovernanceDenied("MCP tool catalog changed; review required")
+    response_mode(current)
 
 
-def transition(current, action, expected_digest=None):
+def response_mode(value):
+    current = policy(value)
+    mode = current.get("response_mode", "off") if current else "off"
+    if mode not in {"off", "audit", "block", "redact"}:
+        raise MCPGovernanceDenied("Invalid MCP response inspection mode")
+    return mode
+
+
+def transition(current, action, expected_digest=None, mode=None):
     current = policy(current)
     if action == "require_review":
         if current:
@@ -64,7 +73,11 @@ def transition(current, action, expected_digest=None):
             raise MCPGovernanceDenied("Enroll the MCP server for review first")
         current = {"revision": 0}
     updated = {**current, "revision": current["revision"] + 1}
-    if action == "approve":
+    if action == "response_policy":
+        if mode not in {"off", "audit", "block", "redact"}:
+            raise MCPGovernanceDenied("Invalid MCP response inspection mode")
+        updated["response_mode"] = mode
+    elif action == "approve":
         if current.get("state") not in {"needs_review", "approved"}:
             raise MCPGovernanceDenied("Restore the MCP server before approval")
         if not expected_digest or current.get("observed_digest") != expected_digest:
@@ -77,7 +90,8 @@ def transition(current, action, expected_digest=None):
     elif action == "restore":
         if current.get("state") not in {"quarantined", "revoked"}:
             raise MCPGovernanceDenied("MCP server is not quarantined or revoked")
-        updated = {"state": "needs_review", "revision": updated["revision"]}
+        updated = {"state": "needs_review", "revision": updated["revision"],
+                   **({"response_mode": current["response_mode"]} if "response_mode" in current else {})}
     else:
         raise MCPGovernanceDenied("Unknown MCP review action")
     return updated

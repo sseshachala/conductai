@@ -9,6 +9,23 @@ beforeEach(() => authFetch.mockReset())
 afterEach(cleanup)
 
 describe("MCP review", () => {
+  it("saves response mode with the current revision", async () => {
+    const changed = vi.fn()
+    const governance = { state: "approved" as const, revision: 3, response_mode: "block" as const }
+    authFetch.mockResolvedValue({ ok: true, json: async () => ({ governance }) })
+    render(<McpReview id="server" governance={{ state: "approved", revision: 2 }} onChange={changed} />)
+    expect((screen.getByLabelText("Save response inspection") as HTMLButtonElement).disabled).toBe(true)
+    fireEvent.change(screen.getByLabelText("JSON response inspection"), { target: { value: "block" } })
+    fireEvent.click(screen.getByLabelText("Save response inspection"))
+    await waitFor(() => expect(changed).toHaveBeenCalledWith(governance))
+    expect(JSON.parse(authFetch.mock.calls[0][1].body)).toEqual({ action: "response_policy", mode: "block", revision: 2, digest: null })
+  })
+
+  it("does not show inspection settings before enrollment", () => {
+    render(<McpReview id="server" onChange={vi.fn()} />)
+    expect(screen.queryByLabelText("JSON response inspection")).toBeNull()
+  })
+
   it("does not approve without inspecting", () => {
     render(<McpReview id="server" governance={{ state: "needs_review", revision: 1 }} onChange={vi.fn()} />)
     expect((screen.getByText("Approve inspected tools") as HTMLButtonElement).disabled).toBe(true)

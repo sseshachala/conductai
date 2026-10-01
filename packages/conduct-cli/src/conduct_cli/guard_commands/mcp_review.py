@@ -17,6 +17,8 @@ def run(args):
         raise SystemExit("--digest from the reviewed inspection is required")
     if action == "revoke" and not args.yes:
         raise SystemExit("--yes is required to remove the saved registration credential")
+    if action == "response_policy" and getattr(args, "mode", None) not in {"off", "audit", "block", "redact"}:
+        raise SystemExit("--mode is required for response_policy")
     cfg = guard_shared._require_guard_config()
     workspace = str(UUID(cfg["workspace_id"]))
     root = guard_shared._api_url(cfg) + "/mcp-servers"
@@ -29,6 +31,7 @@ def run(args):
         result = guard_shared._req("POST", f"{root}/{server}/inspect?workspace_id={workspace}", token=token)
     else:
         row = guard_shared._req("POST", f"{root}/{server}/review?workspace_id={workspace}", token=token,
-                                body={"action": action, "revision": args.revision, "digest": args.digest})
+                                body={"action": action, "revision": args.revision, "digest": args.digest,
+                                      **({"mode": args.mode} if action == "response_policy" else {})})
         result = {"id": row["id"], "governance": row["governance"]}
     print(json.dumps(result, indent=2, ensure_ascii=True))
