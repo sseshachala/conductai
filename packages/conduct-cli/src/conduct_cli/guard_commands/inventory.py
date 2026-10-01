@@ -112,7 +112,7 @@ def verify_gateway(report, token, config=None):
     results = {}
     for item in report["agents"]:
         evidence = item["evidence"]
-        provider = {"claude-code": "anthropic", "codex": "openai"}.get(item["framework"])
+        provider = {"claude-code": "anthropic", "codex": "openai", "copilot-cli": "openai"}.get(item["framework"])
         if not provider or not evidence.get("gateway_configured"):
             continue
         if provider not in results:
@@ -129,7 +129,8 @@ def verify_gateway(report, token, config=None):
                         status = "authentication_failed"
                     elif response.status == 200:
                         payload = json.loads(response.read(1_000_001))
-                        if isinstance(payload, dict) and isinstance(payload.get("data"), list):
+                        catalog_key = "models" if provider == "openai" else "data"
+                        if isinstance(payload, dict) and isinstance(payload.get(catalog_key), list):
                             status = "connection_verified"
                 except (OSError, ValueError, http.client.HTTPException):
                     pass

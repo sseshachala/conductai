@@ -20,6 +20,101 @@ from app.guard.policy_types import PolicyAction, PolicyDecision
 
 
 @pytest.fixture
+def approved_client_gateway(client_and_capture, monkeypatch):
+    from uuid import uuid4
+    from unittest.mock import AsyncMock
+    from app.core.config import settings
+    from app.modules.guard import gateway_handler, gateway_model_selection
+
+    monkeypatch.setattr(settings, "guard_gateway_profile_v2", True)
+    monkeypatch.setattr(settings, "guard_gateway_profile_v2_rollout_pct", 100)
+    monkeypatch.setattr("app.runtime.model_router.resolve_for_workspace",
+                        lambda *a, **kw: ("openai", "gpt-first", "workspace tier"))
+    rows = []
+    for code, model, provider, operation in [
+        ("aaaaaaaa", "gpt-first", "openai", "openai_responses"),
+        ("bbbbbbbb", "gpt-second", "openai", "openai_responses"),
+        ("cccccccc", "claude-test", "anthropic", "anthropic_messages"),
+    ]:
+        rows.append((SimpleNamespace(cond_code=code), SimpleNamespace(id=uuid4(), snapshot={
+            "name": model, "model_alias": "Second Model" if model == "gpt-second" else model, "accepts": [operation],
+            "targets": [{"id": "primary", "transport": "native_http", "provider": provider,
+                         "model": model, "credential_ref": "vault://11111111-1111-4111-8111-111111111111/test-key"}],
+        })))
+    db = MagicMock()
+    query = db.query.return_value
+    query.join.return_value = query
+    query.filter.return_value = query
+    query.all.return_value = rows
+
+    def select(workspace, requested, provider, path):
+        from app.runtime.gateway_v2_bridge import map_operation
+        return gateway_model_selection.select_model(db, workspace, requested, map_operation(provider, path))
+    monkeypatch.setattr(gateway_model_selection, "select_model_owned", select)
+    for name in ("build_credential_resolver", "build_vendor_credential_resolver"):
+        monkeypatch.setattr("app.runtime.gateway_v2_bridge." + name, lambda *a, **kw: lambda *a: "test-key")
+    monkeypatch.setattr(gateway_handler, "_build_v2_plan_owned",
+                        lambda **kw: gateway_handler._build_v2_plan(db=db, **kw))
+    dispatched = []
+    async def execute(**kwargs):
+        dispatched.append(kwargs)
+        if kwargs["stream"]:
+            from fastapi.responses import StreamingResponse
+            async def chunks():
+                yield b'data: {"type":"response.completed","response":{"usage":{"input_tokens":1,"output_tokens":1}}}\n\n'
+            return StreamingResponse(chunks(), media_type="text/event-stream")
+        return JSONResponse({"output": [], "usage": {"input_tokens": 1, "output_tokens": 1}})
+    monkeypatch.setattr(gateway_handler, "_execute_v2", execute)
+    opened = AsyncMock(return_value=SimpleNamespace(fail_response=None, row_id=None, request_id="test-request"))
+    monkeypatch.setattr("app.modules.guard.gateway_lifecycle.open_durable_row", opened)
+    monkeypatch.setattr("app.modules.guard.gateway_lifecycle.close_durable_row", AsyncMock())
+    monkeypatch.setattr("app.modules.guard.gateway_lifecycle.finalize_durable_row", AsyncMock())
+    return client_and_capture[0], dispatched, opened
+
+
+@pytest.mark.parametrize("provider,path,models", [
+    ("openai", "/v1/responses", ["gpt-first", "gpt-second", "balanced"]),
+    ("anthropic", "/v1/messages", ["claude-test"]),
+])
+@pytest.mark.parametrize("stream", [False, True])
+def test_approved_client_models_preserve_tools_stream_and_audit(approved_client_gateway, provider, path, models, stream):
+    client, dispatched, opened = approved_client_gateway
+    tools = [{"type": "function", "name": "lookup", "parameters": {"type": "object"}}]
+    for model in models:
+        response = client.post(f"/gateway/v1/{provider}{path}",
+            headers={"Authorization": "Bearer guard-mt-fake"},
+            json={"model": model, "input": "hello", "messages": [{"role": "user", "content": "hello"}],
+                  "tools": tools, "stream": stream, "max_tokens": 10})
+        assert response.status_code == 200, response.text
+        assert dispatched[-1]["stream"] is stream
+        assert dispatched[-1]["body"]["tools"] == tools
+        target_model = "gpt-first" if model == "balanced" else model
+        assert dispatched[-1]["plan"].resolved.profile.targets[0].model == target_model
+        metadata = opened.call_args.kwargs["routing_meta"]
+        assert metadata["requested_model"] == model
+        assert metadata["revision_id"] == str(dispatched[-1]["plan"].resolved.revision_id)
+        assert opened.call_args.kwargs["clerk_user_id"] == "user-abc"
+
+
+def test_unpublished_client_model_never_dispatches(approved_client_gateway):
+    client, dispatched, _ = approved_client_gateway
+    response = client.post("/gateway/v1/openai/v1/responses", headers={"Authorization": "Bearer guard-mt-fake"},
+                           json={"model": "unpublished", "input": "hello"})
+    assert response.status_code == 404
+    assert not dispatched
+
+
+def test_approved_profile_still_subject_to_policy(approved_client_gateway, monkeypatch):
+    client, dispatched, _ = approved_client_gateway
+    monkeypatch.setattr("app.guard.policy.evaluate_composed",
+                        lambda ctx: PolicyDecision(action=PolicyAction.BLOCK, source="test"))
+    response = client.post("/gateway/v1/openai/v1/responses", headers={"Authorization": "Bearer guard-mt-fake"},
+                           json={"model": "gpt-first", "input": "hello"})
+    assert response.status_code == 403, response.text
+    assert not dispatched
+
+
+@pytest.fixture
 def client_and_capture(monkeypatch):
     # This routing fixture has no configured rate limits or live Redis dependency.
     monkeypatch.setattr("app.modules.guard.rate_limit._resolve_limits", lambda *a: (None, None, "none"))
