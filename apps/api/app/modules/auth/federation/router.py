@@ -49,6 +49,7 @@ def connection(db: Session, workspace_id: UUID, integration_id: UUID):
     return db.query(FederationConnection).filter(
         FederationConnection.workspace_id == workspace_id,
         FederationConnection.integration_id == integration_id,
+        FederationConnection.authentication_mode == "delegated",
     ).first()
 
 

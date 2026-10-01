@@ -54,6 +54,7 @@ def resolve(db, *, workspace: UUID, caller, connection_id: UUID | None,
         fail("federation_connection_forbidden")
     connection = db.query(FederationConnection).filter(
         FederationConnection.workspace_id == workspace, FederationConnection.id == connection_id,
+        FederationConnection.authentication_mode == "delegated",
     ).first()
     if connection is None:
         fail("federation_connection_unavailable")
@@ -105,7 +106,8 @@ def recheck(db, context, action):
             or (caller.expires_at and caller.expires_at <= datetime.now(timezone.utc))):
         fail("federation_caller_inactive")
     connection = db.query(FederationConnection).filter(FederationConnection.workspace_id == workspace,
-            FederationConnection.id == context.evidence.connection_id).populate_existing().first()
+            FederationConnection.id == context.evidence.connection_id,
+            FederationConnection.authentication_mode == "delegated").populate_existing().first()
     if (connection is None or connection.config.get("status") != "active"
             or str(connection.revision) != context.evidence.mapping_version):
         fail("federation_connection_changed")

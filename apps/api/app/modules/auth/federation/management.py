@@ -40,7 +40,8 @@ def overview(workspace_id: UUID, authenticated: str = Depends(get_workspace_id),
     connections = db.query(FederationConnection, Integration.handle).join(
         Integration, (Integration.id == FederationConnection.integration_id)
         & (Integration.workspace_id == FederationConnection.workspace_id),
-    ).filter(FederationConnection.workspace_id == workspace_id).order_by(FederationConnection.created_at).all()
+    ).filter(FederationConnection.workspace_id == workspace_id,
+             FederationConnection.authentication_mode == "delegated").order_by(FederationConnection.created_at).all()
     result = {"connections": [{**output(row).model_dump(mode="json"), "name": name} for row, name in connections],
               "actions": list(get_args(Action))}
     for key, model, schema in (("principals", FederationPrincipal, PrincipalWrite),

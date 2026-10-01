@@ -20,6 +20,12 @@ from unittest.mock import MagicMock
 
 import pytest
 
+
+@pytest.fixture(autouse=True)
+def trust_lookup(monkeypatch):
+    monkeypatch.setattr("app.modules.auth.federation.okta_agent.candidates",
+                        lambda db, issuer: db.query().filter().all())
+
 # ── Path + env bootstrap ────────────────────────────────────────────────────
 
 HERE = Path(__file__).resolve()
@@ -50,6 +56,10 @@ def _integration_row(*, issuer: str, audience: str, enabled: bool, workspace_id:
     row.okta_issuer = issuer
     row.okta_audience = audience
     row.okta_auth_enabled = enabled
+    row.config = {"issuer": issuer, "audience": audience,
+                  "jwks_uri": issuer.rstrip("/") + "/v1/keys",
+                  "status": "active" if enabled else "disabled",
+                  "token_profile": "okta_agent_jwt", "algorithms": ["RS256"]}
     return row
 
 
@@ -322,4 +332,3 @@ def test_audit_deduped_within_same_request(monkeypatch):
 
     # One request → one audit row for the same allowed decision on the same identity
     assert add_calls["n"] == 1, f"expected 1 audit event, got {add_calls['n']}"
-
