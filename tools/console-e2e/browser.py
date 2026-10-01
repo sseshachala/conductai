@@ -26,7 +26,7 @@ def main():
     environment = {k: v for k, v in os.environ.items() if k in
                    ("PATH", "HOME", "TMPDIR", "DOCKER_HOST", "DOCKER_CONTEXT", "DOCKER_CONFIG", "PLAYWRIGHT_BROWSERS_PATH")}
     secrets = []
-    for actor, default in (("ADMIN", "console-admin"), ("VIEWER", "console-viewerr"), ("UNMAPPED", "console-unmapped")):
+    for actor, default in (("ADMIN", "console-admin"), ("VIEWER", "console-viewer"), ("UNMAPPED", "console-unmapped")):
         prefix = "CONSOLE_E2E_" + actor
         username = os.environ.get(prefix + "_USERNAME") or input(f"{actor} username [{default}]: ").strip() or default
         password = os.environ.get(prefix + "_PASSWORD") or getpass.getpass(f"{actor} password (hidden): ")

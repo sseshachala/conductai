@@ -1,0 +1,13 @@
+{
+  "ca": "/path/to/trusted-ca-bundle.crt",
+  "cli_config": "/path/to/isolated-cli-home/.conduct/config.json",
+  "delegation_config": "/path/to/non-secret-delegation.json",
+  "gateway_url": "https://gateway.example.internal/gateway/v1/openai/v1",
+  "gateway_model": "replace-with-published-cond-routing-id",
+  "litellm_url": "https://litellm.example.internal/v1",
+  "litellm_model": "replace-with-local-model-alias",
+  "blocked_prompt": "conduct-acceptance-block-marker",
+  "block_marker": "replace-with-dedicated-blocking-rule-id",
+  "gateway_fault_marker": "replace-with-dependency-unavailable-code",
+  "litellm_fault_marker": "fail_closed"
+}
