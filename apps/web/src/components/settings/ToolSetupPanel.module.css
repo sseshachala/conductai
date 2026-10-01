@@ -18,3 +18,9 @@
 .models span { color: var(--text-3); }
 .footer { display: flex; flex-wrap: wrap; gap: 16px; border-top: 1px solid var(--border); padding-top: 18px; font-size: 13px; }
 .footer a { color: var(--link); }
+.inventory { min-width: 0; margin-top: 12px; font-size: 12px; }
+.inventory td { max-width: 260px; overflow-wrap: anywhere; }
+.association { display: flex; flex-direction: column; gap: 6px; }
+.linkControls { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.linkControls select { max-width: 190px; min-width: 0; font: inherit; padding: 5px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); color: var(--text); }
+.linkControls button { flex-shrink: 0; }

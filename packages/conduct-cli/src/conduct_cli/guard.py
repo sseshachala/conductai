@@ -249,6 +249,14 @@ def register_guard_parser(sub):
     review_p.add_argument("--digest", help="Reviewed catalog digest from inspect")
     review_p.add_argument("--yes", action="store_true", help="Confirm removal of the saved registration credential")
 
+    links_p = guard_sub.add_parser("mcp-links", help="Associate discovered MCP references with workspace registrations")
+    links_p.add_argument("action", choices=["list", "link", "unlink"])
+    links_p.add_argument("--installation", help="Inventory agent_id UUID from list")
+    links_p.add_argument("--reference", help="MCP reference_id from list")
+    links_p.add_argument("--server", help="Registered MCP server UUID")
+    links_p.add_argument("--revision", type=int, help="Installation association revision from list")
+    links_p.add_argument("--offset", type=int, default=0, help="Next page offset from list")
+
     # conduct guard watch
     watch_p = guard_sub.add_parser("watch", help="Start background daemon — scans every 15 min, auto-pushes to Guard")
     watch_p.add_argument("--stop",   action="store_true", help="Stop the running watch daemon")
@@ -313,6 +321,9 @@ def dispatch_guard(args, guard_p):
             raise SystemExit(1) from None
     elif guard_command == "mcp-review":
         from conduct_cli.guard_commands.mcp_review import run
+        run(args)
+    elif guard_command == "mcp-links":
+        from conduct_cli.guard_commands.mcp_links import run
         run(args)
     elif guard_command == "watch":
         cmd_guard_watch(args)

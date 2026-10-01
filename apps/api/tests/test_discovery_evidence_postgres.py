@@ -51,6 +51,7 @@ def database():
             spec.loader.exec_module(migration)
             with Operations.context(MigrationContext.configure(conn)):
                 migration.upgrade()
+            conn.execute(text("ALTER TABLE discovered_agents ADD COLUMN mcp_links jsonb"))
         yield engine
     finally:
         engine.dispose()

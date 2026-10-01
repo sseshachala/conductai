@@ -40,6 +40,45 @@ Quarantine affects subsequent resolutions; an already-authorized in-flight call
 is not cancelled. Catalog hashes detect changes, not whether a tool is malicious.
 Tool-result inspection and redaction are not part of this change.
 
+## Link device inventory to registrations
+
+Open **Settings > Tool Setup > MCP inventory**. Administrators can select a
+workspace registration and link it to a discovered MCP reference. Members can
+view the links. Use **Review registered servers** to inspect, approve, quarantine,
+or revoke a registration.
+
+The CLI supports the same workflow on the selected deployment:
+
+```sh
+conduct guard discover
+conduct guard mcp-links list
+conduct guard mcp-links link --installation AGENT_UUID --reference REFERENCE_ID --server SERVER_UUID --revision 0
+conduct guard mcp-links unlink --installation AGENT_UUID --reference REFERENCE_ID --revision 1
+```
+
+Use `agent_id`, `reference_id`, and the installation's `revision` from `list`.
+Pass `--offset NEXT_OFFSET` for another page. A stale scan must be refreshed
+before creating a link. Removed references and deleted registrations remain
+visible until an administrator unlinks them. Unlinking does not delete or
+change the registered server.
+
+Links are administrator associations, not automatic endpoint matches. They
+identify a configuration reference on one installation, not its current URL,
+process, or credentials. Discovery does not upload these values or contact
+the server. Changing a reference's target requires reviewing its association.
+Identical names on different devices are never automatically linked.
+
+Discovery, registration review, and device traffic are separate columns.
+An approved registered catalog does not prove that an editor uses Conduct's
+execution path. Device traffic stays **Not observed** and endpoint identity
+stays **Unverified** until correlated evidence is implemented. Links never
+grant access, approve a catalog, or change enforcement.
+
+Scans cannot overwrite links. Link changes require workspace administrator
+permission, a current revision, and an audit entry. Registration details are
+looked up in the same workspace; URLs and saved credentials are not returned
+by this inventory endpoint.
+
 ## Session usage
 
 Updated CLI collectors preserve ordinary input, cache reads, cache writes and
@@ -68,7 +107,9 @@ still pending.
 
 ## Deployment
 
-Apply migration `0159` before starting the updated API. It adds nullable review
-state to `mcp_servers`. Existing records retain their behavior. Schema rollback
-refuses to discard enrolled review state. Use the matching CLI build for the
-new `mcp-review` command and usage metadata; this PR does not publish a release.
+Apply migrations through `0160` before starting the updated API. `0159` adds
+nullable review state to `mcp_servers`; `0160` adds administrator associations
+to `discovered_agents`. Existing records retain their behavior. Rollback
+refuses to discard review state or inventory associations. Use the matching
+CLI build for `mcp-review`, `mcp-links`, and usage metadata; this change does
+not publish a CLI release.
