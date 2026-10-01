@@ -12,8 +12,10 @@ from app.core.auth import get_guard_hook_auth, get_workspace_id
 from app.core.database import get_db
 from app.modules.guard.models import DiscoveredAgent, DiscoveryScan
 from app.modules.guard.discovery_inventory import FRAMEWORKS, agent_view, clean_evidence, summarize, workspace_inventory
+from app.modules.guard.routers.mcp_reconciliation import router as mcp_reconciliation_router
 
 router = APIRouter(prefix="/guard/discover", tags=["guard"])
+router.include_router(mcp_reconciliation_router)
 
 
 class AgentIn(BaseModel):

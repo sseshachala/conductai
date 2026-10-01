@@ -9,6 +9,7 @@ import { publicApiUrl } from "@/lib/auth/runtime"
 import { discoveryLabel, discoveryTime, type DiscoveryAgent } from "@/lib/discovery"
 import styles from "./ToolSetupPanel.module.css"
 import { setupTools } from "@/lib/toolCatalog"
+import McpInventoryLinks from "./McpInventoryLinks"
 
 type Model = { id: string; operations: string[] }
 
@@ -47,6 +48,7 @@ export default function ToolSetupPanel({ workspaceId, isAdmin, enabled = true }:
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
   const [login, setLogin] = useState<string | null>(null)
+  const [showMcp, setShowMcp] = useState(false)
   useEffect(() => { setLogin(setupCommand(publicApiUrl(), window.location.origin)) }, [])
   useEffect(() => {
     if (!enabled || !workspaceId) return
@@ -117,6 +119,10 @@ export default function ToolSetupPanel({ workspaceId, isAdmin, enabled = true }:
         </div>}
       </section>
     })}
+    <details className={styles.tool} onToggle={event => setShowMcp(event.currentTarget.open)}>
+      <summary>MCP inventory</summary>
+      {showMcp && enabled && workspaceId && <McpInventoryLinks key={workspaceId} workspaceId={workspaceId} isAdmin={isAdmin} />}
+    </details>
     <footer className={styles.footer}>
       <Link href="/settings?tab=llm_primitives">LLM Model Primitives</Link>
       <Link href="/proxy/gateway-profiles">Gateways</Link>
