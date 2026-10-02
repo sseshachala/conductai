@@ -6,6 +6,28 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ---
 
+## [0.14.18] - 2026-10-02
+
+### Added
+- On-prem console login and deployment-aware API, MCP, and Gateway configuration.
+- Shared tool catalog and setup, verify, disable, and remove commands for Claude
+  Code, Codex, Copilot CLI, Cursor, and Windsurf.
+- MCP inventory and registration review, Gateway connectivity verification, and
+  session usage evidence with request identifiers for spend reconciliation.
+- Managed Copilot configuration and approved Gateway model routing.
+
+### Fixed
+- Complete CLI login when browsers leave idle callback connections open.
+- Preserve UTF-8 configuration during managed credential cleanup on Windows.
+- Improve Codex usage attribution and preserve user-owned tool configuration
+  during repeated setup and removal.
+
+### Notes
+- Requires the matching Conduct backend for the new tool and usage features.
+- Cursor and Windsurf configuration support does not imply verified native
+  runtime coverage. Missing usage remains unavailable, not zero spend.
+- Run `conduct guard sync` after upgrading to update managed tool configuration.
+
 ## [0.14.17] - 2026-09-28
 
 ### Added
