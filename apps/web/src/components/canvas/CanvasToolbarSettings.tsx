@@ -16,8 +16,8 @@ function ToggleRow({
   readOnly: boolean
 }) {
   return (
-    <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 24, padding: "14px 0", borderBottom: "1px solid var(--border)" }}>
-      <div style={{ flex: 1 }}>
+    <div className="border-b last:border-b-0" style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 24, padding: "14px 0", borderColor: "var(--border)" }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
         <p style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text)" }}>{label}</p>
         <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>{description}</p>
       </div>
@@ -41,13 +41,10 @@ function ToggleRow({
 export default function CanvasToolbarSettings({ readOnly = false }: { readOnly?: boolean }) {
   const { prefs, loading, update } = usePreferences()
 
-  if (loading) {
-    return <div role="status" style={{ fontSize: 13, color: "var(--text-muted)", padding: "16px 0" }}>Loading preferences…</div>
-  }
-
   return (
-    <section aria-label="Canvas toolbar" style={{ maxWidth: 760 }}>
-      <h3 className="eyebrow" style={{ marginBottom: 12 }}>Canvas toolbar</h3>
+    <section aria-label="Canvas toolbar" className="card" style={{ padding: "16px 20px" }}>
+      <h3 className="eyebrow" style={{ marginBottom: 4 }}>Canvas toolbar</h3>
+      {loading ? <div role="status" style={{ fontSize: 13, color: "var(--text-muted)", padding: "16px 0" }}>Loading preferences…</div> : <>
       <ToggleRow
         label="Show Test Trigger button"
         description="Adds a 'Test Trigger' button to the canvas toolbar — fires a real run with a safe dummy payload."
@@ -62,6 +59,7 @@ export default function CanvasToolbarSettings({ readOnly = false }: { readOnly?:
         readOnly={readOnly}
         onChange={v => update({ show_dry_run: v })}
       />
+      </>}
     </section>
   )
 }

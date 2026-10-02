@@ -13,6 +13,14 @@ beforeEach(() => {
 })
 afterEach(cleanup)
 
+it("matches the workflow settings card and spacing", () => {
+  render(<CanvasToolbarSettings />)
+  const card = screen.getByRole("region", { name: "Canvas toolbar" })
+  expect(card).toHaveClass("card")
+  expect(card).toHaveStyle({ padding: "16px 20px" })
+  expect(screen.getByRole("heading", { name: "Canvas toolbar" })).toHaveClass("eyebrow")
+})
+
 it("uses the saved workspace toolbar preferences", () => {
   state.prefs = { show_test_trigger: false, show_dry_run: true }
   render(<CanvasToolbarSettings />)
