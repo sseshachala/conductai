@@ -108,6 +108,9 @@ def test_custom_web_deployment_keeps_its_own_confirmation_page(callback, monkeyp
 
 def test_idle_browser_connection_does_not_block_login_shutdown(monkeypatch):
     accepted_idle = threading.Event()
+    ready = threading.Event()
+    # HTTPServer resolves its name during bind; external DNS is not under test.
+    monkeypatch.setattr(socket, "getfqdn", lambda name="": "localhost")
     original_get_request = http.server.HTTPServer.get_request
     sockets = []
     results = []
@@ -141,6 +144,7 @@ def test_idle_browser_connection_does_not_block_login_shutdown(monkeypatch):
             connection.close()
         sockets.append(socket.create_connection(("127.0.0.1", port), timeout=3))
         assert accepted_idle.wait(3)
+        ready.set()
 
     monkeypatch.setattr(webbrowser, "open", open_browser)
 
@@ -149,10 +153,13 @@ def test_idle_browser_connection_does_not_block_login_shutdown(monkeypatch):
             results.append(cli._web_login_flow("https://api.example", "https://console.example"))
         except BaseException as error:
             errors.append(error)
+            ready.set()
 
     worker = threading.Thread(target=login, daemon=True)
     worker.start()
     try:
+        assert ready.wait(15), "Callback setup did not complete"
+        assert not errors
         worker.join(5)
         assert not worker.is_alive(), "Login waited for an idle browser socket to close"
         assert not errors
