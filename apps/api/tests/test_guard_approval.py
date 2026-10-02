@@ -25,16 +25,9 @@ os.environ.setdefault("REDIS_URL", "redis://localhost:6379")
 os.environ.setdefault("ANTHROPIC_API_KEY", "sk-test")
 os.environ.setdefault("ENCRYPTION_KEY", "test-key-32-bytes-long-xxxxxxxx!")
 
-_STUBS = ["structlog", "redis", "sentry_sdk", "app.core.pii"]
+_STUBS = ["structlog", "redis", "sentry_sdk"]
 for _m in _STUBS:
     sys.modules.setdefault(_m, MagicMock())
-# app.core.pii.redact_secrets must return its input (it is called by
-# create_approval_request); the MagicMock default returns a MagicMock.
-# Preserve the real signature: tuple[str, list[str]] — pre-#1737 stubs
-# used `lambda s: s` which poisoned tests loaded later in the session
-# that rely on the 2-tuple contract.
-import app.core.pii as _pii  # noqa: E402
-_pii.redact_secrets = lambda s: (s, [])
 
 from app.modules.guard.approval import (  # noqa: E402
     approval_url,
