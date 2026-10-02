@@ -74,6 +74,9 @@ def _register_mcp(workspace_id: str, agent_token: str, api_url: str, dry_run: bo
     vscode_paths = _vscode_mcp_paths()
     targets = []
     for tool in ("claude-code", "cursor", "windsurf"):
+        from .tool_lifecycle import disabled
+        if disabled(tool):
+            continue
         adapter = ADAPTERS[tool]
         if adapter.root().is_dir():
             source = next(s for s in adapter.mcp_sources() if s.scope == "user")
@@ -135,7 +138,7 @@ def _register_mcp(workspace_id: str, agent_token: str, api_url: str, dry_run: bo
 
     # Copilot CLI supports HTTP and stdio; use the authenticated central HTTP server.
     _patch_copilot_mcp(agent_token, api_url)
-    if ADAPTERS["codex"].root().is_dir():
+    if ADAPTERS["codex"].root().is_dir() and not disabled("codex"):
         from conduct_cli.main import _write_codex_mcp_config
         if not _write_codex_mcp_config(api_url, agent_token):
             print("  Codex MCP config could not be updated; left unchanged")
@@ -185,6 +188,9 @@ def _patch_claude_desktop_proxy(api_url: str, agent_token: str, *, gateway_url: 
 def _patch_copilot_mcp(agent_token: str, api_url: str) -> None:
     """Keep ~/.copilot/mcp-config.json and any .mcp.json in cwd in sync with current agent token."""
     import shutil
+    from .tool_lifecycle import disabled
+    if disabled("copilot-cli"):
+        return
     sse_entry = {
         "type": "http",
         "url": _deployment(api_url).mcp,

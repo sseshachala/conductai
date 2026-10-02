@@ -12,6 +12,18 @@ const evidence: SessionSpendEvidence = {
 }
 
 describe("session spend", () => {
+  it("shows matched receipt totals without adding the client estimate", () => {
+    render(<SessionSpendSummary data={{ ...evidence, link_status: "request_id_linked",
+      combined_cost_microdollars: 400,
+      matching: { complete: true, unmatched_slice_count: 0, mismatched_slice_count: 0, truncated: false },
+      rollups: { reported: [{ provider: "test", model: "model-a", estimated_microdollars: 500, cost_status: "estimated" }],
+        gateway: [{ provider: "test", model: "model-a", totals: { calculated_cost_microdollars: { value: 400, status: "complete" } } }] },
+    }} />)
+    expect(screen.getByText(/Reported token totals match receipts/)).toBeTruthy()
+    expect(screen.getByText(/Deduplicated recorded cost: \$0.000400/)).toBeTruthy()
+    expect(screen.getAllByText("model-a")).toHaveLength(2)
+    expect(screen.queryByText(/0.000900/)).toBeNull()
+  })
   it("keeps overlapping sources separate and counts attempts", () => {
     render(<SessionSpendSummary data={evidence} />)
     expect(screen.getByText(/Reported estimate: \$0.000500/)).toBeTruthy()

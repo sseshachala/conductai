@@ -155,3 +155,17 @@ def read_request_evidence(db, *, workspace_id: UUID, requests: dict[UUID, UUID |
         coverage_complete=all(v.coverage_complete for v in results.values()),
     )
     return RequestUsageBatch(results, totals)
+
+
+def rollup_request_evidence(batch):
+    """Model rollups use exactly the same persisted totals as request/session views."""
+    groups = {}
+    for request in batch.requests.values():
+        for attempt in request.attempts:
+            group = groups.setdefault((attempt.provider, attempt.model), {"attempts": [], "requests": {}})
+            group["attempts"].append(attempt)
+            group["requests"][request.request_id] = request
+    return [{"provider": provider, "model": model, "totals": _totals(
+        group["attempts"], request_count=len(group["requests"]), missing_requests=0,
+        coverage_complete=all(r.coverage_complete for r in group["requests"].values()))}
+        for (provider, model), group in sorted(groups.items())]

@@ -12,31 +12,28 @@ from . import shared as _guard_shared
 
 def _configure_codex_proxy(proxy_url: str) -> bool:
     """Opt in Codex to Conduct's Responses endpoint without storing a secret."""
-    config_path = Path.home() / ".codex" / "config.toml"
+    from conduct_cli.tool_adapters import ADAPTERS
+    from conduct_cli.tool_config import edit_document
+    from .tool_lifecycle import disabled
+    if disabled("codex"):
+        return False
+    config_path = ADAPTERS["codex"].root() / "config.toml"
     if not config_path.parent.exists():
         return False
-    content = config_path.read_text() if config_path.exists() else ""
-    backup = config_path.with_suffix(".toml.pre-conduct-proxy")
-    if config_path.exists() and not backup.exists():
-        backup.write_text(content)
-        backup.chmod(0o600)
-
-    import re as _re
-    sections = _re.split(r"(?m)(?=^\[)", content)
-    root = sections[0]
-    root = _re.sub(r'(?m)^model_provider\s*=.*\n?', '', root)
-    root = root.rstrip() + '\nmodel_provider = "conduct"\n\n'
-    remaining = [s for s in sections[1:] if not s.startswith("[model_providers.conduct]")]
     base = proxy_url.rstrip("/") + "/openai/v1"
-    snippet = (
-        "[model_providers.conduct]\n"
-        'name = "Conduct Gateway"\n'
-        f"base_url = {json.dumps(base)}\n"
-        'env_key = "CONDUCT_GATEWAY_TOKEN"\n'
-        'wire_api = "responses"\n'
-        'requires_openai_auth = false\n\n'
-    )
-    config_path.write_text(root + snippet + "".join(remaining).lstrip())
+    with edit_document(config_path) as document:
+        providers = document.setdefault("model_providers", {})
+        prior = providers.get("conduct")
+        legacy = isinstance(prior, dict) and set(prior) == {"env_key"} and prior.get("env_key") == "OPENAI_API_KEY"
+        if prior is not None and (not isinstance(prior, dict) or (prior.get("name") != "Conduct Gateway" and not legacy)):
+            raise ValueError("User-owned Conduct provider override")
+        state = Path.home() / ".conduct" / "codex-provider.json"
+        if document.get("model_provider") != "conduct":
+            with edit_document(state) as saved:
+                saved["previous"] = document.get("model_provider")
+        document["model_provider"] = "conduct"
+        providers["conduct"] = {"name": "Conduct Gateway", "base_url": base,
+            "env_key": "CONDUCT_GATEWAY_TOKEN", "wire_api": "responses", "requires_openai_auth": False}
     return True
 
 
@@ -299,13 +296,39 @@ def _migrate_proxy_env_if_stale() -> bool:
 
 
 def _write_private_env(path: Path, content: str) -> None:
-    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(descriptor, "w") as output:
-        os.chmod(path, 0o600)
+    from .tool_lifecycle import disabled
+    from conduct_cli.credential_lock import credential_lock
+    import tempfile
+    if path.is_symlink():
+        raise ValueError("Symlinked environment file is not writable")
+    if content.startswith(SHELL_RC_MARKER):
+        variables = set()
+        if disabled("claude-code"):
+            variables.update(("ANTHROPIC_BASE_URL", "ANTHROPIC_API_KEY", "CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY"))
+        if disabled("codex"):
+            variables.update(("OPENAI_BASE_URL", "OPENAI_API_KEY", "CONDUCT_GATEWAY_TOKEN"))
+        if disabled("copilot-cli"):
+            from .copilot import MANAGED, PREFIX
+            variables.update(PREFIX + name for name in MANAGED)
+        if variables:
+            pattern = _re.compile(r"(?:export |unset |\$env:|Remove-Item Env:)([A-Z_]+)")
+            lines = [line for line in content.splitlines() if not (
+                (match := pattern.match(line.strip())) and match[1] in variables)]
+            lines[1:1] = [f"Remove-Item Env:{name} -ErrorAction SilentlyContinue" if path.suffix == ".ps1"
+                          else f"unset {name}" for name in sorted(variables)]
+            content = "\n".join(lines) + "\n"
+    with credential_lock(path):
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=path.parent, delete=False) as output:
+            temporary = Path(output.name)
+            output.write(content)
+        temporary.chmod(0o600)
+        try:
+            temporary.replace(path)
+        finally:
+            temporary.unlink(missing_ok=True)
         if os.name == "nt":
             from conduct_cli.hooks.base import restrict_to_owner
             restrict_to_owner(path)
-        output.write(content)
 
 
 def _write_proxy_env(agent_token: str, proxy_url: str, *, copilot=True) -> tuple[Path, bool]:

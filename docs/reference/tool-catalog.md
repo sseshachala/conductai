@@ -22,6 +22,34 @@ Codex CLI and Desktop are listed as distinct surfaces under the existing
 `codex` inventory identity. This increment does not migrate installation IDs
 or change session deduplication.
 
+## Tool lifecycle
+
+Use the same commands for each catalog tool ID:
+
+```sh
+conduct guard tool setup --tool claude-code
+conduct guard tool verify --tool claude-code
+conduct guard tool disable --tool claude-code
+conduct guard tool remove --tool claude-code
+```
+
+Setup configures supported hooks, MCP and Gateway settings. Verify checks
+configuration and Gateway connectivity without sending an inference request.
+Disable/remove stop collection and automatic reinstallation, and remove only
+Conduct-owned entries. Setup enables the tool again. Restart the tool after
+configuration changes. Other MCP servers, hooks and account credentials remain.
+Use `--project /path/to/project` to include project-scoped MCP entries.
+
+Configuration edits are locked and atomic. Invalid files, symlinks and user-owned
+overrides are left unchanged. Custom configuration homes use the catalog's
+`home_env` setting. Cursor and Windsurf retain pending live acceptance status.
+
+Session spend matches protocol response IDs or explicit Conduct request IDs
+within the authenticated workspace and actor. Matching verifies model/provider
+and token totals, including streamed deltas. Missing or conflicting IDs stay
+unmatched. Model rollups use persisted receipt prices; reported estimates stay
+separate and are never added to Gateway charges or budgets.
+
 ## Adding a tool
 
 1. Add its metadata to the source and bundled catalog.

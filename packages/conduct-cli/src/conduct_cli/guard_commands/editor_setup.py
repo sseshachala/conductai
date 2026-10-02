@@ -77,8 +77,11 @@ def configure(surface, python, remove=False):
 
 def install():
     from .hooks import _best_python
+    from .tool_lifecycle import disabled
     for surface in EVENTS:
         try:
+            if disabled(surface):
+                continue
             if configure(surface, _best_python()):
                 print(f"  {surface} hooks configured; live verification pending (restart the editor)")
         except (OSError, ValueError, TimeoutError):

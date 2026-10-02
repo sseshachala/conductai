@@ -1,5 +1,6 @@
 """Metadata-only token categories. Never infer a provider from a tool name."""
 import re
+from uuid import UUID
 
 FIELDS = ("uncached_input_tokens", "cache_read_tokens", "cache_write_tokens", "output_tokens")
 
@@ -30,7 +31,7 @@ def categories(usage, family):
     return result
 
 
-def add_delta(parts, current, previous, model=None, provider=None):
+def add_delta(parts, current, previous, model=None, provider=None, response_id=None, request_id=None):
     if current is None or previous is None:
         return False
     delta = {k: current[k] - previous[k] for k in FIELDS}
@@ -43,8 +44,15 @@ def add_delta(parts, current, previous, model=None, provider=None):
     if reasoning is not None and previous_reasoning is not None and 0 <= reasoning - previous_reasoning <= delta["output_tokens"]:
         delta["reasoning_output_tokens"] = reasoning - previous_reasoning
     model, provider = identifier(model), identifier(provider)
+    response_id = response_id if isinstance(response_id, str) and len(response_id) <= 160 and re.fullmatch(
+        r"(?:msg[_-]|resp[_-]|chatcmpl-)[A-Za-z0-9_-]+", response_id) else None
+    try:
+        request_id = str(UUID(request_id)) if isinstance(request_id, str) else None
+    except ValueError:
+        request_id = None
     for part in parts:
-        if part["model"] == model and part["provider"] == provider:
+        if (part["model"] == model and part["provider"] == provider
+                and part.get("provider_response_id") == response_id and part.get("gateway_request_id") == request_id):
             for key in FIELDS:
                 part[key] += delta[key]
             if "reasoning_output_tokens" in part and "reasoning_output_tokens" in delta:
@@ -54,5 +62,7 @@ def add_delta(parts, current, previous, model=None, provider=None):
             return True
     if len(parts) >= 100:
         return False
-    parts.append({"model": model, "provider": provider, **delta})
+    parts.append({"model": model, "provider": provider, **delta,
+                  **({"gateway_request_id": request_id} if request_id else {}),
+                  **({"provider_response_id": response_id} if response_id else {})})
     return True

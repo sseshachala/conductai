@@ -58,7 +58,7 @@ def test_shadow_writes_anthropic_json(_captured_row):
         model="claude-sonnet-4-6",
         operation="messages.create",
         dispatched=True,
-        response_bytes=b'{"usage":{"input_tokens":100,"cache_read_input_tokens":20,"output_tokens":40}}',
+        response_bytes=b'{"id":"msg_receipt_test","usage":{"input_tokens":100,"cache_read_input_tokens":20,"output_tokens":40}}',
 
     )
     assert result is not None
@@ -66,6 +66,7 @@ def test_shadow_writes_anthropic_json(_captured_row):
     assert row.workspace_id == ws_id
     assert row.request_id == req_id
     assert row.provider == "anthropic"
+    assert row.calculation_provenance["provider_response_id"] == "msg_receipt_test"
     assert row.model == "claude-sonnet-4-6"
     assert row.attempt_ordinal == 0
     # New normalizer picked up cache_read_input_tokens

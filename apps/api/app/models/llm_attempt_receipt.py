@@ -155,4 +155,9 @@ class LlmAttemptReceipt(Base):
             "developer_external_id",
             postgresql_where=sa.text("developer_external_id IS NOT NULL"),
         ),
+        Index(
+            "ix_llm_attempt_receipts_ws_response_id",
+            "workspace_id",
+            sa.text("(calculation_provenance ->> 'provider_response_id')"),
+        ),
     )
