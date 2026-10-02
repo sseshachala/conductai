@@ -475,6 +475,8 @@ def _web_login_flow(api_url: str, web_url: str) -> dict:
     )
 
     class _Handler(http.server.BaseHTTPRequestHandler):
+        timeout = 10
+
         def do_GET(self):
             parsed = urllib.parse.urlparse(self.path)
             params = dict(urllib.parse.parse_qsl(parsed.query))
@@ -519,7 +521,9 @@ def _web_login_flow(api_url: str, web_url: str) -> dict:
         def log_message(self, *_):
             pass  # silence server logs
 
-    server = http.server.HTTPServer(("127.0.0.1", port), _Handler)
+    # Browsers may preconnect without sending a request. Keep those sockets
+    # from blocking the callback or shutdown after a successful login.
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", port), _Handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
 
@@ -527,16 +531,15 @@ def _web_login_flow(api_url: str, web_url: str) -> dict:
     print(f"\n{BOLD}Opening browser for authentication…{RESET}")
     print(f"{GRAY}If the browser didn't open, visit:{RESET}")
     print(f"  {CYAN}{auth_url}{RESET}\n")
-    webbrowser.open(auth_url)
-
-    if not event.wait(timeout=300):
+    try:
+        webbrowser.open(auth_url)
+        completed = event.wait(timeout=300)
+    finally:
         server.shutdown()
         server.server_close()
+    if not completed:
         print(f"{RED}Login timed out (5 min). Try again.{RESET}")
         sys.exit(1)
-
-    server.shutdown()
-    server.server_close()
 
     if result.get("login_failed"):
         print(f"{RED}Login failed. Run `conduct login` to try again.{RESET}")
