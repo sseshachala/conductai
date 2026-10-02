@@ -99,8 +99,13 @@ def _scan(path: Path, state: dict, surface: str) -> None:
                 if state["counts"] is not None and any(a < b for a, b in zip(current, state["counts"])):
                     state["reset"] = True
                 detail = categories(usage, "codex")
+                previous_detail = state.get("detail_counts")
+                last = categories(info.get("last_token_usage", {}), "codex")
+                response_id = info.get("response_id") if detail and previous_detail and last and all(
+                    detail[key] - previous_detail[key] == last[key] for key in FIELDS) else None
                 if not add_delta(state["pending_usage"], detail, state.get("detail_counts"),
-                                 state.get("model"), state.get("provider")):
+                                 state.get("model"), state.get("provider"), response_id,
+                                 info.get("conduct_request_id") if response_id else None):
                     state["usage_complete"] = False
                 state["detail_counts"] = detail
                 state["counts"] = current
@@ -124,7 +129,8 @@ def _scan(path: Path, state: dict, surface: str) -> None:
                 old_detail = state["message_details"].get(key, dict.fromkeys(FIELDS, 0))
                 if detail is not None and old_detail is not None:
                     detail = {k: max(detail[k], old_detail[k]) for k in FIELDS}
-                if not add_delta(state["pending_usage"], detail, old_detail, message.get("model")):
+                if not add_delta(state["pending_usage"], detail, old_detail, message.get("model"),
+                                 response_id=message_id, request_id=event.get("conduct_request_id")):
                     state["usage_complete"] = False
                 state["message_details"][key] = detail
                 # Streaming transcript entries can repeat or extend one message.
@@ -134,6 +140,9 @@ def _scan(path: Path, state: dict, surface: str) -> None:
 
 
 def collect(data: dict, surface: str, expected: tuple) -> bool:
+    from conduct_cli.guard_commands.tool_lifecycle import disabled
+    if disabled("codex" if surface.startswith("codex") else surface):
+        return False
     if surface not in SURFACES or not expected[1] or context(base.load_config()) != tuple(expected):
         return False
     session = str(UUID(data["session_id"]))

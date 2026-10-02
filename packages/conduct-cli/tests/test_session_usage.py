@@ -122,6 +122,17 @@ def test_claude_streaming_extensions_only_add_delta(setup):
     assert (payload["input_tokens"], payload["output_tokens"]) == (0, 20)
 
 
+def test_distinct_response_ids_do_not_merge_same_model_usage(setup):
+    _, path, _, journal = setup
+    collect(setup, "claude-code")
+    append(path, claude(mid="msg-first", tout=10))
+    append(path, claude(mid="msg-second", tout=20))
+    assert collect(setup, "claude-code")
+    payload = json.loads(journal.call_args.args[0])
+    assert {part["provider_response_id"] for part in payload["usage"]} == {"msg-first", "msg-second"}
+    assert sum(part["output_tokens"] for part in payload["usage"]) == 30
+
+
 @pytest.mark.parametrize("surface,event", [("codex-desktop", codex()), ("claude-code", claude())])
 def test_initial_scan_does_not_import_history(setup, surface, event):
     _, path, _, journal = setup
@@ -317,7 +328,8 @@ def test_claude_cache_categories_and_model_without_inventing_provider(setup):
     collect(setup, "claude-code")
     part = json.loads(journal.call_args.args[0])["usage"][0]
     assert part == {"model": "claude-test", "provider": None, "uncached_input_tokens": 100,
-                    "cache_read_tokens": 50, "cache_write_tokens": 10, "output_tokens": 30}
+                    "cache_read_tokens": 50, "cache_write_tokens": 10, "output_tokens": 30,
+                    "provider_response_id": "msg-1"}
 
 
 def test_private_model_metadata_is_not_uploaded(setup):

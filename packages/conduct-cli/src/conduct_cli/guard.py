@@ -242,6 +242,12 @@ def register_guard_parser(sub):
     editor_p.add_argument("--tool", required=True, choices=["cursor", "windsurf"])
     editor_p.add_argument("--remove", action="store_true", help="Remove only Conduct's editor hook entries")
 
+    tool_p = guard_sub.add_parser("tool", help="Configure, verify, disable or remove Conduct-managed tool settings")
+    tool_p.add_argument("action", choices=["setup", "verify", "disable", "remove"])
+    from conduct_cli.tool_catalog import TOOLS
+    tool_p.add_argument("--tool", required=True, choices=list(TOOLS))
+    tool_p.add_argument("--project", help="Include MCP entries in this explicitly selected project")
+
     review_p = guard_sub.add_parser("mcp-review", help="Review registered MCP servers in the selected workspace")
     review_p.add_argument("action", choices=["list", "inspect", "require_review", "approve", "quarantine", "revoke", "restore", "response_policy"])
     review_p.add_argument("--server", help="Registered MCP server UUID")
@@ -332,6 +338,9 @@ def dispatch_guard(args, guard_p):
         except (OSError, ValueError, TimeoutError):
             print("Editor hook configuration could not be updated; left unchanged.")
             raise SystemExit(1) from None
+    elif guard_command == "tool":
+        from conduct_cli.guard_commands.tool_lifecycle import run
+        run(args)
     elif guard_command == "mcp-review":
         from conduct_cli.guard_commands.mcp_review import run
         run(args)

@@ -47,7 +47,7 @@ def report(db, ws, session=None, actor="owner", estimate=500, tool="codex-cli"):
     return row
 
 
-def receipt(db, event, *, request=None, ordinal=0, cost=400, actor=None, session=None, ws=None, count=1):
+def receipt(db, event, *, request=None, ordinal=0, cost=400, actor=None, session=None, ws=None, count=1, response_id=None):
     from uuid import UUID
     request = request or uuid4()
     row = LlmAttemptReceipt(workspace_id=ws or event.workspace_id, request_id=request,
@@ -55,7 +55,8 @@ def receipt(db, event, *, request=None, ordinal=0, cost=400, actor=None, session
         hook_session_id=session or UUID(event.hook_session_id), source="gateway", provider="test", model="test",
         operation="chat", execution_outcome="succeeded", total_input_tokens=100, total_output_tokens=20,
         usage_origin="provider", usage_completeness="complete", calculated_cost_microdollars=cost,
-        pricing_completeness="priced" if cost is not None else "unpriced", currency="USD")
+        pricing_completeness="priced" if cost is not None else "unpriced", currency="USD",
+        calculation_provenance={"provider_response_id": response_id} if response_id else {})
     db.add(row)
     if ordinal == 0:
         db.add(GuardAuditEvent(workspace_id=ws or event.workspace_id, clerk_user_id=actor or event.clerk_user_id,
@@ -180,3 +181,83 @@ def test_anonymous_session_is_not_a_correlation_key(database):
     event = report(db, ws, actor=None)
     with pytest.raises(ValueError, match="authenticated actor"):
         session_evidence(db, event)
+
+
+def linked_report(db, ws, response_id="msg_fixture", **overrides):
+    event = report(db, ws)
+    event.routing_meta = {"session_usage": {"source": "client_reported", "estimated_microdollars": 500,
+        "cost_status": "estimated", "pricing_version": "fixture-v1", "slices": [{
+            "provider": "test", "model": "test", "provider_response_id": response_id,
+            "uncached_input_tokens": 100, "cache_read_tokens": 0, "cache_write_tokens": 0,
+            "output_tokens": 20, "estimated_microdollars": 500, **overrides}]}}
+    db.flush()
+    return event
+
+
+def test_protocol_response_links_without_session_header_and_never_adds_estimate(database):
+    db, ws = database
+    event = linked_report(db, ws)
+    request = receipt(db, event, response_id="msg_fixture", session=uuid4())
+    result = session_evidence(db, event)
+    assert result["link_status"] == "request_id_linked"
+    assert result["matching"]["complete"]
+    assert result["combined_cost_microdollars"] == 400
+    assert result["request_ids"] == [str(request)]
+    assert result["rollups"]["reported"][0]["estimated_microdollars"] == 500
+    assert result["rollups"]["gateway"][0]["totals"]["calculated_cost_microdollars"]["value"] == 400
+
+
+def test_explicit_gateway_request_id_is_scoped_and_checked(database):
+    db, ws = database
+    event = linked_report(db, ws, response_id=None)
+    request = receipt(db, event, session=uuid4())
+    part = event.routing_meta["session_usage"]["slices"][0]
+    event.routing_meta = {"session_usage": {**event.routing_meta["session_usage"],
+        "slices": [{**part, "gateway_request_id": str(request)}]}}
+    db.flush()
+    assert session_evidence(db, event)["combined_cost_microdollars"] == 400
+    other = linked_report(db, ws)
+    foreign = receipt(db, other, actor="another-user", session=uuid4())
+    event.routing_meta = {"session_usage": {**event.routing_meta["session_usage"],
+        "slices": [{**part, "gateway_request_id": str(foreign)}]}}
+    db.flush()
+    result = session_evidence(db, event)
+    assert result["matching"]["unmatched_slice_count"] == 1
+    assert result["combined_cost_microdollars"] is None
+    assert str(foreign) not in result["request_ids"]
+
+
+def test_duplicate_response_ids_are_ambiguous_not_inferred_by_model(database):
+    db, ws = database
+    event = linked_report(db, ws)
+    receipt(db, event, response_id="msg_fixture")
+    receipt(db, event, response_id="msg_fixture")
+    result = session_evidence(db, event)
+    assert result["matching"]["unmatched_slice_count"] == 1
+    assert result["combined_cost_microdollars"] is None
+
+
+@pytest.mark.parametrize("overrides", [{"model": "different"}, {"provider": "different"}, {"output_tokens": 19}])
+def test_conflicting_model_or_token_totals_cannot_claim_combined_cost(database, overrides):
+    db, ws = database
+    event = linked_report(db, ws, **overrides)
+    receipt(db, event, response_id="msg_fixture")
+    result = session_evidence(db, event)
+    assert not result["matching"]["complete"]
+    assert result["combined_cost_microdollars"] is None
+
+
+def test_partial_stream_deltas_link_once_and_gateway_retries_remain_recorded(database):
+    db, ws = database
+    event = linked_report(db, ws, output_tokens=10)
+    second = linked_report(db, ws, uncached_input_tokens=0, output_tokens=10)
+    second.hook_session_id = event.hook_session_id
+    request = receipt(db, event, response_id="msg_fixture", count=2)
+    receipt(db, event, request=request, ordinal=1, cost=300)
+    db.flush()
+    result = session_evidence(db, event)
+    assert result["matching"]["complete"]
+    assert len(result["matching"]["linked_attempts"]) == 1
+    assert result["combined_cost_microdollars"] == 700
+    assert result["gateway"]["calculated_cost_microdollars"]["value"] == sum(
+        row["totals"]["calculated_cost_microdollars"]["value"] for row in result["rollups"]["gateway"])

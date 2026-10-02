@@ -1,5 +1,8 @@
 import http.server
+import http.client
 import io
+import socket
+import threading
 import urllib.parse
 import webbrowser
 from unittest.mock import Mock
@@ -19,7 +22,7 @@ def callback(monkeypatch):
         assert address[0] == "127.0.0.1"
         return server
 
-    monkeypatch.setattr(http.server, "HTTPServer", make_server)
+    monkeypatch.setattr(http.server, "ThreadingHTTPServer", make_server)
     monkeypatch.setattr(cli, "_find_free_port", lambda: 12345)
 
     def request(query):
@@ -101,3 +104,67 @@ def test_custom_web_deployment_keeps_its_own_confirmation_page(callback, monkeyp
     cli._web_login_flow("http://localhost:8000", "http://localhost:3100")
     headers = dict(call.args for call in captured["response"].send_header.call_args_list)
     assert headers["Location"] == "http://localhost:3100/cli-connected"
+
+
+def test_idle_browser_connection_does_not_block_login_shutdown(monkeypatch):
+    accepted_idle = threading.Event()
+    ready = threading.Event()
+    # HTTPServer resolves its name during bind; external DNS is not under test.
+    monkeypatch.setattr(socket, "getfqdn", lambda name="": "localhost")
+    original_get_request = http.server.HTTPServer.get_request
+    sockets = []
+    results = []
+    errors = []
+    requests = 0
+
+    def get_request(server):
+        nonlocal requests
+        connection = original_get_request(server)
+        requests += 1
+        if requests == 2:
+            accepted_idle.set()
+        return connection
+
+    monkeypatch.setattr(http.server.HTTPServer, "get_request", get_request)
+
+    def open_browser(url):
+        params = dict(urllib.parse.parse_qsl(urllib.parse.urlparse(url).query))
+        port = int(params["port"])
+        connection = http.client.HTTPConnection("127.0.0.1", port, timeout=3)
+        try:
+            query = urllib.parse.urlencode({
+                "state": params["state"], "workspace_id": "workspace",
+                "agent_token": "test-agent",
+            })
+            connection.request("GET", "/callback?" + query)
+            response = connection.getresponse()
+            assert response.status == 303
+            response.read()
+        finally:
+            connection.close()
+        sockets.append(socket.create_connection(("127.0.0.1", port), timeout=3))
+        assert accepted_idle.wait(3)
+        ready.set()
+
+    monkeypatch.setattr(webbrowser, "open", open_browser)
+
+    def login():
+        try:
+            results.append(cli._web_login_flow("https://api.example", "https://console.example"))
+        except BaseException as error:
+            errors.append(error)
+            ready.set()
+
+    worker = threading.Thread(target=login, daemon=True)
+    worker.start()
+    try:
+        assert ready.wait(15), "Callback setup did not complete"
+        assert not errors
+        worker.join(5)
+        assert not worker.is_alive(), "Login waited for an idle browser socket to close"
+        assert not errors
+        assert results[0]["agent_token"] == "test-agent"
+    finally:
+        for connection in sockets:
+            connection.close()
+        worker.join(5)

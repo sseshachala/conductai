@@ -265,80 +265,37 @@ def _write_mcp_config(
     keys: tuple = ("mcpServers",),
     create: bool = False,
 ) -> bool:
-    """Write a conduct MCP server entry (via mcp-remote) into a JSON config.
-    Returns True if written or already present. Replaces a pre-existing entry
-    if it still points at the retired `conduct-mcp` binary so upgrades cut over
-    cleanly."""
+    """Update managed MCP credentials without replacing user-owned entries."""
+    from conduct_cli.tool_config import edit_document
+    from conduct_cli.guard_commands.tool_lifecycle import managed_mcp, owned_mcp
     if not create and not path.parent.exists():
         return False
     try:
-        existing = json.loads(path.read_text()) if path.exists() else {}
-        node = existing
-        for k in keys[:-1]:
-            node = node.setdefault(k, {})
-        servers = node.setdefault(keys[-1], {})
-        _new_entry = {"command": "npx", "args": _mcp_remote_args(api_url, token)}
-        _prior = servers.get("conduct") or servers.get("conductguard")
-        if _prior == _new_entry:
-            return True
-        # Cut over from the retired binaries. Keep the key name "conduct".
-        servers.pop("conductguard", None)
-        servers["conduct"] = _new_entry
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(existing, indent=2))
+        args = _mcp_remote_args(api_url, token)
+        entry = {"command": "npx", "args": args}
+        with edit_document(path) as document:
+            node = document
+            for key in keys:
+                node = node.setdefault(key, {})
+                if not isinstance(node, dict):
+                    raise ValueError("Invalid MCP configuration")
+            prior = node.get("conduct")
+            if prior is not None and prior != entry and not managed_mcp(prior):
+                return False
+            retired = node.get("conductguard")
+            if retired is not None and owned_mcp(retired, args[2]):
+                del node["conductguard"]
+            node["conduct"] = entry
         return True
-    except Exception:
+    except (OSError, ValueError, TimeoutError):
         return False
 
 
 def _write_codex_mcp_config(api_url: str, token: str) -> bool:
-    """Write the conduct MCP server entry into ~/.codex/config.toml (TOML,
-    different format from JSON). Rewrites when a stale `conduct-mcp` command
-    is present so upgrades cut over cleanly."""
+    """Use the structured editor for Codex credential refreshes too."""
     from conduct_cli.tool_adapters import ADAPTERS
-    config_path = ADAPTERS["codex"].root() / "config.toml"
-    if config_path.is_symlink():
-        return False
-    if not config_path.parent.exists():
-        return False
-    try:
-        content = config_path.read_text() if config_path.exists() else ""
-        try:
-            import tomllib
-        except ImportError:
-            import tomli as tomllib
-        parsed = tomllib.loads(content)
-        prior = parsed.get("mcp_servers", {}).get("conduct")
-        if prior is not None and not (
-            isinstance(prior, dict) and prior.get("command") in {"npx", "conduct-mcp", "conductguard-mcp"}
-            and (prior.get("command") != "npx" or "mcp-remote" in prior.get("args", []))
-        ):
-            return False
-        _quoted_args = ", ".join('"' + a.replace('"', '\\"') + '"'
-                                 for a in _mcp_remote_args(api_url, token))
-        _snippet = (
-            "\n[mcp_servers.conduct]\n"
-            'command = "npx"\n'
-            f"args = [{_quoted_args}]\n"
-        )
-        if _snippet.strip() in content:
-            return True
-        # Drop any prior [mcp_servers.conduct] / [mcp_servers.conductguard]
-        # block so we don't stack duplicates on repeated installs. Split by
-        # section header (`[...]` at line start) and keep only the sections
-        # whose header isn't one of the retired keys.
-        import re as _re
-        _sections = _re.split(r"(?m)(?=^\[)", content)
-        _keep = [
-            sec for sec in _sections
-            if not sec.startswith(("[mcp_servers.conduct]", "[mcp_servers.conductguard]"))
-        ]
-        content = "".join(_keep)
-        config_path.write_text(content.rstrip() + _snippet)
-        config_path.chmod(0o600)
-        return True
-    except Exception:
-        return False
+    path = ADAPTERS["codex"].root() / "config.toml"
+    return _write_mcp_config(path, api_url=api_url, token=token, keys=("mcp_servers",))
 
 
 def _detect_ai_tools() -> list:
@@ -518,6 +475,8 @@ def _web_login_flow(api_url: str, web_url: str) -> dict:
     )
 
     class _Handler(http.server.BaseHTTPRequestHandler):
+        timeout = 10
+
         def do_GET(self):
             parsed = urllib.parse.urlparse(self.path)
             params = dict(urllib.parse.parse_qsl(parsed.query))
@@ -562,7 +521,9 @@ def _web_login_flow(api_url: str, web_url: str) -> dict:
         def log_message(self, *_):
             pass  # silence server logs
 
-    server = http.server.HTTPServer(("127.0.0.1", port), _Handler)
+    # Browsers may preconnect without sending a request. Keep those sockets
+    # from blocking the callback or shutdown after a successful login.
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", port), _Handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
 
@@ -570,16 +531,15 @@ def _web_login_flow(api_url: str, web_url: str) -> dict:
     print(f"\n{BOLD}Opening browser for authentication…{RESET}")
     print(f"{GRAY}If the browser didn't open, visit:{RESET}")
     print(f"  {CYAN}{auth_url}{RESET}\n")
-    webbrowser.open(auth_url)
-
-    if not event.wait(timeout=300):
+    try:
+        webbrowser.open(auth_url)
+        completed = event.wait(timeout=300)
+    finally:
         server.shutdown()
         server.server_close()
+    if not completed:
         print(f"{RED}Login timed out (5 min). Try again.{RESET}")
         sys.exit(1)
-
-    server.shutdown()
-    server.server_close()
 
     if result.get("login_failed"):
         print(f"{RED}Login failed. Run `conduct login` to try again.{RESET}")

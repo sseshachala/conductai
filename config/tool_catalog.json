@@ -18,7 +18,41 @@
         "operation": "anthropic_messages"
       },
       "setup_ui": true,
-      "live_acceptance": "pending"
+      "live_acceptance": "pending",
+      "adapter": {
+        "version": 1,
+        "platforms": [
+          "darwin",
+          "linux",
+          "win32"
+        ],
+        "home": [
+          ".claude"
+        ],
+        "home_env": "CLAUDE_CONFIG_DIR",
+        "mcp": [
+          {
+            "anchor": "root",
+            "path": "settings.json",
+            "scope": "legacy-user",
+            "key": "mcpServers"
+          },
+          {
+            "anchor": "root-sibling",
+            "path": ".json",
+            "scope": "user",
+            "key": "mcpServers"
+          },
+          {
+            "anchor": "project",
+            "path": ".mcp.json",
+            "scope": "project",
+            "key": "mcpServers"
+          }
+        ],
+        "hooks": "claude",
+        "usage": "claude-jsonl"
+      }
     },
     {
       "id": "codex",
@@ -33,7 +67,35 @@
         "operation": "openai_responses"
       },
       "setup_ui": true,
-      "live_acceptance": "pending"
+      "live_acceptance": "pending",
+      "adapter": {
+        "version": 1,
+        "platforms": [
+          "darwin",
+          "linux",
+          "win32"
+        ],
+        "home": [
+          ".codex"
+        ],
+        "home_env": "CODEX_HOME",
+        "mcp": [
+          {
+            "anchor": "root",
+            "path": "config.toml",
+            "scope": "user",
+            "key": "mcp_servers"
+          },
+          {
+            "anchor": "project",
+            "path": ".codex/config.toml",
+            "scope": "project",
+            "key": "mcp_servers"
+          }
+        ],
+        "hooks": "codex",
+        "usage": "codex-jsonl"
+      }
     },
     {
       "id": "cursor",
@@ -44,7 +106,35 @@
       ],
       "gateway": null,
       "setup_ui": true,
-      "live_acceptance": "pending"
+      "live_acceptance": "pending",
+      "adapter": {
+        "version": 1,
+        "platforms": [
+          "darwin",
+          "linux",
+          "win32"
+        ],
+        "home": [
+          ".cursor"
+        ],
+        "home_env": null,
+        "mcp": [
+          {
+            "anchor": "root",
+            "path": "mcp.json",
+            "scope": "user",
+            "key": "mcpServers"
+          },
+          {
+            "anchor": "project",
+            "path": ".cursor/mcp.json",
+            "scope": "project",
+            "key": "mcpServers"
+          }
+        ],
+        "hooks": "cursor",
+        "usage": null
+      }
     },
     {
       "id": "windsurf",
@@ -55,7 +145,30 @@
       ],
       "gateway": null,
       "setup_ui": true,
-      "live_acceptance": "pending"
+      "live_acceptance": "pending",
+      "adapter": {
+        "version": 1,
+        "platforms": [
+          "darwin",
+          "linux",
+          "win32"
+        ],
+        "home": [
+          ".codeium",
+          "windsurf"
+        ],
+        "home_env": null,
+        "mcp": [
+          {
+            "anchor": "root",
+            "path": "mcp_config.json",
+            "scope": "user",
+            "key": "mcpServers"
+          }
+        ],
+        "hooks": "windsurf",
+        "usage": null
+      }
     },
     {
       "id": "copilot-cli",
@@ -69,7 +182,29 @@
         "operation": "openai_responses"
       },
       "setup_ui": true,
-      "live_acceptance": "pending"
+      "live_acceptance": "pending",
+      "adapter": {
+        "version": 1,
+        "platforms": [
+          "darwin",
+          "linux",
+          "win32"
+        ],
+        "home": [
+          ".copilot"
+        ],
+        "home_env": "COPILOT_HOME",
+        "mcp": [
+          {
+            "anchor": "root",
+            "path": "mcp-config.json",
+            "scope": "user",
+            "key": "mcpServers"
+          }
+        ],
+        "hooks": "copilot",
+        "usage": "copilot-jsonl"
+      }
     }
   ]
 }

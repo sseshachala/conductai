@@ -1210,6 +1210,8 @@ async def handle_gateway_request(
                         _routing_meta=_routing_meta,
                         # #2209 Session 6D — attribution.
                         conductai_run_id=_run_id,
+                        hook_session_id=_hook_session_id,
+                        agent_identity_id=_agent_identity_id,
                         # Wall-clock deadline for the stream body. The
                         # coordinator's ``wait_for`` only guarded header
                         # arrival; the stream body has no timeout of its
@@ -1605,6 +1607,8 @@ async def handle_gateway_request(
         if _admission_ticket is not None and isinstance(_response, StreamingResponse):
             _admission_streamed = True
             _admission_ticket.defer()
+        if _audit_request_id:
+            _response.headers["X-Conduct-Request-Id"] = str(_audit_request_id)
         return _response
     except FederationDenied as error:
         from app.modules.auth.federation.gateway import error_response
@@ -2361,6 +2365,8 @@ def _wrap_v2_stream_finalize(
     stream_deadline_seconds: float | None = None,
     # #2209 Session 6D — for accounting shadow write attribution.
     conductai_run_id: str | None = None,
+    hook_session_id: str | None = None,
+    agent_identity_id: str | None = None,
     # R4 fix (reviewer P1): reservation ownership transferred from the
     # handler. Wrapper computes actual_cents from the drained body then
     # calls settle_reservations on stream close / cancel / timeout.
@@ -2653,6 +2659,8 @@ def _wrap_v2_stream_finalize(
                     client_tool=ai_tool,
                     attempts_meta=_stream_attempts_meta,
                     workflow_run_id=_stream_wf_run_uuid,
+                    hook_session_id=hook_session_id,
+                    agent_identity_id=agent_identity_id,
                 )
                 _stream_receipts_durable = (
                     _stream_receipt_ids is not None

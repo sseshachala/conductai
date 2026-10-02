@@ -1,7 +1,8 @@
 # Tool catalog
 
 `config/tool_catalog.json` is the versioned source for tool identities,
-display names, executable detection names, and Gateway protocol selection.
+display names, executable detection names, Gateway protocol selection, and
+scoped adapter configuration.
 `config/tool_catalog.schema.json` defines its format.
 
 The CLI ships an identical copy in `conduct_cli/tool_catalog.json` so installed
@@ -21,20 +22,84 @@ Codex CLI and Desktop are listed as distinct surfaces under the existing
 `codex` inventory identity. This increment does not migrate installation IDs
 or change session deduplication.
 
+## Tool lifecycle
+
+Use the same commands for each catalog tool ID:
+
+```sh
+conduct guard tool setup --tool claude-code
+conduct guard tool verify --tool claude-code
+conduct guard tool disable --tool claude-code
+conduct guard tool remove --tool claude-code
+```
+
+Setup configures supported hooks, MCP and Gateway settings. Verify checks
+configuration and Gateway connectivity without sending an inference request.
+Disable/remove stop collection and automatic reinstallation, and remove only
+Conduct-owned entries. Setup enables the tool again. Restart the tool after
+configuration changes. Other MCP servers, hooks and account credentials remain.
+Use `--project /path/to/project` to include project-scoped MCP entries.
+
+Configuration edits are locked and atomic. Invalid files, symlinks and user-owned
+overrides are left unchanged. Custom configuration homes use the catalog's
+`home_env` setting. Cursor and Windsurf retain pending live acceptance status.
+
+Session spend matches protocol response IDs or explicit Conduct request IDs
+within the authenticated workspace and actor. Matching verifies model/provider
+and token totals, including streamed deltas. Missing or conflicting IDs stay
+unmatched. Model rollups use persisted receipt prices; reported estimates stay
+separate and are never added to Gateway charges or budgets.
+
 ## Adding a tool
 
 1. Add its metadata to the source and bundled catalog.
-2. Implement its scoped detection/configuration adapter and tests.
+2. Declare `adapter` configuration locations and run adapter conformance tests.
 3. Declare a Gateway route only when the matching adapter exists.
 4. Run catalog conformance, discovery, and Tool Setup tests.
 5. Keep live acceptance pending until a real installation has been tested.
 
 ## Adapter behavior
 
-The trusted Python registry in `conduct_cli.tool_adapters` binds each catalog
-entry to scoped configuration locations. JSON cannot import code or execute
-commands. Unknown catalog entries fail the registry conformance check until an
-adapter is implemented and tested.
+`conduct_cli.tool_adapters` builds its registry from each catalog entry's
+versioned `adapter` contract. Common JSON/TOML MCP discovery needs no new
+Python registry entry. Manifests cannot import code or execute commands.
+
+| Field | Values |
+|---|---|
+| `version` | `1` |
+| `platforms` | `darwin`, `linux`, `win32` |
+| `home` | Path segments relative to the user's home |
+| `home_env` | Optional custom config-home variable |
+| `mcp` | Ordered configuration sources, later scopes override earlier ones |
+| `hooks` | Built-in hook handler, or `null` |
+| `usage` | Built-in usage reader, or `null` |
+
+An MCP source declares `anchor`, `path`, `scope`, and `key`. Anchors are
+`root`, `project`, or `root-sibling` (Claude's sibling `.json` file only).
+Paths cannot be absolute, contain parent traversal, expand environment
+variables, or escape the selected project through symlinks. Project files
+are read only when the user selects that project.
+
+For a new JSON-based agent, start with:
+
+```json
+{
+  "version": 1,
+  "platforms": ["linux"],
+  "home": [".example-agent"],
+  "home_env": null,
+  "mcp": [{"anchor": "root", "path": "mcp.json", "scope": "user", "key": "mcpServers"}],
+  "hooks": null,
+  "usage": null
+}
+```
+
+Handler names select existing trusted implementations; they do not install
+plugins or imply compatibility with another tool's protocol. A new hook or
+usage protocol still needs an implementation and tests. Platform declarations
+are support metadata, not proof of live verification. Keep `setup_ui: false`
+for a discovery-only tool. Catalog changes ship with the CLI/API release;
+remote manifest downloads and executable third-party plugins are not enabled.
 
 `conduct guard discover --config-only --no-verify-gateway` reads user config
 and reports all configured MCP references, not only Conduct. Add
@@ -82,6 +147,7 @@ References: [Cursor hooks](https://cursor.com/docs/hooks),
 Registered MCP server review and client usage categories are described in
 [MCP review and session usage](tool-review-and-usage.md).
 
-Third-party adapter installation, per-version/platform declarations, MCP response
-inspection, device-to-registry reconciliation, and session-to-Gateway spend
-reconciliation remain in #2309.
+Executable third-party adapter installation, per-tool version constraints,
+remaining lifecycle operations, and request-level spend reconciliation remain
+in #2309. Registered MCP response inspection and device registration links
+are documented in the reference above.

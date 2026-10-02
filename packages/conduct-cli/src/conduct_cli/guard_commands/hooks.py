@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-import json
 import sys
 
 from . import shared as _guard_shared
@@ -107,232 +106,74 @@ def _write_session_hook(path: Path, launcher_key: str) -> None:
 
 
 def _install_session_hooks() -> None:
-    """Write PreCompact + SessionStart + Stop hook scripts and register them in ~/.claude/settings.json."""
+    from conduct_cli.tool_adapters import ADAPTERS
+    from conduct_cli.tool_config import edit_document
+    from .tool_lifecycle import disabled, _command
+    if disabled("claude-code"):
+        return
     python = _best_python()
-
-    precompact_path    = _guard_shared.GUARD_DIR / "guard-precompact.py"
-    session_start_path = _guard_shared.GUARD_DIR / "guard-session-start.py"
-    stop_path          = _guard_shared.GUARD_DIR / "guard-stop.py"
-
-    _write_session_hook(precompact_path,    "precompact")
-    _write_session_hook(session_start_path, "session-start")
-    _write_session_hook(stop_path,          "stop")
-
-    claude_settings = Path.home() / ".claude" / "settings.json"
-    settings: dict = {}
-    if claude_settings.exists():
-        try:
-            settings = json.loads(claude_settings.read_text())
-        except Exception:
-            pass
-
-    hooks = settings.setdefault("hooks", {})
-
-    pre_cmd = f"{python} {precompact_path}"
-    compact_hooks = hooks.setdefault("PreCompact", [])
-    if not any(pre_cmd in str(e) for h in compact_hooks for e in h.get("hooks", [])):
-        compact_hooks.append({"hooks": [{"type": "command", "command": pre_cmd}]})
-
-    start_cmd = f"{python} {session_start_path}"
-    start_hooks = hooks.setdefault("SessionStart", [])
-    if not any(start_cmd in str(e) for h in start_hooks for e in h.get("hooks", [])):
-        start_hooks.append({"hooks": [{"type": "command", "command": start_cmd}]})
-
-    claude_settings.parent.mkdir(parents=True, exist_ok=True)
-    claude_settings.write_text(json.dumps(settings, indent=2) + "\n")
+    paths = {
+        "PreCompact": ("guard-precompact.py", "precompact"),
+        "SessionStart": ("guard-session-start.py", "session-start"),
+    }
+    for filename, launcher in [*paths.values(), ("guard-stop.py", "stop")]:
+        _write_session_hook(_guard_shared.GUARD_DIR / filename, launcher)
+    settings = ADAPTERS["claude-code"].root() / "settings.json"
+    try:
+        with edit_document(settings) as document:
+            hooks = document.setdefault("hooks", {})
+            if not isinstance(hooks, dict):
+                raise ValueError("Invalid hook map")
+            for event, (filename, _) in paths.items():
+                entries = hooks.setdefault(event, [])
+                if not isinstance(entries, list) or any(not isinstance(group, dict) for group in entries):
+                    raise ValueError("Invalid hook groups")
+                if any(not isinstance(group.get("hooks", []), list)
+                       or any(not isinstance(entry, dict) for entry in group.get("hooks", []))
+                       for group in entries):
+                    raise ValueError("Invalid hook commands")
+                command = _command([python, str(_guard_shared.GUARD_DIR / filename)])
+                if not any(command == entry.get("command") for group in entries for entry in group.get("hooks", [])):
+                    entries.append({"hooks": [{"type": "command", "command": command}]})
+    except (OSError, ValueError, TimeoutError):
+        print("Claude Code session hook configuration is invalid or unavailable; left unchanged.")
 
 
 def _install_copilot_hooks(hook_path: Path) -> None:
-    if not _guard_shared._copilot_cli_installed():
+    from .tool_lifecycle import configure_hooks, disabled
+    from conduct_cli.tool_adapters import ADAPTERS
+    if disabled("copilot-cli") or not _guard_shared._copilot_cli_installed():
         return
-    hooks_dir = _guard_shared._copilot_home() / "hooks"
-    hooks_dir.mkdir(parents=True, exist_ok=True)
-    config = {"version": 1, "hooks": {
-        event: [{"type": "command", "exec": _best_python(),
-                 "args": ["-m", "conduct_cli.hooks.copilot", mode, str(hook_path)],
-                 "timeoutSec": 30}]
-        for event, mode in (("preToolUse", "pre"), ("postToolUse", "post"),
-                            ("postToolUseFailure", "failure"),
-                            ("sessionStart", "session-start"), ("sessionEnd", "session-end"))
-    }}
-    (hooks_dir / "conduct-guard.json").write_text(json.dumps(config, indent=2) + "\n")
-    print(f"  {_guard_shared.GREEN}Copilot CLI tool hooks registered (restart Copilot){_guard_shared.RESET}")
+    ADAPTERS["copilot-cli"].root().mkdir(parents=True, exist_ok=True)
+    try:
+        changed = configure_hooks("copilot-cli", _best_python(), hook_path)
+        print("Copilot CLI hooks registered." if changed else "Copilot CLI hooks already registered.")
+    except (OSError, ValueError, TimeoutError):
+        print("Copilot CLI hook configuration is invalid or unavailable; left unchanged.")
 
 
 def _install_codex_hook(hook_path: Path) -> None:
-    """Register PreToolUse and PostToolUse hooks in ~/.codex/hooks.json."""
-    codex_hooks = Path.home() / ".codex" / "hooks.json"
-    if not (Path.home() / ".codex").exists():
-        return  # Codex not installed
-
-    hooks: dict = {}
-    if codex_hooks.exists():
-        try:
-            hooks = json.loads(codex_hooks.read_text())
-        except json.JSONDecodeError:
-            hooks = {}
-
-    hook_section = hooks.setdefault("hooks", {})
-
-    hook_path_str = str(hook_path)
-    # Match the retired location only to delete stale registrations. The
-    # desired entry below always points at the current ~/.conduct/hook.py.
-    stale_hook_path = str(Path.home() / ".conductguard" / "hook.py")
-    conduct_hook_paths = {
-        hook_path_str,
-        str(Path.home() / ".conduct" / "hook.py"),
-        stale_hook_path,
-    }
-
-    def _is_conduct_hook(entry: dict) -> bool:
-        command = entry.get("command", "")
-        return any(path in command for path in conduct_hook_paths)
-
-    def _replace_conduct_entries(entries: list, command: str) -> tuple[list, bool]:
-        kept = []
-        removed = False
-        for registration in entries:
-            commands = registration.get("hooks", [])
-            filtered = [entry for entry in commands if not _is_conduct_hook(entry)]
-            if len(filtered) != len(commands):
-                removed = True
-            if filtered:
-                kept.append({**registration, "hooks": filtered})
-        desired = {"matcher": ".*", "hooks": [{"type": "command", "command": command}]}
-        return [*kept, desired], removed or entries != [*kept, desired]
-
-    # PreToolUse
-    pre_cmd = f"{_best_python()} {hook_path}"
-    pre = hook_section.setdefault("PreToolUse", [])
-    # Match by hook path so old python3/python3.11 entries are treated as already registered
-    pre_already = any(
-        hook_path_str in e.get("command", "")
-        for h in pre
-        for e in h.get("hooks", [])
-    )
-    changed = False
-    normalized_pre, pre_changed = _replace_conduct_entries(pre, pre_cmd)
-    hook_section["PreToolUse"] = normalized_pre
-    changed = pre_changed
-
-    # PostToolUse
-    post_cmd = f"{_best_python()} {hook_path} post"
-    post = hook_section.setdefault("PostToolUse", [])
-    # Remove stale conductguard-post entries registered by older CLI versions
-    stale = "conductguard-post"
-    cleaned = False
-    for h in post:
-        before = len(h.get("hooks", []))
-        h["hooks"] = [e for e in h.get("hooks", []) if e.get("command") != stale]
-        if len(h["hooks"]) < before:
-            cleaned = True
-    post[:] = [h for h in post if h.get("hooks")]
-    post_already = any(
-        hook_path_str in e.get("command", "")
-        for h in post
-        for e in h.get("hooks", [])
-    )
-    normalized_post, post_changed = _replace_conduct_entries(post, post_cmd)
-    hook_section["PostToolUse"] = normalized_post
-    changed = changed or post_changed
-    if cleaned:
-        changed = True
-
-    changed = _usage_lifecycle_hooks(hook_section, "codex") or changed
-    if changed:
-        codex_hooks.parent.mkdir(parents=True, exist_ok=True)
-        codex_hooks.write_text(json.dumps(hooks, indent=2))
-        if not pre_already:
-            print(f"  {_guard_shared.GREEN}Codex PreToolUse hook registered{_guard_shared.RESET}")
-        if not post_already or cleaned:
-            print(f"  {_guard_shared.GREEN}Codex PostToolUse hook registered{_guard_shared.RESET}")
-    else:
-        print(f"  {_guard_shared.GRAY}Codex hooks already registered{_guard_shared.RESET}")
+    from .tool_lifecycle import configure_hooks, disabled
+    if disabled("codex"):
+        return
+    try:
+        changed = configure_hooks("codex", _best_python(), hook_path)
+        print("Codex hooks registered." if changed else "Codex hooks already registered.")
+    except (OSError, ValueError, TimeoutError):
+        print("Codex hook configuration is invalid or unavailable; left unchanged.")
 
 
 def _install_claude_hook(hook_path: Path) -> None:
-    """Register PreToolUse and PostToolUse hooks in ~/.claude/settings.json."""
-    claude_settings = Path.home() / ".claude" / "settings.json"
-    settings: dict = {}
-    if claude_settings.exists():
-        try:
-            settings = json.loads(claude_settings.read_text())
-        except json.JSONDecodeError:
-            settings = {}
-
-    hooks = settings.setdefault("hooks", {})
-
-    # PreToolUse — existing hook script
-    pre = hooks.setdefault("PreToolUse", [])
-    pre_cmd = f"{_best_python()} {hook_path}"
-    hook_path_str = str(hook_path)
-    pre_already = any(
-        hook_path_str in e.get("command", "")
-        for h in pre
-        for e in h.get("hooks", [])
-    )
-    changed = False
-    if not pre_already:
-        pre.append({"matcher": ".*", "hooks": [{"type": "command", "command": pre_cmd}]})
-        changed = True
-    else:
-        # Update existing entry to use current sys.executable
-        for h in pre:
-            for e in h.get("hooks", []):
-                if hook_path_str in e.get("command", "") and e["command"] != pre_cmd:
-                    e["command"] = pre_cmd
-                    changed = True
-
-    # PostToolUse
-    post = hooks.setdefault("PostToolUse", [])
-    post_cmd = f"{_best_python()} {hook_path} post"
-    # Remove stale conductguard-post entries registered by older CLI versions
-    stale = "conductguard-post"
-    cleaned = False
-    for h in post:
-        before = len(h.get("hooks", []))
-        h["hooks"] = [e for e in h.get("hooks", []) if e.get("command") != stale]
-        if len(h["hooks"]) < before:
-            cleaned = True
-    post[:] = [h for h in post if h.get("hooks")]
-    post_already = any(
-        hook_path_str in e.get("command", "")
-        for h in post
-        for e in h.get("hooks", [])
-    )
-    if not post_already:
-        post.append({"matcher": ".*", "hooks": [{"type": "command", "command": post_cmd}]})
-        changed = True
-    if cleaned:
-        changed = True
-
-    # Stop — capture session for team memory only (guard sync removed — exits 1 without TTY)
-    stop = hooks.setdefault("Stop", [])
-
-    python = _best_python()
-    stop_path = _guard_shared.GUARD_DIR / "guard-stop.py"
-    mem_cmd = f"{python} {stop_path}"
-    mem_already = any(
-        "guard-stop" in e.get("command", "")
-        for h in stop
-        for e in h.get("hooks", [])
-    )
-    if not mem_already and stop_path.exists():
-        stop.append({"hooks": [{"type": "command", "command": mem_cmd}]})
-        changed = True
-
-    changed = _usage_lifecycle_hooks(hooks, "claude-code") or changed
-    if changed:
-        claude_settings.parent.mkdir(parents=True, exist_ok=True)
-        claude_settings.write_text(json.dumps(settings, indent=2))
-        if not pre_already:
-            print(f"  {_guard_shared.GREEN}Claude Code PreToolUse hook registered{_guard_shared.RESET}")
-        if not post_already or cleaned:
-            print(f"  {_guard_shared.GREEN}Claude Code PostToolUse hook registered{_guard_shared.RESET}")
-        if not mem_already:
-            print(f"  {_guard_shared.GREEN}Claude Code Stop hook registered (team memory capture){_guard_shared.RESET}")
-    else:
-        print(f"  {_guard_shared.GRAY}Claude Code hooks already registered{_guard_shared.RESET}")
+    from .tool_lifecycle import configure_hooks, disabled
+    from conduct_cli.tool_adapters import ADAPTERS
+    if disabled("claude-code"):
+        return
+    ADAPTERS["claude-code"].root().mkdir(parents=True, exist_ok=True)
+    try:
+        changed = configure_hooks("claude-code", _best_python(), hook_path)
+        print("Claude Code hooks registered." if changed else "Claude Code hooks already registered.")
+    except (OSError, ValueError, TimeoutError):
+        print("Claude Code hook configuration is invalid or unavailable; left unchanged.")
 
 
 def _usage_lifecycle_hooks(hooks: dict, surface: str) -> bool:

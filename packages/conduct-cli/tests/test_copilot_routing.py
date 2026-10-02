@@ -105,7 +105,14 @@ def test_custom_deployment_without_gateway_not_routed(home):
 
 
 @pytest.mark.parametrize("platform,filename", [("linux", "env"), ("win32", "env.ps1")])
-def test_clear_managed_preserves_other_providers_and_overrides(home, monkeypatch, platform, filename):
+@pytest.mark.parametrize("default_encoding", ["utf-8", "cp1252"])
+def test_clear_managed_preserves_other_providers_and_overrides(home, monkeypatch, platform, filename, default_encoding):
+    read_text = Path.read_text
+    def locale_read_text(path, *args, **kwargs):
+        if not args and kwargs.get("encoding") is None:
+            kwargs["encoding"] = default_encoding
+        return read_text(path, *args, **kwargs)
+    monkeypatch.setattr(Path, "read_text", locale_read_text)
     monkeypatch.setattr(sys, "platform", platform)
     gateway._write_proxy_env(TOKEN, URL)
     path = home / ".conduct" / filename

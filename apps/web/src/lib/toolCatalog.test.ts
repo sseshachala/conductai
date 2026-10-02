@@ -22,4 +22,17 @@ describe("shared tool catalog", () => {
     expect(discoveryLabel("connection_verified")).toBe("Connection verified")
     expect(discoveryLabel("new-tool")).toBe("new-tool")
   })
+
+  it("shares declarative adapters without treating capability as live verification", () => {
+    for (const tool of toolCatalog) {
+      expect(tool.adapter.version).toBe(1)
+      expect(tool.adapter.mcp.length).toBeGreaterThan(0)
+      expect(tool.adapter).not.toHaveProperty("command")
+    }
+    for (const id of ["cursor", "windsurf"]) {
+      const tool = toolCatalog.find(tool => tool.id === id)!
+      expect(tool.adapter.usage).toBeNull()
+      expect(tool.live_acceptance).toBe("pending")
+    }
+  })
 })

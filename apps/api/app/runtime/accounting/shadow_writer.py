@@ -261,6 +261,11 @@ def _shadow_write_impl(**kw: Any) -> uuid.UUID:
 
     if kw.get("attempts_meta"):
         provenance["attempts"] = kw["attempts_meta"]
+    if dispatched and response_bytes:
+        from .response_identity import recorded_response_id
+        provider_response_id = recorded_response_id(response_bytes)
+        if provider_response_id:
+            provenance["provider_response_id"] = provider_response_id
 
     receipt_id = kw.get("receipt_id") or uuid.uuid4()
     now = datetime.now(timezone.utc)

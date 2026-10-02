@@ -56,6 +56,9 @@ def context(cfg: dict) -> tuple:
 
 
 def collect(session_id: str, hook_path: Path, expected: tuple) -> bool:
+    from conduct_cli.guard_commands.tool_lifecycle import disabled
+    if disabled("copilot-cli"):
+        return False
     session_id = str(UUID(session_id))  # Never accept a path from hook input.
     cfg = base.load_config()
     if not expected[1] or context(cfg) != tuple(expected):

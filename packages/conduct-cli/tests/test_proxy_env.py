@@ -162,7 +162,8 @@ def test_configure_codex_proxy_is_secret_free(tmp_path, monkeypatch):
     assert 'wire_api = "responses"' in written
     assert 'env_key = "CONDUCT_GATEWAY_TOKEN"' in written
     assert "cond_agt_" not in written
-    assert config.with_suffix(".toml.pre-conduct-proxy").exists()
+    assert not config.with_suffix(".toml.pre-conduct-proxy").exists()
+    assert json.loads((tmp_path / ".conduct/codex-provider.json").read_text())["previous"] is None
 
 
 def test_codex_sync_migrates_shared_credential_idempotently(tmp_path, monkeypatch):
@@ -181,7 +182,7 @@ def test_codex_sync_migrates_shared_credential_idempotently(tmp_path, monkeypatc
     assert first.count('[model_providers.conduct]') == 1
     assert 'env_key = "OPENAI_API_KEY"' not in first
     assert '[model_providers.other]\nenv_key = "OTHER_KEY"' in first
-    assert config.with_suffix(".toml.pre-conduct-proxy").read_text() == original
+    assert not config.with_suffix(".toml.pre-conduct-proxy").exists()
 
 
 @pytestmark_posix

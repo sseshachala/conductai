@@ -1,5 +1,6 @@
 """Client-reported usage estimates, deliberately outside the billing ledger."""
 from typing import Annotated
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -13,6 +14,8 @@ class UsageSlice(BaseModel):
     model_config = ConfigDict(extra="forbid")
     model: Identifier | None = None
     provider: Identifier | None = None
+    gateway_request_id: UUID | None = None
+    provider_response_id: Annotated[str, Field(max_length=160, pattern=r"^(?:msg[_-]|resp[_-]|chatcmpl-)[A-Za-z0-9_-]+$")] | None = None
     uncached_input_tokens: Count
     cache_read_tokens: Count
     cache_write_tokens: Count
@@ -58,14 +61,15 @@ def usage_evidence(report) -> dict:
                 estimate = result.microdollars
                 if estimate is not None:
                     status, reason = "estimated", None
-        slices.append({**part.model_dump(), "estimated_microdollars": estimate,
+        slices.append({**part.model_dump(mode="json"), "estimated_microdollars": estimate,
                        "cost_status": status, "unpriced_reason": reason})
     complete = bool(slices) and all(p["cost_status"] == "estimated" for p in slices)
+    known = [p["estimated_microdollars"] for p in slices if p["estimated_microdollars"] is not None]
     return {
         "version": 1, "source": "client_reported", "observed_at": report.observed_at.isoformat(),
         "reconciliation": "unreconciled", "budget_eligible": False,
         "pricing_version": pricing.pricing_version,
-        "cost_status": "estimated" if complete else "unpriced",
-        "estimated_microdollars": sum(p["estimated_microdollars"] for p in slices) if complete else None,
+        "cost_status": "estimated" if complete else "partial" if known else "unpriced",
+        "estimated_microdollars": sum(known) if known else None,
         "slices": slices,
     }

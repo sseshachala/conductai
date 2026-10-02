@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 from unittest.mock import patch
 import json
+from pathlib import Path
 
 import pytest
 
@@ -8,6 +9,11 @@ from conduct_cli.login_config import endpoints, origin
 
 API = "https://api.conductai.ai"
 WEB = "https://app.conductai.ai"
+
+
+@pytest.fixture(autouse=True)
+def isolated_home(tmp_path, monkeypatch):
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
 
 
 def resolve(config=None, **kwargs):
