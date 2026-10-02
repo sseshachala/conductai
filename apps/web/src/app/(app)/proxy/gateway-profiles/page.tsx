@@ -2,12 +2,14 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useSearchParams } from "next/navigation"
+import Link from "next/link"
 
 import AppShell from "@/components/AppShell"
 import GatewayProfileV2DeleteDialog from "@/components/settings/GatewayProfileV2DeleteDialog"
 import GatewayProfileV2ImportDialog from "@/components/settings/GatewayProfileV2ImportDialog"
 import GatewayProfileV2Editor from "@/components/settings/GatewayProfileV2Editor"
 import GatewayProfileV2PublishDialog from "@/components/settings/GatewayProfileV2PublishDialog"
+import RateLimitsPanel from "@/components/gateway/RateLimitsPanel"
 import { useAuthFetch } from "@/hooks/useAuthFetch"
 import { useGuardRole } from "@/hooks/useGuardRole"
 import { useWorkspace } from "@/lib/WorkspaceContext"
@@ -155,6 +157,12 @@ export default function GatewayProfilesV2Page() {
   // click through the profile list).
   const searchParams = useSearchParams()
   const selectParam = searchParams?.get("select") ?? null
+  const view = searchParams?.get("tab") === "rate_limits" ? "rate_limits" : "profiles"
+  function tabHref(tab: "profiles" | "rate_limits") {
+    const params = new URLSearchParams(searchParams?.toString() ?? "")
+    params.set("tab", tab)
+    return `/proxy/gateway-profiles?${params}`
+  }
 
   const [profiles, setProfiles] = useState<GatewayProfileV2Out[]>([])
   const [envs, setEnvs] = useState<EnvironmentRow[]>([])
@@ -194,7 +202,7 @@ export default function GatewayProfilesV2Page() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authFetch, workspaceId, selectParam])
 
-  useEffect(() => { void load() }, [load])
+  useEffect(() => { if (view === "profiles") void load() }, [load, view])
 
   const selected = useMemo(
     () => profiles.find(p => p.id === selectedId) ?? null,
@@ -353,14 +361,26 @@ export default function GatewayProfilesV2Page() {
     <AppShell>
       <div className="page">
         <div className="page-head">
-          <h1 className="page-title">Gateway Profiles v2</h1>
-          <p className="page-sub">
+          <h1 className="page-title">Gateways</h1>
+          {view === "profiles" && <p className="page-sub">
             A profile pins an ordered list of upstream targets and a set of vault credentials
             behind a stable identifier. Once published, the working copy is locked —
             duplicate to iterate. Clients hit the gateway using the profile's
             <code className="mono" style={{ fontSize: 12 }}> cond-…</code> identifier.
-          </p>
+          </p>}
         </div>
+
+        <nav role="tablist" aria-label="Gateway settings" className="mb-5 flex flex-wrap gap-2 border-b border-stone-200 pb-3">
+          <Link href={tabHref("profiles")} role="tab" id="gateway-tab-profiles" aria-controls="gateway-panel-profiles"
+            aria-selected={view === "profiles"} className={`btn btn-sm ${view === "profiles" ? "btn-primary" : "btn-ghost"}`}>Profiles</Link>
+          {isAdmin && <Link href={tabHref("rate_limits")} role="tab" id="gateway-tab-rate-limits" aria-controls="gateway-panel-rate-limits"
+            aria-selected={view === "rate_limits"} className={`btn btn-sm ${view === "rate_limits" ? "btn-primary" : "btn-ghost"}`}>Rate limits</Link>}
+        </nav>
+
+        {view === "rate_limits" ? <div role="tabpanel" id="gateway-panel-rate-limits" aria-label="Gateway rate limits">
+          {isAdmin && workspaceId ? <RateLimitsPanel key={workspaceId} isAdmin={isAdmin} />
+            : <p>{isAdmin ? "Select a workspace." : "Administrator access required."}</p>}
+        </div> : <div role="tabpanel" id="gateway-panel-profiles" aria-labelledby="gateway-tab-profiles">
 
         {error && (
           <div className="sbadge err" style={{ display: "block", height: "auto", padding: "10px 14px", borderRadius: 8, marginBottom: 16, whiteSpace: "normal" }}>
@@ -492,6 +512,7 @@ export default function GatewayProfilesV2Page() {
             }}
           />
         )}
+        </div>}
       </div>
     </AppShell>
   )

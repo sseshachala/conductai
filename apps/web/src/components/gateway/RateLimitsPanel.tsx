@@ -1,18 +1,10 @@
 "use client"
 
-/**
- * Workspace-default RPM/TPM caps on proxy traffic. Blocks return 429 with
- * x-guard reason. Extracted from Guard settings during #1359 so the workspace
- * defaults live under /settings alongside other workspace-level config. The
- * enforcement backend (guard.rateLimits) is unchanged.
- *
- * ponytail: workspace default only in V1. Per-agent overrides land when the
- * agent identity picker ships (backend already accepts agent_identity_id).
- */
-
 import { useEffect, useState } from "react"
+import { Clock } from "lucide-react"
 import { useAuthFetch } from "@/hooks/useAuthFetch"
 import { guard } from "@/lib/api"
+import styles from "./RateLimitsPanel.module.css"
 
 const RATE_LIMIT_PRESETS: Array<{ label: string; rpm: number; tpm: number; why: string }> = [
   { label: "Solo dev / smoke test",   rpm: 2,   tpm: 500,     why: "trips the cap in a 3-call test — good for verifying enforcement" },
@@ -22,8 +14,8 @@ const RATE_LIMIT_PRESETS: Array<{ label: string; rpm: number; tpm: number; why: 
 
 function RateLimitPresets({ isAdmin, onPick }: { isAdmin: boolean; onPick: (rpm: number, tpm: number) => void }) {
   return (
-    <div style={{ border: "1px dashed var(--border)", borderRadius: 8, padding: "10px 14px" }}>
-      <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 8 }}>
+    <div className={styles.presets}>
+      <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", marginBottom: 8 }}>
         Suggested defaults
       </div>
       <div style={{ display: "grid", gap: 6 }}>
@@ -34,8 +26,6 @@ function RateLimitPresets({ isAdmin, onPick }: { isAdmin: boolean; onPick: (rpm:
             onClick={() => onPick(p.rpm, p.tpm)}
             disabled={!isAdmin}
             style={{
-              display: "grid",
-              gridTemplateColumns: "160px 60px 80px 1fr",
               gap: 10,
               alignItems: "center",
               padding: "6px 8px",
@@ -50,6 +40,7 @@ function RateLimitPresets({ isAdmin, onPick }: { isAdmin: boolean; onPick: (rpm:
             onMouseEnter={e => { if (isAdmin) e.currentTarget.style.background = "var(--surface-2)" }}
             onMouseLeave={e => { e.currentTarget.style.background = "transparent" }}
             title={isAdmin ? "Apply to fields" : "Admin only"}
+            className={styles.preset}
           >
             <span style={{ fontWeight: 600, color: "var(--text)" }}>{p.label}</span>
             <span style={{ fontVariantNumeric: "tabular-nums" }}>{p.rpm} rpm</span>
@@ -57,9 +48,6 @@ function RateLimitPresets({ isAdmin, onPick }: { isAdmin: boolean; onPick: (rpm:
             <span style={{ color: "var(--text-3)", fontSize: 11.5 }}>{p.why}</span>
           </button>
         ))}
-      </div>
-      <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 8 }}>
-        Per-agent identity gets its own limits once the picker ships. Anthropic Tier 1 default for reference: 50 rpm, 40k tpm.
       </div>
     </div>
   )
@@ -110,24 +98,22 @@ export default function RateLimitsPanel({ isAdmin }: { isAdmin: boolean }) {
   }
 
   return (
-    <div className="card" style={{ overflow: "hidden" }}>
-      <div style={{ padding: "15px 20px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 10 }}>
+    <section aria-label="Gateway workspace rate limits" className={styles.panel}>
+      <div style={{ padding: "15px 0", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 10 }}>
         <span style={{ width: 30, height: 30, borderRadius: 8, background: "var(--accent)", color: "#fff", display: "grid", placeItems: "center", flexShrink: 0 }}>
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
-          </svg>
+          <Clock size={15} aria-hidden="true" />
         </span>
         <div style={{ fontWeight: 650, fontSize: 14.5 }}>Workspace default</div>
         {saved && <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--ok)", fontWeight: 600 }}>Saved</span>}
       </div>
 
-      <div style={{ padding: "16px 20px", display: "grid", gap: 14 }}>
+      <div style={{ padding: "16px 0", display: "grid", gap: 14 }}>
         <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-          Requests-per-minute and tokens-per-minute caps on proxy traffic. Blocks return 429 with x-guard reason. Leave a field blank to remove that cap. Overrides per-agent identity land soon
-          {overrideCount > 0 ? ` — ${overrideCount} override${overrideCount === 1 ? "" : "s"} currently active.` : "."}
+          Gateway traffic limits for this workspace. Leave a field blank for no cap.
+          {overrideCount > 0 && ` ${overrideCount} agent override${overrideCount === 1 ? "" : "s"} active.`}
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+        <div className={styles.inputs}>
           <label style={{ display: "grid", gap: 4 }}>
             <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text-2)" }}>Requests / min (RPM)</span>
             <input
@@ -169,6 +155,6 @@ export default function RateLimitsPanel({ isAdmin }: { isAdmin: boolean }) {
           </button>
         </div>
       </div>
-    </div>
+    </section>
   )
 }
