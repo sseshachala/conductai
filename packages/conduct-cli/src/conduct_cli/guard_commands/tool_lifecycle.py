@@ -255,6 +255,6 @@ def configure_gateway(tool, config, remove=False):
         for name in ("env", "env.ps1"):
             path = Path.home() / ".conduct" / name
             if path.exists():
-                content = path.read_text()
+                content = path.read_text(encoding="utf-8")
                 if content.startswith(SHELL_RC_MARKER):
                     _write_private_env(path, content)

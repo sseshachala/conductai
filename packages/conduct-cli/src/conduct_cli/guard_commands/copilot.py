@@ -31,10 +31,10 @@ def env_lines(token: str, gateway: str, *, windows=False, enabled=True) -> list[
 def read_values(path: Path, *, windows=False) -> dict[str, str] | None:
     """Only literal assignments are evidence. Dynamic overrides are unknown."""
     try:
-        content = path.read_text()
+        content = path.read_text(encoding="utf-8")
     except FileNotFoundError:
         return {}
-    except OSError:
+    except (OSError, UnicodeError):
         return None
     values = {}
     for line in content.splitlines():
@@ -106,7 +106,7 @@ def clear_managed() -> None:
         path = root / filename
         if not path.exists():
             continue
-        content = path.read_text()
+        content = path.read_text(encoding="utf-8")
         if not content.startswith(SHELL_RC_MARKER):
             continue
         lines = [line for line in content.splitlines() if PREFIX not in line]
