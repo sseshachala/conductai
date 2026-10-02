@@ -243,11 +243,32 @@ def register_guard_parser(sub):
     editor_p.add_argument("--remove", action="store_true", help="Remove only Conduct's editor hook entries")
 
     review_p = guard_sub.add_parser("mcp-review", help="Review registered MCP servers in the selected workspace")
-    review_p.add_argument("action", choices=["list", "inspect", "require_review", "approve", "quarantine", "revoke", "restore"])
+    review_p.add_argument("action", choices=["list", "inspect", "require_review", "approve", "quarantine", "revoke", "restore", "response_policy"])
     review_p.add_argument("--server", help="Registered MCP server UUID")
     review_p.add_argument("--revision", type=int, help="Current review revision from list")
     review_p.add_argument("--digest", help="Reviewed catalog digest from inspect")
+    review_p.add_argument("--mode", choices=["off", "audit", "block", "redact"], help="Registered MCP JSON response inspection mode")
     review_p.add_argument("--yes", action="store_true", help="Confirm removal of the saved registration credential")
+
+    fixtures_p = guard_sub.add_parser("fixture-review", help="Review an exact synthetic test edit for another workspace user")
+    fixtures_p.add_argument("action", choices=["fingerprint", "approve", "list", "revoke"])
+    fixtures_p.add_argument("--action-file", help="Local JSON with tool_name, tool_input and cwd; never uploaded")
+    fixtures_p.add_argument("--subject", help="Mapped user ID whose hook will make the edit")
+    fixtures_p.add_argument("--reason", help="Review reason; do not include fixture contents or secrets")
+    fixtures_p.add_argument("--reviewed-synthetic", action="store_true", help="Confirm the entire edit contains only synthetic fixture material")
+    fixtures_p.add_argument("--ttl-seconds", type=int, default=600)
+    fixtures_p.add_argument("--approval", help="Approval UUID to revoke")
+
+    spend_p = guard_sub.add_parser("session-spend", help="Read reported session usage and linked Gateway receipt totals")
+    spend_p.add_argument("--event", required=True, help="Session usage event UUID from Activity")
+
+    links_p = guard_sub.add_parser("mcp-links", help="Associate discovered MCP references with workspace registrations")
+    links_p.add_argument("action", choices=["list", "link", "unlink"])
+    links_p.add_argument("--installation", help="Inventory agent_id UUID from list")
+    links_p.add_argument("--reference", help="MCP reference_id from list")
+    links_p.add_argument("--server", help="Registered MCP server UUID")
+    links_p.add_argument("--revision", type=int, help="Installation association revision from list")
+    links_p.add_argument("--offset", type=int, default=0, help="Next page offset from list")
 
     # conduct guard watch
     watch_p = guard_sub.add_parser("watch", help="Start background daemon — scans every 15 min, auto-pushes to Guard")
@@ -313,6 +334,15 @@ def dispatch_guard(args, guard_p):
             raise SystemExit(1) from None
     elif guard_command == "mcp-review":
         from conduct_cli.guard_commands.mcp_review import run
+        run(args)
+    elif guard_command == "fixture-review":
+        from conduct_cli.guard_commands.fixture_review import run
+        run(args)
+    elif guard_command == "session-spend":
+        from conduct_cli.guard_commands.session_spend import run
+        run(args)
+    elif guard_command == "mcp-links":
+        from conduct_cli.guard_commands.mcp_links import run
         run(args)
     elif guard_command == "watch":
         cmd_guard_watch(args)

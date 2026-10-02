@@ -55,7 +55,10 @@ from app.modules.telemetry.models import TelemetryEvent  # noqa
 from app.modules.agent_identity.models import AgentIdentity
 from app.modules.agent_identity.run_token_model import AgentRunToken  # noqa
 
+from .guard_fixture_approval import GuardFixtureApproval
+
 __all__ = [
+    "GuardFixtureApproval",
     "Organization", "Workspace", "User", "WorkspaceUser", "Project",
     "Environment",
     "Workflow", "WorkflowVersion", "Integration", "Run", "RunEvent",

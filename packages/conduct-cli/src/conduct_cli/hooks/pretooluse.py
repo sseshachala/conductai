@@ -519,7 +519,7 @@ def _decoded_variants(text: str) -> list[str]:
     return variants[:20]
 
 
-def check_policy(tool_name: str, tool_input: dict, tokens_before: int = 0):
+def check_policy(tool_name: str, tool_input: dict, tokens_before: int = 0, *, fixture_approved: bool = False):
     """Return (matched_rule, action, rule_id, message) or (None, 'allow', None, None)."""
     pol_path = active_policy_path()
     if not pol_path.exists():
@@ -564,6 +564,8 @@ def check_policy(tool_name: str, tool_input: dict, tokens_before: int = 0):
     current_ai_tool = detect_ai_tool()
     for rule in rules:
         rid = rule.get("rule_id", "")
+        if fixture_approved and rid == "no-private-key":
+            continue
 
         # #1048: skip doc-sensitive framework rules on paths where we define
         # or document the concepts. Prevents Guard from blocking our own
@@ -812,6 +814,13 @@ def main() -> None:
     tool_input = data.get("tool_input") or {}
 
     _, action, rule_id, message = check_policy(tool_name, tool_input)
+
+    if action == "block" and rule_id == "no-private-key":
+        from conduct_cli.hooks.fixture_approval import consume
+        if consume(tool_name, tool_input, os.getcwd()):
+            # Approval exempts only this exact fixture from this one rule.
+            # Re-evaluate every other policy before allowing execution.
+            _, action, rule_id, message = check_policy(tool_name, tool_input, fixture_approved=True)
 
     if _get_advisory_mode() and action in ("block", "warn", "approval"):
         post_event(tool_name, tool_input, "audited", rule_id, f"[advisory] {message}", session_id, drain_via=_this_file)

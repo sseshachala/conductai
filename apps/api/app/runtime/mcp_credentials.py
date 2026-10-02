@@ -8,6 +8,26 @@ Single source of truth for resolving a token for an MCP server, used by:
 """
 from __future__ import annotations
 
+from dataclasses import dataclass, field
+
+
+@dataclass(frozen=True)
+class McpRegistration:
+    id: str
+    workspace_id: str
+    url: str = field(repr=False)
+    transport: str
+    token: str | None = field(repr=False)
+    governance: dict | None = None
+
+    def call_tool(self, tool_name, tool_input):
+        from app.runtime.mcp_governance import response_mode
+        if response_mode(self.governance) == "off":
+            from app.runtime.integrations.mcp_client import call_tool
+            return call_tool(self.url, self.token, tool_name, tool_input, transport=self.transport)
+        from app.runtime.mcp_result_gate import call_inspected
+        return call_inspected(self, tool_name, tool_input)
+
 # server_name → (integration handle, field) — mirrors _ENV_VAR_MAP in credentials.py
 _SERVER_CRED_MAP: dict[str, tuple[str, str]] = {
     "github":  ("git",    "token"),
@@ -19,16 +39,16 @@ _SERVER_CRED_MAP: dict[str, tuple[str, str]] = {
 }
 
 
-def resolve_mcp_server(
+def resolve_mcp_registration(
     *,
     server_name: str = "",
     server_id: str = "",
     workspace_id: str,
     environment_id: str | None = None,
     db,
-) -> tuple[str, str, str | None] | None:
+) -> McpRegistration | None:
     """
-    Return (url, transport, token) for the named or UUID-identified MCP server,
+    Return registration and credentials for the named or UUID-identified MCP server,
     resolving the token from encrypted_auth first, then the Integration store.
     Returns None if the server isn't registered.
     """
@@ -89,7 +109,15 @@ def resolve_mcp_server(
         if not latest or not latest.governance or latest.governance != governance:
             raise MCPGovernanceDenied("MCP review changed during verification; retry required")
         assert_callable(latest.governance, digest)
-    return (row.url, row.transport or "http", token)
+    return McpRegistration(str(row.id), workspace_id, row.url, row.transport or "http", token, governance)
+
+
+def resolve_mcp_server(**kwargs) -> tuple[str, str, str | None] | None:
+    """Compatibility projection for discovery and credential-only callers."""
+    registration = resolve_mcp_registration(**kwargs)
+    if registration is None:
+        return None
+    return registration.url, registration.transport, registration.token
 
 
 def _resolve_from_integration(

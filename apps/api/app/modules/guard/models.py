@@ -673,6 +673,7 @@ class DiscoveredAgent(Base):
     source        = Column(String(20), nullable=True)   # config | process
     location      = Column(Text, nullable=True)         # config path | process cmd
     evidence      = Column(JSONB, nullable=True)
+    mcp_links     = Column(JSONB, nullable=True)
     risk_score    = Column(Integer, nullable=True)      # 0-100
     under_guard   = Column(Boolean, nullable=False, default=False)
     proxy_routed  = Column(Boolean, nullable=False, default=False)

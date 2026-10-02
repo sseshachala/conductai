@@ -28,12 +28,9 @@ os.environ.setdefault("REDIS_URL", "redis://localhost:6379")
 os.environ.setdefault("ANTHROPIC_API_KEY", "sk-test")
 os.environ.setdefault("ENCRYPTION_KEY", "test-key-32-bytes-long-xxxxxxxx!")
 
-_STUBS = ["structlog", "redis", "sentry_sdk", "app.core.pii"]
+_STUBS = ["structlog", "redis", "sentry_sdk"]
 for _m in _STUBS:
     sys.modules.setdefault(_m, MagicMock())
-import app.core.pii as _pii  # noqa: E402
-# Preserve real signature tuple[str, list[str]] — see test_guard_approval.py note.
-_pii.redact_secrets = lambda s: (s, [])
 
 from app.modules.guard.approval import resume_verdict  # noqa: E402
 

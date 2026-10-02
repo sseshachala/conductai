@@ -1104,6 +1104,30 @@ def update_usage(
     return UsageOut(updated=True)
 
 
+@router.get("/session-usage/{event_id}/reconciliation")
+def session_reconciliation(
+    event_id: UUID,
+    workspace_id: str = Depends(get_workspace_id),
+    user_id: str = Depends(get_user_id),
+    _permission: str = Depends(require_permission("guard.spend.view_own")),
+    db: Session = Depends(get_db),
+):
+    from app.modules.guard.event_access import restrict_event_query
+    from app.modules.guard.session_reconciliation import session_evidence
+
+    event = restrict_event_query(db.query(GuardAuditEvent), db, workspace_id, user_id,
+                                 event_id, permission_area="spend").first()
+    if event is None or event.tool_call != "session_usage" or not (event.routing_meta or {}).get("session_usage"):
+        raise HTTPException(status_code=404, detail="Session usage not found")
+    try:
+        UUID(event.hook_session_id)
+    except (ValueError, TypeError, AttributeError):
+        raise HTTPException(status_code=409, detail="Session identifier unavailable") from None
+    if not event.clerk_user_id and not event.agent_identity_id:
+        raise HTTPException(status_code=409, detail="Session actor unavailable")
+    return session_evidence(db, event)
+
+
 # ── GET /guard/events — paginated list ────────────────────────────────────────
 
 @router.get("", response_model=list[EventOut])
