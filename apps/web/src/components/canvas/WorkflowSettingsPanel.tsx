@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 import { workflows, guard } from "@/lib/api"
 import type { AuthFetch } from "@/lib/api"
+import CanvasToolbarSettings from "./CanvasToolbarSettings"
 
 interface WorkflowDetail {
   id: string
@@ -26,9 +27,10 @@ interface Props {
   workflowId: string
   getToken: (() => Promise<string | null>) | null | undefined
   onDelete: () => void
+  isViewer?: boolean
 }
 
-export default function WorkflowSettingsPanel({ workflowId, getToken, onDelete }: Props) {
+export default function WorkflowSettingsPanel({ workflowId, getToken, onDelete, isViewer = false }: Props) {
   const { activeWorkspace } = useWorkspace()
   const [workflow, setWorkflow] = useState<WorkflowDetail | null>(null)
   const [loading, setLoading] = useState(true)
@@ -199,6 +201,8 @@ async function saveGuard(enabled = guardEnabled) {
           </div>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+
+            <CanvasToolbarSettings readOnly={isViewer} />
 
             {/* Name */}
             <div className="card" style={{ padding: "16px 20px" }}>

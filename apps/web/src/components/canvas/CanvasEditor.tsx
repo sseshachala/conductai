@@ -1433,7 +1433,7 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
             )}
           </div>
         ) : activeView === "settings" ? (
-          <WorkflowSettingsPanel workflowId={workflowId} getToken={getToken} onDelete={() => router.push("/workflows")} />
+          <WorkflowSettingsPanel workflowId={workflowId} getToken={getToken} isViewer={isViewer} onDelete={() => router.push("/workflows")} />
         ) : null}
       </div>
 

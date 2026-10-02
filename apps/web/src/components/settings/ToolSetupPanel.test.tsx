@@ -8,26 +8,10 @@ import ToolSetupPanel, { setupCommand } from "./ToolSetupPanel"
 
 beforeEach(() => {
   vi.clearAllMocks()
-  state.fetch.mockResolvedValue(new Response(JSON.stringify([{
-    id: "one", framework: "copilot-cli", device_id: "device-a", installation_id: "install-a",
-    freshness: "fresh", hooks_status: "observed", gateway_status: "configured", mcp_configured: true,
-    last_seen_at: "2026-10-01T00:00:00Z",
-  }])))
   state.list.mockResolvedValue([{ id: "p", cond_code: "abcdefgh", active_revision_id: "rev" }])
   state.snapshot.mockResolvedValue({ model_alias: "coding", accepts: ["openai_responses"] })
 })
 afterEach(cleanup)
-
-it.each(["claude-code", "codex", "copilot-cli"])("shows connection verification separately from hook activity for %s", async framework => {
-  state.fetch.mockResolvedValue(new Response(JSON.stringify([{
-    id: "one", framework, device_id: "device-a", installation_id: "install-a",
-    freshness: "fresh", hooks_status: "unverified", gateway_status: "connection_verified", mcp_configured: true,
-    last_seen_at: "2026-10-01T00:00:00Z",
-  }])))
-  render(<ToolSetupPanel workspaceId="ws" isAdmin={false} />)
-  expect(await screen.findByText("Connection verified")).toBeInTheDocument()
-  expect(screen.queryByText("Activity observed")).toBeNull()
-})
 
 it("uses deployment-specific login commands and refuses unsafe URLs", () => {
   expect(setupCommand("https://api.conductai.ai", "https://app.conductai.ai")).toBe("conduct login")
@@ -36,30 +20,34 @@ it("uses deployment-specific login commands and refuses unsafe URLs", () => {
   expect(setupCommand('https://api.example/$(oops)', "https://console.example")).toBeNull()
 })
 
-it("shows independent surfaces and compatible published model IDs", async () => {
+it("keeps configuration and published models in Settings without loading discovery", async () => {
   render(<ToolSetupPanel workspaceId="ws" isAdmin />)
-  expect(await screen.findByText("device-a / install-" )).toBeInTheDocument()
-  expect(screen.getByText("Activity observed")).toBeInTheDocument()
-  expect(screen.getAllByText("cond-abcdefgh-coding")).toHaveLength(2)
+  expect(await screen.findAllByText("cond-abcdefgh-coding")).toHaveLength(2)
   expect(screen.getAllByText("No compatible profiles published")).toHaveLength(1)
+  expect(screen.getByText("conduct guard sync")).toBeInTheDocument()
+  expect(screen.getByRole("link", { name: "Agent Discovery" })).toHaveAttribute("href", "/theguard/discovery")
+  expect(screen.queryByRole("table")).toBeNull()
+  expect(screen.queryByText("MCP inventory")).toBeNull()
+  expect(state.fetch).not.toHaveBeenCalled()
 })
 
 it("does not fetch credential-management profiles for a non-admin", async () => {
   render(<ToolSetupPanel workspaceId="ws" isAdmin={false} />)
-  await waitFor(() => expect(state.fetch).toHaveBeenCalledTimes(1))
   expect(state.list).not.toHaveBeenCalled()
+  expect(state.fetch).not.toHaveBeenCalled()
 })
 
 it("does not fetch when the tab is hidden", () => {
   render(<ToolSetupPanel workspaceId="ws" isAdmin enabled={false} />)
   expect(state.fetch).not.toHaveBeenCalled()
+  expect(state.list).not.toHaveBeenCalled()
 })
 
-it("clears previous workspace evidence and handles denied inventory", async () => {
-  const view = render(<ToolSetupPanel workspaceId="a" isAdmin={false} />)
-  await screen.findByText("Activity observed")
-  state.fetch.mockResolvedValue(new Response("{}", { status: 403 }))
-  view.rerender(<ToolSetupPanel workspaceId="b" isAdmin={false} />)
-  expect(await screen.findByRole("alert")).toHaveTextContent("access denied")
-  expect(screen.queryByText("Activity observed")).toBeNull()
+it("clears previous workspace models when loading the next workspace fails", async () => {
+  const view = render(<ToolSetupPanel workspaceId="a" isAdmin />)
+  await screen.findAllByText("cond-abcdefgh-coding")
+  state.list.mockRejectedValueOnce(new Error("denied"))
+  view.rerender(<ToolSetupPanel workspaceId="b" isAdmin />)
+  expect(await screen.findByRole("alert")).toHaveTextContent("Published models unavailable")
+  await waitFor(() => expect(screen.queryByText("cond-abcdefgh-coding")).toBeNull())
 })

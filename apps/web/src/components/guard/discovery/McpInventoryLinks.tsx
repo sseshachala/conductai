@@ -6,7 +6,7 @@ import { ChevronLeft, ChevronRight, Link2, RefreshCw, Unlink } from "lucide-reac
 import { useAuthFetch } from "@/hooks/useAuthFetch"
 import { API } from "@/lib/api"
 import { discoveryLabel, discoveryTime } from "@/lib/discovery"
-import styles from "./ToolSetupPanel.module.css"
+import styles from "./McpInventoryLinks.module.css"
 
 type Registration = { id: string; name: string; review_status: string }
 type Finding = {

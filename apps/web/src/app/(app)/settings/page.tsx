@@ -11,24 +11,20 @@ import { useAuthFetch } from "@/hooks/useAuthFetch"
 import { API } from "@/lib/api"
 import { SettingsShell, type SettingsTab } from "@/components/SettingsShell"
 import { useWorkspace } from "@/lib/WorkspaceContext"
-import CanvasPanel from "@/components/settings/CanvasPanel"
 import EnvironmentsManager from "@/components/settings/EnvironmentsManager"
 import MembersManager from "@/components/settings/MembersManager"
 import PreferencesPanel from "@/components/settings/PreferencesPanel"
 import LLMPrimitivesPanel from "@/components/settings/LLMPrimitivesPanel"
-import RateLimitsPanel from "@/components/settings/RateLimitsPanel"
 import ToolSetupPanel from "@/components/settings/ToolSetupPanel"
 
-type Tab = "credentials" | "llm_primitives" | "tool_setup" | "members" | "preferences" | "canvas" | "proxy" | "rate_limits"
+type Tab = "credentials" | "llm_primitives" | "tool_setup" | "members" | "preferences" | "proxy"
 
 const TABS: readonly SettingsTab<Tab>[] = [
   { key: "credentials",    label: "Vault" },
   { key: "llm_primitives", label: "LLM Model Primitives" },
   { key: "tool_setup", label: "Tool Setup" },
   { key: "preferences",    label: "Appearance" },
-  { key: "canvas",         label: "Canvas" },
   { key: "proxy",          label: "Gateway → Guard" },
-  { key: "rate_limits",    label: "Rate limits", adminOnly: true },
   { key: "members",        label: "Members & roles", adminOnly: true },
 ]
 
@@ -177,10 +173,14 @@ function SettingsPageInner({ isAdmin, workspaceId, getToken }: { isAdmin: boolea
   const router = useRouter()
   const searchParams = useSearchParams()
 
-  // Legacy alias: /settings?tab=proxy now lives at Guard → Connections.
+  // Keep bookmarks for settings that moved to their owning surfaces.
   useEffect(() => {
     if (searchParams?.get("tab") === "proxy") {
       router.replace("/theguard/connections/proxy")
+    } else if (searchParams?.get("tab") === "canvas") {
+      router.replace("/workflows")
+    } else if (searchParams?.get("tab") === "rate_limits") {
+      router.replace("/proxy/gateway-profiles?tab=rate_limits")
     }
   }, [searchParams, router])
 
@@ -202,7 +202,6 @@ function SettingsPageInner({ isAdmin, workspaceId, getToken }: { isAdmin: boolea
     llm_primitives: <LLMPrimitivesPanel workspaceId={workspaceId} isAdmin={isAdmin} />,
     tool_setup: <ToolSetupPanel workspaceId={workspaceId} isAdmin={isAdmin} enabled={searchParams?.get("tab") === "tool_setup"} />,
     preferences:    <PreferencesPanel />,
-    canvas:         <CanvasPanel />,
     proxy:          (
       <div style={{ padding: 16, border: "1px solid var(--border)", borderRadius: 8, background: "var(--surface-2)" }}>
         <p style={{ margin: 0, fontSize: 14, color: "var(--text-2)" }}>
@@ -213,7 +212,6 @@ function SettingsPageInner({ isAdmin, workspaceId, getToken }: { isAdmin: boolea
         </p>
       </div>
     ),
-    rate_limits:    <RateLimitsPanel isAdmin={isAdmin} />,
     members:        <MembersManager />,
   }
 

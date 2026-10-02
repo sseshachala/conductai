@@ -80,7 +80,7 @@ the updated API/CLI and a different workspace administrator's approval.
 
 ## Link device inventory to registrations
 
-Open **Settings > Tool Setup > MCP inventory**. Administrators can select a
+Open **Guard > Agents Discovered > MCP inventory**. Administrators can select a
 workspace registration and link it to a discovered MCP reference. Members can
 view the links. Use **Review registered servers** to inspect, approve, quarantine,
 or revoke a registration.

@@ -3,12 +3,15 @@
 import { useEffect, useRef, useState } from "react"
 import { Copy, RefreshCw, Search, X } from "lucide-react"
 import AppShell from "@/components/AppShell"
+import Link from "next/link"
 import { GuardShell } from "@/components/guard/GuardShell"
 import { GuardPageHeader } from "@/components/guard/common"
 import { AskLensLink } from "@/components/glens/AskLensLink"
 import { useAuthFetch } from "@/hooks/useAuthFetch"
-import { guard } from "@/lib/api"
+import { API, guard } from "@/lib/api"
 import { discoveryLabel, discoveryTime, type DiscoveryAgent, type DiscoverySummary } from "@/lib/discovery"
+import { toolCatalog } from "@/lib/toolCatalog"
+import McpInventoryLinks from "@/components/guard/discovery/McpInventoryLinks"
 
 type Scan = { id: string; status: string; triggered_by: string; started_at: string; agents_found: number; errors: string[] }
 const cell = "px-3 py-3 text-left align-top border-b border-stone-200 text-sm"
@@ -91,8 +94,18 @@ function WorkspaceDiscovery({ workspaceId }: { workspaceId: string }) {
   const [limit, setLimit] = useState(100)
   const [query, setQuery] = useState("")
   const [filter, setFilter] = useState("current")
+  const [isAdmin, setIsAdmin] = useState(false)
+  const [showMcp, setShowMcp] = useState(false)
   const inventory = filter === "legacy_unverified" ? "legacy" : filter === "all" ? "all" : "current"
   const [selected, setSelected] = useState<DiscoveryAgent | null>(null)
+  useEffect(() => {
+    let active = true
+    void authFetch(`${API}/projects/${encodeURIComponent(workspaceId)}/my-role`)
+      .then(async response => response.ok ? response.json() : null)
+      .then(role => { if (active) setIsAdmin(role?.role === "admin") })
+      .catch(() => { if (active) setIsAdmin(false) })
+    return () => { active = false }
+  }, [authFetch, workspaceId])
   useEffect(() => {
     let active = true
     setLoading(true); setError("")
@@ -108,10 +121,13 @@ function WorkspaceDiscovery({ workspaceId }: { workspaceId: string }) {
     (filter === "all" || filter === "current" && a.detection !== "legacy_unverified" || (filter === "attention" ? a.hooks_status !== "observed" || a.freshness !== "fresh" : a.detection === filter)))
   const total = summary ? inventory === "legacy" ? summary.legacy_unverified : inventory === "current" ? summary.total - (summary.legacy_unverified ?? 0) : summary.total : agents.length
   return <div className="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6">
-    <div className="flex items-start justify-between gap-3">
+    <div className="flex flex-wrap items-start justify-between gap-3">
       <GuardPageHeader title="Agent Discovery"/>
-      <button className="btn btn-ghost btn-icon btn-sm shrink-0" aria-label="Refresh discovery" title="Refresh discovery" disabled={loading}
-        onClick={() => { setSelected(null); setRevision(r => r + 1) }}><RefreshCw size={18}/></button>
+      <div className="flex shrink-0 items-center gap-2">
+        <Link href="/settings?tab=tool_setup" className="btn btn-ghost btn-sm">Tool Setup</Link>
+        <button className="btn btn-ghost btn-icon btn-sm" aria-label="Refresh discovery" title="Refresh discovery" disabled={loading}
+          onClick={() => { setSelected(null); setRevision(r => r + 1) }}><RefreshCw size={18}/></button>
+      </div>
     </div>
     {error && <p role="alert" className="text-red-700">{error}</p>}
     {loading && <p role="status">Loading discovery...</p>}
@@ -131,12 +147,20 @@ function WorkspaceDiscovery({ workspaceId }: { workspaceId: string }) {
         </select>
       </div>
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[800px] border-collapse"><thead><tr>{["Tool / device", "Detection", "Hooks", "Gateway", "Last scan / detection", ""].map(h =>
+        <table aria-label="Discovered tool installations" className="w-full min-w-[900px] border-collapse"><thead><tr>{["Tool / installation", "Detection", "Hooks", "MCP", "Gateway", "Last scan / detection", ""].map(h =>
           <th key={h} className={cell + " font-medium text-stone-500"}>{h}</th>)}</tr></thead>
           <tbody>{visible.map(a => <tr key={a.id}>
-            <td className={cell}><strong>{discoveryLabel(a.framework)}</strong><div className="font-mono text-xs text-stone-500">{a.device_id?.slice(0, 8) ?? "Legacy device"}</div></td>
+            <td className={cell}><strong>{discoveryLabel(a.framework)}</strong><div className="font-mono text-xs text-stone-500"
+              title={`Device ${a.device_id ?? "not recorded"}; installation ${a.installation_id ?? "not recorded"}`}>
+                {a.device_id?.slice(0, 8) ?? "Legacy device"}{a.installation_id && ` / ${a.installation_id.slice(0, 8)}`}
+              </div>
+              {["cursor", "windsurf"].includes(a.framework ?? "") && toolCatalog.find(tool => tool.id === a.framework)?.live_acceptance === "pending" &&
+                <div className="text-xs text-stone-500">Live verification pending</div>}
+            </td>
             <td className={cell}>{discoveryLabel(a.detection)}</td><td className={cell}>{discoveryLabel(a.hooks_status)}</td>
-            <td className={cell}>{discoveryLabel(a.gateway_status)}</td>
+            <td className={cell}>{a.freshness === "fresh" ? a.mcp_configured ? "Configured" : "Not configured" : "Unknown"}</td>
+            <td className={cell}>{toolCatalog.some(tool => tool.id === a.framework && !tool.gateway)
+              ? "Gateway adapter pending" : discoveryLabel(a.gateway_status)}</td>
             <td className={cell}>{discoveryTime(a.last_seen_at)}<div className="text-xs text-stone-500">{discoveryLabel(a.freshness)}</div></td>
             <td className={cell}><button className="btn btn-ghost btn-sm" onClick={() => setSelected(a)}>Evidence</button></td>
           </tr>)}</tbody>
@@ -148,6 +172,10 @@ function WorkspaceDiscovery({ workspaceId }: { workspaceId: string }) {
         {summary && agents.length < total && <button className="btn btn-ghost btn-sm" disabled={loading} onClick={() => setLimit(n => n + 100)}>Load more</button>}
       </div>
     </>}
+    <details className="border-t border-stone-200 pt-5" onToggle={event => setShowMcp(event.currentTarget.open)}>
+      <summary className="cursor-pointer text-base font-semibold">MCP inventory</summary>
+      {showMcp && <McpInventoryLinks key={`${workspaceId}:${revision}`} workspaceId={workspaceId} isAdmin={isAdmin} />}
+    </details>
     {scans.length > 0 && <section className="border-t border-stone-200 pt-5">
       <h2 className="mb-3 text-base font-semibold">Recent scans</h2>
       <div className="overflow-x-auto"><table className="w-full min-w-[600px]"><thead><tr>{["Started (UTC)", "Source", "Findings", "Status"].map(h => <th key={h} className={cell}>{h}</th>)}</tr></thead>
