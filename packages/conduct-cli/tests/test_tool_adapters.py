@@ -4,7 +4,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from conduct_cli.tool_adapters import ADAPTERS
+from conduct_cli.tool_adapters import ADAPTERS, ToolAdapter
 from conduct_cli.tool_catalog import TOOLS
 from conduct_cli.guard_commands import inventory
 from conduct_cli.guard_commands.mcp_inventory import summarize_servers
@@ -125,3 +125,78 @@ def test_codex_mcp_uses_custom_home_without_overwriting_invalid_config(isolated,
     config.write_text("not valid [ toml")
     assert not _write_codex_mcp_config("https://test.invalid", "synthetic-test-only")
     assert config.read_text() == "not valid [ toml"
+
+
+@pytest.mark.parametrize("tool", list(TOOLS))
+def test_manifest_paths_match_existing_contract(tool, isolated, monkeypatch):
+    expected = {
+        "claude-code": [("settings.json", "legacy-user", "mcpServers"), (".claude.json", "user", "mcpServers")],
+        "codex": [("config.toml", "user", "mcp_servers")],
+        "cursor": [("mcp.json", "user", "mcpServers")],
+        "windsurf": [("mcp_config.json", "user", "mcpServers")],
+        "copilot-cli": [("mcp-config.json", "user", "mcpServers")],
+    }
+    adapter = ADAPTERS[tool]
+    assert [(s.path.name, s.scope, s.key) for s in adapter.mcp_sources()] == expected[tool]
+    assert adapter.platforms == ("darwin", "linux", "win32")
+    if adapter.home_env:
+        custom = isolated / "custom config" / tool
+        monkeypatch.setenv(adapter.home_env, str(custom))
+        assert adapter.root() == custom
+        user_sources = adapter.mcp_sources()
+        for source in user_sources:
+            assert source.path.parent == (custom.parent if tool == "claude-code" and source.scope == "user" else custom)
+
+
+def test_declarative_third_party_adapter_needs_no_python_registry(isolated, monkeypatch):
+    import subprocess
+    monkeypatch.setattr(subprocess, "run", Mock(side_effect=AssertionError("Manifest executed code")))
+    manifest = {"id": "example-agent", "adapter": {
+        "version": 1, "platforms": ["linux"], "home": [".example-agent"], "home_env": None,
+        "mcp": [{"anchor": "root", "path": "mcp.json", "scope": "user", "key": "mcpServers"},
+                {"anchor": "project", "path": ".example-agent/mcp.json", "scope": "project", "key": "mcpServers"}],
+        "hooks": None, "usage": None,
+    }}
+    adapter = ToolAdapter.from_manifest(manifest)
+    assert adapter.root() == isolated / ".example-agent"
+    assert len(adapter.mcp_sources()) == 1
+    assert adapter.mcp_sources(isolated / "project")[1].path == isolated / "project/.example-agent/mcp.json"
+    assert adapter.hooks is None and adapter.usage is None
+    monkeypatch.setitem(ADAPTERS, manifest["id"], adapter)
+    monkeypatch.setitem(inventory.TOOL_CATALOG, manifest["id"], {
+        "id": manifest["id"], "executable": "example-agent", "gateway": None,
+    })
+    monkeypatch.setattr(inventory, "TOOLS", (manifest["id"],))
+    source = adapter.mcp_sources()[0]
+    source.path.parent.mkdir()
+    source.path.write_text(json.dumps({"mcpServers": {"thirdparty": {"command": "do-not-run"}}}))
+    finding = inventory.collect(config_only=True)["agents"][0]
+    assert finding["framework"] == manifest["id"]
+    assert finding["evidence"]["mcp_servers"][0]["name"] == "thirdparty"
+    assert not finding["evidence"]["hooks_configured"]
+
+
+@pytest.mark.parametrize("field,value", [
+    ("version", 2), ("version", True), ("home", [".."]), ("home", ["/tmp"]),
+    ("home", ["C:\\private"]), ("home_env", "HOME; sh"), ("platforms", ["unknown"]),
+    ("hooks", "module:arbitrary"), ("usage", "https://example.invalid"), ("command", "sh"),
+])
+def test_manifest_rejects_unsafe_or_unknown_handlers(field, value):
+    import copy
+    manifest = copy.deepcopy(TOOLS["cursor"])
+    manifest["adapter"][field] = value
+    with pytest.raises(ValueError):
+        ToolAdapter.from_manifest(manifest)
+
+
+@pytest.mark.parametrize("field,value", [
+    ("path", "../secret.json"), ("path", "/tmp/secret.json"), ("path", "C:\\secret.json"),
+    ("path", "$HOME/config.json"), ("path", "sub/../secret.json"),
+    ("anchor", "network"), ("scope", "project"), ("key", "arbitrary"),
+])
+def test_manifest_rejects_unsafe_sources(field, value):
+    import copy
+    manifest = copy.deepcopy(TOOLS["cursor"])
+    manifest["adapter"]["mcp"][0][field] = value
+    with pytest.raises(ValueError):
+        ToolAdapter.from_manifest(manifest)

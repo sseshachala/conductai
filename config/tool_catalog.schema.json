@@ -37,7 +37,8 @@
           "surfaces",
           "gateway",
           "setup_ui",
-          "live_acceptance"
+          "live_acceptance",
+          "adapter"
         ],
         "properties": {
           "id": {
@@ -98,9 +99,175 @@
               "pending",
               "verified"
             ]
+          },
+          "adapter": {
+            "$ref": "#/$defs/adapter"
           }
         }
       }
+    }
+  },
+  "$defs": {
+    "adapter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "platforms",
+        "home",
+        "home_env",
+        "mcp",
+        "hooks",
+        "usage"
+      ],
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "platforms": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "darwin",
+              "linux",
+              "win32"
+            ]
+          }
+        },
+        "home": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9_.-]+$",
+            "not": {
+              "enum": [
+                ".",
+                ".."
+              ]
+            }
+          }
+        },
+        "home_env": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "pattern": "^[A-Z][A-Z0-9_]*$"
+            }
+          ]
+        },
+        "mcp": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/configSource"
+          }
+        },
+        "hooks": {
+          "enum": [
+            null,
+            "claude",
+            "codex",
+            "cursor",
+            "windsurf",
+            "copilot"
+          ]
+        },
+        "usage": {
+          "enum": [
+            null,
+            "claude-jsonl",
+            "codex-jsonl",
+            "copilot-jsonl"
+          ]
+        }
+      }
+    },
+    "configSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "anchor",
+        "path",
+        "scope",
+        "key"
+      ],
+      "properties": {
+        "anchor": {
+          "enum": [
+            "root",
+            "root-sibling",
+            "project"
+          ]
+        },
+        "path": {
+          "type": "string",
+          "pattern": "^(?!.*(?:^|/)\\.{1,2}(?:/|$))[a-zA-Z0-9_.-]+(?:/[a-zA-Z0-9_.-]+)*$"
+        },
+        "scope": {
+          "enum": [
+            "user",
+            "legacy-user",
+            "project"
+          ]
+        },
+        "key": {
+          "enum": [
+            "mcpServers",
+            "mcp_servers"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "anchor": {
+                "const": "project"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "scope": {
+                "const": "project"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "scope": {
+                "enum": [
+                  "user",
+                  "legacy-user"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "anchor": {
+                "const": "root-sibling"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "path": {
+                "const": ".json"
+              }
+            }
+          }
+        }
+      ]
     }
   }
 }

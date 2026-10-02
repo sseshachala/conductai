@@ -181,10 +181,11 @@ def collect(config_only=False, project=None):
                 hooks = _document(root / "hooks" / "conduct-guard.json").get("hooks", {})
                 evidence["hooks_configured"] = _managed_hook(hooks.get("preToolUse", []))
             else:
-                filename = {"claude-code": "settings.json", "cursor": "mcp.json", "windsurf": "mcp_config.json"}[tool]
-                data = _document(root / filename)
+                filename = {"claude-code": "settings.json", "cursor": "mcp.json", "windsurf": "mcp_config.json"}.get(tool)
+                data = _document(root / filename) if filename else {}
                 servers = data.get("mcpServers", {})
-                hooks = data.get("hooks", {}) if tool == "claude-code" else _document(root / "hooks.json").get("hooks", {})
+                hooks = data.get("hooks", {}) if tool == "claude-code" else (
+                    _document(root / "hooks.json").get("hooks", {}) if ADAPTERS[tool].hooks else {})
                 evidence["hooks_configured"] = _managed_hook(hooks.get("PreToolUse", []))
                 if tool == "claude-code":
                     environment = data.get("env", {})
@@ -224,8 +225,7 @@ def collect(config_only=False, project=None):
     if not config_only:
         try:
             import psutil
-            names = {"claude": "claude-code", "codex": "codex", "cursor": "cursor",
-                     "windsurf": "windsurf", "copilot": "copilot-cli"}
+            names = {tool["executable"]: tool_id for tool_id, tool in TOOL_CATALOG.items()}
             for process in psutil.process_iter(["name", "exe"]):
                 try:
                     name = Path(process.info.get("exe") or process.info.get("name") or "").name.lower().removesuffix(".exe")

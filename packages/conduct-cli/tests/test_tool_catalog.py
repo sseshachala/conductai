@@ -7,6 +7,7 @@ import jsonschema
 import pytest
 
 from conduct_cli.tool_catalog import CATALOG, TOOLS
+from conduct_cli.tool_adapters import ToolAdapter
 from conduct_cli.guard_commands import inventory
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -57,3 +58,17 @@ def test_unknown_version_is_rejected():
     catalog["schema_version"] = 2
     with pytest.raises(jsonschema.ValidationError):
         jsonschema.validate(catalog, SCHEMA)
+
+
+@pytest.mark.parametrize("field,value", [
+    ("version", 2), ("version", True), ("home", [".."]), ("home", ["/tmp"]),
+    ("home_env", "HOME; sh"), ("hooks", "module:arbitrary"), ("usage", "unknown"),
+    ("platforms", ["darwin", "darwin"]), ("command", "run-me"),
+])
+def test_schema_and_runtime_reject_invalid_adapter_contract(field, value):
+    catalog = copy.deepcopy(CATALOG)
+    catalog["tools"][0]["adapter"][field] = value
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(catalog, SCHEMA)
+    with pytest.raises(ValueError):
+        ToolAdapter.from_manifest(catalog["tools"][0])
