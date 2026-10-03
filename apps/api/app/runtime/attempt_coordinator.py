@@ -40,13 +40,9 @@ Transports the coordinator dispatches to:
 - ``NativeHTTPTransport`` (``transport=native_http``) — direct HTTP
   to Anthropic + OpenAI. Streaming supported.
 - ``LiteLLMTransport`` (``transport=litellm_sdk``) — LiteLLM SDK for
-  translation cases. Non-streaming path is production; streaming
-  through the SDK is a follow-up.
+  translation cases, including streaming.
 - ``HTTPPassthroughTransport`` (``transport=http_passthrough``) —
-  external gateways. OpenRouter is the reference integration; other
-  integrations (Portkey / Helicone / Azure / Custom) fail at the
-  transport layer with ``UnsupportedPassthroughIntegration`` until
-  each ships its per-integration auth-header semantics.
+  external gateways with integration-specific auth headers.
 """
 from __future__ import annotations
 
@@ -83,18 +79,19 @@ def _capture_failed_response_bytes(exc: BaseException) -> str | None:
     Returns None when no body is available (timeout, DNS failure, socket
     error, etc.).
     """
-    resp = getattr(exc, "response", None)
-    if resp is None:
-        return None
-    content = getattr(resp, "content", None)
-    if isinstance(content, (bytes, bytearray)) and content:
+    seen = set()
+    while exc is not None and id(exc) not in seen:
+        seen.add(id(exc))
         try:
-            import base64 as _b64
-            # Cap at ~64 KiB so a runaway provider error page cannot
-            # bloat the audit row unbounded.
-            return _b64.b64encode(bytes(content[:65_536])).decode("ascii")
+            content = getattr(getattr(exc, "response", None), "content", None)
+            if isinstance(content, (bytes, bytearray)) and content:
+                import base64 as _b64
+                return _b64.b64encode(bytes(content[:65_536])).decode("ascii")
         except Exception:
-            return None
+            pass
+        # LiteLLM replaces some vendor responses with empty synthetic ones.
+        # The chained SDK exception still carries the actual error body.
+        exc = exc.__cause__ or exc.__context__
     return None
 
 
@@ -434,17 +431,13 @@ class AttemptCoordinator:
                 client_headers=client_headers,
             )
         if isinstance(target, LiteLLMSDKTarget):
-            # LiteLLM transport doesn't take client_headers yet — LiteLLM's
-            # own SDK has an ``extra_headers`` kwarg but the mapping is
-            # provider-specific and non-trivial for the ``anthropic-beta``
-            # class of headers. Left for a follow-up; native_http covers
-            # the launch path where vendor headers matter most.
             return await self._sdk.execute(
                 target=target,
                 operation=operation,
-                payload=payload,
+                payload={k: v for k, v in payload.items() if k not in {"model", "stream"}},
                 credential_resolver=credential_resolver,
                 stream=stream,
+                client_headers=client_headers,
             )
         if isinstance(target, HTTPPassthroughTarget):
             return await self._passthrough.execute(

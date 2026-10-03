@@ -126,6 +126,7 @@ class NativeHTTPTransport:
         credential_resolver,
         stream: bool = False,
         client_headers: dict[str, str] | None = None,
+        api_base: str | None = None,
     ) -> Any:
         """Forward the payload to the vendor's endpoint.
 
@@ -159,6 +160,10 @@ class NativeHTTPTransport:
 
         base_url, auth_header, bearer_prefix, extra_headers = _ENDPOINTS[target.provider]
         upstream_path = _OPERATION_PATHS[endpoint_key]
+        if api_base:
+            base_url = api_base.rstrip("/")
+            if base_url.endswith("/v1") and upstream_path.startswith("/v1/"):
+                upstream_path = upstream_path[3:]
 
         api_key = credential_resolver(target.credential_ref)
         if not api_key:

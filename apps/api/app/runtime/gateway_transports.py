@@ -64,7 +64,7 @@ async def get_coordinator() -> "AttemptCoordinator":
         from app.runtime.native_http_transport import NativeHTTPTransport
 
         _native = NativeHTTPTransport()
-        _litellm = LiteLLMTransport()
+        _litellm = LiteLLMTransport(native_transport=_native)
         _passthrough = HTTPPassthroughTransport()
         _coordinator = AttemptCoordinator(
             sdk_transport=_litellm,

@@ -267,7 +267,7 @@ async def test_execute_v2_streaming_returns_streaming_response(monkeypatch):
 
 
 @pytest.mark.anyio("asyncio")
-async def test_execute_v2_streaming_501_pre_dispatch_when_no_native_target(monkeypatch):
+async def test_count_tokens_streaming_400_before_dispatch(monkeypatch):
     """#2152 P1 — capability gate MUST fire before the coordinator runs.
 
     A plan whose targets are all non-native (litellm_sdk /
@@ -313,17 +313,16 @@ async def test_execute_v2_streaming_501_pre_dispatch_when_no_native_target(monke
                 ],
             ),
         ),
-        operation="anthropic_messages",
+        operation="anthropic_count_tokens",
         credential_resolver=lambda ref: "sk-fake",
     )
 
     with pytest.raises(HTTPException) as excinfo:
         await _execute_v2(plan=plan, body={"stream": True}, stream=True)
 
-    assert excinfo.value.status_code == 501
+    assert excinfo.value.status_code == 400
     detail = str(excinfo.value.detail)
-    assert "native_http" in detail
-    assert "rev-only-litellm" in detail
+    assert "Token counting" in detail
     assert called["execute"] is False, (
         "coordinator.execute ran — the gate should have refused before dispatch"
     )

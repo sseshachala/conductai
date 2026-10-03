@@ -327,6 +327,45 @@ def test_update_working_copy_rejects_invalid_schema(client_and_db):
     )
     assert resp.status_code == 400
     assert "schema invalid" in resp.text.lower()
+    detail = resp.json()["detail"]
+    assert isinstance(detail, dict)
+    assert detail["errors"]
+    assert "errors.pydantic.dev" not in resp.text
+    assert "input_value" not in resp.text
+
+
+@pytest.mark.parametrize("field,value", [
+    ("model_alias", ""), ("model_alias", " "),
+    ("max_attempts", 6), ("timeout_seconds", 601),
+])
+def test_save_reports_invalid_profile_field(client_and_db, field, value):
+    client, session_holder, ws = client_and_db
+    session_holder["db"] = _make_session_stub()
+    created = client.post(f"/workspaces/{ws}/gateway-profiles-v2", json={"name": "Case 3"})
+    assert created.status_code == 201
+    working_copy = _sample_working_copy(uuid4())
+    working_copy[field] = value
+    resp = client.put(f"/workspaces/{ws}/gateway-profiles-v2/{created.json()['id']}",
+                      json={"working_copy": working_copy})
+    assert resp.status_code == 400
+    errors = resp.json()["detail"]["errors"]
+    assert [error["path"] for error in errors] == [field]
+    assert errors[0]["target_index"] is None
+    assert "errors.pydantic.dev" not in resp.text
+
+
+def test_save_keeps_capability_validation_deferred_to_publish(client_and_db):
+    client, session_holder, ws = client_and_db
+    session_holder["db"] = _make_session_stub()
+    created = client.post(f"/workspaces/{ws}/gateway-profiles-v2", json={"name": "draft"})
+    assert created.status_code == 201
+    profile_id = created.json()["id"]
+    resp = client.put(f"/workspaces/{ws}/gateway-profiles-v2/{profile_id}",
+                      json={"working_copy": _uncertified_working_copy(uuid4())})
+    assert resp.status_code == 200
+    resp = client.post(f"/workspaces/{ws}/gateway-profiles-v2/{profile_id}/publish", json={})
+    assert resp.status_code == 400
+    assert resp.json()["detail"]["summary"] == "capability check failed"
 
 
 def test_publish_rejects_empty_working_copy(client_and_db):

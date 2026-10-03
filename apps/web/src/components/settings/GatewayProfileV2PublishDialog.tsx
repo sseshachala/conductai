@@ -5,6 +5,7 @@ import { useEffect, useState } from "react"
 import { useAuthFetch } from "@/hooks/useAuthFetch"
 import { guard } from "@/lib/api"
 import type { GatewayProfileV2Out } from "@/lib/api/guard"
+import { validateGatewayProfileFields } from "@/lib/gatewayProfileValidation"
 
 // v3 (#2007 follow-up): publish is a single click — no environment
 // picker. The credential vault lives inside each target's
@@ -32,8 +33,14 @@ export default function GatewayProfileV2PublishDialog({
   const wc = (profile.working_copy as { model_alias?: string; targets?: Array<Record<string, unknown>> } | null) ?? null
   const modelAlias = wc?.model_alias ?? profile.model_alias ?? ""
   const targetCount = wc?.targets?.length ?? 0
+  const validationErrors = validateGatewayProfileFields(profile.working_copy ?? {})
+  const validationIssue = Object.values(validationErrors)[0]
 
   async function publish() {
+    if (validationIssue) {
+      setErr(validationIssue)
+      return
+    }
     setPublishing(true); setErr("")
     try {
       await guard.gatewayProfilesV2.publish(authFetch, workspaceId, profile.id)
@@ -70,11 +77,11 @@ export default function GatewayProfileV2PublishDialog({
           </div>
         </div>
 
-        {err && <p style={{ margin: "10px 0 0", color: "var(--err)", fontSize: 12 }}>{err}</p>}
+        {(err || validationIssue) && <p role="alert" style={{ margin: "10px 0 0", color: "var(--err)", fontSize: 12, overflowWrap: "anywhere" }}>{err || validationIssue}</p>}
 
         <div style={{ display: "flex", gap: 8, marginTop: 16, justifyContent: "flex-end" }}>
           <button onClick={onClose} className="btn btn-ghost btn-sm">Cancel</button>
-          <button onClick={publish} disabled={publishing || !modelAlias || targetCount === 0}
+          <button onClick={publish} disabled={publishing || !!validationIssue}
             className="btn btn-primary btn-sm">
             {publishing ? "Publishing…" : "Publish"}
           </button>

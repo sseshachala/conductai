@@ -16,6 +16,7 @@ import { useWorkspace } from "@/lib/WorkspaceContext"
 import { environments, guard } from "@/lib/api"
 import { API } from "@/lib/api/client"
 import type { GatewayProfileV2Out } from "@/lib/api/guard"
+import { validateGatewayProfileFields } from "@/lib/gatewayProfileValidation"
 
 // #2007 — Gateway Profiles v2 admin surface.
 //
@@ -130,6 +131,33 @@ const PRESET_CHIPS: PresetChip[] = [
     },
   },
 ]
+
+for (const [index, label, name] of [
+  [0, "Claude via LiteLLM", "claude-litellm"],
+  [2, "OpenAI via LiteLLM", "openai-litellm"],
+] as const) {
+  const base = PRESET_CHIPS[index]
+  const targets = base.workingCopy.targets as Record<string, unknown>[]
+  PRESET_CHIPS.push({
+    label, hint: base.hint, name,
+    workingCopy: { ...base.workingCopy, name, model_alias: name,
+      targets: targets.map(target => ({ ...target, transport: "litellm_sdk" })),
+    },
+  })
+}
+PRESET_CHIPS.push({
+  label: "Claude + OpenAI fallback via LiteLLM",
+  hint: "Claude primary, OpenAI fallback.",
+  name: "claude-openai",
+  workingCopy: {
+    name: "claude-openai", model_alias: "claude-openai", timeout_seconds: 60, max_attempts: 2,
+    accepts: ["anthropic_messages", "openai_chat_completions"],
+    targets: [
+      { id: "primary", transport: "litellm_sdk", provider: "anthropic", model: "claude-sonnet-4-6", credential_ref: "" },
+      { id: "fallback", transport: "litellm_sdk", provider: "openai", model: "gpt-4o", credential_ref: "" },
+    ],
+  },
+})
 
 function isPublished(profile: GatewayProfileV2Out): boolean {
   // v3: served state lives on active_revision_id. Working_copy is
@@ -581,6 +609,7 @@ function ProfileDetail({
   onDuplicate: () => void
 }) {
   const published = isPublished(profile)
+  const publishIssue = Object.values(validateGatewayProfileFields(profile.working_copy ?? {}))[0]
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
@@ -608,7 +637,7 @@ function ProfileDetail({
               </>
             ) : (
               <button onClick={onOpenPublish} className="btn btn-primary btn-sm"
-                disabled={!profile.working_copy}>Publish…</button>
+                disabled={!!publishIssue} title={publishIssue}>Publish…</button>
             )}
           </div>
         )}

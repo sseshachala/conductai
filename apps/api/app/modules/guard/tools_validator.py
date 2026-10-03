@@ -525,6 +525,40 @@ def scan_response_tool_calls(response_body: dict) -> ScanResult:
     if not isinstance(response_body, dict):
         return ScanResult(scanned_body=response_body, generated_calls=[], error=None)
 
+    native_calls = [item for key in ("content", "output") for item in (response_body.get(key) or [])
+                    if isinstance(item, dict) and item.get("type") in
+                    {"tool_use", "server_tool_use", "function_call", "custom_tool_call"}]
+    if native_calls:
+        scanned = _copy.deepcopy(response_body)
+        generated = []
+        for key in ("content", "output"):
+            for item in (scanned.get(key) or []):
+                if not isinstance(item, dict) or item.get("type") not in {
+                    "tool_use", "server_tool_use", "function_call", "custom_tool_call",
+                }:
+                    continue
+                kind = item["type"]
+                try:
+                    if kind in {"tool_use", "server_tool_use"}:
+                        if not isinstance(item.get("input"), dict):
+                            raise RedactionFailure("tool input must be an object", source=key)
+                        safe, _ = redact_tool_arguments_json(json.dumps(item["input"]), source=key)
+                        item["input"] = json.loads(safe)
+                    elif kind == "function_call":
+                        safe, _ = redact_tool_arguments_json(item.get("arguments"), source=key)
+                        item["arguments"] = safe
+                    else:
+                        if not isinstance(item.get("input"), str):
+                            raise RedactionFailure("custom tool input must be a string", source=key)
+                        item["input"], _ = redact_tool_result_content(item["input"])
+                except Exception as exc:
+                    failure = exc if isinstance(exc, RedactionFailure) else RedactionFailure(
+                        "invalid native tool arguments", source=key,
+                    )
+                    return ScanResult(scanned_body=None, generated_calls=[], error=failure)
+                generated.append({"name": item.get("name", ""), "id": item.get("call_id") or item.get("id", "")})
+        return ScanResult(scanned_body=scanned, generated_calls=generated, error=None)
+
     choices = response_body.get("choices")
     if not isinstance(choices, list) or not choices:
         return ScanResult(scanned_body=response_body, generated_calls=[], error=None)

@@ -241,10 +241,8 @@ class HTTPPassthroughTransport:
         """Forward the payload to the integration's endpoint.
 
         Non-streaming: returns the parsed JSON body (dict).
-        Streaming: raises ``NotImplementedError``. Streaming through
-        passthrough integrations is a follow-up PR — the launch set is
-        request/response only. Callers must publish a native_http
-        target ahead of a passthrough target for streaming to work.
+        Streaming: returns a live response owned by the handler. Errors
+        before headers remain eligible for coordinator fallback.
 
         X7 — ``client_headers`` is the allowlisted subset of the
         original request's vendor headers (``openai-organization``,
@@ -256,13 +254,8 @@ class HTTPPassthroughTransport:
         as ``credential_resolver``. Missing when required = fail-closed
         ValueError before the wire.
         """
-        if stream:
-            raise NotImplementedError(
-                "HTTPPassthroughTransport streaming is a follow-up PR. "
-                "Put a native_http target ahead of this passthrough "
-                "target in the profile so streaming requests hit the "
-                "native path first."
-            )
+        if stream and operation == "anthropic_count_tokens":
+            raise ValueError("Token counting does not support streaming.")
 
         config = _INTEGRATION_ENDPOINTS.get(target.integration)
         if config is None:
@@ -304,6 +297,8 @@ class HTTPPassthroughTransport:
 
         request_body = dict(payload)
         request_body["model"] = target.model
+        if operation != "anthropic_count_tokens":
+            request_body["stream"] = stream
 
         # PR 7 — custom integration lets the admin override the preset's
         # auth header shape + inject extra static headers per-target.
@@ -389,6 +384,24 @@ class HTTPPassthroughTransport:
 
         client = await self._get_client()
         try:
+            if stream:
+                from app.runtime.native_http_transport import StreamingUpstream
+                request = client.build_request(
+                    "POST", url, headers=headers,
+                    content=json.dumps(request_body).encode("utf-8"),
+                )
+                response = await client.send(request, stream=True)
+                if response.status_code >= 400:
+                    try:
+                        await response.aread()
+                        response.raise_for_status()
+                    finally:
+                        await response.aclose()
+                return StreamingUpstream(
+                    status_code=response.status_code,
+                    headers=dict(response.headers), response=response,
+                    provider=target.integration,
+                )
             response = await client.post(
                 url,
                 headers=headers,

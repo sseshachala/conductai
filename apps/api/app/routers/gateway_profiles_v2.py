@@ -436,7 +436,9 @@ def _generate_unique_cond_code(db: Session, workspace_id: str) -> str:
     )
 
 
-def _validate_working_copy(working_copy: dict[str, Any]) -> GatewayProfileV2:
+def _validate_working_copy(
+    working_copy: dict[str, Any], *, check_capabilities: bool = True,
+) -> GatewayProfileV2:
     """Parse + capability-catalog check. Raises 400 on either failure.
 
     Errors are returned as a structured body so the UI can highlight the
@@ -552,6 +554,9 @@ def _validate_working_copy(working_copy: dict[str, Any]) -> GatewayProfileV2:
             status_code=400,
             detail={"summary": "schema invalid", "errors": errors},
         ) from exc
+
+    if not check_capabilities:
+        return parsed
 
     try:
         validate_targets_against_accepts(
@@ -906,12 +911,7 @@ def update_working_copy(
                 "this profile into a new draft to make changes."
             ),
         )
-    try:
-        parsed = GatewayProfileV2.model_validate(body.working_copy)
-    except Exception as exc:
-        raise HTTPException(
-            status_code=400, detail=f"schema invalid: {exc}",
-        ) from exc
+    parsed = _validate_working_copy(body.working_copy, check_capabilities=False)
     profile.working_copy = body.working_copy
     profile.model_alias = parsed.model_alias
     db.commit()

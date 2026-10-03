@@ -61,9 +61,9 @@ describe('_formatGatewayError (via _mutateJson)', () => {
     expect(gve.errors.length).toBe(1)
     expect(gve.errors[0].target_index).toBe(2)
     // Human-readable message the toast will render.
-    expect(gve.message).toContain('schema invalid')
-    expect(gve.message).toContain('target[2] credential_ref')
-    expect(gve.message).toContain('invalid vault:// reference')
+    expect(gve.message).toContain('Check the profile fields.')
+    expect(gve.message).toContain('Target 3 - Credential')
+    expect(gve.message).toContain('Choose a credential vault and handle.')
   })
 
   it('collapses more than three errors with a `+N more` suffix', async () => {
@@ -80,12 +80,12 @@ describe('_formatGatewayError (via _mutateJson)', () => {
     expect((err as Error).message).toContain('+2 more')
   })
 
-  it('falls back to detail-as-string for older-shape backends', async () => {
+  it('hides raw schema exceptions from older-shape backends', async () => {
     const err = await _invokeParserWith(
       JSON.stringify({ detail: 'schema invalid: legacy string' }),
     )
     expect(err).not.toBeInstanceOf(GatewayValidationError)
-    expect((err as Error).message).toBe('schema invalid: legacy string')
+    expect((err as Error).message).toBe('Check the profile fields and try again.')
   })
 
   it('falls back to raw text when the body is not JSON', async () => {
@@ -113,7 +113,20 @@ describe('_formatGatewayError (via _mutateJson)', () => {
     const gve = err as GatewayValidationError
     expect(gve.errors[0].type).toBe('capability_mismatch')
     // No target index → the "where" prefix falls back to the path.
-    expect(gve.message).toContain('targets')
+    expect(gve.message).toContain('Targets')
     expect(gve.message).toContain("cannot serve")
+  })
+
+  it('names a missing alias without exposing schema internals', async () => {
+    const err = await _invokeParserWith(JSON.stringify({ detail: {
+      summary: 'schema invalid', errors: [{ path: 'model_alias', target_index: null,
+        type: 'string_too_short', message: 'String should have at least 1 character' }],
+    } }))
+    expect((err as Error).message).toBe('Check the profile fields. Alias: Enter an alias.')
+  })
+
+  it('preserves ordinary server errors', async () => {
+    const err = await _invokeParserWith(JSON.stringify({ detail: 'Published profile is locked.' }), 409)
+    expect((err as Error).message).toBe('Published profile is locked.')
   })
 })

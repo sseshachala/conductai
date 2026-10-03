@@ -17,25 +17,49 @@ export interface GatewayValidationErrorItem {
   type: string
 }
 
+const GATEWAY_FIELD_LABELS: Record<string, string> = {
+  name: "Name", model_alias: "Alias", timeout_seconds: "Timeout", max_attempts: "Max attempts",
+  id: "Role", provider: "Provider", model: "Model", credential_ref: "Credential",
+  targets: "Targets", accepts: "Supported APIs", endpoint: "Endpoint", transport: "Transport",
+}
+
+function validationMessage(error: GatewayValidationErrorItem, field: string): string {
+  if (field === "timeout_seconds") return "Enter a whole number from 1 to 600 seconds."
+  if (field === "max_attempts") return "Enter a whole number from 1 to 5."
+  if (field === "credential_ref") return "Choose a credential vault and handle."
+  if (error.type === "missing" || error.type === "string_too_short") {
+    if (field === "model_alias") return "Enter an alias."
+    if (field === "name") return "Enter a name."
+    if (field === "model") return "Choose a model."
+    if (field === "provider") return "Choose a provider."
+    if (field === "id") return "Enter a role."
+  }
+  if (error.type === "string_too_long" && (field === "model_alias" || field === "name")) {
+    return "Use no more than 128 characters."
+  }
+  return error.message
+}
+
 export class GatewayValidationError extends Error {
   summary: string
   errors: GatewayValidationErrorItem[]
 
   constructor(summary: string, errors: GatewayValidationErrorItem[]) {
-    // Human-readable message: summary + up to three offending fields
-    // ``target[2] credential_ref: <msg>``. Beyond three, elide with
-    // ``+N more`` so the toast doesn't dominate the viewport.
     const lines = errors.slice(0, 3).map((e) => {
+      const field = e.path.split(".").at(-1) ?? ""
+      const label = GATEWAY_FIELD_LABELS[field] ?? (field.replaceAll("_", " ") || "Profile")
       const where =
         e.target_index !== null && e.target_index !== undefined
-          ? `target[${e.target_index}] ${e.path.split(".").slice(-1)[0]}`
-          : e.path || "(profile)"
-      return `${where}: ${e.message}`
+          ? `Target ${e.target_index + 1} - ${label}`
+          : label
+      return `${where}: ${validationMessage(e, field)}`
     })
     if (errors.length > 3) {
       lines.push(`+${errors.length - 3} more`)
     }
-    super([summary, ...lines].filter(Boolean).join(" — "))
+    const heading = summary === "schema invalid" ? "Check the profile fields."
+      : summary === "capability check failed" ? "Check the target compatibility." : summary
+    super([heading, ...lines].filter(Boolean).join(" "))
     this.name = "GatewayValidationError"
     this.summary = summary
     this.errors = errors
@@ -62,6 +86,7 @@ function _formatGatewayError(bodyText: string, status: number): Error {
       )
     }
     if (typeof detail === "string" && detail.length > 0) {
+      if (detail.startsWith("schema invalid:")) return new Error("Check the profile fields and try again.")
       return new Error(detail)
     }
   } catch {

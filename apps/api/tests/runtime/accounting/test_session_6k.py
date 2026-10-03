@@ -54,10 +54,8 @@ def test_execute_v2_success_and_failure_paths_use_plan_operation():
     from app.modules.guard import gateway_handler
 
     src = inspect.getsource(gateway_handler)
-    # Exactly two ``"operation": plan.operation`` (the two _execute_v2
-    # attempt-meta writes) — plus the fix keeps the handle_gateway_request
-    # site at plain ``operation``.
-    assert src.count('"operation": plan.operation') == 2
+    # Both request-level and per-attempt metadata preserve the protocol.
+    assert src.count('"operation": plan.operation') == 4
     assert src.count('"operation": operation') == 1
 
 
