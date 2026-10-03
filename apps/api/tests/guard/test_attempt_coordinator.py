@@ -412,7 +412,11 @@ async def test_transient_error_by_class_name_does_retry():
 
 
 @pytest.mark.anyio("asyncio")
-async def test_native_target_dispatches_to_native_transport():
+@pytest.mark.parametrize("provider, model, operation", [
+    ("anthropic", "claude-sonnet-4-6", "anthropic_messages"),
+    ("openai", "gpt-4o", "openai_responses"),
+])
+async def test_native_target_dispatches_to_native_transport(provider, model, operation):
     """PR 2 wires two transports into the coordinator. A native_http
     target must route to the native transport, NOT the LiteLLM one."""
     sdk = MagicMock()
@@ -422,14 +426,17 @@ async def test_native_target_dispatches_to_native_transport():
 
     coord = AttemptCoordinator(sdk_transport=sdk, native_http_transport=native)
     result = await coord.execute(
-        resolved=_resolved(_profile(targets=[_native_target("primary")])),
-        operation="anthropic_messages",
+        resolved=_resolved(_profile(targets=[_native_target("primary", provider, model)],
+                                    accepts_ops=[operation])),
+        operation=operation,
         payload={"messages": [{"role": "user", "content": "hi"}]},
         credential_resolver=lambda ref: "sk-fake",
     )
     assert result.response == {"content": "native-ok"}
     assert native.execute.await_count == 1
     assert sdk.execute.await_count == 0
+    assert result.attempts[0].provider_or_integration == provider
+    assert result.attempts[0].model == model
 
 
 @pytest.mark.anyio("asyncio")
@@ -452,6 +459,7 @@ async def test_mixed_targets_dispatch_per_row():
     )
     assert result.winning_target_id == "fallback"
     assert native.execute.await_count == 1
+    assert [attempt.provider_or_integration for attempt in result.attempts] == ["anthropic", "anthropic"]
 
 
 # ─── X1 — per-target policy re-eval ───────────────────────────────────

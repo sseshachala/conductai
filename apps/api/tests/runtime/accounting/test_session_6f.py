@@ -7,7 +7,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -37,6 +37,47 @@ def _captured(monkeypatch):
         MagicMock(return_value=MagicMock()),
     )
     return rows
+
+
+@pytest.mark.anyio("asyncio")
+async def test_native_anthropic_attempt_keeps_stream_usage_and_pricing(_captured):
+    from app.modules.guard.gateway_config import GatewayProfileV2, NativeHTTPTarget
+    from app.modules.guard.gateway_runtime import ResolvedV2
+    from app.runtime.attempt_coordinator import AttemptCoordinator
+    from app.runtime.accounting.shadow_writer import write_receipts_for_attempts
+
+    response = (
+        b'event: message_start\ndata: {"type":"message_start","message":'
+        b'{"id":"msg_native_acceptance","usage":{"input_tokens":24,'
+        b'"cache_read_input_tokens":5,"cache_creation_input_tokens":3}}}\n\n'
+        b'event: message_delta\ndata: {"type":"message_delta","usage":{"output_tokens":7}}\n\n'
+        b'event: message_stop\ndata: {"type":"message_stop"}\n\n'
+    )
+    target = NativeHTTPTarget(id="primary", transport="native_http", provider="anthropic",
+        model="claude-sonnet-4-6", credential_ref=f"vault://{uuid.uuid4()}/anthropic")
+    native = MagicMock(execute=AsyncMock(return_value=response))
+    result = await AttemptCoordinator(native_http_transport=native).execute(
+        resolved=ResolvedV2(revision_id=uuid.uuid4(), profile=GatewayProfileV2(
+            name="native-acceptance", model_alias="claude-sonnet", targets=[target],
+            accepts=["anthropic_messages"], timeout_seconds=30, max_attempts=1)),
+        operation="anthropic_messages", payload={"model": "cond-native-claude-sonnet"},
+        credential_resolver=lambda ref: "fixture", stream=True)
+    write_receipts_for_attempts(workspace_id=uuid.uuid4(), request_id=uuid.uuid4(),
+        provider="anthropic", model="cond-native-claude-sonnet", operation="/anthropic/v1/messages",
+        dispatched=True, response_bytes=result.response, source="gateway",
+        attempts_meta=[{"provider_or_integration": attempt.provider_or_integration,
+                        "model": attempt.model, "transport": attempt.transport,
+                        "succeeded": attempt.succeeded} for attempt in result.attempts])
+
+    assert len(_captured) == 1
+    receipt = _captured[0]
+    assert receipt.provider == "anthropic"
+    assert receipt.model == "claude-sonnet-4-6"
+    assert receipt.total_input_tokens == 32
+    assert receipt.total_output_tokens == 7
+    assert receipt.usage_completeness == "complete"
+    assert receipt.pricing_completeness == "priced"
+    assert receipt.calculated_cost_microdollars > 0
 
 # ─── #1 SQL column name — the metric no longer swallows the failure ─────
 

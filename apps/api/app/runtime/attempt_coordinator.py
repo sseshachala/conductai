@@ -474,7 +474,7 @@ def _deadline_record(target, now: float) -> AttemptRecord:
 
 
 def _name_of(target) -> str:
-    if isinstance(target, LiteLLMSDKTarget):
+    if isinstance(target, (LiteLLMSDKTarget, NativeHTTPTarget)):
         return target.provider
     if isinstance(target, HTTPPassthroughTarget):
         return target.integration

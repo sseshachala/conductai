@@ -6,9 +6,18 @@ from pathlib import Path
 from unittest.mock import patch
 
 import local
+import yaml
 
 
 class BuildInputsTests(unittest.TestCase):
+    def test_gateway_v2_is_enabled_only_for_fixture_workspace(self):
+        compose = yaml.safe_load(Path(__file__).with_name("compose.yml").read_text())
+        environment = compose["services"]["api"]["environment"]
+        self.assertEqual(environment["GUARD_GATEWAY_PROFILE_V2"], "true")
+        self.assertEqual(environment["GUARD_GATEWAY_PROFILE_V2_ROLLOUT_PCT"], "0")
+        self.assertEqual(environment["GUARD_GATEWAY_PROFILE_V2_ALLOWLIST"],
+                         "bbbbbbbb-0000-4000-8000-000000000001")
+
     def test_shared_config_is_in_web_image(self):
         root = Path(__file__).resolve().parents[2]
         dockerfile = (root / "tools/security-e2e/web.Dockerfile").read_text()
