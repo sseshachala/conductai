@@ -35,6 +35,9 @@ services:
       APP_URL: https://localhost:3443
       API_BASE_URL: https://localhost:3444
       CONDUCT_PROXY_URL: https://localhost:3444/gateway/v1
+      GUARD_GATEWAY_PROFILE_V2: 'true'
+      GUARD_GATEWAY_PROFILE_V2_ROLLOUT_PCT: '0'
+      GUARD_GATEWAY_PROFILE_V2_ALLOWLIST: bbbbbbbb-0000-4000-8000-000000000001
       ALLOWED_ORIGINS: https://localhost:3443
       TEST_ADMIN_SUBJECT: ${TEST_ADMIN_SUBJECT:?Launch with local.py}
       TEST_VIEWER_SUBJECT: ${TEST_VIEWER_SUBJECT:?Launch with local.py}
