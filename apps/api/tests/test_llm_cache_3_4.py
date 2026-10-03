@@ -8,22 +8,9 @@ Test 4: billing guard — cost_usd is 0.0 on cache hit (no double-billing across
 from __future__ import annotations
 
 import json
-import sys
-from types import ModuleType
 from unittest.mock import MagicMock
 
-# ── Stub heavy deps before any app imports ────────────────────────────────────
-for _mod in ("sqlalchemy", "sqlalchemy.orm", "sqlalchemy.pool", "structlog",
-             "alembic", "psycopg2", "anthropic", "openai"):
-    sys.modules.setdefault(_mod, MagicMock())
-
 # Inline the two checkpoint helpers so we don't import executor at all
-import importlib.util, pathlib  # noqa: E401
-
-_SETTINGS_STUB = MagicMock()
-_SETTINGS_STUB.redis_url = "redis://localhost:6379/0"
-
-
 def _checkpoint_state(run_id, state, *, _redis_client=None):
     if not run_id:
         return

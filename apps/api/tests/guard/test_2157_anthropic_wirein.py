@@ -8,13 +8,14 @@ the canonical (OpenAI Chat Completions) shape, the executor:
   2. Converts body → Anthropic Messages before coordinator dispatch.
   3. Normalizes coordinator response → canonical OpenAI shape before
      the response gate sees it.
-  4. Rejects streaming+Anthropic with 501 (deferred to follow-up).
+  4. Converts Anthropic streams while preserving upstream usage and closure.
 
 Uses stubbed resolve_v2 + coordinator so the tests stay pure.
 """
 from __future__ import annotations
 
 import json
+from unittest.mock import AsyncMock
 from types import SimpleNamespace
 
 import pytest
@@ -190,14 +191,16 @@ class TestExecuteV2AnthropicConversion:
         assert body["choices"][0]["finish_reason"] == "stop"
         assert body["usage"]["prompt_tokens"] == 5
 
-    async def test_streaming_rejected_when_conversion_needed(self, monkeypatch) -> None:
-        """SSE-to-SSE Anthropic-to-OpenAI translation is deferred; the wire-in
-        rejects the combination up front."""
-        from fastapi import HTTPException
-
-        # Coordinator should never be reached.
+    async def test_streaming_conversion_preserves_upstream_capture(self, monkeypatch) -> None:
+        import httpx
+        from app.runtime.native_http_transport import StreamingUpstream
+        events = b'event: message_start\ndata: {"type":"message_start","message":{"id":"msg_1","model":"claude-test","usage":{"input_tokens":5}}}\n\nevent: message_stop\ndata: {"type":"message_stop"}\n\n'
+        upstream = StreamingUpstream(200, {"content-type": "text/event-stream"}, httpx.Response(200, content=events), "anthropic")
+        coordinator = SimpleNamespace(execute=AsyncMock(return_value=SimpleNamespace(
+            response=upstream, winning_target_id="primary", attempts=[],
+        )))
         async def _fake_get_coordinator():
-            raise AssertionError("coordinator must not run when streaming+Anthropic rejected")
+            return coordinator
         monkeypatch.setattr(
             "app.runtime.gateway_transports.get_coordinator",
             _fake_get_coordinator,
@@ -216,11 +219,13 @@ class TestExecuteV2AnthropicConversion:
             needs_anthropic_conversion=True,
         )
 
-        with pytest.raises(HTTPException) as e:
-            await _execute_v2(
+        response = await _execute_v2(
                 plan=plan,
                 body={"model": "cond-x-claude", "messages": [{"role": "user", "content": "x"}]},
                 stream=True,
-            )
-        assert e.value.status_code == 501
-        assert "SSE-to-SSE" in str(e.value.detail)
+        )
+        output = b"".join([chunk async for chunk in response.body_iterator])
+        assert b'chat.completion.chunk' in output
+        assert b'[DONE]' in output
+        assert bytes(plan.upstream_body) == events
+        assert upstream.response.is_closed

@@ -53,5 +53,5 @@ it("preserves the existing proxy settings redirect", async () => {
 it("redirects old rate-limit settings bookmarks to Gateways", async () => {
   state.tab = "rate_limits"
   render(<SettingsPage />)
-  await waitFor(() => expect(state.replace).toHaveBeenCalledWith("/proxy/gateway-profiles?tab=rate_limits"))
+  await waitFor(() => expect(state.replace).toHaveBeenCalledWith("/proxy/gateway-profiles"))
 })

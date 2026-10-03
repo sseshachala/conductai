@@ -93,6 +93,7 @@ class ResolvedV2:
     """
     revision_id: UUID
     profile: GatewayProfileV2
+    profile_id: UUID | None = None
 
 
 # ─── v1 resolver (legacy path — bug fixed in this commit) ──────────────
@@ -265,7 +266,7 @@ def resolve_v2(
     )
     cached = _rev_cache_get(profile.active_revision_id)
     if cached is not None:
-        return ResolvedV2(revision_id=profile.active_revision_id, profile=cached)
+        return ResolvedV2(revision_id=profile.active_revision_id, profile=cached, profile_id=profile.id)
 
     revision = (
         db.query(GatewayProfileRevision)
@@ -298,4 +299,4 @@ def resolve_v2(
 
     # Populate cache with the parsed immutable snapshot.
     _rev_cache_put(revision.id, parsed)
-    return ResolvedV2(revision_id=revision.id, profile=parsed)
+    return ResolvedV2(revision_id=revision.id, profile=parsed, profile_id=profile.id)

@@ -11,7 +11,7 @@ Operation dispatch (mapped to the pinned LiteLLM version — capability
 catalog gates which of these are user-selectable at publish time):
 
     anthropic_messages       → litellm.anthropic_messages(...)      async
-    anthropic_count_tokens   → litellm.token_counter(...)           sync
+    anthropic_count_tokens   → vendor count_tokens API (not a local estimate)
     openai_chat_completions  → litellm.acompletion(...)             async
     openai_responses         → litellm.aresponses(...)              async
 
@@ -30,17 +30,29 @@ traffic (as proxy-through) until the flag is flipped per workspace.
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
+import inspect
+import json
+import os
 from typing import Any, Protocol, runtime_checkable
 
 import structlog
+import httpx
 
 from app.modules.guard.gateway_config import (
     LiteLLMSDKTarget,
+    NativeHTTPTarget,
     Operation,
 )
 
 
 log = structlog.get_logger(__name__)
+
+_DEFAULT_API_BASES = {
+    "anthropic": "https://api.anthropic.com",
+    "openai": "https://api.openai.com/v1",
+    "perplexity": "https://api.perplexity.ai",
+    "together": "https://api.together.xyz/v1",
+}
 
 
 #: A callable that takes a ``vault://<environment-uuid>/<name>`` ref
@@ -85,6 +97,10 @@ class LiteLLMTransport:
 
     name = "litellm_sdk"
 
+    def __init__(self, *, native_transport=None) -> None:
+        from app.runtime.native_http_transport import NativeHTTPTransport
+        self._native = native_transport or NativeHTTPTransport()
+
     #: Every operation this transport claims to support MUST have a
     #: corresponding line in the capability catalog before it can be
     #: published to any workspace. This list is the runtime side of that
@@ -92,7 +108,7 @@ class LiteLLMTransport:
     #: we raise a clear error rather than silently drop.
     _dispatch: dict[Operation, str] = {
         "anthropic_messages":      "anthropic_messages",   # async
-        "anthropic_count_tokens":  "token_counter",        # sync
+        "anthropic_count_tokens":  "vendor_count_tokens",
         "openai_chat_completions": "acompletion",          # async
         "openai_responses":        "aresponses",           # async
     }
@@ -105,6 +121,7 @@ class LiteLLMTransport:
         payload: dict[str, Any],
         credential_resolver: CredentialResolver,
         stream: bool = False,
+        client_headers: dict[str, str] | None = None,
     ) -> Any:
         if operation not in self._dispatch:
             raise ValueError(
@@ -117,6 +134,22 @@ class LiteLLMTransport:
         # payload shouldn't cause a Vault decrypt, and rejecting early
         # keeps the credential's exposure window as tight as possible.
         payload_fields = _payload_fields_for(operation, payload)
+        if operation == "anthropic_count_tokens" or (stream and operation == "anthropic_messages" and target.provider == "anthropic"):
+            if stream and operation == "anthropic_count_tokens":
+                raise ValueError("Token counting does not support streaming.")
+            # Same-provider Messages SSE and exact counts need no translation.
+            # Reuse native HTTP ownership instead of importing the SDK proxy's
+            # MCP-v1-only dependency set into the API's MCP-v2 environment.
+            native = NativeHTTPTarget.model_validate({
+                **target.model_dump(), "transport": "native_http",
+            })
+            return await self._native.execute(
+                target=native, operation=operation, payload=payload_fields,
+                credential_resolver=credential_resolver,
+                stream=stream,
+                api_base=target.provider_options.get("api_base"),
+                client_headers=client_headers,
+            )
 
         # Resolve the credential immediately before the call and never
         # store it beyond this function's stack frame. LiteLLM's
@@ -133,7 +166,7 @@ class LiteLLMTransport:
         kwargs: dict[str, Any] = {
             "model": target.model,
             "api_key": api_key,
-            "custom_llm_provider": target.provider,
+            "custom_llm_provider": "together_ai" if target.provider == "together" else target.provider,
             # Conduct owns the retry ladder. LiteLLM's own retries would
             # stack on ours, and the ``max_attempts`` field on the v2
             # profile would silently mean 2× or 3× what the admin
@@ -141,37 +174,58 @@ class LiteLLMTransport:
             "num_retries": 0,
             "stream": stream,
         }
+        if target.provider in _DEFAULT_API_BASES:
+            kwargs["api_base"] = target.provider_options.get("api_base") or _DEFAULT_API_BASES[target.provider]
         # ``provider_options`` are per-provider knobs (region, api_version,
         # etc.). Merged with the resolver's output; explicit fields above
         # win over provider_options.
         for key, value in target.provider_options.items():
             kwargs.setdefault(key, value)
+        if client_headers:
+            kwargs["extra_headers"] = {
+                **kwargs.get("extra_headers", {}), **client_headers,
+            }
+        if stream and operation == "openai_chat_completions":
+            payload_fields["stream_options"] = {
+                **(payload_fields.get("stream_options") or {}), "include_usage": True,
+            }
+        kwargs.update(payload_fields)
 
         # Late import: keeps ``litellm`` off the module-load path so
         # test suites that don't exercise LiteLLM aren't paying the
         # (heavy) import cost, and so mocks can patch the module before
         # first use.
+        os.environ.setdefault("LITELLM_LOCAL_MODEL_COST_MAP", "True")
+        os.environ.setdefault("LITELLM_LOCAL_ANTHROPIC_BETA_HEADERS", "True")
         import litellm
+        litellm.turn_off_message_logging = True
+
+        owned_responses = []
+        if stream and target.provider == "anthropic" and operation == "openai_chat_completions":
+            kwargs["client"] = await _anthropic_stream_client(self._native, owned_responses)
 
         func = getattr(litellm, self._dispatch[operation])
 
         try:
-            if operation == "openai_chat_completions":
-                return await func(**kwargs, **payload_fields)
-            if operation == "openai_responses":
-                return await func(**kwargs, **payload_fields)
             if operation == "anthropic_messages":
                 # max_tokens is required by LiteLLM signature; default
                 # if the client omitted it.
-                payload_fields.setdefault("max_tokens", 1024)
-                return await func(**kwargs, **payload_fields)
-            if operation == "anthropic_count_tokens":
-                # token_counter is sync + doesn't want api_key/stream.
-                counter_kwargs = {"model": target.model, **payload_fields}
-                return func(**counter_kwargs)
-            # Unreachable — guarded by the dispatch check above.
-            raise ValueError(f"unhandled operation {operation!r}")  # pragma: no cover
-        except Exception:
+                kwargs.setdefault("max_tokens", 1024)
+            result = await func(**kwargs)
+            if not stream:
+                return _sdk_wire_payload(result, operation) if operation == "openai_responses" else result
+            from app.runtime.native_http_transport import StreamingUpstream
+            response = httpx.Response(
+                200, headers={"content-type": "text/event-stream"},
+                stream=_SDKEventStream(result, operation, owned_responses=owned_responses),
+            )
+            return StreamingUpstream(
+                status_code=200, headers=dict(response.headers),
+                response=response, provider=target.provider,
+            )
+        except BaseException:
+            for response in owned_responses:
+                await response.aclose()
             # Do NOT log the api_key or the payload — either could leak
             # customer data. The caller records the failure into
             # ``routing_meta`` with the target id + version pinned; the
@@ -183,6 +237,92 @@ class LiteLLMTransport:
                 operation=operation,
             )
             raise
+
+
+async def _anthropic_stream_client(native, responses):
+    # LiteLLM 1.99's Anthropic Chat iterator drops its httpx response and
+    # does not expose aclose. Keep explicit ownership of that response,
+    # using the existing worker pool and no SDK HTTP-handler retry.
+    from litellm.llms.custom_httpx.http_handler import AsyncHTTPHandler
+
+    class OwnedHandler(AsyncHTTPHandler):
+        async def post(self, url, *, data=None, json=None, headers=None, stream=False,
+                       timeout=None, logging_obj=None, **kwargs):
+            request = self.client.build_request(
+                "POST", url, content=data, json=json, headers=headers, timeout=timeout,
+            )
+            response = await self.client.send(request, stream=stream)
+            responses.append(response)
+            if response.status_code >= 400:
+                try:
+                    await response.aread()
+                    response.raise_for_status()
+                finally:
+                    await response.aclose()
+            return response
+
+    handler = OwnedHandler()
+    await handler.client.aclose()
+    handler.client = await native._get_client()
+    return handler
+
+
+class _SDKEventStream(httpx.AsyncByteStream):
+    """Preserve SDK event formats behind the same ownership contract as HTTP."""
+
+    def __init__(self, source, operation: Operation, *, owned_responses=()) -> None:
+        self.source = source
+        self.operation = operation
+        self.closed = False
+        self.owned_responses = owned_responses
+
+    async def __aiter__(self):
+        async for chunk in self.source:
+            if isinstance(chunk, (bytes, str)):
+                yield chunk.encode() if isinstance(chunk, str) else chunk
+                continue
+            data = _sdk_wire_payload(chunk, self.operation)
+            if not isinstance(data, dict):
+                raise ValueError("SDK returned an invalid streaming event.")
+            event = data.get("type") if self.operation != "openai_chat_completions" else None
+            prefix = f"event: {event}\n" if event else ""
+            yield (prefix + "data: " + json.dumps(data) + "\n\n").encode()
+        if self.operation == "openai_chat_completions":
+            yield b"data: [DONE]\n\n"
+
+    async def aclose(self) -> None:
+        if self.closed:
+            return
+        self.closed = True
+        close = getattr(self.source, "aclose", None) or getattr(self.source, "close", None)
+        try:
+            if close:
+                result = close()
+                if inspect.isawaitable(result):
+                    await result
+            else:
+                # ResponsesAPIStreamingIterator owns a response rather than
+                # exposing aclose directly.
+                response = getattr(self.source, "response", None)
+                if response is not None:
+                    await response.aclose()
+        finally:
+            for response in self.owned_responses:
+                await response.aclose()
+
+
+def _sdk_wire_payload(value, operation):
+    data = value.model_dump(mode="json", exclude_none=True, warnings=False) if hasattr(value, "model_dump") else value
+    if operation == "openai_responses" and isinstance(data, dict):
+        response = data.get("response", data)
+        usage = response.get("usage") if isinstance(response, dict) else None
+        # The SDK's logging adapters can expose Chat usage keys in a
+        # Responses event. Keep the Responses wire contract and real counts.
+        if isinstance(usage, dict) and "prompt_tokens" in usage and "input_tokens" not in usage:
+            names = {"prompt_tokens": "input_tokens", "completion_tokens": "output_tokens",
+                     "prompt_tokens_details": "input_tokens_details", "completion_tokens_details": "output_tokens_details"}
+            response["usage"] = {names.get(key, key): item for key, item in usage.items()}
+    return data
 
 
 def register_litellm_transport_if_enabled() -> None:
@@ -236,11 +376,14 @@ _ALLOWED_PAYLOAD_FIELDS: dict[Operation, frozenset[str]] = {
         "tool_choice", "text", "reasoning", "max_output_tokens",
         "temperature", "top_p", "parallel_tool_calls", "user", "metadata",
         "truncation", "store", "include", "stream_options",
+        "service_tier", "prompt_cache_key", "prompt_cache_retention",
+        "safety_identifier", "background", "conversation", "context_management",
     }),
     "anthropic_messages": frozenset({
         "messages", "system", "max_tokens", "metadata",
         "stop_sequences", "temperature", "top_k", "top_p", "tools",
-        "tool_choice", "thinking",
+        "tool_choice", "thinking", "service_tier", "context_management",
+        "output_config", "container",
     }),
     "anthropic_count_tokens": frozenset({
         "messages", "system", "tools", "tool_choice",

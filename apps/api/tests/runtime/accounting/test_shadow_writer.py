@@ -21,6 +21,25 @@ from app.runtime.accounting.contracts import (
 )
 from app.runtime.accounting.shadow_writer import shadow_write
 
+
+@pytest.mark.parametrize("provider,operation,payload", [
+    ("anthropic", "openai_chat_completions", b'{"usage":{"prompt_tokens":5,"completion_tokens":2}}'),
+    ("openai", "anthropic_messages", b'{"usage":{"input_tokens":5,"output_tokens":2}}'),
+    ("custom", "anthropic_messages", b'{"usage":{"input_tokens":5,"output_tokens":2}}'),
+    ("openai", "openai_responses", b'{"usage":{"input_tokens":5,"output_tokens":2}}'),
+])
+def test_translated_protocol_usage_is_not_inferred_from_provider(_captured_row, provider, operation, payload):
+    from app.runtime.accounting.settlement import _family_for as settlement_family
+    from app.runtime.accounting.shadow_writer import _family_for as receipt_family
+    assert settlement_family(provider, operation) == receipt_family(provider, operation)
+    shadow_write(workspace_id=uuid.uuid4(), request_id=uuid.uuid4(), provider=provider,
+                 model="gpt-4o" if provider == "openai" else "claude-sonnet-4-6",
+                 operation=operation, dispatched=True, response_bytes=payload)
+    row = _captured_row["row"]
+    assert row.provider == provider
+    assert row.total_input_tokens == 5
+    assert row.total_output_tokens == 2
+
 @pytest.fixture
 def _captured_row(monkeypatch):
     """Intercept _persist_atomic and return whatever row was persisted.

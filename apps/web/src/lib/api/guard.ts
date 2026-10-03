@@ -17,25 +17,53 @@ export interface GatewayValidationErrorItem {
   type: string
 }
 
+const GATEWAY_FIELD_LABELS: Record<string, string> = {
+  name: "Name", model_alias: "Alias", timeout_seconds: "Timeout", max_attempts: "Max attempts",
+  id: "Role", provider: "Provider", model: "Model", credential_ref: "Credential",
+  targets: "Targets", accepts: "Supported APIs", endpoint: "Endpoint", transport: "Transport",
+  rpm: "Requests per minute", tpm: "Tokens per minute", agent_limits: "Agent limits", agent_identity_id: "Agent identity",
+}
+
+function validationMessage(error: GatewayValidationErrorItem, field: string): string {
+  if (field === "rpm" || field === "tpm") return "Enter a positive whole number up to 2147483647, or leave it blank."
+  if (field === "agent_identity_id") return "Choose an agent in this workspace."
+  if (field === "agent_limits" && error.type === "too_long") return "Use no more than 200 agent limits per profile."
+  if (field === "timeout_seconds") return "Enter a whole number from 1 to 600 seconds."
+  if (field === "max_attempts") return "Enter a whole number from 1 to 5."
+  if (field === "credential_ref") return "Choose a credential vault and handle."
+  if (error.type === "missing" || error.type === "string_too_short") {
+    if (field === "model_alias") return "Enter an alias."
+    if (field === "name") return "Enter a name."
+    if (field === "model") return "Choose a model."
+    if (field === "provider") return "Choose a provider."
+    if (field === "id") return "Enter a role."
+  }
+  if (error.type === "string_too_long" && (field === "model_alias" || field === "name")) {
+    return "Use no more than 128 characters."
+  }
+  return error.message
+}
+
 export class GatewayValidationError extends Error {
   summary: string
   errors: GatewayValidationErrorItem[]
 
   constructor(summary: string, errors: GatewayValidationErrorItem[]) {
-    // Human-readable message: summary + up to three offending fields
-    // ``target[2] credential_ref: <msg>``. Beyond three, elide with
-    // ``+N more`` so the toast doesn't dominate the viewport.
     const lines = errors.slice(0, 3).map((e) => {
+      const field = e.path.split(".").at(-1) ?? ""
+      const label = GATEWAY_FIELD_LABELS[field] ?? (field.replaceAll("_", " ") || "Profile")
       const where =
         e.target_index !== null && e.target_index !== undefined
-          ? `target[${e.target_index}] ${e.path.split(".").slice(-1)[0]}`
-          : e.path || "(profile)"
-      return `${where}: ${e.message}`
+          ? `Target ${e.target_index + 1} - ${label}`
+          : label
+      return `${where}: ${validationMessage(e, field)}`
     })
     if (errors.length > 3) {
       lines.push(`+${errors.length - 3} more`)
     }
-    super([summary, ...lines].filter(Boolean).join(" — "))
+    const heading = summary === "schema invalid" ? "Check the profile fields."
+      : summary === "capability check failed" ? "Check the target compatibility." : summary
+    super([heading, ...lines].filter(Boolean).join(" "))
     this.name = "GatewayValidationError"
     this.summary = summary
     this.errors = errors
@@ -51,6 +79,13 @@ function _formatGatewayError(bodyText: string, status: number): Error {
   try {
     const parsed = JSON.parse(bodyText)
     const detail = parsed?.detail
+    if (Array.isArray(detail)) {
+      return new GatewayValidationError("Check the profile fields.", detail.map(item => ({
+        path: Array.isArray(item.loc) ? item.loc.filter((part: unknown) => part !== "body").join(".") : "",
+        message: typeof item.msg === "string" ? item.msg : "Invalid value.",
+        type: typeof item.type === "string" ? item.type : "value_error", target_index: null,
+      })))
+    }
     if (
       detail &&
       typeof detail === "object" &&
@@ -62,6 +97,7 @@ function _formatGatewayError(bodyText: string, status: number): Error {
       )
     }
     if (typeof detail === "string" && detail.length > 0) {
+      if (detail.startsWith("schema invalid:")) return new Error("Check the profile fields and try again.")
       return new Error(detail)
     }
   } catch {
@@ -101,6 +137,23 @@ async function _mutateVoid(
 }
 
 // ─── Gateway Profile v2 (#2001/#2003) ───────────────────────────────
+
+export interface GatewayProfileAgentRateCap {
+  agent_identity_id: string
+  rpm: number | null
+  tpm: number | null
+}
+
+export interface GatewayProfileRateLimitsInput {
+  rpm: number | null
+  tpm: number | null
+  agent_limits?: GatewayProfileAgentRateCap[]
+}
+
+export interface GatewayProfileRateLimits extends GatewayProfileRateLimitsInput {
+  agent_limits: GatewayProfileAgentRateCap[]
+  available_agents: Array<{ id: string; name: string }>
+}
 
 export type GatewayProfileV2Operation =
   | "anthropic_messages"
@@ -495,6 +548,12 @@ export const guard = {
   },
 
   gatewayProfilesV2: {
+    rateLimits: {
+      get: (f: AuthFetch, workspaceId: string, id: string) =>
+        json<GatewayProfileRateLimits>(f, `${API}/workspaces/${workspaceId}/gateway-profiles-v2/${id}/rate-limits`),
+      set: (f: AuthFetch, workspaceId: string, id: string, body: GatewayProfileRateLimitsInput) =>
+        _mutateJson<GatewayProfileRateLimits>(f, "PUT", `${API}/workspaces/${workspaceId}/gateway-profiles-v2/${id}/rate-limits`, body),
+    },
     list: (f: AuthFetch, workspaceId: string) =>
       json<GatewayProfileV2Out[]>(f, `${API}/workspaces/${workspaceId}/gateway-profiles-v2`),
     get: (f: AuthFetch, workspaceId: string, id: string) =>

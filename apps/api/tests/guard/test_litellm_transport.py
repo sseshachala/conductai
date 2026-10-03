@@ -108,21 +108,19 @@ async def test_dispatches_anthropic_messages_to_anthropic_messages(fake_litellm)
 
 
 @pytest.mark.anyio("asyncio")
-async def test_dispatches_anthropic_count_tokens_to_token_counter(fake_litellm):
-    result = await LiteLLMTransport().execute(
+async def test_count_tokens_uses_authenticated_vendor_endpoint(fake_litellm):
+    native = SimpleNamespace(execute=AsyncMock(return_value={"input_tokens": 42}))
+    result = await LiteLLMTransport(native_transport=native).execute(
         target=_target(),
         operation="anthropic_count_tokens",
         payload={"messages": [{"role": "user", "content": "hi"}]},
         credential_resolver=lambda ref: "sk-ant-fake",
     )
-    assert result == 42
-    # token_counter is a sync call — NOT awaited
-    fake_litellm.token_counter.assert_called_once()
-    # And it deliberately does NOT receive api_key or stream — those
-    # kwargs are only meaningful for inference calls.
-    call_kwargs = fake_litellm.token_counter.call_args.kwargs
-    assert "api_key" not in call_kwargs
-    assert "stream" not in call_kwargs
+    assert result == {"input_tokens": 42}
+    native.execute.assert_awaited_once()
+    assert native.execute.await_args.kwargs["target"].provider == "anthropic"
+    assert native.execute.await_args.kwargs["operation"] == "anthropic_count_tokens"
+    fake_litellm.token_counter.assert_not_called()
 
 
 # ─── Retry policy ─────────────────────────────────────────────────────

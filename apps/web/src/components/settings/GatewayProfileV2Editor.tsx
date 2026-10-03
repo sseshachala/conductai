@@ -1,13 +1,17 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useId, useMemo, useState } from "react"
 
 import { useAuthFetch } from "@/hooks/useAuthFetch"
 import { API, credentials, guard } from "@/lib/api"
 import type { GatewayProfileV2Out, GatewayProfileV2Target } from "@/lib/api/guard"
+import { validateGatewayProfileFields } from "@/lib/gatewayProfileValidation"
 import {
   type Operation,
   type Transport,
+  type Integration,
+  type TargetShape,
+  certifiedOperations,
   validateTargetsAgainstAccepts,
 } from "@/lib/gatewayCapabilityCatalog"
 
@@ -53,29 +57,6 @@ function modelsFromTierMap(slice: Record<string, string> | undefined): Array<{ i
   return options
 }
 
-// Per-integration operations for http_passthrough targets. Mirrors
-// the backend's ``_INTEGRATION_ENDPOINTS`` matrix in
-// ``app/runtime/http_passthrough_transport.py`` — keep in sync (there
-// is no build-time enforcement; the server is authoritative on
-// publish, but a mismatch here silently drops accepts and produces
-// an empty operation list that fails validation server-side).
-const PASSTHROUGH_INTEGRATION_OPERATIONS: Record<string, Operation[]> = {
-  openrouter:         ["openai_chat_completions"],
-  portkey:            ["openai_chat_completions"],
-  helicone_openai:    ["openai_chat_completions"],
-  helicone_anthropic: ["anthropic_messages"],
-  azure_openai:       ["openai_chat_completions"],
-  // PR 7 — Custom transport can serve every launch operation; the
-  // capability catalog narrows the per-target set by
-  // ``provider_options.protocol`` at publish time.
-  custom: [
-    "openai_chat_completions",
-    "openai_responses",
-    "anthropic_messages",
-    "anthropic_count_tokens",
-  ],
-}
-
 // Expected vault key name per passthrough integration. Mirrors
 // ``INTEGRATION_KEY_ALIASES`` in
 // ``apps/api/app/modules/guard/gateway_credentials.py`` — first tuple
@@ -99,19 +80,13 @@ const INTEGRATION_KEY_HINTS: Record<string, string> = {
 // → chat_completions + responses. Passthrough looks up the per-
 // integration matrix (OpenRouter: chat_completions only).
 function _capabilitiesOf(t: DraftTarget): Operation[] {
-  if (t.transport === "native_http" || t.transport === "litellm_sdk") {
-    if (t.provider === "anthropic") {
-      return ["anthropic_messages", "anthropic_count_tokens"]
-    }
-    if (t.provider === "openai") {
-      return ["openai_chat_completions", "openai_responses"]
-    }
-    return []
-  }
-  if (t.transport === "http_passthrough") {
-    return PASSTHROUGH_INTEGRATION_OPERATIONS[t.integration] ?? []
-  }
-  return []
+  return [...certifiedOperations(catalogTarget(t))]
+}
+
+function catalogTarget(t: DraftTarget): TargetShape {
+  return t.transport === "http_passthrough"
+    ? { transport: t.transport, integration: t.integration as Integration, provider_options: t.provider_options }
+    : { transport: t.transport, provider: t.provider }
 }
 
 // Auto-derive `accepts` from the target list using the INTERSECTION of
@@ -283,7 +258,7 @@ function stateToWorkingCopy(s: EditorState): Record<string, unknown> {
   // re-derives accepts explicitly — those are the only mutations
   // that should invalidate imported accepts.
   return {
-    name: s.name, model_alias: s.model_alias,
+    name: s.name.trim(), model_alias: s.model_alias.trim(),
     accepts: s.accepts,
     timeout_seconds: s.timeout_seconds, max_attempts: s.max_attempts, targets,
   }
@@ -305,6 +280,7 @@ export default function GatewayProfileV2Editor({
   onSaved: () => void
 }) {
   const { authFetch } = useAuthFetch()
+  const formId = useId()
   const [state, setState] = useState<EditorState>(() => stateFromProfile(profile))
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState("")
@@ -358,15 +334,7 @@ export default function GatewayProfileV2Editor({
 
   const catalogErrors = useMemo(() => validateTargetsAgainstAccepts({
     accepts: state.accepts,
-    targets: state.targets.map(t => {
-      if (t.transport === "native_http") {
-        return { id: t.id, transport: "native_http" as const, provider: t.provider }
-      }
-      if (t.transport === "litellm_sdk") {
-        return { id: t.id, transport: "litellm_sdk" as const, provider: t.provider }
-      }
-      return { id: t.id, transport: "http_passthrough" as const, integration: t.integration as any }
-    }),
+    targets: state.targets.map(t => ({ id: t.id, ...catalogTarget(t) })),
   }), [state])
 
   // Client-side Save gate (self-review layer 2): server rejects a save
@@ -389,10 +357,16 @@ export default function GatewayProfileV2Editor({
     }).filter(x => x.issues.length > 0)
   }, [state])
 
-  const canSave = isAdmin && targetIssues.length === 0
+  const fieldErrors = isAdmin ? validateGatewayProfileFields(state) : {}
+  const profileIssue = Object.values(fieldErrors)[0]
+  const canSave = isAdmin && !profileIssue && targetIssues.length === 0
 
   async function save() {
     if (!isAdmin) return
+    if (profileIssue) {
+      setErr(profileIssue)
+      return
+    }
     if (targetIssues.length > 0) {
       // Belt-and-braces — the button is disabled when this holds, but
       // if a keyboard-driven save slips past the disabled state, catch
@@ -415,7 +389,7 @@ export default function GatewayProfileV2Editor({
     } finally { setSaving(false) }
   }
 
-  function patch(u: Partial<EditorState>) { setState(s => ({ ...s, ...u })); setMsg("") }
+  function patch(u: Partial<EditorState>) { setState(s => ({ ...s, ...u })); setMsg(""); setErr("") }
   function patchTarget(i: number, u: Partial<DraftTarget>) {
     setState(s => {
       const nextTargets = s.targets.map((t, j) => j === i ? { ...t, ...u } : t)
@@ -423,11 +397,13 @@ export default function GatewayProfileV2Editor({
       // the certified-capabilities calculation. Editing ``model`` or
       // ``credential_handle`` must NOT clobber imported accepts.
       const affectsAccepts =
-        u.transport !== undefined || u.provider !== undefined || u.integration !== undefined
+        u.transport !== undefined || u.provider !== undefined || u.integration !== undefined ||
+        (u.provider_options !== undefined && u.provider_options.protocol !== s.targets[i].provider_options?.protocol)
       const nextAccepts = affectsAccepts ? deriveAccepts(nextTargets) : s.accepts
       return { ...s, targets: nextTargets, accepts: nextAccepts }
     })
     setMsg("")
+    setErr("")
   }
   function removeTarget(i: number) {
     setState(s => {
@@ -454,25 +430,35 @@ export default function GatewayProfileV2Editor({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 12 }}>
-        <FieldLabel label="Name" hint="Display name for this profile.">
-          <input value={state.name} disabled={!isAdmin}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <FieldLabel label="Name" hint="Display name for this profile." required
+          error={fieldErrors.name} errorId={`${formId}-name-error`}>
+          <input value={state.name} disabled={!isAdmin} required maxLength={128} aria-label="Name"
+            aria-invalid={!!fieldErrors.name} aria-describedby={fieldErrors.name ? `${formId}-name-error` : undefined}
             placeholder="e.g. coding-prod"
-            onChange={e => patch({ name: e.target.value })} style={inputStyle} />
+            onChange={e => patch({ name: e.target.value })}
+            style={{ ...inputStyle, borderColor: fieldErrors.name ? "var(--err)" : undefined }} />
         </FieldLabel>
-        <FieldLabel label="Alias" hint="What clients send as `model:` in their request.">
-          <input value={state.model_alias} disabled={!isAdmin}
+        <FieldLabel label="Alias" hint="What clients send as `model:` in their request." required
+          error={fieldErrors.model_alias} errorId={`${formId}-alias-error`}>
+          <input value={state.model_alias} disabled={!isAdmin} required maxLength={128} aria-label="Alias"
+            aria-invalid={!!fieldErrors.model_alias} aria-describedby={fieldErrors.model_alias ? `${formId}-alias-error` : undefined}
             onChange={e => patch({ model_alias: e.target.value })}
-            placeholder="e.g. coding" style={inputStyle} />
+            placeholder="e.g. coding"
+            style={{ ...inputStyle, borderColor: fieldErrors.model_alias ? "var(--err)" : undefined }} />
         </FieldLabel>
-        <FieldLabel label="Timeout (s)" hint="End-to-end deadline across every fallback attempt.">
-          <input type="number" min={1} value={state.timeout_seconds} disabled={!isAdmin}
-            onChange={e => patch({ timeout_seconds: Math.max(1, Number(e.target.value) || 1) })}
+        <FieldLabel label="Timeout (s)" hint="End-to-end deadline across every fallback attempt."
+          error={fieldErrors.timeout_seconds} errorId={`${formId}-timeout-error`}>
+          <input type="number" min={1} max={600} step={1} value={state.timeout_seconds} disabled={!isAdmin} aria-label="Timeout (s)"
+            aria-invalid={!!fieldErrors.timeout_seconds} aria-describedby={fieldErrors.timeout_seconds ? `${formId}-timeout-error` : undefined}
+            onChange={e => patch({ timeout_seconds: Number(e.target.value) })}
             style={inputStyle} />
         </FieldLabel>
-        <FieldLabel label="Max attempts" hint="Cap on target retries (primary + fallbacks).">
-          <input type="number" min={1} max={10} value={state.max_attempts} disabled={!isAdmin}
-            onChange={e => patch({ max_attempts: Math.max(1, Number(e.target.value) || 1) })}
+        <FieldLabel label="Max attempts" hint="Cap on target retries (primary + fallbacks)."
+          error={fieldErrors.max_attempts} errorId={`${formId}-attempts-error`}>
+          <input type="number" min={1} max={5} step={1} value={state.max_attempts} disabled={!isAdmin} aria-label="Max attempts"
+            aria-invalid={!!fieldErrors.max_attempts} aria-describedby={fieldErrors.max_attempts ? `${formId}-attempts-error` : undefined}
+            onChange={e => patch({ max_attempts: Number(e.target.value) })}
             style={inputStyle} />
         </FieldLabel>
       </div>
@@ -552,7 +538,8 @@ export default function GatewayProfileV2Editor({
         </div>
       )}
 
-      {err && <p style={{ margin: 0, color: "var(--err)", fontSize: 12 }}>{err}</p>}
+      {fieldErrors.targets && <p role="alert" style={{ margin: 0, color: "var(--err)", fontSize: 12 }}>{fieldErrors.targets}</p>}
+      {err && <p role="alert" style={{ margin: 0, color: "var(--err)", fontSize: 12, overflowWrap: "anywhere" }}>{err}</p>}
       {msg && <p style={{ margin: 0, color: "var(--ok)", fontSize: 12 }}>{msg}</p>}
 
       {isAdmin && (
@@ -562,9 +549,9 @@ export default function GatewayProfileV2Editor({
             disabled={saving || !canSave}
             className="btn btn-primary btn-sm"
             title={
-              !canSave && targetIssues.length > 0
+              profileIssue ?? (!canSave && targetIssues.length > 0
                 ? `Fix ${targetIssues.length} target issue(s) before saving`
-                : undefined
+                : undefined)
             }
           >
             {saving ? "Saving…" : "Save working copy"}
@@ -608,8 +595,8 @@ function TargetRow({
   // Sorted for stable render. Empty state handled in the render below.
   const providers = Object.keys(tierMap).sort()
   return (
-    <div className="card" style={{ padding: 12, display: "grid", gridTemplateColumns: "auto 1fr 1fr 1fr 1fr auto", gap: 10, alignItems: "end" }}>
-      <div style={{ display: "flex", flexDirection: "column", gap: 3, alignItems: "center" }}>
+    <div className="card grid grid-cols-1 items-end gap-2.5 sm:grid-cols-2 xl:grid-cols-[auto_repeat(4,minmax(0,1fr))_auto]" style={{ padding: 12 }}>
+      <div className="flex items-center gap-1 sm:col-span-2 xl:col-span-1 xl:flex-col">
         <button className="btn btn-ghost btn-sm btn-icon" onClick={onMoveUp} disabled={!isAdmin || isFirst}
           style={{ height: 24, width: 24, opacity: isFirst ? 0.35 : 1 }} title="Move up">↑</button>
         <span style={{ fontSize: 11, color: "var(--text-3)" }}>#{index + 1}</span>
@@ -625,7 +612,7 @@ function TargetRow({
 
       <FieldLabel
         label="Transport"
-        hint="Native HTTPS = direct to vendor (Anthropic / OpenAI, preferred). LiteLLM SDK = LiteLLM translates operations across providers. HTTPS Passthrough = external gateway (OpenRouter today; Portkey / Helicone / Azure / Custom ship in follow-ups)."
+        hint="Native HTTPS connects directly to Anthropic or OpenAI. LiteLLM SDK translates between supported provider protocols. HTTPS Passthrough connects to an external gateway."
       >
         <select value={target.transport} disabled={!isAdmin}
           onChange={e => onChange({ transport: e.target.value as Transport })}
@@ -712,7 +699,7 @@ function TargetRow({
           style={{ color: "var(--err)", borderColor: "var(--err-bd)" }} title="Remove target">×</button>
       ) : <div />}
 
-      <div style={{ gridColumn: "2 / -1", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+      <div className="grid grid-cols-1 gap-2.5 sm:col-span-2 sm:grid-cols-2 xl:col-start-2 xl:col-end-7">
         <FieldLabel label="Credential vault" hint="Which environment holds the upstream API key.">
           <select value={target.credential_env_id} disabled={!isAdmin}
             onChange={e => {
@@ -751,7 +738,7 @@ function TargetRow({
           gateway key. Any one of virtual_key / provider / config
           satisfies the required-selector check server-side. */}
       {target.transport === "http_passthrough" && target.integration === "portkey" ? (
-        <div style={{ gridColumn: "2 / -1", display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+        <div className="grid grid-cols-1 gap-2.5 sm:col-span-2 sm:grid-cols-2 xl:col-start-2 xl:col-end-7 xl:grid-cols-3">
           <FieldLabel label="Virtual key" hint="Portkey virtual key ID (recommended — carries provider config). Sent as x-portkey-virtual-key.">
             <input
               value={String((target.provider_options as Record<string, unknown> | undefined)?.virtual_key ?? "")}
@@ -798,7 +785,7 @@ function TargetRow({
           Endpoint reuses the existing `endpoint` field; api-version
           lives in `provider_options` and is opaque to the schema. */}
       {target.transport === "http_passthrough" && target.integration === "azure_openai" ? (
-        <div style={{ gridColumn: "2 / -1", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+        <div className="grid grid-cols-1 gap-2.5 sm:col-span-2 sm:grid-cols-2 xl:col-start-2 xl:col-end-7">
           <FieldLabel label="Resource endpoint" hint="Your Azure OpenAI resource URL, e.g. https://my-resource.openai.azure.com (no trailing path).">
             <input value={target.endpoint} disabled={!isAdmin}
               placeholder="https://my-resource.openai.azure.com"
@@ -826,7 +813,7 @@ function TargetRow({
           the existing `endpoint` field. All live in provider_options. */}
       {target.transport === "http_passthrough" && target.integration === "custom" ? (
         <>
-          <div style={{ gridColumn: "2 / -1", display: "grid", gridTemplateColumns: "2fr 1fr 1fr", gap: 10 }}>
+          <div className="grid grid-cols-1 gap-2.5 sm:col-span-2 sm:grid-cols-2 xl:col-start-2 xl:col-end-7 xl:grid-cols-[2fr_1fr_1fr]">
             <FieldLabel label="Endpoint URL" hint="Full base URL up to /v1 (e.g. https://my-llm-proxy.example.com/v1). Suffixes like /chat/completions or /messages are added per operation.">
               <input value={target.endpoint} disabled={!isAdmin}
                 placeholder="https://my-llm-proxy.example.com/v1"
@@ -865,7 +852,7 @@ function TargetRow({
               </select>
             </FieldLabel>
           </div>
-          <div style={{ gridColumn: "2 / -1", display: "grid", gridTemplateColumns: "1fr", gap: 10 }}>
+          <div className="grid grid-cols-1 gap-2.5 sm:col-span-2 xl:col-start-2 xl:col-end-7">
             <FieldLabel label="Auth header" hint="Name of the header carrying the API key (default: authorization). Reserved names (cookie / host / content-* / *-api-key etc.) are refused.">
               <input
                 value={String((target.provider_options as Record<string, unknown> | undefined)?.auth_header ?? "")}
@@ -880,7 +867,7 @@ function TargetRow({
                 style={inputStyle} />
             </FieldLabel>
           </div>
-          <div style={{ gridColumn: "2 / -1" }}>
+          <div className="sm:col-span-2 xl:col-start-2 xl:col-end-7">
             <CustomExtraHeadersField
               value={target.provider_options as Record<string, unknown> | undefined}
               disabled={!isAdmin}
@@ -895,19 +882,24 @@ function TargetRow({
 
 
 function FieldLabel({
-  label, hint, children,
+  label, hint, children, required, error, errorId,
 }: {
   label: string
   hint?: string
   children: React.ReactNode
+  required?: boolean
+  error?: string
+  errorId?: string
 }) {
   return (
     <label style={{ fontSize: 12, display: "flex", flexDirection: "column", gap: 4 }}>
       <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
         {label}
+        {required && <span aria-hidden="true" style={{ color: "var(--err)" }}>*</span>}
         {hint ? <HintIcon text={hint} /> : null}
       </span>
       {children}
+      {error && <span id={errorId} style={{ color: "var(--err)", fontSize: 12 }}>{error}</span>}
     </label>
   )
 }

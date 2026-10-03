@@ -5,7 +5,7 @@
 // operation is not certified" before the round-trip. Stale mirror =
 // less-helpful UI, never a bad profile in the DB.
 
-export const CATALOG_VERSION = "2026.09.22.v2-openai-compat-litellm"
+export const CATALOG_VERSION = "2026.10.02.v2-litellm-1.99-streaming"
 
 export type Operation =
   | "anthropic_messages"
@@ -39,8 +39,8 @@ const _NATIVE_HTTP: Record<string, Operation[]> = {
 
 // LiteLLM SDK certified per provider. Anything else = not certified.
 const _LITELLM_SDK: Record<string, Operation[]> = {
-  anthropic: ["anthropic_messages", "anthropic_count_tokens"],
-  openai: ["openai_chat_completions", "openai_responses"],
+  anthropic: ["anthropic_messages", "anthropic_count_tokens", "openai_chat_completions"],
+  openai: ["openai_chat_completions", "openai_responses", "anthropic_messages"],
   // OpenAI-compatible providers via LiteLLM SDK. Chat-completions
   // only; ``openai_responses`` stays OpenAI-native.
   perplexity: ["openai_chat_completions"],
@@ -72,7 +72,7 @@ const _HTTP_PASSTHROUGH: Record<Integration, Operation[]> = {
 export type TargetShape =
   | { transport: "native_http"; provider: string }
   | { transport: "litellm_sdk"; provider: string }
-  | { transport: "http_passthrough"; integration: Integration }
+  | { transport: "http_passthrough"; integration: Integration; provider_options?: Record<string, unknown> }
 
 export function certifiedOperations(target: TargetShape): Set<Operation> {
   if (target.transport === "native_http") {
@@ -80,6 +80,11 @@ export function certifiedOperations(target: TargetShape): Set<Operation> {
   }
   if (target.transport === "litellm_sdk") {
     return new Set(_LITELLM_SDK[target.provider.toLowerCase()] ?? [])
+  }
+  if (target.integration === "custom") {
+    if (target.provider_options?.protocol === "openai") return new Set(["openai_chat_completions", "openai_responses"])
+    if (target.provider_options?.protocol === "anthropic") return new Set(["anthropic_messages", "anthropic_count_tokens"])
+    return new Set()
   }
   return new Set(_HTTP_PASSTHROUGH[target.integration] ?? [])
 }

@@ -61,6 +61,79 @@ class ConverterError(Exception):
         super().__init__(f"{direction}: {reason}")
 
 
+async def anthropic_stream_to_canonical(upstream):
+    """Translate Messages SSE into Chat SSE without buffering text or tool JSON."""
+    from app.runtime.accounting.normalizers.sse import SSEParser
+
+    parser = SSEParser()
+    meta = {"id": "", "object": "chat.completion.chunk", "created": int(time.time()), "model": ""}
+    usage: dict = {}
+    tool_indexes: dict[int, int] = {}
+    stopped = False
+
+    def frame(delta, finish_reason=None, *, final_usage=None):
+        data = {**meta, "choices": [{"index": 0, "delta": delta, "finish_reason": finish_reason}]}
+        if final_usage is not None:
+            data["choices"] = []
+            data["usage"] = final_usage
+        return ("data: " + json.dumps(data) + "\n\n").encode()
+
+    try:
+        async for chunk in upstream:
+            for event in parser.feed(chunk.encode() if isinstance(chunk, str) else chunk):
+                data = json.loads(event.data)
+                kind = data.get("type", event.event)
+                if kind == "message_start":
+                    message = data["message"]
+                    meta.update(id=message["id"], model=message["model"])
+                    usage.update(message.get("usage") or {})
+                    yield frame({"role": "assistant", "content": ""})
+                elif kind == "content_block_start":
+                    block = data["content_block"]
+                    if block["type"] == "tool_use":
+                        index = tool_indexes.setdefault(data["index"], len(tool_indexes))
+                        args = json.dumps(block["input"]) if block.get("input") else ""
+                        yield frame({"tool_calls": [{"index": index, "id": block["id"], "type": "function",
+                                                      "function": {"name": block["name"], "arguments": args}}]})
+                    elif block["type"] == "text" and block.get("text"):
+                        yield frame({"content": block["text"]})
+                    elif block["type"] not in {"text", "thinking", "redacted_thinking"}:
+                        raise ConverterError("anthropic_stream_to_canonical", "unsupported content block")
+                elif kind == "content_block_delta":
+                    delta = data["delta"]
+                    if delta["type"] == "text_delta":
+                        yield frame({"content": delta["text"]})
+                    elif delta["type"] == "input_json_delta":
+                        yield frame({"tool_calls": [{"index": tool_indexes[data["index"]],
+                                                     "function": {"arguments": delta["partial_json"]}}]})
+                    elif delta["type"] == "thinking_delta":
+                        yield frame({"reasoning_content": delta["thinking"]})
+                    elif delta["type"] != "signature_delta":
+                        raise ConverterError("anthropic_stream_to_canonical", "unsupported content delta")
+                elif kind == "message_delta":
+                    usage.update(data.get("usage") or {})
+                    reason = data.get("delta", {}).get("stop_reason")
+                    yield frame({}, {"tool_use": "tool_calls", "max_tokens": "length"}.get(reason, "stop"))
+                elif kind == "message_stop":
+                    prompt = sum(usage.get(k, 0) or 0 for k in
+                                 ("input_tokens", "cache_read_input_tokens", "cache_creation_input_tokens"))
+                    completion = usage.get("output_tokens", 0) or 0
+                    yield frame({}, final_usage={"prompt_tokens": prompt, "completion_tokens": completion,
+                                                  "total_tokens": prompt + completion,
+                                                  "prompt_tokens_details": {"cached_tokens": usage.get("cache_read_input_tokens", 0)}})
+                    yield b"data: [DONE]\n\n"
+                    stopped = True
+                elif kind == "error":
+                    yield ("data: " + json.dumps({"error": data.get("error")}) + "\n\n").encode()
+                    raise ConverterError("anthropic_stream_to_canonical", "upstream error event")
+        if not stopped:
+            raise ConverterError("anthropic_stream_to_canonical", "stream ended before message_stop")
+    finally:
+        close = getattr(upstream, "aclose", None)
+        if close:
+            await close()
+
+
 # ─── Request side: canonical OpenAI → Anthropic Messages ────────────
 
 

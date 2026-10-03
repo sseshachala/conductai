@@ -198,6 +198,9 @@ async def handle_gateway_request(
     # PR 2 (#2056) admission state — kill switch: ADMISSION_ENABLED.
     _admission_ticket = None
     _admission_streamed = False
+    _profile_rate_admission = None
+    _profile_rate_streamed = False
+    _v2_plan = None
 
     # 2. Resolve workspace + user — auth logic extracted to gateway_helpers
     # so admission (PR 2b) can wrap the whole post-auth body cleanly.
@@ -549,20 +552,23 @@ async def handle_gateway_request(
                 route=request.url.path,
             )
 
-        # 4d. Per-key RPM/TPM rate limiting (#980, #1587 E1). Fires for
-        # vault-key + trial-key + platform-key traffic — enforcement is
-        # opt-in per workspace via guard_rate_limits rows. If no row
-        # exists, check_rate_limit is a cheap no-op (early return in the
-        # module). Redis outage fails open by design.
-        # PR 3 fix — rate limit runs off the event loop with its own
-        # session. Redis-primary but the config lookup + fail-closed
-        # decision path can still hit DB and block the loop.
+        # v2 quotas belong to the stable profile, pooled across every client.
+        # Legacy traffic keeps its original workspace/agent limits.
         from app.modules.guard.rate_limit import check_rate_limit as _check_rate_limit
         def _rate_check_owned():
             from app.core.database import SessionLocal as _SL
             from app.core.workspace_context import set_workspace_rls
             _db_local = _SL()
             try:
+                if _v2_plan is not None:
+                    from app.modules.guard.gateway_profile_rate_limit import check_profile_rate_limit, reserved_profile_tokens
+                    return check_profile_rate_limit(
+                        _db_local, workspace_id=workspace_id,
+                        profile_id=getattr(_v2_plan.resolved, "profile_id", None),
+                        revision_id=_v2_plan.resolved.revision_id,
+                        agent_identity_id=str(_agent_identity_id) if _agent_identity_id else None,
+                        reserved_tokens=reserved_profile_tokens(body, _v2_plan.operation),
+                    )
                 set_workspace_rls(_db_local, workspace_id)
                 return _check_rate_limit(
                     _db_local,
@@ -574,6 +580,7 @@ async def handle_gateway_request(
             finally:
                 _db_local.close()
         _rate = await run_in_threadpool(_rate_check_owned)
+        _profile_rate_admission = getattr(_rate, "admission", None)
         if _rate.limited:
             log.info(
                 "guard.proxy.rate_limited",
@@ -583,8 +590,11 @@ async def handle_gateway_request(
                 limit=_rate.limit,
                 current=_rate.current,
             )
-            _record_failure(429, _rate.reason, rule_id="rate-limit")
-            return _fail_closed(429, _rate.reason)
+            status = getattr(_rate, "status", 429)
+            _record_failure(status, _rate.reason, rule_id="rate-limit")
+            response = _fail_closed(status, _rate.reason)
+            response.headers["Retry-After"] = str(getattr(_rate, "retry_after", 60))
+            return response
 
         # 5. Vault lookup — for BYO gateways: upstream_key authenticates with the gateway,
         # vault_key is the real vendor key the gateway forwards to Anthropic/OpenAI.
@@ -976,9 +986,7 @@ async def handle_gateway_request(
                     _v2_upstream_body_bytes: bytes | None = None
                 else:
                     try:
-                        _v2_upstream_body_bytes = (
-                            _response.body if hasattr(_response, "body") else None
-                        )
+                        _v2_upstream_body_bytes = bytes(_v2_plan.upstream_body) or None
                     except Exception:
                         _v2_upstream_body_bytes = None
             else:
@@ -1064,7 +1072,7 @@ async def handle_gateway_request(
                 and isinstance(_response, StreamingResponse)
                 and _response.status_code < 400
                 and body.get("tools")
-                and settings.guard_gateway_tools_stream_enabled
+                and (settings.guard_gateway_tools_stream_enabled or _v2_plan is not None)
             ):
                 from app.modules.guard.tools_stream_gate import (
                     wrap_tool_stream as _wrap_tool_stream_gate,
@@ -1075,6 +1083,19 @@ async def handle_gateway_request(
                 # reads it below to set decision + execution_status and to
                 # merge correlation_ids into routing_meta.
                 _tool_stream_outcome = _StreamGateOutcome()
+                _stream_operation = (
+                    "openai_chat_completions" if _v2_plan and _v2_plan.needs_anthropic_conversion
+                    else _v2_plan.operation if _v2_plan
+                    else "openai_responses" if request.url.path.endswith("/responses")
+                    else "anthropic_messages" if provider == "anthropic"
+                    else "openai_chat_completions"
+                )
+                _stream_gate = _wrap_tool_stream_gate
+                _stream_gate_args = {}
+                if _stream_operation != "openai_chat_completions":
+                    from app.modules.guard.tools_native_stream_gate import wrap_native_tool_stream
+                    _stream_gate = wrap_native_tool_stream
+                    _stream_gate_args = {"operation": _stream_operation}
                 _stream_policy_check = _build_stream_tool_policy_check(
                     workspace_id=workspace_id,
                     clerk_user_id=clerk_user_id,
@@ -1089,10 +1110,11 @@ async def handle_gateway_request(
                     routing_meta=_routing_meta,
                 )
                 _response = StreamingResponse(
-                    _wrap_tool_stream_gate(
+                    _stream_gate(
                         _response.body_iterator,
                         outcome=_tool_stream_outcome,
                         policy_check=_stream_policy_check,
+                        **_stream_gate_args,
                     ),
                     media_type=_response.media_type,
                     headers=dict(_response.headers),
@@ -1222,6 +1244,7 @@ async def handle_gateway_request(
                             if _v2_plan and _v2_plan.resolved else None
                         ),
                         tool_stream_outcome=_tool_stream_outcome,
+                        upstream_capture=_v2_plan.upstream_body,
                     )
                     _v2_stream_wrapped = True
                 else:
@@ -1284,6 +1307,8 @@ async def handle_gateway_request(
                         ingress_rule_id=_audit_rule_id,
                         started_monotonic=started,
                         record_audit_fn=_record_audit,
+                        tool_stream_outcome=_tool_stream_outcome,
+                        upstream_capture=_v2_plan.upstream_body,
                         request_id=_audit_request_id,
                         # Z2 — deadline enforcement independent of audit
                         # flag. Same profile timeout the durable-on
@@ -1593,12 +1618,18 @@ async def handle_gateway_request(
 
         if isinstance(_response, StreamingResponse) and (_v2_plan is None or not _durable_row_id):
             _response = _wrap_stream_receipts(
-                _response, workspace_id=workspace_id, request_id=_audit_request_id,
+                _response, upstream_capture=(_v2_plan.upstream_body if _v2_plan else None),
+                workspace_id=workspace_id, request_id=_audit_request_id,
                 provider=provider, model=model, operation=request.url.path,
                 developer_external_id=clerk_user_id, agent_identity_id=_agent_identity_id,
                 source="gateway", client_tool=ai_tool, attempts_meta=(_routing_meta or {}).get("attempts"),
                 workflow_run_id=_run_id, hook_session_id=_hook_session_id,
             )
+
+        if _profile_rate_admission is not None and isinstance(_response, StreamingResponse):
+            from app.modules.guard.gateway_profile_rate_limit import wrap_profile_rate_stream
+            _response = wrap_profile_rate_stream(_response, _profile_rate_admission, _v2_plan)
+            _profile_rate_streamed = True
 
         # Streaming lifecycle: transfer admission ticket ownership so the
         # outer finally does not release before ASGI drains the response.
@@ -1614,6 +1645,9 @@ async def handle_gateway_request(
         from app.modules.auth.federation.gateway import error_response
         return error_response(error)
     finally:
+        if _profile_rate_admission is not None and not _profile_rate_streamed:
+            from app.modules.guard.gateway_profile_rate_limit import finish_profile_rate_limit
+            await finish_profile_rate_limit(_profile_rate_admission, _v2_plan)
         # Outer admission cleanup — fires on every exit path (early return
         # in DB block, gap failure between DB and upstream try, exception,
         # normal fall-through). Idempotent: safe if a streaming on_close
@@ -1648,6 +1682,8 @@ class _V2Plan:
         # None for one-key integrations + native/litellm paths.
         "vendor_credential_resolver",
         "last_meta",
+        "upstream_body",
+        "dispatched",
         # #2157 wire-in — set True when the caller sent OpenAI-shape
         # canonical body but the profile targets Anthropic. Signals
         # _execute_v2 to run canonical_to_anthropic pre-dispatch and
@@ -1662,6 +1698,8 @@ class _V2Plan:
         self.credential_resolver = credential_resolver
         self.vendor_credential_resolver = vendor_credential_resolver
         self.last_meta: dict = {}
+        self.upstream_body = bytearray()
+        self.dispatched = False
         self.needs_anthropic_conversion = needs_anthropic_conversion
 
 
@@ -1832,6 +1870,11 @@ def _build_v2_plan(
             and "anthropic_messages" in resolved.profile.accepts
             and all(
                 getattr(t, "provider", None) == "anthropic"
+                or getattr(t, "transport", None) == "litellm_sdk" and getattr(t, "provider", None) == "openai"
+                or getattr(t, "transport", None) == "http_passthrough" and (
+                    getattr(t, "integration", None) == "helicone_anthropic"
+                    or getattr(t, "integration", None) == "custom" and t.provider_options.get("protocol") == "anthropic"
+                )
                 for t in resolved.profile.targets
             )
         )
@@ -2012,47 +2055,15 @@ async def _execute_v2(
     from app.runtime.attempt_coordinator import (
         AllAttemptsFailed as _AllAttemptsFailed,
     )
+    import json
     from app.runtime.gateway_transports import get_coordinator
     from app.runtime.gateway_v2_bridge import coerce_response_body
     from app.runtime.native_http_transport import StreamingUpstream as _StreamingUpstream
     from fastapi import HTTPException as _HTTPException
 
-    # Pre-dispatch capability gate (#2152 reviewer P1). Streaming
-    # works only through ``native_http`` today; the post-hoc 501 below
-    # fired AFTER the coordinator picked a winning target, meaning
-    # upstream bytes were already in flight. Refuse before touch when
-    # the plan has no eligible target.
-    if stream and not any(
-        getattr(t, "transport", None) == "native_http"
-        for t in plan.resolved.profile.targets
-    ):
-        _transports = sorted({
-            getattr(t, "transport", None) or "unknown"
-            for t in plan.resolved.profile.targets
-        })
+    if stream and plan.operation == "anthropic_count_tokens":
         raise _HTTPException(
-            status_code=501,
-            detail=(
-                "Gateway Profile v2 streaming requires a native_http "
-                f"target. Revision {plan.resolved.revision_id} "
-                f"advertises transports: {_transports}. Add a "
-                "native_http target ahead of others, or send stream=false."
-            ),
-        )
-
-    # #2157 wire-in — SSE-to-SSE Anthropic→OpenAI translation is a
-    # separate follow-up (#2155). Reject streaming when conversion is
-    # needed; non-streaming Anthropic works end-to-end.
-    if plan.needs_anthropic_conversion and stream:
-        raise _HTTPException(
-            status_code=501,
-            detail=(
-                "Streaming to an Anthropic-target profile via the "
-                "canonical /gateway/v1/completions is not supported "
-                "yet — SSE-to-SSE format translation is deferred to a "
-                "follow-up. Send stream=false or route to an "
-                "OpenAI-target profile."
-            ),
+            status_code=400, detail="Token counting does not support streaming.",
         )
     if plan.needs_anthropic_conversion:
         from app.modules.guard.tools_anthropic_converter import (
@@ -2066,6 +2077,7 @@ async def _execute_v2(
     # real worker-wide bound (was previously per-request → unbounded).
     coordinator = await get_coordinator()
     try:
+        plan.dispatched = True
         result = await coordinator.execute(
             resolved=plan.resolved,
             operation=plan.operation,
@@ -2097,6 +2109,7 @@ async def _execute_v2(
                     "response_bytes_b64": a.response_bytes_b64,
                     # Session 6F reviewer #3 — per-attempt model attribution.
                     "model": getattr(a, "model", None),
+                    "operation": plan.operation,
                 }
                 for a in exc.attempts
             ],
@@ -2152,29 +2165,24 @@ async def _execute_v2(
                 # AttemptRecord gains ``model`` so a mixed-target profile
                 # can price each receipt against its actual model rates.
                 "model": getattr(a, "model", None),
+                "operation": plan.operation,
             }
             for a in result.attempts
         ],
     }
 
     if isinstance(result.response, _StreamingUpstream):
-        return _build_v2_stream_response(result.response)
+        response = _build_v2_stream_response(result.response, capture=plan.upstream_body)
+        if plan.needs_anthropic_conversion:
+            from app.modules.guard.tools_anthropic_converter import anthropic_stream_to_canonical
+            response.body_iterator = anthropic_stream_to_canonical(response.body_iterator)
+        return response
     if stream:
-        # Non-native transports (LiteLLM SDK, http_passthrough) don't
-        # produce a StreamingUpstream. Rather than crash inside
-        # coerce_response_body on an async iterator, raise a clean 501
-        # naming the transport that won the coordinator race.
         raise _HTTPException(
-            status_code=501,
-            detail=(
-                f"Gateway Profile v2 streaming supports transport="
-                f"native_http only in this launch. Winning target "
-                f"{result.winning_target_id!r} used a different "
-                "transport; add a native_http target ahead of it or "
-                "request stream=false."
-            ),
+            status_code=502, detail="Upstream did not return a streaming response.",
         )
     _resp_body = coerce_response_body(result.response)
+    plan.upstream_body.extend(json.dumps(_resp_body).encode())
     if plan.needs_anthropic_conversion and isinstance(_resp_body, dict):
         from app.modules.guard.tools_anthropic_converter import (
             anthropic_to_canonical as _anthropic_to_canonical,
@@ -2200,7 +2208,7 @@ _STREAM_HOP_HEADERS: frozenset[str] = frozenset({
 })
 
 
-def _build_v2_stream_response(upstream) -> StreamingResponse:
+def _build_v2_stream_response(upstream, *, capture=None) -> StreamingResponse:
     """Wrap a ``StreamingUpstream`` in a Starlette ``StreamingResponse``.
 
     Generator yields raw bytes as they arrive and closes the httpx
@@ -2211,6 +2219,8 @@ def _build_v2_stream_response(upstream) -> StreamingResponse:
     async def _gen():
         try:
             async for chunk in upstream.response.aiter_bytes():
+                if capture is not None:
+                    capture.extend(chunk)
                 yield chunk
         finally:
             try:
@@ -2338,6 +2348,17 @@ def _build_stream_tool_policy_check(
     return _check
 
 
+async def _close_stream_iterator(iterator):
+    from anyio import CancelScope
+    close = getattr(iterator, "aclose", None)
+    if close:
+        with CancelScope(shield=True):
+            try:
+                await close()
+            except Exception:
+                log.warning("gateway.v2.stream_close_failed")
+
+
 def _wrap_v2_stream_finalize(
     response: StreamingResponse,
     *,
@@ -2376,6 +2397,7 @@ def _wrap_v2_stream_finalize(
     # stream drains to decide the audit decision + execution_status.
     # None = tool-gate was not applied; finalize uses upstream signals only.
     tool_stream_outcome=None,
+    upstream_capture: bytearray | None = None,
 ) -> StreamingResponse:
     """Fire durable-audit finalize when the streaming response closes.
 
@@ -2399,11 +2421,8 @@ def _wrap_v2_stream_finalize(
       raise ``asyncio.TimeoutError`` — the outer ``finally`` records
       it as ``execution_status='error'`` and cancels renewal.
 
-    ponytail: response gate for streaming is a post-hoc buffered scan
-    (see ``_wrap_streaming_response``) and never modifies bytes, so we
-    can safely treat what we see == what the vendor emitted. If a
-    future gate rewrites stream chunks, revisit the ``response_bytes``
-    argument passed to finalize below.
+    Upstream capture precedes conversion and tool redaction. Accounting
+    consumes vendor usage, not the rewritten frames delivered to clients.
     """
     import asyncio as _a
 
@@ -2466,6 +2485,7 @@ def _wrap_v2_stream_finalize(
             stream_exc = exc
             raise
         finally:
+            await _close_stream_iterator(original)
             from app.modules.guard.gateway_lifecycle import (
                 close_durable_row as _close_durable,
                 finalize_durable_row as _finalize_durable_row,
@@ -2556,7 +2576,7 @@ def _wrap_v2_stream_finalize(
                     provider=provider,
                     model=model,
                     body=body,
-                    response_bytes=bytes(collected) or None,
+                    response_bytes=bytes(upstream_capture if upstream_capture is not None else collected) or None,
                     duration_ms=int((time.monotonic() - started_monotonic) * 1000),
                     rule_id=_final_rule_id,
                     routing_meta=_final_routing_meta,
@@ -2574,7 +2594,7 @@ def _wrap_v2_stream_finalize(
             # R4 fix (reviewer P1): settle reservations from the
             # drained upstream body. Runs on success, cancel, and
             # timeout — same finally as finalize.
-            _stream_resp_bytes = bytes(collected) if collected else None
+            _stream_resp_bytes = bytes(upstream_capture if upstream_capture is not None else collected) or None
             _stream_new_engine_micros: int | None = None
             if (
                 _stream_resp_bytes is not None
@@ -2756,7 +2776,7 @@ def _wrap_v2_stream_finalize(
     )
 
 
-def _wrap_stream_receipts(response: StreamingResponse, **receipt_args) -> StreamingResponse:
+def _wrap_stream_receipts(response: StreamingResponse, *, upstream_capture=None, **receipt_args) -> StreamingResponse:
     """Persist legacy/audit-off stream receipts after usage arrives, including disconnects."""
     original = response.body_iterator
 
@@ -2784,7 +2804,7 @@ def _wrap_stream_receipts(response: StreamingResponse, **receipt_args) -> Stream
                         log.exception("guard.gateway.stream_close_failed", request_id=receipt_args.get("request_id"))
                 try:
                     await run_in_threadpool(write_receipts_for_attempts, **receipt_args,
-                                            dispatched=True, response_bytes=bytes(collected) or None,
+                                            dispatched=True, response_bytes=bytes(upstream_capture if upstream_capture is not None else collected) or None,
                                             winner_execution_outcome=outcome)
                 except Exception:
                     log.exception("guard.gateway.stream_receipts_failed", request_id=receipt_args.get("request_id"))
@@ -2817,6 +2837,8 @@ def _wrap_v2_stream_record_legacy(
     ingress_rule_id: str | None,
     started_monotonic: float,
     record_audit_fn,
+    tool_stream_outcome=None,
+    upstream_capture: bytearray | None = None,
     request_id: str | None = None,
     stream_deadline_seconds: float | None = None,
 ) -> StreamingResponse:
@@ -2890,6 +2912,7 @@ def _wrap_v2_stream_record_legacy(
             stream_exc = exc
             raise
         finally:
+            await _close_stream_iterator(original)
             _is_cancel = isinstance(stream_exc, _a.CancelledError)
             _is_timeout = isinstance(stream_exc, _a.TimeoutError)
             _decision = ingress_decision if stream_exc is None else "error"
@@ -2901,6 +2924,23 @@ def _wrap_v2_stream_record_legacy(
                 _execution_status = "timeout"
             else:
                 _execution_status = "error"
+            if stream_exc is None and tool_stream_outcome is not None:
+                from app.modules.guard.tools_stream_gate import StreamGateStatus
+                if tool_stream_outcome.status != StreamGateStatus.OK:
+                    _decision = "blocked"
+                    _execution_status = "error"
+                    ingress_rule = tool_stream_outcome.reason or tool_stream_outcome.status.value
+                    final_routing_meta = {**(routing_meta or {}),
+                                    "stream_gate_status": tool_stream_outcome.status.value,
+                                    "response_gate_reason": "policy_block" if tool_stream_outcome.status == StreamGateStatus.POLICY_BLOCK else "validation_failure"}
+                else:
+                    ingress_rule = ingress_rule_id
+                    final_routing_meta = routing_meta
+            else:
+                ingress_rule = ingress_rule_id
+                final_routing_meta = routing_meta
+            if tool_stream_outcome is not None and tool_stream_outcome.correlation_ids:
+                final_routing_meta = {**(final_routing_meta or {}), "tool_call_correlation_ids": tool_stream_outcome.correlation_ids}
             try:
                 # Z1 note — same failure mode as the non-streaming
                 # exception path: background.add_task never runs if
@@ -2917,17 +2957,17 @@ def _wrap_v2_stream_record_legacy(
                     record_audit_fn,
                     workspace_id, clerk_user_id, ai_tool, provider, model,
                     _decision,
-                    ingress_rule_id,
+                    ingress_rule,
                     int((time.monotonic() - started_monotonic) * 1000),
                     body=body,
-                    response_bytes=bytes(collected) or None,
+                    response_bytes=bytes(upstream_capture if upstream_capture is not None else collected) or None,
                     prompt_summary=prompt_summary,
                     user_email=user_email,
                     conductai_run_id=conductai_run_id,
                     conductai_workflow=conductai_workflow,
                     conductai_workflow_id=conductai_workflow_id,
                     hook_session_id=hook_session_id,
-                    routing_meta=routing_meta,
+                    routing_meta=final_routing_meta,
                     execution_status=_execution_status,
                     agent_identity_id=agent_identity_id,
                     route=route,

@@ -1,8 +1,8 @@
 {
-  "name": "litellm-anthropic",
-  "model_alias": "claude-via-litellm",
+  "name": "claude-openai-fallback",
+  "model_alias": "claude-openai-fallback",
   "timeout_seconds": 60,
-  "max_attempts": 1,
+  "max_attempts": 2,
   "accepts": ["anthropic_messages", "openai_chat_completions"],
   "targets": [
     {
@@ -10,6 +10,13 @@
       "transport": "litellm_sdk",
       "provider": "anthropic",
       "model": "claude-sonnet-4-6",
+      "credential_ref": ""
+    },
+    {
+      "id": "fallback",
+      "transport": "litellm_sdk",
+      "provider": "openai",
+      "model": "gpt-4o",
       "credential_ref": ""
     }
   ]

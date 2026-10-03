@@ -1,0 +1,16 @@
+{
+  "name": "litellm-openai",
+  "model_alias": "openai-via-litellm",
+  "timeout_seconds": 60,
+  "max_attempts": 1,
+  "accepts": ["openai_chat_completions", "openai_responses", "anthropic_messages"],
+  "targets": [
+    {
+      "id": "primary",
+      "transport": "litellm_sdk",
+      "provider": "openai",
+      "model": "gpt-4o",
+      "credential_ref": ""
+    }
+  ]
+}

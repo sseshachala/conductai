@@ -463,24 +463,26 @@ async def wrap_tool_stream(
     # the flush helpers can always write without a None check.
     if outcome is None:
         outcome = StreamGateOutcome()
-    buffer = b""
+    from app.runtime.accounting.normalizers.sse import SSEParser
+    parser = SSEParser(keep_comments=True)
     # One state per choice index. Almost always {0: ...} but handles n>1.
     choices: dict[int, _ChoiceState] = {}
 
-    async for chunk in upstream:
-        # Normalise: some upstream libraries yield str, most yield bytes.
-        if isinstance(chunk, str):
-            chunk = chunk.encode("utf-8")
-        buffer += chunk
-
-        # Emit every complete frame we can from the accumulator. A frame
-        # is a run of non-empty lines terminated by a blank line — we
-        # split on ``\n\n`` and re-attach the separator on emit so any
-        # frame we pass through keeps its exact wire form.
-        while _SSE_SEP in buffer:
-            frame, buffer = buffer.split(_SSE_SEP, 1)
-            async for out in _handle_frame(frame, choices, outcome, policy_check):
-                yield out
+    try:
+        async for chunk in upstream:
+            if isinstance(chunk, str):
+                chunk = chunk.encode("utf-8")
+            for event in parser.feed(chunk):
+                if event.event == "comment":
+                    yield event.data.encode() + _SSE_SEP
+                    continue
+                frame = _SSE_DATA_PREFIX + event.data.encode()
+                async for out in _handle_frame(frame, choices, outcome, policy_check):
+                    yield out
+    finally:
+        close = getattr(upstream, "aclose", None)
+        if close:
+            await close()
 
     # End-of-stream: flush any leftover buffered frame (rare — most
     # upstreams end cleanly on ``\n\n``). If a partial frame ends the

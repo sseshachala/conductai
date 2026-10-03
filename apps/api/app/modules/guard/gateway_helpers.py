@@ -528,6 +528,9 @@ def _wrap_streaming_response(
             except Exception as _e:
                 log.warning("guard.proxy.response_stream_gate_error", err=str(_e))
         finally:
+            close = getattr(original_iterator, "aclose", None)
+            if close:
+                await close()
             # Idempotent lifecycle hook — fires on stream completion, client
             # disconnect, or upstream error. Callers pass an admission-slot
             # release (or any other cleanup) here so it always runs, not only

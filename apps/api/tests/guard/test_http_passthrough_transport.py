@@ -15,7 +15,7 @@ Structural invariants:
 - Unregistered integration raises ``UnsupportedPassthroughIntegration``
   before the wire — the transport never guesses an endpoint.
 - Streaming is refused in PR 5 (native_http covers streaming; passthrough
-  streaming lands in a follow-up).
+  streaming returns a handler-owned upstream response).
 """
 from __future__ import annotations
 
@@ -613,19 +613,25 @@ async def test_client_model_field_is_replaced_by_target_model(monkeypatch):
 
 
 @pytest.mark.anyio("asyncio")
-async def test_streaming_refused_in_pr5():
-    """Streaming through passthrough is a follow-up PR. Refuse loudly
-    with the fix hint: put a native_http target ahead of this
-    passthrough one."""
+async def test_streaming_returns_owned_upstream():
+    import httpx
+    from app.runtime.native_http_transport import StreamingUpstream
     transport = HTTPPassthroughTransport()
-    with pytest.raises(NotImplementedError, match=r"native_http"):
-        await transport.execute(
+    async with httpx.AsyncClient(transport=httpx.MockTransport(
+        lambda request: httpx.Response(200, content=b"data: [DONE]\n\n", headers={"content-type": "text/event-stream"})
+    )) as client:
+        transport._client = client
+        result = await transport.execute(
             target=_openrouter_target(),
             operation="openai_chat_completions",
             payload={"messages": []},
             credential_resolver=lambda ref: "sk-or",
             stream=True,
         )
+        assert isinstance(result, StreamingUpstream)
+        assert b"[DONE]" in b"".join([chunk async for chunk in result.response.aiter_bytes()])
+        await result.response.aclose()
+        assert result.response.is_closed
 
 
 @pytest.mark.anyio("asyncio")

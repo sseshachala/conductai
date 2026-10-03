@@ -39,6 +39,10 @@ _FAMILY_BY_PROVIDER: dict[str, ProviderFamily] = {
 def _family_for(provider: str, operation: str) -> ProviderFamily:
     if operation and "responses" in operation.lower():
         return ProviderFamily.OPENAI_RESPONSES
+    if operation == "anthropic_messages":
+        return ProviderFamily.ANTHROPIC_MESSAGES
+    if operation == "openai_chat_completions":
+        return ProviderFamily.OPENAI_CHAT
     return _FAMILY_BY_PROVIDER.get((provider or "").lower(), ProviderFamily.OPENAI_CHAT)
 
 
@@ -179,7 +183,7 @@ def settle_micros_for_attempts(
         micros = compute_settlement_micros(
             provider=att_provider,
             model=att_model,
-            operation=operation,
+            operation=attempt.get("operation") or operation,
             response_bytes=att_bytes,
             strict=strict,
         )

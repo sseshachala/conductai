@@ -1,12 +1,8 @@
 # Gateway v2 — supported use cases
 
-Reference doc grounded in the actual capability catalog + transport
-registrations (as of merge of #2043, #2044). Every use case here
-publishes cleanly and can be exercised end-to-end with the Python
-snippets below.
-
-> **Anything not in this doc is not supported by the platform today.**
-> See [What's NOT supported](#whats-not-supported) at the bottom.
+Create separate profiles for each use case. Each published profile has its own
+model identifier, ordered targets, credentials, timeout, and attempt limit.
+Native HTTPS, LiteLLM SDK, and external Gateway targets support streaming.
 
 ---
 
@@ -56,6 +52,27 @@ Policy, budgets, credentials, rate limits, and audit still run through the same
 Gateway path. Audit metadata records the original selection and pinned revision.
 Existing full cond IDs and non-canonical proxy routes retain their behavior.
 
+### Profile rate limits
+
+Set RPM and TPM on each profile in **Gateways**. Blank means unlimited.
+Limits remain editable after publishing, without creating a routing revision.
+
+Requests from all clients and identities share the profile's quota. Optional
+agent caps apply in addition to that quota. Other profiles have separate quotas;
+changing revisions does not reset a profile's counters. Workspace spend budgets
+remain separate.
+
+TPM reserves estimated input plus the requested output allowance, then settles
+against provider-reported input and output tokens, including cache usage and
+paid fallback attempts. Missing or interrupted usage keeps the reservation.
+For small smoke-test caps, send an explicit small `max_tokens` or
+`max_output_tokens`. Caps return HTTP 429 with `Retry-After`; an unavailable
+limit lookup or Redis service returns HTTP 503.
+
+Migration 0163 copies existing workspace and agent limits onto each existing v2
+profile. Legacy rows remain intact for older proxy routes; v2 requests use only
+profile limits. New profiles start unlimited until configured.
+
 ---
 
 ## Capability matrix — what the catalog certifies
@@ -66,13 +83,23 @@ Existing full cond IDs and non-canonical proxy routes retain their behavior.
 | `native_http` | anthropic | anthropic_count_tokens | ❌ (sync only) |
 | `native_http` | openai | openai_chat_completions | ✅ |
 | `native_http` | openai | openai_responses | ✅ |
-| `litellm_sdk` | anthropic | anthropic_messages | ❌ (returns 501) |
-| `litellm_sdk` | anthropic | anthropic_count_tokens | ❌ |
-| `litellm_sdk` | openai | openai_chat_completions | ❌ (returns 501) |
-| `litellm_sdk` | openai | openai_responses | ❌ |
-| `http_passthrough` | openrouter | openai_chat_completions | ❌ (returns 501) |
+| `litellm_sdk` | anthropic | anthropic_messages, openai_chat_completions | Yes |
+| `litellm_sdk` | anthropic | anthropic_count_tokens | No (non-streaming count) |
+| `litellm_sdk` | openai | openai_chat_completions, openai_responses, anthropic_messages | Yes |
+| `litellm_sdk` | perplexity, together | openai_chat_completions | Yes |
+| `http_passthrough` | openrouter, portkey, helicone_openai, azure_openai | openai_chat_completions | Yes |
+| `http_passthrough` | helicone_anthropic | anthropic_messages | Yes |
+| `http_passthrough` | custom (OpenAI protocol) | openai_chat_completions, openai_responses | Yes |
+| `http_passthrough` | custom (Anthropic protocol) | anthropic_messages | Yes |
+| `http_passthrough` | custom (Anthropic protocol) | anthropic_count_tokens | No (non-streaming count) |
 
 Absent from this table = not certified; publish rejects.
+
+Tool arguments are validated before delivery in Chat, Messages, and Responses.
+Messages and Responses tool streams are buffered for validation, up to 8 MiB.
+Usage is captured before conversion or redaction, using the actual provider and
+model for each attempt. Fallback is permitted on transient failures before
+streaming starts, never after the stream is committed.
 
 ---
 
@@ -84,6 +111,7 @@ Absent from this table = not certified; publish rejects.
 ```json
 {
   "name": "claude-sonnet",
+  "accepts": ["anthropic_messages", "anthropic_count_tokens"],
   "model_alias": "claude-sonnet",
   "timeout_seconds": 60,
   "max_attempts": 1,
@@ -121,6 +149,7 @@ print(resp.content[0].text)
 ```json
 {
   "name": "gpt-4o",
+  "accepts": ["openai_chat_completions", "openai_responses"],
   "model_alias": "gpt-4o",
   "timeout_seconds": 60,
   "max_attempts": 1,
@@ -161,6 +190,7 @@ shared operation set `{anthropic_messages, anthropic_count_tokens}`.
 ```json
 {
   "name": "claude-with-fallback",
+  "accepts": ["anthropic_messages", "anthropic_count_tokens"],
   "model_alias": "claude-with-fallback",
   "timeout_seconds": 60,
   "max_attempts": 2,
@@ -195,6 +225,7 @@ Symmetric to UC3, OpenAI side.
 ```json
 {
   "name": "gpt-with-fallback",
+  "accepts": ["openai_chat_completions", "openai_responses"],
   "model_alias": "gpt-with-fallback",
   "timeout_seconds": 60,
   "max_attempts": 2,
@@ -221,14 +252,14 @@ Symmetric to UC3, OpenAI side.
 
 Same effect as UC1 from the client's perspective, but the request
 goes through the in-process LiteLLM SDK instead of a raw HTTP forward.
-Useful when you want LiteLLM's cost tracking or param normalization.
-Streaming through this path returns 501 today — use UC1 if you need
-streaming.
+Use this for protocol translation or provider parameter normalization.
+Both non-streaming and streaming requests are supported.
 
 **Profile config:**
 ```json
 {
   "name": "claude-via-litellm",
+  "accepts": ["anthropic_messages", "openai_chat_completions"],
   "model_alias": "claude-via-litellm",
   "timeout_seconds": 60,
   "max_attempts": 1,
@@ -254,6 +285,7 @@ Symmetric to UC5 for the OpenAI side.
 ```json
 {
   "name": "gpt-via-litellm",
+  "accepts": ["openai_chat_completions", "openai_responses", "anthropic_messages"],
   "model_alias": "gpt-via-litellm",
   "timeout_seconds": 60,
   "max_attempts": 1,
@@ -281,6 +313,7 @@ model you ask for (`anthropic/claude-3.5-sonnet`,
 ```json
 {
   "name": "via-openrouter",
+  "accepts": ["openai_chat_completions"],
   "model_alias": "via-openrouter",
   "timeout_seconds": 60,
   "max_attempts": 1,
@@ -312,8 +345,8 @@ resp = client.chat.completions.create(
 
 ## UC8 — Streaming Anthropic
 
-Uses `native_http`. Same profile as UC1; set `stream=True` on the
-request. Anthropic's SSE format is preserved byte-for-byte.
+Use Native HTTPS or LiteLLM SDK. Set `stream=True` on the request.
+Anthropic event types are preserved; tool arguments are validated before delivery.
 
 **Python:**
 ```python
@@ -335,7 +368,8 @@ print()
 
 ## UC9 — Streaming OpenAI
 
-Uses `native_http`. Same profile as UC2 with `stream=True`.
+Use Native HTTPS, LiteLLM SDK, or an OpenAI-compatible external Gateway.
+Use the matching published profile and set `stream=True`.
 
 **Python:**
 ```python
@@ -351,6 +385,8 @@ stream = client.chat.completions.create(
     stream=True,
 )
 for chunk in stream:
+    if not chunk.choices:
+        continue  # Usage-only event.
     delta = chunk.choices[0].delta.content
     if delta:
         print(delta, end="", flush=True)
@@ -401,6 +437,13 @@ print(resp.output_text)
 
 Same profile as UC2 — the profile's `accepts` covers both operations
 because native OpenAI is certified for both.
+
+## Claude and OpenAI fallback in one profile
+
+Choose **Claude + OpenAI fallback via LiteLLM** in Gateways, or import
+[the example](examples/litellm-cross-provider-fallback.json). Pick both Vault
+credentials and publish. Both targets accept Messages and Chat Completions.
+For Responses, use a separate OpenAI profile.
 
 ## UC12 — Anthropic prompt-caching (via vendor headers)
 
@@ -464,30 +507,29 @@ Look for:
 
 # What's NOT supported
 
-The following will publish-fail or hit `501 Not Implemented`. Filing
-issues / PRs adds them.
+Profiles can only advertise operations supported by every target.
 
 **Providers not in the catalog:**
-- Groq, Cohere, Mistral, Bedrock, Vertex, Perplexity — LiteLLM the
-  library supports them, but `_LITELLM_SDK_CERTIFIED` only lists
-  `anthropic` + `openai`. Extending the catalog is a code change.
+- Groq, Cohere, Mistral, Bedrock, and Vertex need a tested catalog entry.
 
-**Passthrough integrations not yet certified:**
-- Portkey, Helicone (anthropic + openai), Azure OpenAI, Custom.
-  Each needs its per-integration auth-header semantics wired in
-  `_INTEGRATION_ENDPOINTS` + `_HTTP_PASSTHROUGH_CERTIFIED`.
+**Protocol constraints:**
+- Native HTTPS does not translate between Anthropic and OpenAI. Use LiteLLM
+  SDK targets for cross-provider Messages or Chat fallback.
+- Anthropic targets do not accept OpenAI Responses in this catalog.
+- Token counting is non-streaming and requires an Anthropic count endpoint.
+- An external Gateway must implement the operation its profile advertises.
 
-**Streaming through non-native transports:**
-- `litellm_sdk` streaming → 501 (needs SDK-response-to-SSE bridging).
-- `http_passthrough` streaming → 501 (needs per-integration
-  streaming wire).
+## Regression matrix
 
-**Cross-vendor fallback in one profile:**
-- Claude → GPT fallback: the accepts intersection would be empty
-  (Anthropic ops ∩ OpenAI ops = ∅), so publish rejects with a
-  "no shared operations" error. Would need a translation layer
-  (LiteLLM's cross-provider mode) or two separate profiles + client-
-  side routing.
+From `apps/api`, with its requirements installed:
+
+```bash
+python -m pytest tests/guard/test_gateway_transport_matrix.py tests/guard/test_gateway_native_tool_protocols.py -q
+```
+
+These tests run the real pinned LiteLLM SDK with mocked vendor HTTP, without
+provider keys or inference charges. They cover certified transports, streaming,
+token counting, fallback, tool validation, usage shapes, and response cleanup.
 
 **Adding a new provider** is a two-step PR:
 1. Add a row in `capability_catalog.py` (`_LITELLM_SDK_CERTIFIED`

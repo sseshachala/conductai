@@ -21,11 +21,13 @@ from fastapi.responses import StreamingResponse
 
 
 @pytest.mark.anyio("asyncio")
-async def test_stream_record_legacy_fires_record_audit_on_close():
+@pytest.mark.parametrize("blocked", [False, True])
+async def test_stream_record_legacy_fires_record_audit_on_close(blocked):
     """Stream drains successfully → BackgroundTasks receives a
     ``_record_audit`` call with the collected bytes and
     execution_status='success' (v1's ok status string)."""
     from app.modules.guard.gateway_handler import _wrap_v2_stream_record_legacy
+    from app.modules.guard.tools_stream_gate import StreamGateOutcome, StreamGateStatus
 
     async def _upstream():
         yield b"data: chunk-1\n\n"
@@ -66,6 +68,8 @@ async def test_stream_record_legacy_fires_record_audit_on_close():
         ingress_rule_id=None,
         started_monotonic=0.0,
         record_audit_fn=record_stub,
+        tool_stream_outcome=StreamGateOutcome(status=StreamGateStatus.POLICY_BLOCK, reason="blocked-tool") if blocked else None,
+        upstream_capture=bytearray(b"provider usage") if blocked else None,
     )
 
     async for _ in wrapped.body_iterator:
@@ -81,12 +85,16 @@ async def test_stream_record_legacy_fires_record_audit_on_close():
     assert args[2] == "cursor"
     assert args[3] == "anthropic"
     assert args[4] == "claude-sonnet"
-    assert args[5] == "allowed"
-    assert args[6] is None
+    assert args[5] == ("blocked" if blocked else "allowed")
+    assert args[6] == ("blocked-tool" if blocked else None)
     # Kwargs: execution_status='success', bytes collected end-to-end.
-    assert kwargs["execution_status"] == "success"
-    assert b"[DONE]" in kwargs["response_bytes"]
-    assert b"chunk-1" in kwargs["response_bytes"]
+    assert kwargs["execution_status"] == ("error" if blocked else "success")
+    if blocked:
+        assert kwargs["response_bytes"] == b"provider usage"
+        assert kwargs["routing_meta"]["response_gate_reason"] == "policy_block"
+    else:
+        assert b"[DONE]" in kwargs["response_bytes"]
+        assert b"chunk-1" in kwargs["response_bytes"]
 
 
 @pytest.mark.anyio("asyncio")

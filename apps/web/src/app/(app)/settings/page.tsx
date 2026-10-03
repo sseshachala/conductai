@@ -180,7 +180,7 @@ function SettingsPageInner({ isAdmin, workspaceId, getToken }: { isAdmin: boolea
     } else if (searchParams?.get("tab") === "canvas") {
       router.replace("/workflows")
     } else if (searchParams?.get("tab") === "rate_limits") {
-      router.replace("/proxy/gateway-profiles?tab=rate_limits")
+      router.replace("/proxy/gateway-profiles")
     }
   }, [searchParams, router])
 

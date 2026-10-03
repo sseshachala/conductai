@@ -29,10 +29,12 @@ class SSEEvent:
 class SSEParser:
     """Feed raw bytes chunks; iterate dispatched events."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, keep_comments: bool = False) -> None:
         self._buffer = b""
         self._event: str | None = None
         self._data_lines: list[str] = []
+        self._comments: list[str] = []
+        self._keep_comments = keep_comments
 
     def feed(self, chunk: bytes) -> Iterator[SSEEvent]:
         """Feed one chunk and yield any complete events dispatched."""
@@ -51,7 +53,8 @@ class SSEParser:
                 if event is not None:
                     yield event
             elif line.startswith(":"):
-                continue  # comment
+                if self._keep_comments:
+                    self._comments.append(line)
             elif line.startswith("event:"):
                 self._event = line[len("event:") :].lstrip()
             elif line.startswith("data:"):
@@ -71,6 +74,11 @@ class SSEParser:
 
     def _dispatch(self) -> SSEEvent | None:
         if not self._data_lines:
+            if self._comments:
+                event = SSEEvent(event="comment", data="\n".join(self._comments))
+                self._comments = []
+                self._event = None
+                return event
             return None
         event = SSEEvent(
             event=self._event or "message",
@@ -78,6 +86,7 @@ class SSEParser:
         )
         self._event = None
         self._data_lines = []
+        self._comments = []
         return event
 
 

@@ -1,8 +1,7 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useSearchParams } from "next/navigation"
-import Link from "next/link"
 
 import AppShell from "@/components/AppShell"
 import GatewayProfileV2DeleteDialog from "@/components/settings/GatewayProfileV2DeleteDialog"
@@ -16,6 +15,7 @@ import { useWorkspace } from "@/lib/WorkspaceContext"
 import { environments, guard } from "@/lib/api"
 import { API } from "@/lib/api/client"
 import type { GatewayProfileV2Out } from "@/lib/api/guard"
+import { validateGatewayProfileFields } from "@/lib/gatewayProfileValidation"
 
 // #2007 — Gateway Profiles v2 admin surface.
 //
@@ -131,6 +131,33 @@ const PRESET_CHIPS: PresetChip[] = [
   },
 ]
 
+for (const [index, label, name] of [
+  [0, "Claude via LiteLLM", "claude-litellm"],
+  [2, "OpenAI via LiteLLM", "openai-litellm"],
+] as const) {
+  const base = PRESET_CHIPS[index]
+  const targets = base.workingCopy.targets as Record<string, unknown>[]
+  PRESET_CHIPS.push({
+    label, hint: base.hint, name,
+    workingCopy: { ...base.workingCopy, name, model_alias: name,
+      targets: targets.map(target => ({ ...target, transport: "litellm_sdk" })),
+    },
+  })
+}
+PRESET_CHIPS.push({
+  label: "Claude + OpenAI fallback via LiteLLM",
+  hint: "Claude primary, OpenAI fallback.",
+  name: "claude-openai",
+  workingCopy: {
+    name: "claude-openai", model_alias: "claude-openai", timeout_seconds: 60, max_attempts: 2,
+    accepts: ["anthropic_messages", "openai_chat_completions"],
+    targets: [
+      { id: "primary", transport: "litellm_sdk", provider: "anthropic", model: "claude-sonnet-4-6", credential_ref: "" },
+      { id: "fallback", transport: "litellm_sdk", provider: "openai", model: "gpt-4o", credential_ref: "" },
+    ],
+  },
+})
+
 function isPublished(profile: GatewayProfileV2Out): boolean {
   // v3: served state lives on active_revision_id. Working_copy is
   // locked whenever this is non-null.
@@ -157,12 +184,6 @@ export default function GatewayProfilesV2Page() {
   // click through the profile list).
   const searchParams = useSearchParams()
   const selectParam = searchParams?.get("select") ?? null
-  const view = searchParams?.get("tab") === "rate_limits" ? "rate_limits" : "profiles"
-  function tabHref(tab: "profiles" | "rate_limits") {
-    const params = new URLSearchParams(searchParams?.toString() ?? "")
-    params.set("tab", tab)
-    return `/proxy/gateway-profiles?${params}`
-  }
 
   const [profiles, setProfiles] = useState<GatewayProfileV2Out[]>([])
   const [envs, setEnvs] = useState<EnvironmentRow[]>([])
@@ -176,15 +197,18 @@ export default function GatewayProfilesV2Page() {
   // Type-to-confirm delete dialog target. When non-null, renders the
   // dialog against this profile. Cleared on confirm or cancel.
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
+  const loadGeneration = useRef(0)
 
   const load = useCallback(async () => {
+    const current = ++loadGeneration.current
     if (!workspaceId) return
-    setLoading(true); setError("")
+    setLoading(true); setError(""); setProfiles([]); setEnvs([])
     try {
       const [rows, envRows] = await Promise.all([
         guard.gatewayProfilesV2.list(authFetch, workspaceId),
         environments.list(authFetch),
       ])
+      if (current !== loadGeneration.current) return
       setProfiles(rows)
       setEnvs(envRows)
       setSelectedId(prev => {
@@ -194,15 +218,15 @@ export default function GatewayProfilesV2Page() {
         if (selectParam && rows.some(r => r.id === selectParam)) {
           return selectParam
         }
-        return prev ?? rows[0]?.id ?? null
+        return rows.some(r => r.id === prev) ? prev : rows[0]?.id ?? null
       })
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load profiles")
-    } finally { setLoading(false) }
+      if (current === loadGeneration.current) setError(err instanceof Error ? err.message : "Failed to load profiles")
+    } finally { if (current === loadGeneration.current) setLoading(false) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authFetch, workspaceId, selectParam])
 
-  useEffect(() => { if (view === "profiles") void load() }, [load, view])
+  useEffect(() => { void load(); return () => { loadGeneration.current++ } }, [load])
 
   const selected = useMemo(
     () => profiles.find(p => p.id === selectedId) ?? null,
@@ -362,25 +386,15 @@ export default function GatewayProfilesV2Page() {
       <div className="page">
         <div className="page-head">
           <h1 className="page-title">Gateways</h1>
-          {view === "profiles" && <p className="page-sub">
+          <p className="page-sub">
             A profile pins an ordered list of upstream targets and a set of vault credentials
             behind a stable identifier. Once published, the working copy is locked —
             duplicate to iterate. Clients hit the gateway using the profile's
             <code className="mono" style={{ fontSize: 12 }}> cond-…</code> identifier.
-          </p>}
+          </p>
         </div>
 
-        <nav role="tablist" aria-label="Gateway settings" className="mb-5 flex flex-wrap gap-2 border-b border-stone-200 pb-3">
-          <Link href={tabHref("profiles")} role="tab" id="gateway-tab-profiles" aria-controls="gateway-panel-profiles"
-            aria-selected={view === "profiles"} className={`btn btn-sm ${view === "profiles" ? "btn-primary" : "btn-ghost"}`}>Profiles</Link>
-          {isAdmin && <Link href={tabHref("rate_limits")} role="tab" id="gateway-tab-rate-limits" aria-controls="gateway-panel-rate-limits"
-            aria-selected={view === "rate_limits"} className={`btn btn-sm ${view === "rate_limits" ? "btn-primary" : "btn-ghost"}`}>Rate limits</Link>}
-        </nav>
-
-        {view === "rate_limits" ? <div role="tabpanel" id="gateway-panel-rate-limits" aria-label="Gateway rate limits">
-          {isAdmin && workspaceId ? <RateLimitsPanel key={workspaceId} isAdmin={isAdmin} />
-            : <p>{isAdmin ? "Select a workspace." : "Administrator access required."}</p>}
-        </div> : <div role="tabpanel" id="gateway-panel-profiles" aria-labelledby="gateway-tab-profiles">
+        <div>
 
         {error && (
           <div className="sbadge err" style={{ display: "block", height: "auto", padding: "10px 14px", borderRadius: 8, marginBottom: 16, whiteSpace: "normal" }}>
@@ -512,7 +526,7 @@ export default function GatewayProfilesV2Page() {
             }}
           />
         )}
-        </div>}
+        </div>
       </div>
     </AppShell>
   )
@@ -581,6 +595,7 @@ function ProfileDetail({
   onDuplicate: () => void
 }) {
   const published = isPublished(profile)
+  const publishIssue = Object.values(validateGatewayProfileFields(profile.working_copy ?? {}))[0]
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
@@ -608,7 +623,7 @@ function ProfileDetail({
               </>
             ) : (
               <button onClick={onOpenPublish} className="btn btn-primary btn-sm"
-                disabled={!profile.working_copy}>Publish…</button>
+                disabled={!!publishIssue} title={publishIssue}>Publish…</button>
             )}
           </div>
         )}
@@ -635,6 +650,9 @@ function ProfileDetail({
           onSaved={onReload}
         />
       </div>
+
+      <RateLimitsPanel key={`${workspaceId}:${profile.id}`} workspaceId={workspaceId}
+        profileId={profile.id} isAdmin={isAdmin} />
 
       {profile.revisions.length > 0 && (
         <details>

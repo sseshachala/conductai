@@ -53,6 +53,10 @@ def _family_for(provider: str, operation: str) -> ProviderFamily:
     """Pick the normalizer family. Responses API operation overrides provider."""
     if operation and "responses" in operation.lower():
         return ProviderFamily.OPENAI_RESPONSES
+    if operation == "anthropic_messages":
+        return ProviderFamily.ANTHROPIC_MESSAGES
+    if operation == "openai_chat_completions":
+        return ProviderFamily.OPENAI_CHAT
     return _FAMILY_BY_PROVIDER.get((provider or "").lower(), ProviderFamily.OPENAI_CHAT)
 
 
@@ -530,7 +534,7 @@ def write_receipts_for_attempts(
                 except Exception:
                     attempt_bytes = None
         rid = shadow_write(
-            **common,
+            **{**common, "operation": attempt.get("operation") or operation},
             provider=attempt_provider,
             model=attempt_model,
             transport=attempt_transport,
