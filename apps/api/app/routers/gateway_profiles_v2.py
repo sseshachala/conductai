@@ -64,6 +64,7 @@ from app.core.database import get_db
 from app.models.gateway_profile import (
     GatewayProfile as GatewayProfileRow,
     GatewayProfileRevision,
+    GatewayProfileRateLimit,
 )
 from app.modules.guard.capability_catalog import (
     CapabilityMismatch,
@@ -329,6 +330,25 @@ class ProfileOut(BaseModel):
     revisions: list[RevisionOut] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
+
+
+class ProfileRateCap(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    rpm: int | None = Field(default=None, strict=True, gt=0, le=2147483647)
+    tpm: int | None = Field(default=None, strict=True, gt=0, le=2147483647)
+
+
+class ProfileAgentRateCap(ProfileRateCap):
+    agent_identity_id: UUID
+
+
+class ProfileRateLimitsBody(ProfileRateCap):
+    agent_limits: list[ProfileAgentRateCap] | None = Field(default=None, max_length=200)
+
+
+class ProfileRateLimitsOut(ProfileRateCap):
+    agent_limits: list[ProfileAgentRateCap] = Field(default_factory=list)
+    available_agents: list[dict[str, str]] = Field(default_factory=list)
 
 
 # Resolve the forward reference on ``ImportProfileOut.profile`` (which
@@ -917,6 +937,79 @@ def update_working_copy(
     db.commit()
     db.refresh(profile)
     return _to_output(db, workspace_id, profile)
+
+
+def _profile_rate_limits_output(db: Session, workspace_id: str, profile_id: UUID) -> ProfileRateLimitsOut:
+    from app.modules.agent_identity.models import AgentIdentity
+    from app.core.workspace_context import set_workspace_rls
+
+    set_workspace_rls(db, workspace_id)
+    rows = db.query(GatewayProfileRateLimit).filter(
+        GatewayProfileRateLimit.workspace_id == workspace_id,
+        GatewayProfileRateLimit.profile_id == profile_id,
+    ).all()
+    default = next((r for r in rows if r.agent_identity_id is None), None)
+    agents = db.query(AgentIdentity).filter(AgentIdentity.workspace_id == workspace_id).all()
+    return ProfileRateLimitsOut(
+        rpm=default.rpm if default else None, tpm=default.tpm if default else None,
+        agent_limits=[ProfileAgentRateCap(agent_identity_id=r.agent_identity_id, rpm=r.rpm, tpm=r.tpm)
+                      for r in rows if r.agent_identity_id is not None],
+        available_agents=[{"id": str(a.id), "name": a.name} for a in agents],
+    )
+
+
+@router.get("/{workspace_id}/gateway-profiles-v2/{profile_id}/rate-limits", response_model=ProfileRateLimitsOut)
+def get_profile_rate_limits(
+    workspace_id: str, profile_id: UUID,
+    db: Session = Depends(get_db), _ws: str = Depends(_authorized_workspace_id),
+    _: str = Depends(require_permission("guard.spend.budgets.edit")),
+):
+    _load_profile(db, workspace_id, profile_id)
+    return _profile_rate_limits_output(db, workspace_id, profile_id)
+
+
+@router.put("/{workspace_id}/gateway-profiles-v2/{profile_id}/rate-limits", response_model=ProfileRateLimitsOut)
+def update_profile_rate_limits(
+    workspace_id: str, profile_id: UUID, body: ProfileRateLimitsBody,
+    db: Session = Depends(get_db), _ws: str = Depends(_authorized_workspace_id),
+    _: str = Depends(require_permission("guard.spend.budgets.edit")),
+):
+    from app.modules.agent_identity.models import AgentIdentity
+    from app.core.workspace_context import set_workspace_rls
+
+    set_workspace_rls(db, workspace_id)
+    # Limits remain mutable even when the routing working copy is locked.
+    _load_profile(db, workspace_id, profile_id, for_update=True)
+    if body.agent_limits is not None:
+        ids = [str(a.agent_identity_id) for a in body.agent_limits]
+        if len(ids) != len(set(ids)):
+            raise HTTPException(400, "Each agent can have only one limit per profile.")
+        owned = db.query(AgentIdentity).filter(
+            AgentIdentity.workspace_id == workspace_id, AgentIdentity.id.in_(ids),
+        ).all() if ids else []
+        if {str(a.id) for a in owned} != set(ids):
+            raise HTTPException(400, "Agent not found in this workspace.")
+    rows = db.query(GatewayProfileRateLimit).filter(
+        GatewayProfileRateLimit.workspace_id == workspace_id,
+        GatewayProfileRateLimit.profile_id == profile_id,
+    ).all()
+    existing = {r.agent_identity_id: r for r in rows}
+    desired = [(None, body)]
+    if body.agent_limits is not None:
+        desired.extend((str(cap.agent_identity_id), cap) for cap in body.agent_limits)
+        keep = {identity for identity, _ in desired}
+        for row in rows:
+            if row.agent_identity_id not in keep:
+                db.delete(row)
+    for identity, cap in desired:
+        row = existing.get(identity)
+        if row is None:
+            row = GatewayProfileRateLimit(workspace_id=workspace_id, profile_id=profile_id, agent_identity_id=identity)
+            db.add(row)
+        row.rpm, row.tpm = cap.rpm, cap.tpm
+    db.commit()
+    _log.info("gateway.profile_rate_limits.updated", workspace_id=workspace_id, profile_id=str(profile_id))
+    return _profile_rate_limits_output(db, workspace_id, profile_id)
 
 
 @router.delete(

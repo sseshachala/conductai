@@ -198,6 +198,9 @@ async def handle_gateway_request(
     # PR 2 (#2056) admission state — kill switch: ADMISSION_ENABLED.
     _admission_ticket = None
     _admission_streamed = False
+    _profile_rate_admission = None
+    _profile_rate_streamed = False
+    _v2_plan = None
 
     # 2. Resolve workspace + user — auth logic extracted to gateway_helpers
     # so admission (PR 2b) can wrap the whole post-auth body cleanly.
@@ -549,20 +552,26 @@ async def handle_gateway_request(
                 route=request.url.path,
             )
 
-        # 4d. Per-key RPM/TPM rate limiting (#980, #1587 E1). Fires for
-        # vault-key + trial-key + platform-key traffic — enforcement is
-        # opt-in per workspace via guard_rate_limits rows. If no row
-        # exists, check_rate_limit is a cheap no-op (early return in the
-        # module). Redis outage fails open by design.
-        # PR 3 fix — rate limit runs off the event loop with its own
-        # session. Redis-primary but the config lookup + fail-closed
-        # decision path can still hit DB and block the loop.
+        # v2 quotas belong to the stable profile, pooled across every client.
+        # Legacy traffic keeps its original workspace/agent limits.
         from app.modules.guard.rate_limit import check_rate_limit as _check_rate_limit
         def _rate_check_owned():
             from app.core.database import SessionLocal as _SL
             from app.core.workspace_context import set_workspace_rls
             _db_local = _SL()
             try:
+                if _v2_plan is not None:
+                    from app.modules.guard.gateway_profile_rate_limit import check_profile_rate_limit
+                    estimate = _estimate_tokens(body)
+                    return check_profile_rate_limit(
+                        _db_local, workspace_id=workspace_id,
+                        profile_id=getattr(_v2_plan.resolved, "profile_id", None),
+                        revision_id=_v2_plan.resolved.revision_id,
+                        agent_identity_id=str(_agent_identity_id) if _agent_identity_id else None,
+                        reserved_tokens=estimate.input_tokens + (
+                            0 if operation == "count_tokens" else estimate.output_tokens_allowance
+                        ),
+                    )
                 set_workspace_rls(_db_local, workspace_id)
                 return _check_rate_limit(
                     _db_local,
@@ -574,6 +583,7 @@ async def handle_gateway_request(
             finally:
                 _db_local.close()
         _rate = await run_in_threadpool(_rate_check_owned)
+        _profile_rate_admission = getattr(_rate, "admission", None)
         if _rate.limited:
             log.info(
                 "guard.proxy.rate_limited",
@@ -583,8 +593,11 @@ async def handle_gateway_request(
                 limit=_rate.limit,
                 current=_rate.current,
             )
-            _record_failure(429, _rate.reason, rule_id="rate-limit")
-            return _fail_closed(429, _rate.reason)
+            status = getattr(_rate, "status", 429)
+            _record_failure(status, _rate.reason, rule_id="rate-limit")
+            response = _fail_closed(status, _rate.reason)
+            response.headers["Retry-After"] = str(getattr(_rate, "retry_after", 60))
+            return response
 
         # 5. Vault lookup — for BYO gateways: upstream_key authenticates with the gateway,
         # vault_key is the real vendor key the gateway forwards to Anthropic/OpenAI.
@@ -1616,6 +1629,11 @@ async def handle_gateway_request(
                 workflow_run_id=_run_id, hook_session_id=_hook_session_id,
             )
 
+        if _profile_rate_admission is not None and isinstance(_response, StreamingResponse):
+            from app.modules.guard.gateway_profile_rate_limit import wrap_profile_rate_stream
+            _response = wrap_profile_rate_stream(_response, _profile_rate_admission, _v2_plan)
+            _profile_rate_streamed = True
+
         # Streaming lifecycle: transfer admission ticket ownership so the
         # outer finally does not release before ASGI drains the response.
         # v1 wrap already fires on_close in its iterator's finally; v2
@@ -1630,6 +1648,9 @@ async def handle_gateway_request(
         from app.modules.auth.federation.gateway import error_response
         return error_response(error)
     finally:
+        if _profile_rate_admission is not None and not _profile_rate_streamed:
+            from app.modules.guard.gateway_profile_rate_limit import finish_profile_rate_limit
+            await finish_profile_rate_limit(_profile_rate_admission, _v2_plan)
         # Outer admission cleanup — fires on every exit path (early return
         # in DB block, gap failure between DB and upstream try, exception,
         # normal fall-through). Idempotent: safe if a streaming on_close
@@ -1665,6 +1686,7 @@ class _V2Plan:
         "vendor_credential_resolver",
         "last_meta",
         "upstream_body",
+        "dispatched",
         # #2157 wire-in — set True when the caller sent OpenAI-shape
         # canonical body but the profile targets Anthropic. Signals
         # _execute_v2 to run canonical_to_anthropic pre-dispatch and
@@ -1680,6 +1702,7 @@ class _V2Plan:
         self.vendor_credential_resolver = vendor_credential_resolver
         self.last_meta: dict = {}
         self.upstream_body = bytearray()
+        self.dispatched = False
         self.needs_anthropic_conversion = needs_anthropic_conversion
 
 
@@ -2057,6 +2080,7 @@ async def _execute_v2(
     # real worker-wide bound (was previously per-request → unbounded).
     coordinator = await get_coordinator()
     try:
+        plan.dispatched = True
         result = await coordinator.execute(
             resolved=plan.resolved,
             operation=plan.operation,

@@ -1,160 +1,143 @@
 "use client"
 
-import { useEffect, useState } from "react"
-import { Clock } from "lucide-react"
+import { useEffect, useRef, useState } from "react"
+import { Clock, Plus, RotateCw, Trash2 } from "lucide-react"
 import { useAuthFetch } from "@/hooks/useAuthFetch"
 import { guard } from "@/lib/api"
+import type { GatewayProfileRateLimits } from "@/lib/api/guard"
 import styles from "./RateLimitsPanel.module.css"
 
-const RATE_LIMIT_PRESETS: Array<{ label: string; rpm: number; tpm: number; why: string }> = [
-  { label: "Solo dev / smoke test",   rpm: 2,   tpm: 500,     why: "trips the cap in a 3-call test — good for verifying enforcement" },
-  { label: "Small team, exploratory", rpm: 60,  tpm: 100000,  why: "~1 req/sec sustained; enough for Cursor / Claude Code chat" },
-  { label: "Team of 10-20 devs",      rpm: 300, tpm: 500000,  why: "absorbs bursts, still catches runaway agents" },
-]
+type CapFields = { rpm: string; tpm: string }
+type AgentFields = CapFields & { agent_identity_id: string }
+const MAX_CAP = 2147483647
+const valid = (value: string) => value.trim() === "" || (/^\d+$/.test(value) && Number(value) > 0 && Number(value) <= MAX_CAP)
+const number = (value: string) => value.trim() === "" ? null : Number(value)
+const fields = (cap: { rpm: number | null; tpm: number | null }): CapFields => ({
+  rpm: cap.rpm == null ? "" : String(cap.rpm), tpm: cap.tpm == null ? "" : String(cap.tpm),
+})
 
-function RateLimitPresets({ isAdmin, onPick }: { isAdmin: boolean; onPick: (rpm: number, tpm: number) => void }) {
-  return (
-    <div className={styles.presets}>
-      <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", marginBottom: 8 }}>
-        Suggested defaults
-      </div>
-      <div style={{ display: "grid", gap: 6 }}>
-        {RATE_LIMIT_PRESETS.map(p => (
-          <button
-            key={p.label}
-            type="button"
-            onClick={() => onPick(p.rpm, p.tpm)}
-            disabled={!isAdmin}
-            style={{
-              gap: 10,
-              alignItems: "center",
-              padding: "6px 8px",
-              background: "transparent",
-              border: "1px solid transparent",
-              borderRadius: 6,
-              cursor: isAdmin ? "pointer" : "default",
-              textAlign: "left",
-              color: "var(--text-2)",
-              fontSize: 12.5,
-            }}
-            onMouseEnter={e => { if (isAdmin) e.currentTarget.style.background = "var(--surface-2)" }}
-            onMouseLeave={e => { e.currentTarget.style.background = "transparent" }}
-            title={isAdmin ? "Apply to fields" : "Admin only"}
-            className={styles.preset}
-          >
-            <span style={{ fontWeight: 600, color: "var(--text)" }}>{p.label}</span>
-            <span style={{ fontVariantNumeric: "tabular-nums" }}>{p.rpm} rpm</span>
-            <span style={{ fontVariantNumeric: "tabular-nums" }}>{p.tpm.toLocaleString()} tpm</span>
-            <span style={{ color: "var(--text-3)", fontSize: 11.5 }}>{p.why}</span>
-          </button>
-        ))}
-      </div>
-    </div>
-  )
+function CapInputs({ value, onChange, disabled, label = "" }: {
+  value: CapFields; onChange: (value: CapFields) => void; disabled: boolean; label?: string
+}) {
+  return <div className={styles.inputs}>
+    {(["rpm", "tpm"] as const).map(metric => <label key={metric}>
+      <span>{metric === "rpm" ? "Requests / min (RPM)" : "Tokens / min (TPM)"}</span>
+      <input type="number" min={1} max={MAX_CAP} step={1} placeholder="unlimited"
+        aria-label={`${label}${metric === "rpm" ? "Requests / min (RPM)" : "Tokens / min (TPM)"}`}
+        value={value[metric]} disabled={disabled} aria-invalid={!valid(value[metric])}
+        onChange={e => onChange({ ...value, [metric]: e.target.value })} />
+    </label>)}
+  </div>
 }
 
-export default function RateLimitsPanel({ isAdmin }: { isAdmin: boolean }) {
+export default function RateLimitsPanel({ isAdmin, workspaceId, profileId }: {
+  isAdmin: boolean; workspaceId: string; profileId: string
+}) {
   const { authFetch } = useAuthFetch()
-  const [rpm, setRpm] = useState<string>("")
-  const [tpm, setTpm] = useState<string>("")
+  const generation = useRef(0)
+  const [cap, setCap] = useState<CapFields>({ rpm: "", tpm: "" })
+  const [agents, setAgents] = useState<GatewayProfileRateLimits["available_agents"]>([])
+  const [agentCaps, setAgentCaps] = useState<AgentFields[]>([])
   const [loaded, setLoaded] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [err, setErr] = useState<string | null>(null)
-  const [overrideCount, setOverrideCount] = useState(0)
+  const [reload, setReload] = useState(0)
+  const [selectedAgent, setSelectedAgent] = useState("")
 
   useEffect(() => {
-    if (!isAdmin) return  // GET requires admin; skip fetch for viewers/developers
-    let cancelled = false
-    guard.rateLimits.list(authFetch).then((rows) => {
-      if (cancelled) return
-      const def = rows.find(r => !r.agent_identity_id)
-      setRpm(def?.rpm != null ? String(def.rpm) : "")
-      setTpm(def?.tpm != null ? String(def.tpm) : "")
-      setOverrideCount(rows.filter(r => r.agent_identity_id).length)
+    const current = ++generation.current
+    setLoaded(false); setSaving(false); setSaved(false); setErr(null)
+    setCap({ rpm: "", tpm: "" }); setAgentCaps([]); setAgents([]); setSelectedAgent("")
+    if (!isAdmin || !workspaceId || !profileId) return
+    guard.gatewayProfilesV2.rateLimits.get(authFetch, workspaceId, profileId).then(data => {
+      if (generation.current !== current) return
+      setCap(fields(data))
+      setAgentCaps(data.agent_limits.map(a => ({ ...fields(a), agent_identity_id: a.agent_identity_id })))
+      setAgents(data.available_agents)
       setLoaded(true)
-    }).catch(() => setLoaded(true))
-    return () => { cancelled = true }
-  }, [authFetch, isAdmin])
+    }).catch(error => {
+      if (generation.current === current) setErr(error instanceof Error ? error.message : "Could not load rate limits.")
+    })
+    return () => { generation.current++ }
+  }, [authFetch, workspaceId, profileId, isAdmin, reload])
 
   if (!isAdmin) return null
+  const invalid = [cap, ...agentCaps].some(c => !valid(c.rpm) || !valid(c.tpm))
+  const disabled = !loaded || saving
+  const available = agents.filter(a => !agentCaps.some(c => c.agent_identity_id === a.id))
 
   async function save() {
+    if (disabled || invalid) return
+    const current = generation.current
     setSaving(true); setErr(null); setSaved(false)
     try {
-      const body: { agent_identity_id: null; rpm: number | null; tpm: number | null } = {
-        agent_identity_id: null,
-        rpm: rpm.trim() === "" ? null : Number(rpm),
-        tpm: tpm.trim() === "" ? null : Number(tpm),
-      }
-      await guard.rateLimits.upsert(authFetch, body)
-      setSaved(true)
-      setTimeout(() => setSaved(false), 2000)
-    } catch (e: any) {
-      setErr(e?.message || "Save failed")
+      await guard.gatewayProfilesV2.rateLimits.set(authFetch, workspaceId, profileId, {
+        rpm: number(cap.rpm), tpm: number(cap.tpm),
+        agent_limits: agentCaps.map(c => ({ agent_identity_id: c.agent_identity_id, rpm: number(c.rpm), tpm: number(c.tpm) })),
+      })
+      if (generation.current === current) setSaved(true)
+    } catch (error) {
+      if (generation.current === current) setErr(error instanceof Error ? error.message : "Could not save rate limits.")
     } finally {
-      setSaving(false)
+      if (generation.current === current) setSaving(false)
     }
   }
 
-  return (
-    <section aria-label="Gateway workspace rate limits" className={styles.panel}>
-      <div style={{ padding: "15px 0", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 10 }}>
-        <span style={{ width: 30, height: 30, borderRadius: 8, background: "var(--accent)", color: "#fff", display: "grid", placeItems: "center", flexShrink: 0 }}>
-          <Clock size={15} aria-hidden="true" />
-        </span>
-        <div style={{ fontWeight: 650, fontSize: 14.5 }}>Workspace default</div>
-        {saved && <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--ok)", fontWeight: 600 }}>Saved</span>}
+  function change(next: CapFields) { setCap(next); setSaved(false) }
+
+  return <section aria-label="Profile rate limits" className={styles.panel}>
+    <div className={styles.heading}>
+      <Clock size={16} aria-hidden="true" />
+      <h3>Rate limits</h3>
+      {saved && <span className={styles.saved} role="status">Saved</span>}
+    </div>
+    <div className={styles.body}>
+      <CapInputs value={cap} onChange={change} disabled={disabled} />
+      <div className={styles.presets}>
+        <span>Presets</span>
+        {[{ label: "Smoke test", rpm: 2, tpm: 500 }, { label: "Small team", rpm: 60, tpm: 100000 },
+          { label: "Larger team", rpm: 300, tpm: 500000 }].map(p => <button key={p.label}
+            type="button" className="btn btn-ghost btn-sm" disabled={disabled}
+            onClick={() => change({ rpm: String(p.rpm), tpm: String(p.tpm) })}>{p.label}</button>)}
       </div>
-
-      <div style={{ padding: "16px 0", display: "grid", gap: 14 }}>
-        <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-          Gateway traffic limits for this workspace. Leave a field blank for no cap.
-          {overrideCount > 0 && ` ${overrideCount} agent override${overrideCount === 1 ? "" : "s"} active.`}
-        </div>
-
-        <div className={styles.inputs}>
-          <label style={{ display: "grid", gap: 4 }}>
-            <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text-2)" }}>Requests / min (RPM)</span>
-            <input
-              type="number"
-              min={1}
-              placeholder="unlimited"
-              value={rpm}
-              onChange={e => setRpm(e.target.value)}
-              disabled={!isAdmin || !loaded}
-              style={{ padding: "9px 12px", fontSize: 13, border: "1px solid var(--border)", borderRadius: 6, background: "var(--surface)", color: "var(--text)" }}
-            />
-          </label>
-          <label style={{ display: "grid", gap: 4 }}>
-            <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text-2)" }}>Tokens / min (TPM)</span>
-            <input
-              type="number"
-              min={1}
-              placeholder="unlimited"
-              value={tpm}
-              onChange={e => setTpm(e.target.value)}
-              disabled={!isAdmin || !loaded}
-              style={{ padding: "9px 12px", fontSize: 13, border: "1px solid var(--border)", borderRadius: 6, background: "var(--surface)", color: "var(--text)" }}
-            />
-          </label>
-        </div>
-
-        <RateLimitPresets isAdmin={isAdmin} onPick={(r, t) => { setRpm(String(r)); setTpm(String(t)) }} />
-
-        {err && <div style={{ fontSize: 12, color: "var(--danger)" }}>{err}</div>}
-
-        <div>
-          <button
-            type="button"
-            onClick={save}
-            disabled={!isAdmin || saving || !loaded}
-            className="btn btn-primary btn-sm"
-          >
-            {saving ? "Saving…" : "Save"}
-          </button>
-        </div>
-      </div>
-    </section>
-  )
+      {(agentCaps.length > 0 || available.length > 0) && <div className={styles.agents}>
+        <h4>Additional agent limits</h4>
+        {agentCaps.map((value, index) => {
+          const name = agents.find(a => a.id === value.agent_identity_id)?.name || value.agent_identity_id
+          return <div key={value.agent_identity_id} className={styles.agent}>
+            <div className={styles.agentHeading}><span>{name}</span>
+              <button type="button" className="btn btn-ghost btn-sm" title={`Remove ${name} limit`}
+                aria-label={`Remove ${name} limit`} disabled={disabled}
+                onClick={() => { setAgentCaps(agentCaps.filter((_, i) => i !== index)); setSaved(false) }}>
+                <Trash2 size={14} />
+              </button>
+            </div>
+            <CapInputs value={value} label={`${name} `} disabled={disabled}
+              onChange={next => { setAgentCaps(agentCaps.map((c, i) => i === index ? { ...c, ...next } : c)); setSaved(false) }} />
+          </div>
+        })}
+        {available.length > 0 && agentCaps.length < 200 && <div className={styles.add}>
+          <select aria-label="Agent identity" value={selectedAgent} disabled={disabled}
+            onChange={e => setSelectedAgent(e.target.value)}>
+            <option value="">Select agent</option>
+            {available.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+          </select>
+          <button type="button" className="btn btn-ghost btn-sm" title="Add agent limit" aria-label="Add agent limit"
+            disabled={disabled || !selectedAgent} onClick={() => {
+              setAgentCaps([...agentCaps, { agent_identity_id: selectedAgent, rpm: "", tpm: "" }])
+              setSelectedAgent(""); setSaved(false)
+            }}><Plus size={16} /></button>
+        </div>}
+      </div>}
+      {invalid && <div role="alert" className={styles.error}>Enter a positive whole number, or leave the field blank.</div>}
+      {err && <div role="alert" className={styles.error}>{err}
+        {!loaded && <button type="button" className="btn btn-ghost btn-sm" title="Retry loading limits"
+          aria-label="Retry loading limits" onClick={() => setReload(reload + 1)}><RotateCw size={14} /></button>}
+      </div>}
+      <div><button type="button" onClick={save} disabled={disabled || invalid} className="btn btn-primary btn-sm">
+        {saving ? "Saving..." : "Save limits"}
+      </button></div>
+    </div>
+  </section>
 }

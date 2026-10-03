@@ -12,6 +12,21 @@
 import { describe, expect, it } from 'vitest'
 import { GatewayValidationError } from './guard'
 
+it('reads and writes limits at the workspace-owned profile endpoint', async () => {
+  const { guard } = await import('./guard')
+  const calls: Array<{ url: string; init?: RequestInit }> = []
+  const fetcher: any = async (url: string, init?: RequestInit) => {
+    calls.push({ url, init })
+    return new Response(JSON.stringify({ rpm: 2, tpm: 500, agent_limits: [], available_agents: [] }))
+  }
+  await guard.gatewayProfilesV2.rateLimits.get(fetcher, 'ws', 'profile-1')
+  await guard.gatewayProfilesV2.rateLimits.set(fetcher, 'ws', 'profile-1', { rpm: 2, tpm: 500, agent_limits: [] })
+  expect(calls.map(c => c.url)).toEqual([expect.stringContaining('/workspaces/ws/gateway-profiles-v2/profile-1/rate-limits'),
+    expect.stringContaining('/workspaces/ws/gateway-profiles-v2/profile-1/rate-limits')])
+  expect(calls[1].init?.method).toBe('PUT')
+  expect(JSON.parse(String(calls[1].init?.body))).toEqual({ rpm: 2, tpm: 500, agent_limits: [] })
+})
+
 // Re-import the internal helper via a controlled surface. We test the
 // public class here; the internal `_formatGatewayError` is exercised
 // by every mutation call so we assert its behavior via a
@@ -128,5 +143,11 @@ describe('_formatGatewayError (via _mutateJson)', () => {
   it('preserves ordinary server errors', async () => {
     const err = await _invokeParserWith(JSON.stringify({ detail: 'Published profile is locked.' }), 409)
     expect((err as Error).message).toBe('Published profile is locked.')
+  })
+
+  it('formats strict rate-limit validation without returning raw JSON', async () => {
+    const err = await _invokeParserWith(JSON.stringify({ detail: [{ loc: ['body', 'rpm'],
+      type: 'greater_than', msg: 'Input should be greater than 0', input: 0 }] }), 422)
+    expect((err as Error).message).toBe('Check the profile fields. Requests per minute: Enter a positive whole number up to 2147483647, or leave it blank.')
   })
 })

@@ -22,7 +22,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Column, DateTime, ForeignKey, Index, Integer, String, UniqueConstraint
+from sqlalchemy import CheckConstraint, Column, DateTime, ForeignKey, ForeignKeyConstraint, Index, Integer, String, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 
 from app.core.database import Base
@@ -65,6 +65,7 @@ class GatewayProfile(Base):
     updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     __table_args__ = (
+        UniqueConstraint("id", "workspace_id", name="uq_gateway_profiles_id_workspace"),
         UniqueConstraint("workspace_id", "environment_id", "name", name="uq_gateway_profiles_workspace_env_name"),
         UniqueConstraint("workspace_id", "cond_code", name="uq_gateway_profiles_workspace_cond_code"),
         Index("ix_gateway_profiles_workspace_id", "workspace_id"),
@@ -104,4 +105,28 @@ class GatewayProfileRevision(Base):
             name="uq_gateway_profile_revisions_profile_version",
         ),
         Index("ix_gateway_profile_revisions_profile", "profile_id"),
+    )
+
+
+class GatewayProfileRateLimit(Base):
+    """Mutable limits attached to the profile, not its routing revision."""
+
+    __tablename__ = "gateway_profile_rate_limits"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id = Column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False)
+    profile_id = Column(UUID(as_uuid=True), nullable=False)
+    agent_identity_id = Column(String(36), ForeignKey("agent_identities.id", ondelete="CASCADE"), nullable=True)
+    rpm = Column(Integer, nullable=True)
+    tpm = Column(Integer, nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    __table_args__ = (
+        ForeignKeyConstraint(["profile_id", "workspace_id"], ["gateway_profiles.id", "gateway_profiles.workspace_id"], ondelete="CASCADE"),
+        ForeignKeyConstraint(["workspace_id", "agent_identity_id"], ["agent_identities.workspace_id", "agent_identities.id"], ondelete="CASCADE"),
+        CheckConstraint("rpm IS NULL OR rpm > 0", name="ck_gateway_profile_rate_rpm"),
+        CheckConstraint("tpm IS NULL OR tpm > 0", name="ck_gateway_profile_rate_tpm"),
+        Index("uq_gateway_profile_rate_default", "profile_id", unique=True, postgresql_where=text("agent_identity_id IS NULL")),
+        Index("uq_gateway_profile_rate_agent", "profile_id", "agent_identity_id", unique=True, postgresql_where=text("agent_identity_id IS NOT NULL")),
+        Index("ix_gateway_profile_rate_workspace", "workspace_id"),
     )

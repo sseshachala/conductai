@@ -52,6 +52,27 @@ Policy, budgets, credentials, rate limits, and audit still run through the same
 Gateway path. Audit metadata records the original selection and pinned revision.
 Existing full cond IDs and non-canonical proxy routes retain their behavior.
 
+### Profile rate limits
+
+Set RPM and TPM on each profile in **Gateways**. Blank means unlimited.
+Limits remain editable after publishing, without creating a routing revision.
+
+Requests from all clients and identities share the profile's quota. Optional
+agent caps apply in addition to that quota. Other profiles have separate quotas;
+changing revisions does not reset a profile's counters. Workspace spend budgets
+remain separate.
+
+TPM reserves estimated input plus the requested output allowance, then settles
+against provider-reported input and output tokens, including cache usage and
+paid fallback attempts. Missing or interrupted usage keeps the reservation.
+For small smoke-test caps, send an explicit small `max_tokens` or
+`max_output_tokens`. Caps return HTTP 429 with `Retry-After`; an unavailable
+limit lookup or Redis service returns HTTP 503.
+
+Migration 0163 copies existing workspace and agent limits onto each existing v2
+profile. Legacy rows remain intact for older proxy routes; v2 requests use only
+profile limits. New profiles start unlimited until configured.
+
 ---
 
 ## Capability matrix — what the catalog certifies

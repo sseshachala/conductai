@@ -21,9 +21,13 @@ const GATEWAY_FIELD_LABELS: Record<string, string> = {
   name: "Name", model_alias: "Alias", timeout_seconds: "Timeout", max_attempts: "Max attempts",
   id: "Role", provider: "Provider", model: "Model", credential_ref: "Credential",
   targets: "Targets", accepts: "Supported APIs", endpoint: "Endpoint", transport: "Transport",
+  rpm: "Requests per minute", tpm: "Tokens per minute", agent_limits: "Agent limits", agent_identity_id: "Agent identity",
 }
 
 function validationMessage(error: GatewayValidationErrorItem, field: string): string {
+  if (field === "rpm" || field === "tpm") return "Enter a positive whole number up to 2147483647, or leave it blank."
+  if (field === "agent_identity_id") return "Choose an agent in this workspace."
+  if (field === "agent_limits" && error.type === "too_long") return "Use no more than 200 agent limits per profile."
   if (field === "timeout_seconds") return "Enter a whole number from 1 to 600 seconds."
   if (field === "max_attempts") return "Enter a whole number from 1 to 5."
   if (field === "credential_ref") return "Choose a credential vault and handle."
@@ -75,6 +79,13 @@ function _formatGatewayError(bodyText: string, status: number): Error {
   try {
     const parsed = JSON.parse(bodyText)
     const detail = parsed?.detail
+    if (Array.isArray(detail)) {
+      return new GatewayValidationError("Check the profile fields.", detail.map(item => ({
+        path: Array.isArray(item.loc) ? item.loc.filter((part: unknown) => part !== "body").join(".") : "",
+        message: typeof item.msg === "string" ? item.msg : "Invalid value.",
+        type: typeof item.type === "string" ? item.type : "value_error", target_index: null,
+      })))
+    }
     if (
       detail &&
       typeof detail === "object" &&
@@ -126,6 +137,23 @@ async function _mutateVoid(
 }
 
 // ─── Gateway Profile v2 (#2001/#2003) ───────────────────────────────
+
+export interface GatewayProfileAgentRateCap {
+  agent_identity_id: string
+  rpm: number | null
+  tpm: number | null
+}
+
+export interface GatewayProfileRateLimitsInput {
+  rpm: number | null
+  tpm: number | null
+  agent_limits?: GatewayProfileAgentRateCap[]
+}
+
+export interface GatewayProfileRateLimits extends GatewayProfileRateLimitsInput {
+  agent_limits: GatewayProfileAgentRateCap[]
+  available_agents: Array<{ id: string; name: string }>
+}
 
 export type GatewayProfileV2Operation =
   | "anthropic_messages"
@@ -520,6 +548,12 @@ export const guard = {
   },
 
   gatewayProfilesV2: {
+    rateLimits: {
+      get: (f: AuthFetch, workspaceId: string, id: string) =>
+        json<GatewayProfileRateLimits>(f, `${API}/workspaces/${workspaceId}/gateway-profiles-v2/${id}/rate-limits`),
+      set: (f: AuthFetch, workspaceId: string, id: string, body: GatewayProfileRateLimitsInput) =>
+        _mutateJson<GatewayProfileRateLimits>(f, "PUT", `${API}/workspaces/${workspaceId}/gateway-profiles-v2/${id}/rate-limits`, body),
+    },
     list: (f: AuthFetch, workspaceId: string) =>
       json<GatewayProfileV2Out[]>(f, `${API}/workspaces/${workspaceId}/gateway-profiles-v2`),
     get: (f: AuthFetch, workspaceId: string, id: string) =>
