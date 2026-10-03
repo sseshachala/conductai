@@ -135,6 +135,15 @@ def test_tpm_reserves_input_plus_output_and_rejects_without_charging(redis):
     assert list(redis.values.values()) == [70]
 
 
+@pytest.mark.parametrize("operation", ["anthropic_messages", "openai_chat_completions", "openai_responses", "anthropic_count_tokens"])
+def test_token_count_requests_do_not_reserve_generation_allowance(operation):
+    from app.runtime.accounting.estimator import estimate_tokens
+    body = {"messages": [{"role": "user", "content": "Say hello"}], "max_tokens": 10}
+    estimate = estimate_tokens(body)
+    expected = estimate.input_tokens + (0 if operation == "anthropic_count_tokens" else estimate.output_tokens_allowance)
+    assert limiter.reserved_profile_tokens(body, operation) == expected
+
+
 @pytest.mark.parametrize("operation,payload,expected", [
     ("openai_chat_completions", {"usage": {"prompt_tokens": 10, "completion_tokens": 3}}, 13),
     ("openai_responses", {"usage": {"input_tokens": 10, "output_tokens": 4}}, 14),

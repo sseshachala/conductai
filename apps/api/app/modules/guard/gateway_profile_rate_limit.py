@@ -63,6 +63,12 @@ class ProfileRateDecision:
     admission: ProfileRateAdmission | None = None
 
 
+def reserved_profile_tokens(body: dict, operation: str) -> int:
+    from app.runtime.accounting.estimator import estimate_tokens
+    estimate = estimate_tokens(body)
+    return estimate.input_tokens + (0 if operation == "anthropic_count_tokens" else estimate.output_tokens_allowance)
+
+
 def check_profile_rate_limit(db, *, workspace_id: str, profile_id: UUID | None,
                              revision_id: UUID, agent_identity_id: str | None,
                              reserved_tokens: int) -> ProfileRateDecision:

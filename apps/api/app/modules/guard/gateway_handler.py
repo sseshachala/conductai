@@ -561,16 +561,13 @@ async def handle_gateway_request(
             _db_local = _SL()
             try:
                 if _v2_plan is not None:
-                    from app.modules.guard.gateway_profile_rate_limit import check_profile_rate_limit
-                    estimate = _estimate_tokens(body)
+                    from app.modules.guard.gateway_profile_rate_limit import check_profile_rate_limit, reserved_profile_tokens
                     return check_profile_rate_limit(
                         _db_local, workspace_id=workspace_id,
                         profile_id=getattr(_v2_plan.resolved, "profile_id", None),
                         revision_id=_v2_plan.resolved.revision_id,
                         agent_identity_id=str(_agent_identity_id) if _agent_identity_id else None,
-                        reserved_tokens=estimate.input_tokens + (
-                            0 if operation == "count_tokens" else estimate.output_tokens_allowance
-                        ),
+                        reserved_tokens=reserved_profile_tokens(body, _v2_plan.operation),
                     )
                 set_workspace_rls(_db_local, workspace_id)
                 return _check_rate_limit(
