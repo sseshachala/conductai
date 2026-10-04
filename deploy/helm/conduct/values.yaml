@@ -45,7 +45,18 @@ config:
   postgresUser: conduct
   postgresDb: conduct
   # Additional non-secret API/Gateway/worker environment variables.
-  extraEnv: {}
+  # Rollout order: migrate -> worker deployed -> dry-run -> queue enable -> cleanup enable.
+  extraEnv:
+    GUARD_PROJECTION_QUEUE_ENABLED: false
+    GUARD_PROJECTION_PAUSED: false
+    GUARD_PROJECTION_RETENTION_DAYS: 30
+    GUARD_PROJECTION_RETENTION_CLEANUP_ENABLED: false
+    GUARD_PROJECTION_RETENTION_DRY_RUN: true
+    GUARD_PROJECTION_RETENTION_INTERVAL_SECONDS: 3600
+    GUARD_PROJECTION_CONSUMER_CONCURRENCY: 1
+    GUARD_PROJECTION_RECONCILIATION_INTERVAL_SECONDS: 60
+    GUARD_PROJECTION_RECONCILIATION_BATCH_SIZE: 100
+    GUARD_PROJECTION_PRUNE_BATCH_SIZE: 500
 
 api:
   replicas: 1

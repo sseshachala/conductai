@@ -1,11 +1,16 @@
 """GET /guard/knowledge/search — unified semantic search across Guard knowledge index."""
+
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import text as sa_text
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_workspace_id, require_permission
 from app.core.database import get_db
+from app.core.workspace_context import set_workspace_rls
 from app.modules.guard.embedding import embedding_client_for_workspace
+from app.modules.guard.projection_retention import active_projection_sql_predicate
 
 router = APIRouter(prefix="/guard/knowledge", tags=["guard"])
 
@@ -27,11 +32,15 @@ def search_knowledge(
     Returns ranked results from audit events, custom rules, and discovered agents.
     Score is cosine similarity (1.0 = identical, 0.0 = orthogonal).
     """
-    client = embedding_client_for_workspace(db, workspace_id)
+    db.rollback()
+    client = embedding_client_for_workspace(workspace_id)
     if not client:
         raise HTTPException(status_code=503, detail="Embedding service not configured")
 
     embedding = client.embed(q[:2000])
+    set_workspace_rls(db, workspace_id)
+    projection_now = datetime.now(timezone.utc)
+    active_filter = active_projection_sql_predicate("gki")
     kind_filter = "AND gki.source_kind = :kind" if kind else ""
 
     rows = db.execute(
@@ -39,7 +48,7 @@ def search_knowledge(
             f"SELECT gki.id, gki.source_kind, gki.source_id, gki.canonical_text, gki.metadata, "
             f"(gki.embedding <=> CAST(:vec AS vector)) AS distance "
             f"FROM guard_knowledge_index gki "
-            f"WHERE gki.workspace_id = CAST(:workspace_id AS uuid) "
+            f"WHERE {active_filter} "
             f"  AND gki.embedding IS NOT NULL "
             f"{kind_filter} "
             f"ORDER BY distance ASC LIMIT :limit"
@@ -49,6 +58,7 @@ def search_knowledge(
             "vec": str(embedding),
             "limit": limit,
             "kind": kind,
+            "projection_now": projection_now,
         },
     ).fetchall()
 

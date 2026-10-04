@@ -1,18 +1,40 @@
 """Guard knowledge index — projectors and async indexing."""
-import hashlib
-import uuid
-from datetime import datetime, timezone
 
+import hashlib
+import json
+import uuid
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from typing import Any
+
+import sqlalchemy as sa
 import structlog
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
+from app.core.database import SessionLocal
+from app.core.workspace_context import set_workspace_rls
 from app.modules.guard.embedding import embedding_client_for_workspace
 from app.modules.guard.models import (
     DiscoveredAgent,
     GuardAuditEvent,
     GuardKnowledgeIndex,
+    GuardProjectionIntent,
+    GuardProjectionSummary,
     WorkspaceCustomRule,
 )
+from app.modules.guard.projection_contract import (
+    ProjectionIntentStatus,
+    ProjectionSourceKind,
+)
+from app.modules.guard.projection_policy import (
+    audit_event_projection_reason,
+    audit_event_source_version,
+    projection_expires_at,
+    projection_is_expired,
+)
+from app.modules.guard.projection_retention import apply_projection_search_filter
 
 log = structlog.get_logger(__name__)
 
@@ -69,6 +91,385 @@ def _project_rule(rule: WorkspaceCustomRule) -> tuple[str, dict]:
     return canonical, metadata
 
 
+def _full_hash(text: str) -> str:
+    return hashlib.sha256(text.encode()).hexdigest()
+
+
+@dataclass(frozen=True)
+class _ProjectionSnapshot:
+    workspace_id: str
+    source_kind: ProjectionSourceKind
+    source_id: str
+    source_version: str
+    canonical_text: str
+    metadata: dict[str, Any]
+    content_hash: str
+    source_timestamp: datetime | None
+    expires_at: datetime | None
+
+
+def _project_audit_summary(summary: GuardProjectionSummary) -> tuple[str, dict]:
+    metadata = dict(summary.canonical_facts or {})
+    metadata.update(
+        {
+            "event_count": summary.event_count,
+            "window_start": summary.window_start.isoformat(),
+            "window_end": summary.window_end.isoformat(),
+        }
+    )
+    rule_id = summary.rule_id or "none"
+    canonical = " | ".join(
+        [
+            "Decision: allowed",
+            f"AI tool: {summary.ai_tool}",
+            f"Tool: {summary.tool_call}",
+            f"Rule: {rule_id}",
+            f"Events: {summary.event_count}",
+            f"Window: {summary.window_start.isoformat()} to {summary.window_end.isoformat()}",
+        ]
+    )
+    return canonical, metadata
+
+
+def _version_candidates(
+    source: Any, kind: ProjectionSourceKind, canonical: str, metadata: dict
+) -> set[str]:
+    versions = {_hash(canonical), _full_hash(canonical)}
+    if kind is ProjectionSourceKind.AUDIT_EVENT:
+        versions.add(audit_event_source_version(source))
+    elif kind is ProjectionSourceKind.AUDIT_SUMMARY:
+        versions.add(str(source.version))
+    else:
+        updated_at = getattr(source, "updated_at", None)
+        if updated_at is not None:
+            versions.add(updated_at.isoformat())
+        versions.add(
+            _full_hash(
+                json.dumps(
+                    {"text": canonical, "metadata": metadata},
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    default=str,
+                )
+            )
+        )
+    return versions
+
+
+def _load_source(
+    db: Session,
+    *,
+    workspace_id: str,
+    source_kind: ProjectionSourceKind,
+    source_id: str,
+    for_update: bool = False,
+):
+    ws_uuid = uuid.UUID(workspace_id)
+    try:
+        source_uuid = uuid.UUID(source_id)
+    except ValueError:
+        source_uuid = None
+    query = None
+    if source_kind is ProjectionSourceKind.AUDIT_EVENT and source_uuid:
+        query = db.query(GuardAuditEvent).filter(
+            GuardAuditEvent.id == source_uuid, GuardAuditEvent.workspace_id == ws_uuid
+        )
+    elif source_kind is ProjectionSourceKind.AUDIT_SUMMARY and source_uuid:
+        query = db.query(GuardProjectionSummary).filter(
+            GuardProjectionSummary.id == source_uuid,
+            GuardProjectionSummary.workspace_id == ws_uuid,
+        )
+    elif source_kind is ProjectionSourceKind.RULE:
+        query = db.query(WorkspaceCustomRule).filter(
+            WorkspaceCustomRule.rule_id == source_id,
+            WorkspaceCustomRule.workspace_id == ws_uuid,
+        )
+    elif source_kind is ProjectionSourceKind.DISCOVERED_AGENT and source_uuid:
+        query = db.query(DiscoveredAgent).filter(
+            DiscoveredAgent.id == source_uuid, DiscoveredAgent.workspace_id == ws_uuid
+        )
+    if query is None:
+        return None
+    return (query.with_for_update() if for_update else query).first()
+
+
+def _snapshot_source(
+    source: Any,
+    *,
+    workspace_id: str,
+    source_kind: ProjectionSourceKind,
+    source_id: str,
+    expected_version: str,
+    now: datetime,
+):
+    if source_kind is ProjectionSourceKind.AUDIT_EVENT:
+        if (
+            audit_event_projection_reason(source.decision, source.evaluated_rules)
+            is None
+        ):
+            return ProjectionIntentStatus.SUPERSEDED, None
+        canonical, metadata = _project_audit_event(source)
+        source_timestamp = source.ts
+        expires_at = projection_expires_at(
+            source_kind, source_timestamp, settings.guard_projection_retention_days
+        )
+    elif source_kind is ProjectionSourceKind.AUDIT_SUMMARY:
+        canonical, metadata = _project_audit_summary(source)
+        source_timestamp = source.source_timestamp
+        expires_at = source.expires_at
+    elif source_kind is ProjectionSourceKind.RULE:
+        canonical, metadata = _project_rule(source)
+        source_timestamp = expires_at = None
+    elif source_kind is ProjectionSourceKind.DISCOVERED_AGENT:
+        canonical, metadata = _project_discovered_agent(source)
+        source_timestamp = expires_at = None
+    else:
+        return ProjectionIntentStatus.MISSING, None
+    if expected_version not in _version_candidates(
+        source, source_kind, canonical, metadata
+    ):
+        return ProjectionIntentStatus.SUPERSEDED, None
+    if projection_is_expired(expires_at, now):
+        return ProjectionIntentStatus.EXPIRED, None
+    return None, _ProjectionSnapshot(
+        workspace_id=workspace_id,
+        source_kind=source_kind,
+        source_id=source_id,
+        source_version=expected_version,
+        canonical_text=canonical,
+        metadata=metadata,
+        content_hash=_hash(canonical),
+        source_timestamp=source_timestamp,
+        expires_at=expires_at,
+    )
+
+
+def _intent_snapshot(intent_id: str, workspace_id: str):
+    now = datetime.now(timezone.utc)
+    workspace_uuid = uuid.UUID(workspace_id)
+    with SessionLocal() as db:
+        set_workspace_rls(db, workspace_uuid)
+        intent = (
+            db.query(GuardProjectionIntent)
+            .filter(
+                GuardProjectionIntent.id == uuid.UUID(intent_id),
+                GuardProjectionIntent.workspace_id == workspace_uuid,
+            )
+            .first()
+        )
+        if intent is None:
+            return ProjectionIntentStatus.MISSING, None
+        if intent.status in {"completed", "superseded", "expired", "missing"}:
+            return ProjectionIntentStatus(intent.status), None
+        try:
+            kind = ProjectionSourceKind(intent.source_kind)
+        except ValueError:
+            return ProjectionIntentStatus.MISSING, None
+        source = _load_source(
+            db, workspace_id=workspace_id, source_kind=kind, source_id=intent.source_id
+        )
+        if source is None:
+            return ProjectionIntentStatus.MISSING, None
+        return _snapshot_source(
+            source,
+            workspace_id=workspace_id,
+            source_kind=kind,
+            source_id=intent.source_id,
+            expected_version=intent.source_version,
+            now=now,
+        )
+
+
+def _projection_is_current(snapshot: _ProjectionSnapshot) -> bool:
+    with SessionLocal() as db:
+        set_workspace_rls(db, snapshot.workspace_id)
+        projection_now = datetime.now(timezone.utc)
+        query = db.query(GuardKnowledgeIndex).filter(
+            GuardKnowledgeIndex.source_kind == snapshot.source_kind.value,
+            GuardKnowledgeIndex.source_id == snapshot.source_id,
+        )
+        row = apply_projection_search_filter(
+            query,
+            model=GuardKnowledgeIndex,
+            workspace_id=uuid.UUID(snapshot.workspace_id),
+            now=projection_now,
+        ).first()
+        return bool(
+            row
+            and row.content_hash == snapshot.content_hash
+            and row.meta == snapshot.metadata
+            and row.source_timestamp == snapshot.source_timestamp
+            and row.expires_at == snapshot.expires_at
+            and row.embedding is not None
+        )
+
+
+def _locked_projection_for_snapshot(
+    db: Session, snapshot: _ProjectionSnapshot
+) -> GuardKnowledgeIndex | None:
+    return (
+        db.query(GuardKnowledgeIndex)
+        .filter(
+            GuardKnowledgeIndex.workspace_id == uuid.UUID(snapshot.workspace_id),
+            GuardKnowledgeIndex.source_kind == snapshot.source_kind.value,
+            GuardKnowledgeIndex.source_id == snapshot.source_id,
+        )
+        .with_for_update()
+        .first()
+    )
+
+
+def _projection_matches_snapshot(
+    row: GuardKnowledgeIndex | None, snapshot: _ProjectionSnapshot
+) -> bool:
+    return bool(
+        row
+        and row.canonical_text == snapshot.canonical_text
+        and row.content_hash == snapshot.content_hash
+        and row.meta == snapshot.metadata
+        and row.source_timestamp == snapshot.source_timestamp
+        and row.expires_at == snapshot.expires_at
+    )
+
+
+def _newer_intent_exists(
+    db: Session, snapshot: _ProjectionSnapshot, intent: GuardProjectionIntent | None
+) -> bool:
+    created_at = getattr(intent, "created_at", None)
+    if intent is None or created_at is None:
+        return False
+    return (
+        db.query(GuardProjectionIntent.id)
+        .filter(
+            GuardProjectionIntent.workspace_id == uuid.UUID(snapshot.workspace_id),
+            GuardProjectionIntent.source_kind == snapshot.source_kind.value,
+            GuardProjectionIntent.source_id == snapshot.source_id,
+            GuardProjectionIntent.source_version != snapshot.source_version,
+            GuardProjectionIntent.created_at > created_at,
+        )
+        .first()
+        is not None
+    )
+
+
+def _conditional_write(
+    snapshot: _ProjectionSnapshot,
+    embedding: list[float],
+    *,
+    intent_id: str | None = None,
+) -> ProjectionIntentStatus:
+    now = datetime.now(timezone.utc)
+    with SessionLocal() as db:
+        set_workspace_rls(db, snapshot.workspace_id)
+        intent = None
+        if intent_id is not None:
+            intent = (
+                db.query(GuardProjectionIntent)
+                .filter(
+                    GuardProjectionIntent.id == uuid.UUID(intent_id),
+                    GuardProjectionIntent.workspace_id
+                    == uuid.UUID(snapshot.workspace_id),
+                )
+                .first()
+            )
+            if (
+                intent is None
+                or intent.source_kind != snapshot.source_kind.value
+                or intent.source_id != snapshot.source_id
+                or intent.source_version != snapshot.source_version
+            ):
+                return ProjectionIntentStatus.MISSING
+        existing_projection = _locked_projection_for_snapshot(db, snapshot)
+        source = _load_source(
+            db,
+            workspace_id=snapshot.workspace_id,
+            source_kind=snapshot.source_kind,
+            source_id=snapshot.source_id,
+            for_update=True,
+        )
+        if source is None:
+            if _projection_matches_snapshot(
+                existing_projection, snapshot
+            ) and not _newer_intent_exists(db, snapshot, intent):
+                db.delete(existing_projection)
+                db.commit()
+                log.debug(
+                    "guard.knowledge.deleted_missing_source",
+                    source_kind=snapshot.source_kind.value,
+                    source_id=snapshot.source_id,
+                )
+            return ProjectionIntentStatus.MISSING
+        status, current = _snapshot_source(
+            source,
+            workspace_id=snapshot.workspace_id,
+            source_kind=snapshot.source_kind,
+            source_id=snapshot.source_id,
+            expected_version=snapshot.source_version,
+            now=now,
+        )
+        if status is not None or current is None:
+            return status or ProjectionIntentStatus.MISSING
+        stmt = (
+            insert(GuardKnowledgeIndex)
+            .values(
+                workspace_id=uuid.UUID(current.workspace_id),
+                source_kind=current.source_kind.value,
+                source_id=current.source_id,
+                canonical_text=current.canonical_text,
+                meta=current.metadata,
+                content_hash=current.content_hash,
+                embedding=embedding,
+                source_timestamp=current.source_timestamp,
+                expires_at=current.expires_at,
+                updated_at=now,
+            )
+            .on_conflict_do_update(
+                constraint="guard_knowledge_index_workspace_id_source_kind_source_id_key",
+                set_={
+                    "canonical_text": current.canonical_text,
+                    "metadata": current.metadata,
+                    "content_hash": current.content_hash,
+                    "embedding": embedding,
+                    "source_timestamp": current.source_timestamp,
+                    "expires_at": current.expires_at,
+                    "updated_at": now,
+                },
+                where=sa.or_(
+                    GuardKnowledgeIndex.content_hash != current.content_hash,
+                    GuardKnowledgeIndex.meta.is_distinct_from(current.metadata),
+                    GuardKnowledgeIndex.source_timestamp.is_distinct_from(
+                        current.source_timestamp
+                    ),
+                    GuardKnowledgeIndex.expires_at.is_distinct_from(current.expires_at),
+                ),
+            )
+        )
+        db.execute(stmt)
+        db.commit()
+    log.debug(
+        "guard.knowledge.indexed",
+        source_kind=snapshot.source_kind.value,
+        source_id=snapshot.source_id,
+    )
+    return ProjectionIntentStatus.COMPLETED
+
+
+def process_projection_intent(
+    intent_id: str, workspace_id: str
+) -> ProjectionIntentStatus:
+    # Process one tenant-scoped intent without holding a provider connection.
+    status, snapshot = _intent_snapshot(intent_id, workspace_id)
+    if status is not None or snapshot is None:
+        return status or ProjectionIntentStatus.MISSING
+    if _projection_is_current(snapshot):
+        return ProjectionIntentStatus.COMPLETED
+    client = embedding_client_for_workspace(snapshot.workspace_id)
+    if not client:
+        raise RuntimeError('Embedding service not configured')
+    embedding = client.embed(snapshot.canonical_text[:2000])
+    return _conditional_write(snapshot, embedding, intent_id=intent_id)
+
+
 def index_source(
     workspace_id: str,
     source_kind: str,
@@ -77,60 +478,47 @@ def index_source(
     metadata: dict,
     db: Session,
 ) -> None:
-    """Upsert one document into guard_knowledge_index with embedding."""
-    content_hash = _hash(canonical_text)
-    ws_uuid = uuid.UUID(workspace_id)
-
-    existing = (
-        db.query(GuardKnowledgeIndex)
-        .filter(
-            GuardKnowledgeIndex.workspace_id == ws_uuid,
-            GuardKnowledgeIndex.source_kind == source_kind,
-            GuardKnowledgeIndex.source_id == source_id,
-        )
-        .first()
+    """Preserve the legacy API while detaching the provider wait."""
+    kind = ProjectionSourceKind(source_kind)
+    source = _load_source(
+        db, workspace_id=workspace_id, source_kind=kind, source_id=source_id
     )
-
-    if existing and existing.content_hash == content_hash:
-        return  # unchanged — skip re-embedding
-
-    client = embedding_client_for_workspace(db, workspace_id)
+    if source is None:
+        return
+    source_version = (
+        audit_event_source_version(source)
+        if kind is ProjectionSourceKind.AUDIT_EVENT
+        else str(source.version)
+        if kind is ProjectionSourceKind.AUDIT_SUMMARY
+        else _hash(canonical_text)
+    )
+    status, snapshot = _snapshot_source(
+        source,
+        workspace_id=workspace_id,
+        source_kind=kind,
+        source_id=source_id,
+        expected_version=source_version,
+        now=datetime.now(timezone.utc),
+    )
+    if status is not None or snapshot is None:
+        return
+    db.commit()
+    if _projection_is_current(snapshot):
+        return
+    client = embedding_client_for_workspace(workspace_id)
     if not client:
         log.warning("guard.knowledge.no_embedding_client", workspace_id=workspace_id)
         return
-
-    embedding = client.embed(canonical_text[:2000])
-
-    if existing:
-        existing.canonical_text = canonical_text
-        existing.meta = metadata
-        existing.content_hash = content_hash
-        existing.embedding = embedding
-        existing.updated_at = datetime.now(timezone.utc)
-    else:
-        db.add(
-            GuardKnowledgeIndex(
-                workspace_id=ws_uuid,
-                source_kind=source_kind,
-                source_id=source_id,
-                canonical_text=canonical_text,
-                meta=metadata,
-                content_hash=content_hash,
-                embedding=embedding,
-            )
-        )
-    db.commit()
-    log.debug(
-        "guard.knowledge.indexed",
-        source_kind=source_kind,
-        source_id=source_id,
-    )
+    embedding = client.embed(snapshot.canonical_text[:2000])
+    _conditional_write(snapshot, embedding)
 
 
 def project_audit_event(event: GuardAuditEvent, db: Session) -> None:
     """Project a GuardAuditEvent into the knowledge index."""
     canonical, metadata = _project_audit_event(event)
-    index_source(str(event.workspace_id), "audit_event", str(event.id), canonical, metadata, db)
+    index_source(
+        str(event.workspace_id), "audit_event", str(event.id), canonical, metadata, db
+    )
 
 
 def project_rule(rule: WorkspaceCustomRule, db: Session) -> None:
@@ -141,13 +529,24 @@ def project_rule(rule: WorkspaceCustomRule, db: Session) -> None:
 
 def _project_discovered_agent(agent: DiscoveredAgent) -> tuple[str, dict]:
     from app.modules.guard.discovery_inventory import agent_view
+
     view = agent_view(agent)
     # Indexed facts must not turn into indefinitely cached protection claims.
     metadata = {key: view[key] for key in ("id", "framework", "device_id", "detection")}
-    return f"Discovery finding: {agent.framework}. Query live discovery inventory for protection and freshness evidence.", metadata
+    return (
+        f"Discovery finding: {agent.framework}. Query live discovery inventory for protection and freshness evidence.",
+        metadata,
+    )
 
 
 def project_discovered_agent(agent: DiscoveredAgent, db: Session) -> None:
     """Project a DiscoveredAgent into the knowledge index."""
     canonical, metadata = _project_discovered_agent(agent)
-    index_source(str(agent.workspace_id), "discovered_agent", str(agent.id), canonical, metadata, db)
+    index_source(
+        str(agent.workspace_id),
+        "discovered_agent",
+        str(agent.id),
+        canonical,
+        metadata,
+        db,
+    )

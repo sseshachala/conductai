@@ -1,4 +1,6 @@
+from pydantic import Field
 from pydantic_settings import BaseSettings
+
 from app.core.auth_deployment import AuthMode, validate_auth_mode
 
 
@@ -152,6 +154,41 @@ class Settings(BaseSettings):
     # would let unscanned tool_call arguments flow back to callers.
     # Flip on per-workspace via env var after PR 2 lands.
     guard_gateway_tools_enabled: bool = False
+
+
+    # #2331 durable knowledge projection outbox. Disabled by default for a
+    # schema-first rollout; pause is an independent emergency stop that leaves
+    # audit ingestion and enforcement untouched.
+    guard_projection_queue_enabled: bool = False
+    guard_projection_paused: bool = False
+    guard_projection_retention_days: int = Field(default=30, gt=0, le=3650)
+    # Retention cleanup is an independent worker daemon. Keep destructive
+    # cleanup disabled and dry-run enabled until operators have inspected the
+    # aggregate candidate metrics/logs for their deployment.
+    guard_projection_retention_cleanup_enabled: bool = False
+    guard_projection_retention_dry_run: bool = True
+    guard_projection_retention_interval_seconds: int = Field(
+        default=3600, ge=60, le=86400
+    )
+    guard_projection_allowed_summary_window_minutes: int = Field(default=60, gt=0, le=1440)
+    guard_projection_queue_max_depth: int = Field(default=10_000, gt=0)
+    guard_projection_consumer_concurrency: int = Field(default=1, ge=0, le=64)
+    guard_projection_lease_seconds: int = Field(default=300, gt=0)
+    guard_projection_max_attempts: int = Field(default=5, gt=0, le=100)
+    guard_projection_retry_base_seconds: int = Field(default=5, gt=0)
+    guard_projection_retry_max_seconds: int = Field(default=900, gt=0)
+    guard_projection_reconciliation_interval_seconds: int = Field(default=60, gt=0)
+    guard_projection_reconciliation_batch_size: int = Field(default=100, gt=0, le=5000)
+    # Maximum time an enqueued pending/retry intent may remain unclaimed before
+    # reconciliation reserves and redispatches it. When unset, projection_queue
+    # derives a conservative value from the lease and reconciliation interval.
+    guard_projection_delivery_timeout_seconds: int | None = Field(default=None, gt=0)
+    # DEPRECATED compatibility setting retained for existing deployments.
+    # New retention behavior is driven by per-row retention metadata and
+    # guard_projection_retention_days; do not remove until old env/config
+    # inventories have been migrated.
+    guard_projection_prune_after_days: int = Field(default=7, gt=0, le=3650)
+    guard_projection_prune_batch_size: int = Field(default=500, gt=0, le=5000)
 
     # #2155 — Streaming + tools with buffered-delta validation. When on,
     # ``stream=true`` combined with ``tools`` is accepted; the streaming

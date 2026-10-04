@@ -18,6 +18,12 @@ oidc:
 secrets:
   existingSecret: conduct-backend
   proxySecret: conduct-login
+# Safe-off projection rollout; see the chart README before enabling cleanup.
+config:
+  extraEnv:
+    GUARD_PROJECTION_QUEUE_ENABLED: false
+    GUARD_PROJECTION_RETENTION_CLEANUP_ENABLED: false
+    GUARD_PROJECTION_RETENTION_DRY_RUN: true
 bootstrap:
   workspaceId: bbbbbbbb-0000-4000-8000-000000000001
   workspaceName: My workspace

@@ -12,7 +12,41 @@ here for two reasons:
 Workspace context is preserved in the Slack post and structlog line where
 it belongs, not in the metric labels.
 """
-from prometheus_client import Counter
+from prometheus_client import Counter, Gauge, Histogram
+
+# SQLAlchemy QueuePool metrics intentionally carry no database URL, process,
+# exception text, or connection-record labels. Those are secret-bearing or
+# unbounded; each process has one primary application pool.
+SQLALCHEMY_POOL_CHECKOUTS = Counter(
+    "sqlalchemy_pool_checkouts_total",
+    "Successful SQLAlchemy QueuePool connection checkouts.",
+)
+
+SQLALCHEMY_POOL_CHECKINS = Counter(
+    "sqlalchemy_pool_checkins_total",
+    "SQLAlchemy QueuePool connection checkins.",
+)
+
+SQLALCHEMY_POOL_CONNECTIONS_CURRENT = Gauge(
+    "sqlalchemy_pool_connections_current",
+    "Connections currently checked out from the SQLAlchemy QueuePool.",
+)
+
+SQLALCHEMY_POOL_CHECKOUT_DURATION = Histogram(
+    "sqlalchemy_pool_checkout_duration_seconds",
+    "Time a SQLAlchemy QueuePool connection remains checked out.",
+    buckets=(0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60),
+)
+
+SQLALCHEMY_POOL_INVALIDATIONS = Counter(
+    "sqlalchemy_pool_invalidations_total",
+    "SQLAlchemy QueuePool connection invalidations.",
+)
+
+SQLALCHEMY_POOL_TIMEOUTS = Counter(
+    "sqlalchemy_pool_timeouts_total",
+    "SQLAlchemy QueuePool checkout attempts that timed out.",
+)
 
 GUARD_ENGINE_ERRORS = Counter(
     "guard_engine_errors_total",
@@ -99,4 +133,63 @@ GUARD_BUDGET_ENFORCEMENT_ACTIVE = Counter(
     "guard_budget_enforcement_active_total",
     "Reserve calls admitted by the ledger for an enforcing workspace.",
     ["workspace_id"],
+)
+
+
+GUARD_PROJECTION_EVENTS = Counter(
+    "guard_projection_events_total",
+    "Audit events considered by projection policy.",
+    ["result"],
+)
+
+GUARD_PROJECTION_DISPATCH = Counter(
+    "guard_projection_dispatch_total",
+    "Projection outbox dispatch attempts.",
+    ["result"],
+)
+
+GUARD_PROJECTION_OUTCOMES = Counter(
+    "guard_projection_outcomes_total",
+    "Projection intent processing outcomes.",
+    ["outcome"],
+)
+
+GUARD_PROJECTION_QUEUE_DEPTH = Gauge(
+    "guard_projection_queue_depth",
+    "Current Redis projection queue depth.",
+)
+
+GUARD_PROJECTION_OLDEST_AGE = Gauge(
+    "guard_projection_oldest_pending_age_seconds",
+    "Age of the oldest dispatchable projection intent.",
+)
+
+GUARD_PROJECTION_RETENTION_RUNS = Counter(
+    "guard_projection_retention_runs_total",
+    "Projection retention daemon passes by aggregate outcome and mode.",
+    ["outcome", "dry_run", "more_work"],
+)
+
+GUARD_PROJECTION_RETENTION_KNOWLEDGE_DELETED = Counter(
+    "guard_projection_retention_knowledge_deleted_total",
+    "Knowledge rows deleted by projection retention.",
+    ["dry_run"],
+)
+
+GUARD_PROJECTION_RETENTION_INTENTS_EXPIRED = Counter(
+    "guard_projection_retention_intents_expired_total",
+    "Projection intents expired by projection retention.",
+    ["dry_run"],
+)
+
+GUARD_PROJECTION_RETENTION_SUMMARIES_DELETED = Counter(
+    'guard_projection_retention_summaries_deleted_total',
+    'Allowed-event summary source rows deleted by projection retention.',
+    ['dry_run'],
+)
+
+GUARD_PROJECTION_RETENTION_INTENTS_DELETED = Counter(
+    'guard_projection_retention_intents_deleted_total',
+    'Terminal projection intent rows deleted by projection retention.',
+    ['dry_run'],
 )

@@ -9,32 +9,30 @@ Do not import from other domain files — depend only on _shared.
 from __future__ import annotations
 
 import uuid
+from datetime import datetime, timezone
 
-from sqlalchemy import text as sa_text, func as sa_func, or_ as sa_or
+from sqlalchemy import text as sa_text
 
-from app.tools.types import ToolDef
-from app.tools.registrations.lens._shared import (
-    _actor_impl,
-    _window_start,
-    _LIMIT,
-    _DECISION,
-    _TS_SINCE,
-    _TS_UNTIL,
-    _RULE_ID,
-    _DAYS_WINDOW,
-    _TIME_WINDOW,
-    _READ_ONLY,
-    _READ_ONLY_OPEN_WORLD,
-    _LENS_TAGS,
-    _ACTOR_TAGS
-)
-from app.modules.guard.routers.spend import _get_spend_summary_inner, _org_ws_subquery
+from app.core.workspace_context import set_workspace_rls
 from app.modules.guard.embedding import embedding_client_for_workspace
 from app.modules.guard.models import (
     GuardAuditEvent,
     GuardConfig,
     GuardSpendBudget,
 )
+from app.modules.guard.projection_retention import active_projection_sql_predicate
+from app.modules.guard.routers.spend import _get_spend_summary_inner, _org_ws_subquery
+from app.tools.registrations.lens._shared import (
+    _DECISION,
+    _LENS_TAGS,
+    _LIMIT,
+    _READ_ONLY,
+    _READ_ONLY_OPEN_WORLD,
+    _RULE_ID,
+    _TS_SINCE,
+    _TS_UNTIL,
+)
+from app.tools.types import ToolDef
 
 # ── Migrated from Executor (epic #1655 PR 8/9) ─────────────────────────
 MIN_SIMILARITY_SCORE = 0.3  # Distance ceiling for pgvector semantic search (moved from Executor).
@@ -140,12 +138,13 @@ def get_event_count(ctx, decision: str | None = None, since: str | None = None, 
 
 def search_memory(ctx, q: str, limit: int = 5):
     from app.core.database import SessionLocal
+    client = embedding_client_for_workspace(ctx.workspace_id)
+    if not client:
+        return {"error": "Embedding service not configured for this workspace"}
+    embedding = client.embed(q[:2000])
     db = SessionLocal()
     try:
-        client = embedding_client_for_workspace(db, ctx.workspace_id)
-        if not client:
-            return {"error": "Embedding service not configured for this workspace"}
-        embedding = client.embed(q[:2000])
+        set_workspace_rls(db, ctx.workspace_id)
         rows = db.execute(
             sa_text(
                 "SELECT tsm.id, tsm.developer_email, tsm.light_summary, tsm.topic_tags, "
@@ -171,13 +170,13 @@ def search_memory(ctx, q: str, limit: int = 5):
 
 def search_sessions(ctx, q: str, limit: int = 5):
     from app.core.database import SessionLocal
+    client = embedding_client_for_workspace(ctx.workspace_id)
+    if not client:
+        return {"error": "Embedding service not configured for this workspace"}
+    embedding = client.embed(q[:2000])
     db = SessionLocal()
     try:
-        from app.modules.guard.models import SessionReport
-        client = embedding_client_for_workspace(db, ctx.workspace_id)
-        if not client:
-            return {"error": "Embedding service not configured for this workspace"}
-        embedding = client.embed(q[:2000])
+        set_workspace_rls(db, ctx.workspace_id)
         rows = db.execute(
             sa_text(
                 "SELECT sr.id, sr.developer_email, sr.ai_tool, sr.report_md, sr.created_at, "
@@ -248,20 +247,23 @@ def get_session_reports_feed(ctx, limit: int = 20):
 
 def search_knowledge(ctx, q: str, kind: str | None = None, limit: int = 10):
     from app.core.database import SessionLocal
+    """Semantic search across all Guard knowledge — audit events, rules, discovered agents."""
+    client = embedding_client_for_workspace(ctx.workspace_id)
+    if not client:
+        return {"error": "Embedding service not configured"}
+    embedding = client.embed(q[:2000])
     db = SessionLocal()
     try:
-        """Semantic search across all Guard knowledge — audit events, rules, discovered agents."""
-        client = embedding_client_for_workspace(db, ctx.workspace_id)
-        if not client:
-            return {"error": "Embedding service not configured"}
-        embedding = client.embed(q[:2000])
+        set_workspace_rls(db, ctx.workspace_id)
+        projection_now = datetime.now(timezone.utc)
+        active_filter = active_projection_sql_predicate("gki")
         kind_filter = "AND gki.source_kind = :kind" if kind else ""
         rows = db.execute(
             sa_text(
                 f"SELECT gki.source_kind, gki.source_id, gki.canonical_text, gki.metadata, "
                 f"(gki.embedding <=> CAST(:vec AS vector)) AS distance "
                 f"FROM guard_knowledge_index gki "
-                f"WHERE gki.workspace_id = CAST(:workspace_id AS uuid) AND gki.embedding IS NOT NULL "
+                f"WHERE {active_filter} AND gki.embedding IS NOT NULL "
                 f"{kind_filter} "
                 f"ORDER BY distance ASC LIMIT :limit"
             ),
@@ -270,6 +272,7 @@ def search_knowledge(ctx, q: str, kind: str | None = None, limit: int = 10):
                 "vec": str(embedding),
                 "limit": min(limit, 50),
                 "kind": kind,
+                "projection_now": projection_now,
             },
         ).fetchall()
         return [
@@ -389,7 +392,7 @@ def get_savings_summary(ctx):
     from app.core.database import SessionLocal
     db = SessionLocal()
     try:
-        from app.modules.guard.routers.savings import _build_summary, _EMPTY_SUMMARY
+        from app.modules.guard.routers.savings import _EMPTY_SUMMARY, _build_summary
         try:
             result = _build_summary(db, ctx.workspace_id)
         except Exception:

@@ -4,6 +4,7 @@ Memory block executor.
 Read/write agent memory with vector similarity search.
 Extracted from app.runtime.executor.
 """
+
 from __future__ import annotations
 
 import structlog
@@ -18,7 +19,8 @@ def _execute_memory(
     run_id: str,
     workspace_id: str,
     playbook_slug: str,
-    credentials: dict | None = None,  # kept for backward compat — ignored, broker is source of truth
+    credentials: dict
+    | None = None,  # kept for backward compat — ignored, broker is source of truth
 ) -> dict:
     """
     Read or write agent memory with vector similarity search.
@@ -28,7 +30,9 @@ def _execute_memory(
     write: embeds the resolved summary and inserts a new row.
     """
     try:
-        return _execute_memory_inner(block, state, db, run_id, workspace_id, playbook_slug)
+        return _execute_memory_inner(
+            block, state, db, run_id, workspace_id, playbook_slug
+        )
     except Exception as e:
         log.warning("memory.block_failed", error=str(e), run_id=run_id)
         try:
@@ -49,11 +53,14 @@ def _execute_memory_inner(
     workspace_id: str,
     playbook_slug: str,
 ) -> dict:
+    from app.core.credentials import fetch_credential
+    from app.core.database import SessionLocal
+    from app.core.workspace_context import set_workspace_rls
     from app.models.agent_memory import AgentMemory
     from app.runtime.embedding_client import create_embedding_client
     from app.runtime.tool_engine import _resolve_refs
-    from app.core.credentials import fetch_credential
 
+    db.commit()
     data = block["data"]
     config = data.get("config", {})
     action = config.get("action", "read")
@@ -61,11 +68,24 @@ def _execute_memory_inner(
     key = _resolve_refs(config.get("key", ""), state)
 
     from app.runtime.run_contract import cred_from_state
+
     _cred_token, _cred_api_url, _cred_handles = cred_from_state(state)
 
-    openai_creds = fetch_credential(_cred_token, "openai", _cred_api_url) if "openai" in _cred_handles else {}
-    voyage_creds = fetch_credential(_cred_token, "voyage", _cred_api_url) if "voyage" in _cred_handles else {}
-    env_vars = fetch_credential(_cred_token, "env_vars", _cred_api_url) if "env_vars" in _cred_handles else {}
+    openai_creds = (
+        fetch_credential(_cred_token, "openai", _cred_api_url)
+        if "openai" in _cred_handles
+        else {}
+    )
+    voyage_creds = (
+        fetch_credential(_cred_token, "voyage", _cred_api_url)
+        if "voyage" in _cred_handles
+        else {}
+    )
+    env_vars = (
+        fetch_credential(_cred_token, "env_vars", _cred_api_url)
+        if "env_vars" in _cred_handles
+        else {}
+    )
 
     client = create_embedding_client(
         openai_api_key=(
@@ -88,7 +108,11 @@ def _execute_memory_inner(
         if client:
             # Guard: column is vector(1536); Voyage is 512d and not yet supported natively.
             if client.dimensions != 1536:
-                log.warning("memory.dimension_mismatch", client_dims=client.dimensions, column_dims=1536)
+                log.warning(
+                    "memory.dimension_mismatch",
+                    client_dims=client.dimensions,
+                    column_dims=1536,
+                )
                 client = None
 
         if client:
@@ -116,11 +140,17 @@ def _execute_memory_inner(
             ).fetchall()
         else:
             # No embedding provider (or dimension mismatch) — fall back to recency.
-            rows = db.query(AgentMemory).filter(
-                AgentMemory.workspace_id == workspace_id,
-                AgentMemory.scope == scope,
-                AgentMemory.key == key,
-            ).order_by(AgentMemory.created_at.desc()).limit(limit).all()
+            rows = (
+                db.query(AgentMemory)
+                .filter(
+                    AgentMemory.workspace_id == workspace_id,
+                    AgentMemory.scope == scope,
+                    AgentMemory.key == key,
+                )
+                .order_by(AgentMemory.created_at.desc())
+                .limit(limit)
+                .all()
+            )
 
         entries = [{"summary": r.summary, "at": str(r.created_at)} for r in rows]
         return {"entries": entries, "count": len(entries), "scope": scope, "key": key}
@@ -133,27 +163,46 @@ def _execute_memory_inner(
 
         # Guard dimension mismatch same as read path.
         if client and client.dimensions != 1536:
-            log.warning("memory.dimension_mismatch", client_dims=client.dimensions, column_dims=1536)
+            log.warning(
+                "memory.dimension_mismatch",
+                client_dims=client.dimensions,
+                column_dims=1536,
+            )
             client = None
 
-        embedding_vec: list[float] | None = None
-        if client:
-            try:
-                embedding_vec = client.embed(summary)
-            except Exception as e:
-                log.warning("memory.embed_failed", error=str(e))
-
+        row_id = __import__("uuid").uuid4()
         row = AgentMemory(
+            id=row_id,
             workspace_id=workspace_id,
             playbook_slug=playbook_slug,
             scope=scope,
             key=key,
             summary=summary,
-            embedding=embedding_vec,
+            embedding=None,
             run_id=run_id if run_id else None,
         )
         db.add(row)
         db.commit()
+
+        if client:
+            try:
+                embedding_vec = client.embed(summary)
+                row.embedding = embedding_vec
+                with SessionLocal() as write_db:
+                    set_workspace_rls(write_db, workspace_id)
+                    write_db.query(AgentMemory).filter(
+                        AgentMemory.id == row_id,
+                        AgentMemory.workspace_id == workspace_id,
+                        AgentMemory.summary == summary,
+                        AgentMemory.embedding.is_(None),
+                    ).update(
+                        {AgentMemory.embedding: embedding_vec},
+                        synchronize_session=False,
+                    )
+                    write_db.commit()
+            except Exception as e:
+                log.warning("memory.embed_failed", error=str(e))
+
         return {"written": True, "scope": scope, "key": key, "chars": len(summary)}
 
     return {"skipped": True, "note": f"Unknown memory action: {action}"}

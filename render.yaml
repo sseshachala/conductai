@@ -107,6 +107,19 @@ services:
         value: ""
       - key: GUARD_DURABLE_AUDIT_FAIL_CLOSED
         value: "false"
+      # Rollout order: migrate -> worker deployed -> dry-run -> queue enable -> cleanup enable.
+      - key: GUARD_PROJECTION_QUEUE_ENABLED
+        value: "false"
+      - key: GUARD_PROJECTION_PAUSED
+        value: "false"
+      - key: GUARD_PROJECTION_RETENTION_DAYS
+        value: "30"
+      - key: GUARD_PROJECTION_RETENTION_CLEANUP_ENABLED
+        value: "false"
+      - key: GUARD_PROJECTION_RETENTION_DRY_RUN
+        value: "true"
+      - key: GUARD_PROJECTION_RETENTION_INTERVAL_SECONDS
+        value: "3600"
       # Admission caps (PRs #2063 / #2064 of #2057). Declared so
       # delegator-gateway inherits — delegator-api itself keeps
       # ADMISSION_ENABLED unset, so these values are dormant on api.
@@ -248,6 +261,27 @@ services:
           type: keyvalue
           name: delegator-redis
           property: connectionString
+      # Rollout order: migrate -> worker deployed -> dry-run -> queue enable -> cleanup enable.
+      - key: GUARD_PROJECTION_QUEUE_ENABLED
+        value: "false"
+      - key: GUARD_PROJECTION_PAUSED
+        value: "false"
+      - key: GUARD_PROJECTION_RETENTION_DAYS
+        value: "30"
+      - key: GUARD_PROJECTION_RETENTION_CLEANUP_ENABLED
+        value: "false"
+      - key: GUARD_PROJECTION_RETENTION_DRY_RUN
+        value: "true"
+      - key: GUARD_PROJECTION_RETENTION_INTERVAL_SECONDS
+        value: "3600"
+      - key: GUARD_PROJECTION_CONSUMER_CONCURRENCY
+        value: "1"
+      - key: GUARD_PROJECTION_RECONCILIATION_INTERVAL_SECONDS
+        value: "60"
+      - key: GUARD_PROJECTION_RECONCILIATION_BATCH_SIZE
+        value: "100"
+      - key: GUARD_PROJECTION_PRUNE_BATCH_SIZE
+        value: "500"
       - key: API_BASE_URL
         fromService:
           type: web

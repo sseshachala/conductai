@@ -3,21 +3,31 @@ POST /guard/session-reports  — CLI pushes a developer session report (member t
 GET  /guard/session-reports  — admin/security lists all reports for a workspace
 GET  /guard/session-reports/{id}/html — styled HTML report (API key or Clerk JWT via ?token=)
 """
+
 import uuid
-from datetime import datetime, timezone, date as _date
+from datetime import date as _date
+from datetime import datetime, timezone
 from typing import Optional
 from uuid import UUID
 
 import structlog
-from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from fastapi.responses import HTMLResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.core.auth import _verify_clerk_token, get_guard_hook_auth, get_workspace_id, require_permission
-from app.core.database import get_db
-from app.modules.guard.embedding import embedding_client_for_workspace as _embedding_client_for_workspace
+from app.core.auth import (
+    _verify_clerk_token,
+    get_guard_hook_auth,
+    get_workspace_id,
+    require_permission,
+)
+from app.core.database import SessionLocal, get_db
+from app.core.workspace_context import set_workspace_rls
+from app.modules.guard.embedding import (
+    embedding_client_for_workspace as _embedding_client_for_workspace,
+)
 from app.modules.guard.models import SessionReport
 
 log = structlog.get_logger(__name__)
@@ -108,6 +118,7 @@ def list_session_reports(
 
 # ── GET /guard/session-reports/{id} ───────────────────────────────────────────
 
+
 @router.get("/search")
 def search_session_reports(
     q: str = Query(..., description="Natural language search query"),
@@ -118,11 +129,14 @@ def search_session_reports(
 ):
     """Semantic search over session reports using pgvector."""
     from sqlalchemy import text as sa_text
-    client = _embedding_client_for_workspace(db, workspace_id)
+
+    db.rollback()
+    client = _embedding_client_for_workspace(workspace_id)
     if not client:
         raise HTTPException(status_code=503, detail="Embedding service not configured")
 
     embedding = client.embed(q[:2000])
+    set_workspace_rls(db, workspace_id)
     rows = db.execute(
         sa_text(
             "SELECT id, developer_email, archetype, autonomy_score, sessions, prompts, "
@@ -160,12 +174,34 @@ def get_session_report(
 ) -> SessionReportOut:
     r = (
         db.query(SessionReport)
-        .filter(SessionReport.id == report_id, SessionReport.workspace_id == workspace_id)
+        .filter(
+            SessionReport.id == report_id, SessionReport.workspace_id == workspace_id
+        )
         .first()
     )
     if not r:
         raise HTTPException(status_code=404, detail="Report not found")
     return _report_to_out(r)
+
+
+def _embed_session_report(
+    report_id: str, workspace_id: str, expected_report_md: str
+) -> None:
+    try:
+        client = _embedding_client_for_workspace(workspace_id)
+        if not client:
+            return
+        embedding = client.embed(expected_report_md[:8000])
+        with SessionLocal() as write_db:
+            set_workspace_rls(write_db, workspace_id)
+            write_db.query(SessionReport).filter(
+                SessionReport.id == uuid.UUID(report_id),
+                SessionReport.workspace_id == uuid.UUID(workspace_id),
+                SessionReport.report_md == expected_report_md,
+            ).update({SessionReport.embedding: embedding}, synchronize_session=False)
+            write_db.commit()
+    except Exception as exc:
+        log.warning("session_report.embed_failed", report_id=report_id, error=str(exc))
 
 
 # ── POST /guard/session-reports ───────────────────────────────────────────────
@@ -174,6 +210,7 @@ def get_session_report(
 @router.post("", response_model=SessionReportOut, status_code=201)
 def create_session_report(
     body: SessionReportIn,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     auth_workspace_id: str = Depends(get_guard_hook_auth),
 ):
@@ -194,13 +231,16 @@ def create_session_report(
         .filter(
             SessionReport.workspace_id == ws_uuid,
             SessionReport.developer_email == body.developer_email,
-            SessionReport.created_at >= datetime.combine(today, datetime.min.time(), tzinfo=timezone.utc),
+            SessionReport.created_at
+            >= datetime.combine(today, datetime.min.time(), tzinfo=timezone.utc),
         )
         .first()
     )
     created = report is None
     if report is None:
-        report = SessionReport(workspace_id=ws_uuid, developer_email=body.developer_email)
+        report = SessionReport(
+            workspace_id=ws_uuid, developer_email=body.developer_email
+        )
         db.add(report)
 
     report.archetype = body.archetype
@@ -215,15 +255,14 @@ def create_session_report(
     report.report_md = body.report_md
     db.commit()
 
-    # Embed report_md in background for GLens semantic search
+    db.refresh(report)
+    output = _report_to_out(report)
+    report_id = str(report.id)
+    db.rollback()
     if body.report_md:
-        try:
-            client = _embedding_client_for_workspace(db, str(ws_uuid))
-            if client:
-                report.embedding = client.embed(body.report_md[:8000])
-                db.commit()
-        except Exception as e:
-            log.warning("session_report.embed_failed", report_id=str(report.id), error=str(e))
+        background_tasks.add_task(
+            _embed_session_report, report_id, str(ws_uuid), body.report_md
+        )
 
     log.info(
         "session_report.upserted",
@@ -233,7 +272,7 @@ def create_session_report(
         created=created,
     )
 
-    return _report_to_out(report)
+    return output
 
 
 # ── GET /guard/session-reports/{report_id}/html ───────────────────────────────
@@ -298,7 +337,7 @@ def _build_html(report: SessionReport) -> str:
         archetype_badge = (
             f'<span style="background:var(--accent-weak);color:var(--accent-text);'
             f'border-radius:6px;padding:3px 10px;font-size:12px;font-weight:500">'
-            f'{archetype}</span>'
+            f"{archetype}</span>"
         )
 
     # Tools table
@@ -341,9 +380,9 @@ def _build_html(report: SessionReport) -> str:
     if report_md:
         md_section = (
             f'<pre style="background:var(--surface-2);border:1px solid var(--border);'
-            f'border-radius:var(--r-card);padding:20px 24px;font-family:ui-monospace,monospace;'
+            f"border-radius:var(--r-card);padding:20px 24px;font-family:ui-monospace,monospace;"
             f'font-size:12.5px;color:var(--text-2);white-space:pre-wrap;line-height:1.7;overflow-x:auto;margin:0">'
-            f'{report_md}</pre>'
+            f"{report_md}</pre>"
         )
     else:
         md_section = '<p style="color:var(--text-muted);font-size:13px;margin:0">No report text available.</p>'
@@ -551,7 +590,10 @@ async def get_session_report_html(
         return _HTML_401_INVALID
     # Clerk org_id is not a UUID — workspace_id must be passed explicitly
     if not workspace_id:
-        return HTMLResponse("<html><body><h1>400</h1><p>Pass ?workspace_id= alongside ?token= for Clerk auth.</p></body></html>", status_code=400)
+        return HTMLResponse(
+            "<html><body><h1>400</h1><p>Pass ?workspace_id= alongside ?token= for Clerk auth.</p></body></html>",
+            status_code=400,
+        )
     ws_id = workspace_id
 
     # Fetch the report, enforcing workspace isolation

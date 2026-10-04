@@ -21,6 +21,12 @@ three hostnames. Use HTTPS redirects at ingress. Network policies require a
 supporting CNI. Set `postgres.enabled=false` / `redis.enabled=false` to use your
 own data services. Keep provider credentials in Kubernetes Secrets or Conduct's vault.
 
+Projection processing ships safe-off through `config.extraEnv`. Rollout order:
+migrate -> worker deployed -> dry-run -> queue enable -> cleanup enable. Keep
+`GUARD_PROJECTION_RETENTION_DRY_RUN=true` until retention metrics and aggregate
+logs match the expected volume. The retention daemon is independent of workflow
+and projection consumer concurrency.
+
 Check `values.yaml` for configuration. The chart uses the same components as the
 local test stack; customer-cluster installation is not yet verified.
 File problems at https://github.com/sseshachala/conductai/issues with redacted logs.
