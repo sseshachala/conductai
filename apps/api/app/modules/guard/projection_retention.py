@@ -4,7 +4,7 @@ from __future__ import annotations
 import re
 from collections.abc import Callable, Mapping
 from dataclasses import asdict, dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 import structlog
@@ -35,6 +35,9 @@ _SQL_IDENTIFIER = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*$')
 @dataclass(frozen=True)
 class ProjectionRetentionResult:
     dry_run: bool
+    backfill_candidates: int = 0
+    knowledge_backfilled: int = 0
+    knowledge_orphans_deleted: int = 0
     knowledge_candidates: int = 0
     knowledge_deleted: int = 0
     summary_candidates: int = 0
@@ -147,6 +150,143 @@ def _validate_retention_models(
         _validate_model(intent_model, ('id', 'workspace_id', 'source_kind', 'source_id', 'status', 'expires_at'), 'intent')
     if summary_model is not None:
         _validate_model(summary_model, ('id', 'workspace_id', 'expires_at'), 'summary')
+
+
+def _resolve_backfill_models(
+    model_overrides: Mapping[str, Any] | None,
+) -> tuple[Any | None, Any | None, Any | None]:
+    knowledge_model = _override(
+        model_overrides, 'knowledge', 'knowledge_model', 'GuardKnowledgeIndex'
+    )
+    audit_event_model = _override(
+        model_overrides, 'audit_event', 'audit_event_model', 'GuardAuditEvent'
+    )
+    summary_model = _override(
+        model_overrides, 'summary', 'summary_model', 'GuardProjectionSummary'
+    )
+    if model_overrides is not None:
+        return knowledge_model, audit_event_model, summary_model
+    from app.modules.guard import models as guard_models
+
+    return (
+        getattr(guard_models, 'GuardKnowledgeIndex', None),
+        getattr(guard_models, 'GuardAuditEvent', None),
+        getattr(guard_models, 'GuardProjectionSummary', None),
+    )
+
+
+def _backfill_predicates(
+    model: Any, workspace_id: Any, source_kinds: tuple[str, ...]
+) -> tuple[Any, ...]:
+    return (
+        model.workspace_id == workspace_id,
+        model.source_kind.in_(source_kinds),
+        or_(model.source_timestamp.is_(None), model.expires_at.is_(None)),
+    )
+
+
+def backfill_projection_expiry(
+    db: Session,
+    *,
+    workspace_id: Any,
+    retention_days: int,
+    batch_size: int = DEFAULT_RETENTION_BATCH_SIZE,
+    dry_run: bool = False,
+    model_overrides: Mapping[str, Any] | None = None,
+) -> ProjectionRetentionResult:
+    """Backfill legacy derived projection expiry in one restart-safe batch."""
+    _validate_batch_size(batch_size)
+    if retention_days <= 0:
+        raise ValueError('retention_days must be positive')
+    knowledge_model, audit_event_model, summary_model = _resolve_backfill_models(
+        model_overrides
+    )
+    if knowledge_model is None:
+        return ProjectionRetentionResult(dry_run=dry_run)
+    _validate_model(
+        knowledge_model,
+        ('id', 'workspace_id', 'source_kind', 'source_id', 'source_timestamp', 'expires_at'),
+        'knowledge',
+    )
+    source_kinds = tuple(
+        kind
+        for kind, source_model in (
+            ('audit_event', audit_event_model),
+            ('audit_summary', summary_model),
+        )
+        if source_model is not None
+    )
+    if not source_kinds:
+        return ProjectionRetentionResult(dry_run=dry_run)
+    set_workspace_rls(db, workspace_id)
+    predicates = _backfill_predicates(knowledge_model, workspace_id, source_kinds)
+    if dry_run:
+        return ProjectionRetentionResult(
+            dry_run=True,
+            backfill_candidates=_count_candidates(db, knowledge_model, predicates),
+        )
+    rows = list(
+        db.execute(
+            select(knowledge_model)
+            .where(*predicates)
+            .order_by(knowledge_model.source_kind.asc(), knowledge_model.id.asc())
+            .limit(batch_size)
+            .with_for_update(skip_locked=True)
+        ).scalars()
+    )
+    backfilled = orphans_deleted = 0
+    for row in rows:
+        source = None
+        if row.source_kind == 'audit_event' and audit_event_model is not None:
+            source = db.execute(
+                select(audit_event_model).where(
+                    audit_event_model.workspace_id == workspace_id,
+                    func.cast(audit_event_model.id, knowledge_model.source_id.type)
+                    == row.source_id,
+                )
+            ).scalar_one_or_none()
+            source_timestamp = source.ts if source is not None else None
+            source_expiry = (
+                source_timestamp + timedelta(days=retention_days)
+                if source_timestamp is not None
+                else None
+            )
+        elif row.source_kind == 'audit_summary' and summary_model is not None:
+            source = db.execute(
+                select(summary_model).where(
+                    summary_model.workspace_id == workspace_id,
+                    func.cast(summary_model.id, knowledge_model.source_id.type)
+                    == row.source_id,
+                )
+            ).scalar_one_or_none()
+            source_timestamp = (
+                getattr(source, 'source_timestamp', None)
+                or getattr(source, 'window_end', None)
+                if source is not None
+                else None
+            )
+            source_expiry = (
+                getattr(source, 'expires_at', None)
+                or (source_timestamp + timedelta(days=retention_days) if source_timestamp else None)
+                if source is not None
+                else None
+            )
+        else:
+            continue
+        if source is None or source_timestamp is None or source_expiry is None:
+            db.delete(row)
+            orphans_deleted += 1
+            continue
+        row.source_timestamp = source_timestamp
+        row.expires_at = source_expiry
+        backfilled += 1
+    return ProjectionRetentionResult(
+        dry_run=False,
+        backfill_candidates=len(rows),
+        knowledge_backfilled=backfilled,
+        knowledge_orphans_deleted=orphans_deleted,
+        more_work=len(rows) == batch_size,
+    )
 
 
 def _validate_batch_size(batch_size: int) -> None:
@@ -339,7 +479,9 @@ def _workspace_ids(session_factory: Callable[[], Session], workspace_id: Any | N
 
 def _merge_results(results: list[ProjectionRetentionResult], *, dry_run: bool, commits: int) -> ProjectionRetentionResult:
     fields = (
-        'knowledge_candidates', 'knowledge_deleted', 'summary_candidates',
+        'backfill_candidates', 'knowledge_backfilled',
+        'knowledge_orphans_deleted', 'knowledge_candidates',
+        'knowledge_deleted', 'summary_candidates',
         'summaries_deleted', 'intent_candidates', 'intents_expired',
         'intent_delete_candidates', 'intents_deleted',
     )
@@ -366,10 +508,10 @@ def run_projection_retention_once(
 ) -> ProjectionRetentionResult:
     if db is not None:
         raise ValueError('run_projection_retention_once does not accept a caller-owned db session; pass session_factory so each batch can use an independent transaction')
+    settings_obj = settings_override
+    if settings_obj is None:
+        from app.core.config import settings as settings_obj
     if batch_size is None:
-        settings_obj = settings_override
-        if settings_obj is None:
-            from app.core.config import settings as settings_obj
         batch_size = int(getattr(settings_obj, 'guard_projection_prune_batch_size', DEFAULT_RETENTION_BATCH_SIZE))
     _validate_batch_size(batch_size)
     if session_factory is None:
@@ -385,26 +527,61 @@ def run_projection_retention_once(
         if dry_run:
             session = session_factory()
             try:
-                results.append(cleanup_expired_projections(
+                backfill_result = backfill_projection_expiry(
+                    session,
+                    workspace_id=current_workspace_id,
+                    retention_days=int(getattr(settings_obj, 'guard_projection_retention_days', 30)),
+                    batch_size=batch_size,
+                    dry_run=True,
+                    model_overrides=model_overrides,
+                )
+                cleanup_result = cleanup_expired_projections(
                     session,
                     workspace_id=current_workspace_id,
                     batch_size=batch_size,
                     dry_run=True,
                     now=now,
                     model_overrides=model_overrides,
-                ))
+                )
+                results.append(
+                    _merge_results([backfill_result, cleanup_result], dry_run=True, commits=0)
+                )
             finally:
                 if session.in_transaction():
                     session.rollback()
                 session.close()
             continue
 
+        workspace_results: list[ProjectionRetentionResult] = []
+        backfill_session = session_factory()
+        try:
+            backfill_result = backfill_projection_expiry(
+                backfill_session,
+                workspace_id=current_workspace_id,
+                retention_days=int(getattr(settings_obj, 'guard_projection_retention_days', 30)),
+                batch_size=batch_size,
+                dry_run=False,
+                model_overrides=model_overrides,
+            )
+            if backfill_result.knowledge_backfilled + backfill_result.knowledge_orphans_deleted:
+                backfill_session.commit()
+                commits += 1
+            elif backfill_session.in_transaction():
+                backfill_session.rollback()
+            workspace_results.append(backfill_result)
+        except Exception:
+            if backfill_session.in_transaction():
+                backfill_session.rollback()
+            log.error('guard.projection_retention.backfill_failed', dry_run=False, batch_size=batch_size)
+            raise
+        finally:
+            backfill_session.close()
+
         stage_overrides = (
             {'knowledge': models[0]},
             {'intent': models[1]},
             {'summary': models[2], 'intent': models[1]},
         )
-        workspace_results: list[ProjectionRetentionResult] = []
         for overrides in stage_overrides:
             if all(value is None for value in overrides.values()):
                 continue

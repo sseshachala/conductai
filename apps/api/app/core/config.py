@@ -179,6 +179,15 @@ class Settings(BaseSettings):
     guard_projection_retry_max_seconds: int = Field(default=900, gt=0)
     guard_projection_reconciliation_interval_seconds: int = Field(default=60, gt=0)
     guard_projection_reconciliation_batch_size: int = Field(default=100, gt=0, le=5000)
+    # Request/reconciliation Redis calls must never hold an audit response open
+    # indefinitely. Blocking worker consumers intentionally omit socket_timeout
+    # because BLMOVE has its own finite server-side timeout.
+    guard_projection_redis_connect_timeout_seconds: float = Field(
+        default=0.25, gt=0, le=5
+    )
+    guard_projection_redis_socket_timeout_seconds: float = Field(
+        default=0.5, gt=0, le=10
+    )
     # Maximum time an enqueued pending/retry intent may remain unclaimed before
     # reconciliation reserves and redispatches it. When unset, projection_queue
     # derives a conservative value from the lease and reconciliation interval.

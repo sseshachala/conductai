@@ -170,6 +170,18 @@ GUARD_PROJECTION_RETENTION_RUNS = Counter(
     ["outcome", "dry_run", "more_work"],
 )
 
+GUARD_PROJECTION_RETENTION_KNOWLEDGE_BACKFILLED = Counter(
+    'guard_projection_retention_knowledge_backfilled_total',
+    'Legacy projection rows assigned source-derived retention metadata.',
+    ['dry_run'],
+)
+
+GUARD_PROJECTION_RETENTION_ORPHANS_DELETED = Counter(
+    'guard_projection_retention_orphans_deleted_total',
+    'Orphaned legacy derived projection rows deleted during expiry backfill.',
+    ['dry_run'],
+)
+
 GUARD_PROJECTION_RETENTION_KNOWLEDGE_DELETED = Counter(
     "guard_projection_retention_knowledge_deleted_total",
     "Knowledge rows deleted by projection retention.",
