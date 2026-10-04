@@ -386,9 +386,12 @@ def _projection_loop(thread_id: int) -> None:
         PROJECTION_QUEUE_KEY,
         ProjectionMessage,
     )
-    from app.modules.guard.projection_queue import process_projection_message
+    from app.modules.guard.projection_queue import (
+        process_projection_message,
+        projection_redis_client,
+    )
 
-    client = redis.from_url(settings.redis_url, decode_responses=True)
+    client = projection_redis_client(blocking=True)
     log.info("projection_worker.thread_started", thread_id=thread_id, queue=PROJECTION_QUEUE_KEY)
     while True:
         if settings.guard_projection_paused:
@@ -465,9 +468,12 @@ def _reconcile_projection_processing_entries(client, *, now: float | None = None
 
 def _projection_reconciliation_loop() -> None:
     from app.modules.guard.observability.metrics import GUARD_PROJECTION_QUEUE_DEPTH
-    from app.modules.guard.projection_queue import reconcile_projection_intents
+    from app.modules.guard.projection_queue import (
+        projection_redis_client,
+        reconcile_projection_intents,
+    )
 
-    client = redis.from_url(settings.redis_url, decode_responses=True)
+    client = projection_redis_client()
     interval = settings.guard_projection_reconciliation_interval_seconds
     log.info("projection_worker.reconciliation_started", interval_seconds=interval)
     while True:
@@ -506,7 +512,9 @@ def _record_projection_retention_result(result: dict[str, bool | int]) -> None:
     from app.modules.guard.observability.metrics import (
         GUARD_PROJECTION_RETENTION_INTENTS_DELETED,
         GUARD_PROJECTION_RETENTION_INTENTS_EXPIRED,
+        GUARD_PROJECTION_RETENTION_KNOWLEDGE_BACKFILLED,
         GUARD_PROJECTION_RETENTION_KNOWLEDGE_DELETED,
+        GUARD_PROJECTION_RETENTION_ORPHANS_DELETED,
         GUARD_PROJECTION_RETENTION_RUNS,
         GUARD_PROJECTION_RETENTION_SUMMARIES_DELETED,
     )
@@ -517,6 +525,12 @@ def _record_projection_retention_result(result: dict[str, bool | int]) -> None:
         dry_run=dry_run,
         more_work=str(bool(result.get("more_work", False))).lower(),
     ).inc()
+    GUARD_PROJECTION_RETENTION_KNOWLEDGE_BACKFILLED.labels(dry_run=dry_run).inc(
+        int(result.get('knowledge_backfilled', 0))
+    )
+    GUARD_PROJECTION_RETENTION_ORPHANS_DELETED.labels(dry_run=dry_run).inc(
+        int(result.get('knowledge_orphans_deleted', 0))
+    )
     GUARD_PROJECTION_RETENTION_KNOWLEDGE_DELETED.labels(dry_run=dry_run).inc(
         int(result.get("knowledge_deleted", 0))
     )

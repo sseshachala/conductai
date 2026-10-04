@@ -10,6 +10,7 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 from app.modules.guard import projection_retention as retention
 from app.modules.guard.projection_retention import (
     active_projection_sql_predicate,
+    backfill_projection_expiry,
     cleanup_expired_projections,
     filter_active_projections,
     run_projection_retention_once,
@@ -25,6 +26,8 @@ class FakeKnowledge(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     workspace_id: Mapped[str] = mapped_column(String, nullable=False)
     source_kind: Mapped[str] = mapped_column(String, nullable=False)
+    source_id: Mapped[str] = mapped_column(String, nullable=False)
+    source_timestamp: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
@@ -42,10 +45,19 @@ class FakeIntent(Base):
     dispatched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+class FakeAuditEvent(Base):
+    __tablename__ = 'fake_projection_audit_events'
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    workspace_id: Mapped[str] = mapped_column(String, nullable=False)
+    ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
 class FakeSummary(Base):
     __tablename__ = "fake_projection_summaries"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     workspace_id: Mapped[str] = mapped_column(String, nullable=False)
+    window_end: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    source_timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
@@ -64,7 +76,7 @@ class FakeGuardAuditEvent(Base):
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
-MODELS = {"knowledge": FakeKnowledge, "intent": FakeIntent, "summary": FakeSummary}
+MODELS = {"knowledge": FakeKnowledge, "intent": FakeIntent, "summary": FakeSummary, "audit_event": FakeAuditEvent}
 NOW = datetime(2026, 10, 3, 20, 38, tzinfo=timezone.utc)
 
 
@@ -88,6 +100,8 @@ def _knowledge(session, workspace, kind, expires_at, *, updated_at=None):
     row = FakeKnowledge(
         workspace_id=workspace,
         source_kind=kind,
+        source_id=str(id(object())),
+        source_timestamp=None,
         expires_at=expires_at,
         updated_at=updated_at,
     )
@@ -96,7 +110,12 @@ def _knowledge(session, workspace, kind, expires_at, *, updated_at=None):
 
 
 def _summary(session, workspace, expires_at):
-    row = FakeSummary(workspace_id=workspace, expires_at=expires_at)
+    row = FakeSummary(
+        workspace_id=workspace,
+        window_end=expires_at - timedelta(days=30),
+        source_timestamp=expires_at - timedelta(days=30),
+        expires_at=expires_at,
+    )
     session.add(row)
     session.flush()
     return row
@@ -363,6 +382,9 @@ def test_dry_run_aggregates_workspace_counts_without_mutation_or_commit():
 
     assert result.to_dict() == {
         "dry_run": True,
+        "backfill_candidates": 0,
+        "knowledge_backfilled": 0,
+        "knowledge_orphans_deleted": 0,
         "knowledge_candidates": 1,
         "knowledge_deleted": 0,
         "summary_candidates": 0,
@@ -502,13 +524,15 @@ def test_worker_log_callback_and_result_are_aggregate_only(monkeypatch):
         on_result=callbacks.append,
     )
 
-    assert result.knowledge_deleted == 1
+    assert result.knowledge_deleted == 0
+    assert result.knowledge_orphans_deleted == 1
     assert result.batches_committed == 1
-    assert len(created_sessions) == 3
+    assert len(created_sessions) == 4
     assert rls_calls == [
         (created_sessions[0], "private-workspace"),
         (created_sessions[1], "private-workspace"),
         (created_sessions[2], "private-workspace"),
+        (created_sessions[3], "private-workspace"),
     ]
     assert all(not session.in_transaction() for session in created_sessions)
     assert callbacks == [result.to_dict()]
@@ -553,7 +577,7 @@ def test_worker_commits_knowledge_before_later_intent_failure(monkeypatch):
             model_overrides=MODELS,
         )
 
-    assert len(created_sessions) == 2
+    assert len(created_sessions) == 3
     assert all(not session.in_transaction() for session in created_sessions)
     with factory() as verifier:
         assert verifier.get(FakeKnowledge, knowledge_id) is None
@@ -592,6 +616,105 @@ def test_worker_dry_run_and_empty_pass_release_connection_and_transaction(dry_ru
 
     assert result.knowledge_deleted == result.intents_expired == 0
     assert checkouts == checkins
-    assert checkouts == (1 if dry_run else 3)
-    assert len(created_sessions) == (1 if dry_run else 3)
+    assert checkouts == (1 if dry_run else 4)
+    assert len(created_sessions) == (1 if dry_run else 4)
     assert all(not session.in_transaction() for session in created_sessions)
+
+
+
+def test_backfill_uses_source_time_exact_cutoff_and_preserves_rules():
+    session = _session()
+    event_source = FakeAuditEvent(workspace_id='ws-a', ts=NOW - timedelta(days=30))
+    session.add(event_source)
+    session.flush()
+    event_projection = _knowledge(session, 'ws-a', 'audit_event', None, updated_at=NOW)
+    event_projection.source_id = str(event_source.id)
+    rule = _knowledge(session, 'ws-a', 'rule', None, updated_at=NOW)
+    other = _knowledge(session, 'ws-b', 'audit_event', None, updated_at=NOW)
+    other.source_id = str(event_source.id)
+    session.commit()
+
+    result = backfill_projection_expiry(
+        session,
+        workspace_id='ws-a',
+        retention_days=30,
+        model_overrides=MODELS,
+    )
+    session.commit()
+    session.refresh(event_projection)
+
+    assert result.knowledge_backfilled == 1
+    assert event_projection.source_timestamp.replace(tzinfo=timezone.utc) == event_source.ts.replace(tzinfo=timezone.utc)
+    assert event_projection.expires_at.replace(tzinfo=timezone.utc) == NOW
+    assert rule.expires_at is None
+    assert other.expires_at is None
+
+    cleanup = cleanup_expired_projections(
+        session,
+        workspace_id='ws-a',
+        now=NOW,
+        model_overrides={'knowledge': FakeKnowledge},
+    )
+    session.commit()
+    assert cleanup.knowledge_deleted == 1
+    assert session.get(FakeKnowledge, rule.id) is not None
+    assert session.get(FakeKnowledge, other.id) is not None
+
+
+def test_backfill_summary_metadata_orphans_and_multiple_batches_converge():
+    session = _session()
+    summary = FakeSummary(
+        workspace_id='ws-a',
+        window_end=NOW - timedelta(days=2),
+        source_timestamp=NOW - timedelta(days=2),
+        expires_at=NOW + timedelta(days=28),
+    )
+    session.add(summary)
+    session.flush()
+    summary_projection = _knowledge(session, 'ws-a', 'audit_summary', None)
+    summary_projection.source_id = str(summary.id)
+    event_one = FakeAuditEvent(workspace_id='ws-a', ts=NOW - timedelta(days=1))
+    event_two = FakeAuditEvent(workspace_id='ws-a', ts=NOW - timedelta(days=3))
+    session.add_all([event_one, event_two])
+    session.flush()
+    for source in (event_one, event_two):
+        row = _knowledge(session, 'ws-a', 'audit_event', None)
+        row.source_id = str(source.id)
+    orphan = _knowledge(session, 'ws-a', 'audit_event', None)
+    orphan.source_id = '999999'
+    session.commit()
+
+    dry = backfill_projection_expiry(
+        session,
+        workspace_id='ws-a',
+        retention_days=30,
+        batch_size=2,
+        dry_run=True,
+        model_overrides=MODELS,
+    )
+    assert dry.backfill_candidates == 4
+
+    totals = {'backfilled': 0, 'orphans': 0}
+    for _ in range(3):
+        result = backfill_projection_expiry(
+            session,
+            workspace_id='ws-a',
+            retention_days=30,
+            batch_size=2,
+            model_overrides=MODELS,
+        )
+        totals['backfilled'] += result.knowledge_backfilled
+        totals['orphans'] += result.knowledge_orphans_deleted
+        session.commit()
+
+    session.refresh(summary_projection)
+    assert summary_projection.source_timestamp.replace(tzinfo=timezone.utc) == summary.source_timestamp.replace(tzinfo=timezone.utc)
+    assert summary_projection.expires_at.replace(tzinfo=timezone.utc) == summary.expires_at.replace(tzinfo=timezone.utc)
+    assert totals == {'backfilled': 3, 'orphans': 1}
+    assert session.scalar(
+        select(retention.func.count()).select_from(FakeKnowledge).where(
+            FakeKnowledge.workspace_id == 'ws-a',
+            FakeKnowledge.source_kind.in_(('audit_event', 'audit_summary')),
+            retention.or_(FakeKnowledge.source_timestamp.is_(None), FakeKnowledge.expires_at.is_(None)),
+        )
+    ) == 0
