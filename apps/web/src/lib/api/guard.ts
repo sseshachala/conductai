@@ -551,7 +551,7 @@ export const guard = {
     rateLimits: {
       get: (f: AuthFetch, workspaceId: string, id: string) =>
         json<GatewayProfileRateLimits>(f, `${API}/workspaces/${workspaceId}/gateway-profiles-v2/${id}/rate-limits`),
-      set: (f: AuthFetch, workspaceId: string, id: string, body: GatewayProfileRateLimitsInput) =>
+      set: (f: AuthFetch, workspaceId: string, id: string, body: Partial<GatewayProfileRateLimitsInput>) =>
         _mutateJson<GatewayProfileRateLimits>(f, "PUT", `${API}/workspaces/${workspaceId}/gateway-profiles-v2/${id}/rate-limits`, body),
     },
     list: (f: AuthFetch, workspaceId: string) =>

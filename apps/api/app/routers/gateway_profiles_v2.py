@@ -49,6 +49,7 @@ from typing import Any, Literal
 from uuid import UUID
 
 import json
+import re
 
 import httpx
 import structlog
@@ -939,6 +940,43 @@ def update_working_copy(
     return _to_output(db, workspace_id, profile)
 
 
+def _profile_agent_options(db: Session, workspace_id: str, agents: list) -> list[dict[str, str]]:
+    from app.models.workspace_user import WorkspaceUser
+
+    auto_users = {}
+    for agent in agents:
+        match = re.fullmatch(r"((?:user_|oidc_)[A-Za-z0-9_-]+) \(auto\)", agent.name.strip())
+        if match:
+            auto_users[str(agent.id)] = match.group(1)
+
+    names = {}
+    if auto_users:
+        user_ids = sorted(set(auto_users.values()))
+        if settings.auth_mode == "proxy":
+            from app.modules.auth.console.models import ConsoleIdentityMapping
+
+            members = db.query(ConsoleIdentityMapping.user_id, ConsoleIdentityMapping.display_name).join(
+                WorkspaceUser, WorkspaceUser.clerk_user_id == ConsoleIdentityMapping.user_id,
+            ).filter(
+                WorkspaceUser.workspace_id == workspace_id,
+                ConsoleIdentityMapping.issuer == settings.console_oidc_issuer,
+                ConsoleIdentityMapping.user_id.in_(user_ids),
+            ).all()
+            names = {member.user_id: member.display_name.strip() for member in members if member.display_name}
+        else:
+            from app.models.user import User
+
+            members = db.query(User.clerk_id, User.email).join(
+                WorkspaceUser, WorkspaceUser.clerk_user_id == User.clerk_id,
+            ).filter(WorkspaceUser.workspace_id == workspace_id, User.clerk_id.in_(user_ids)).all()
+            names = {member.clerk_id: member.email.strip() for member in members if member.email}
+
+    return [{"id": str(agent.id), "name": (
+        f"{names[auto_users[str(agent.id)]]} (auto)" if names.get(auto_users.get(str(agent.id)))
+        else "Auto-provisioned agent" if str(agent.id) in auto_users else agent.name
+    )} for agent in agents]
+
+
 def _profile_rate_limits_output(db: Session, workspace_id: str, profile_id: UUID) -> ProfileRateLimitsOut:
     from app.modules.agent_identity.models import AgentIdentity
     from app.core.workspace_context import set_workspace_rls
@@ -954,7 +992,7 @@ def _profile_rate_limits_output(db: Session, workspace_id: str, profile_id: UUID
         rpm=default.rpm if default else None, tpm=default.tpm if default else None,
         agent_limits=[ProfileAgentRateCap(agent_identity_id=r.agent_identity_id, rpm=r.rpm, tpm=r.tpm)
                       for r in rows if r.agent_identity_id is not None],
-        available_agents=[{"id": str(a.id), "name": a.name} for a in agents],
+        available_agents=_profile_agent_options(db, workspace_id, agents),
     )
 
 
@@ -994,10 +1032,11 @@ def update_profile_rate_limits(
         GatewayProfileRateLimit.profile_id == profile_id,
     ).all()
     existing = {r.agent_identity_id: r for r in rows}
-    desired = [(None, body)]
+    # Agent-only edits must not replace a shared profile cap loaded earlier.
+    desired = [(None, body)] if {"rpm", "tpm"} & body.model_fields_set else []
     if body.agent_limits is not None:
         desired.extend((str(cap.agent_identity_id), cap) for cap in body.agent_limits)
-        keep = {identity for identity, _ in desired}
+        keep = {None, *(identity for identity, _ in desired)}
         for row in rows:
             if row.agent_identity_id not in keep:
                 db.delete(row)
