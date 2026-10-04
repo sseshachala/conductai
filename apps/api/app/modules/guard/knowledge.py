@@ -315,6 +315,54 @@ def _projection_is_current(snapshot: _ProjectionSnapshot) -> bool:
         )
 
 
+def _locked_projection_for_snapshot(
+    db: Session, snapshot: _ProjectionSnapshot
+) -> GuardKnowledgeIndex | None:
+    return (
+        db.query(GuardKnowledgeIndex)
+        .filter(
+            GuardKnowledgeIndex.workspace_id == uuid.UUID(snapshot.workspace_id),
+            GuardKnowledgeIndex.source_kind == snapshot.source_kind.value,
+            GuardKnowledgeIndex.source_id == snapshot.source_id,
+        )
+        .with_for_update()
+        .first()
+    )
+
+
+def _projection_matches_snapshot(
+    row: GuardKnowledgeIndex | None, snapshot: _ProjectionSnapshot
+) -> bool:
+    return bool(
+        row
+        and row.canonical_text == snapshot.canonical_text
+        and row.content_hash == snapshot.content_hash
+        and row.meta == snapshot.metadata
+        and row.source_timestamp == snapshot.source_timestamp
+        and row.expires_at == snapshot.expires_at
+    )
+
+
+def _newer_intent_exists(
+    db: Session, snapshot: _ProjectionSnapshot, intent: GuardProjectionIntent | None
+) -> bool:
+    created_at = getattr(intent, "created_at", None)
+    if intent is None or created_at is None:
+        return False
+    return (
+        db.query(GuardProjectionIntent.id)
+        .filter(
+            GuardProjectionIntent.workspace_id == uuid.UUID(snapshot.workspace_id),
+            GuardProjectionIntent.source_kind == snapshot.source_kind.value,
+            GuardProjectionIntent.source_id == snapshot.source_id,
+            GuardProjectionIntent.source_version != snapshot.source_version,
+            GuardProjectionIntent.created_at > created_at,
+        )
+        .first()
+        is not None
+    )
+
+
 def _conditional_write(
     snapshot: _ProjectionSnapshot,
     embedding: list[float],
@@ -324,6 +372,7 @@ def _conditional_write(
     now = datetime.now(timezone.utc)
     with SessionLocal() as db:
         set_workspace_rls(db, snapshot.workspace_id)
+        intent = None
         if intent_id is not None:
             intent = db.get(GuardProjectionIntent, uuid.UUID(intent_id))
             if (
@@ -334,6 +383,7 @@ def _conditional_write(
                 or intent.source_version != snapshot.source_version
             ):
                 return ProjectionIntentStatus.MISSING
+        existing_projection = _locked_projection_for_snapshot(db, snapshot)
         source = _load_source(
             db,
             workspace_id=snapshot.workspace_id,
@@ -342,6 +392,16 @@ def _conditional_write(
             for_update=True,
         )
         if source is None:
+            if _projection_matches_snapshot(
+                existing_projection, snapshot
+            ) and not _newer_intent_exists(db, snapshot, intent):
+                db.delete(existing_projection)
+                db.commit()
+                log.debug(
+                    "guard.knowledge.deleted_missing_source",
+                    source_kind=snapshot.source_kind.value,
+                    source_id=snapshot.source_id,
+                )
             return ProjectionIntentStatus.MISSING
         status, current = _snapshot_source(
             source,

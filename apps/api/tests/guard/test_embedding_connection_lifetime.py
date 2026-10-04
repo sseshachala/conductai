@@ -229,7 +229,7 @@ def test_snapshot_rejects_stale_version_and_exact_expiry(monkeypatch):
     assert snapshot is None
 
 
-def test_conditional_write_does_not_resurrect_deleted_source(monkeypatch):
+def test_conditional_write_deletes_matching_projection_for_missing_source(monkeypatch):
     event = _event()
     snapshot = _snapshot(event)
     intent = SimpleNamespace(
@@ -238,8 +238,18 @@ def test_conditional_write_does_not_resurrect_deleted_source(monkeypatch):
         source_id=str(event.id),
         source_version=snapshot.source_version,
     )
+    existing = SimpleNamespace(
+        canonical_text=snapshot.canonical_text,
+        content_hash=snapshot.content_hash,
+        meta=snapshot.metadata,
+        source_timestamp=snapshot.source_timestamp,
+        expires_at=snapshot.expires_at,
+    )
 
     class FakeDB:
+        deleted = None
+        commits = 0
+
         def __enter__(self):
             return self
 
@@ -249,13 +259,125 @@ def test_conditional_write_does_not_resurrect_deleted_source(monkeypatch):
         def get(self, model, key):
             return intent
 
-    monkeypatch.setattr(knowledge, "SessionLocal", FakeDB)
-    monkeypatch.setattr(knowledge, "set_workspace_rls", lambda db, ws: None)
+        def delete(self, row):
+            self.deleted = row
+
+        def commit(self):
+            self.commits += 1
+
+    db = FakeDB()
+    monkeypatch.setattr(knowledge, "SessionLocal", lambda: db)
+    monkeypatch.setattr(knowledge, "set_workspace_rls", lambda session, ws: None)
+    monkeypatch.setattr(
+        knowledge, "_locked_projection_for_snapshot", lambda *args: existing
+    )
+    monkeypatch.setattr(knowledge, "_newer_intent_exists", lambda *args: False)
     monkeypatch.setattr(knowledge, "_load_source", lambda *args, **kwargs: None)
+
     assert (
         knowledge._conditional_write(snapshot, [0.1], intent_id=str(uuid4()))
         is ProjectionIntentStatus.MISSING
     )
+    assert db.deleted is existing
+    assert db.commits == 1
+
+
+def test_conditional_write_preserves_projection_when_newer_intent_exists(monkeypatch):
+    event = _event()
+    snapshot = _snapshot(event)
+    intent = SimpleNamespace(
+        workspace_id=event.workspace_id,
+        source_kind="audit_event",
+        source_id=str(event.id),
+        source_version=snapshot.source_version,
+    )
+    existing = SimpleNamespace(
+        canonical_text=snapshot.canonical_text,
+        content_hash=snapshot.content_hash,
+        meta=snapshot.metadata,
+        source_timestamp=snapshot.source_timestamp,
+        expires_at=snapshot.expires_at,
+    )
+
+    class FakeDB:
+        deleted = None
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def get(self, model, key):
+            return intent
+
+        def delete(self, row):
+            self.deleted = row
+
+    db = FakeDB()
+    monkeypatch.setattr(knowledge, "SessionLocal", lambda: db)
+    monkeypatch.setattr(knowledge, "set_workspace_rls", lambda session, ws: None)
+    monkeypatch.setattr(
+        knowledge, "_locked_projection_for_snapshot", lambda *args: existing
+    )
+    monkeypatch.setattr(knowledge, "_newer_intent_exists", lambda *args: True)
+    monkeypatch.setattr(knowledge, "_load_source", lambda *args, **kwargs: None)
+
+    assert (
+        knowledge._conditional_write(snapshot, [0.1], intent_id=str(uuid4()))
+        is ProjectionIntentStatus.MISSING
+    )
+    assert db.deleted is None
+
+
+def test_conditional_write_does_not_delete_newer_replacement(monkeypatch):
+    event = _event()
+    snapshot = _snapshot(event)
+    replacement = _event(ts=event.ts, input_summary="new replacement")
+    replacement.id = event.id
+    replacement.workspace_id = event.workspace_id
+    newer_projection = SimpleNamespace(
+        canonical_text="newer projection",
+        content_hash="newer-hash",
+        meta={"version": "newer"},
+        source_timestamp=event.ts,
+        expires_at=snapshot.expires_at,
+    )
+    intent = SimpleNamespace(
+        workspace_id=event.workspace_id,
+        source_kind="audit_event",
+        source_id=str(event.id),
+        source_version=snapshot.source_version,
+    )
+
+    class FakeDB:
+        deleted = None
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def get(self, model, key):
+            return intent
+
+        def delete(self, row):
+            self.deleted = row
+
+    db = FakeDB()
+    monkeypatch.setattr(knowledge, "SessionLocal", lambda: db)
+    monkeypatch.setattr(knowledge, "set_workspace_rls", lambda session, ws: None)
+    monkeypatch.setattr(
+        knowledge, "_locked_projection_for_snapshot", lambda *args: newer_projection
+    )
+    monkeypatch.setattr(knowledge, "_load_source", lambda *args, **kwargs: replacement)
+
+    assert (
+        knowledge._conditional_write(snapshot, [0.1], intent_id=str(uuid4()))
+        is ProjectionIntentStatus.SUPERSEDED
+    )
+    assert db.deleted is None
 
 
 def test_conditional_write_rechecks_stale_version(monkeypatch):
@@ -283,6 +405,9 @@ def test_conditional_write_rechecks_stale_version(monkeypatch):
 
     monkeypatch.setattr(knowledge, "SessionLocal", FakeDB)
     monkeypatch.setattr(knowledge, "set_workspace_rls", lambda db, ws: None)
+    monkeypatch.setattr(
+        knowledge, "_locked_projection_for_snapshot", lambda *args: None
+    )
     monkeypatch.setattr(knowledge, "_load_source", lambda *args, **kwargs: changed)
     assert (
         knowledge._conditional_write(snapshot, [0.1], intent_id=str(uuid4()))
@@ -323,6 +448,9 @@ def test_conditional_write_rechecks_expiry(monkeypatch):
 
     monkeypatch.setattr(knowledge, "SessionLocal", FakeDB)
     monkeypatch.setattr(knowledge, "set_workspace_rls", lambda db, ws: None)
+    monkeypatch.setattr(
+        knowledge, "_locked_projection_for_snapshot", lambda *args: None
+    )
     monkeypatch.setattr(knowledge, "_load_source", lambda *args, **kwargs: event)
     assert (
         knowledge._conditional_write(snapshot, [0.1], intent_id=str(uuid4()))
