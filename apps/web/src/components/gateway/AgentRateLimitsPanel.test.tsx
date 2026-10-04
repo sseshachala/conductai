@@ -44,6 +44,22 @@ it("switching agents discards unsaved edits and saves only the selected ID", asy
   }, "workspace-a"))
 })
 
+it("uses compact UUID labels while retaining the full selected identity", async () => {
+  const rows = [
+    { id: "3f27cc94-eb7a-462f-bc51-cbdbb775354a", name: "Claude.ai (admin@example.test)" },
+    { id: "3f27cc94-eb7a-462f-bc51-cbdbb775abcd", name: "Claude.ai (admin@example.test)" },
+  ]
+  state.agents.mockResolvedValue(rows)
+  render(<AgentRateLimitsPanel {...props} />)
+  const picker = await screen.findByRole("combobox", { name: "Agent identity" })
+  expect(screen.getByRole("option", { name: "Claude.ai (admin@example.test) (3f27cc94...354a)" })).toHaveValue(rows[0].id)
+  expect(screen.getByRole("option", { name: "Claude.ai (admin@example.test) (3f27cc94...abcd)" })).toHaveValue(rows[1].id)
+  fireEvent.change(picker, { target: { value: rows[0].id } })
+  expect(picker).toHaveAttribute("title", `${rows[0].name} (${rows[0].id})`)
+  expect(screen.getByText(rows[0].id, { selector: "code" })).toBeInTheDocument()
+  await waitFor(() => expect(state.list).toHaveBeenCalledWith(state.fetch, "workspace-a"))
+})
+
 it("does not fetch protected data for a non-admin", () => {
   render(<AgentRateLimitsPanel {...props} isAdmin={false} />)
   expect(state.agents).not.toHaveBeenCalled()
