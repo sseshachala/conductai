@@ -35,6 +35,7 @@ from app.modules.guard.projection_policy import (
     projection_expires_at,
     projection_is_expired,
 )
+from app.modules.guard.projection_retention import apply_projection_search_filter
 
 log = structlog.get_logger(__name__)
 
@@ -293,15 +294,17 @@ def _intent_snapshot(intent_id: str):
 def _projection_is_current(snapshot: _ProjectionSnapshot) -> bool:
     with SessionLocal() as db:
         set_workspace_rls(db, snapshot.workspace_id)
-        row = (
-            db.query(GuardKnowledgeIndex)
-            .filter(
-                GuardKnowledgeIndex.workspace_id == uuid.UUID(snapshot.workspace_id),
-                GuardKnowledgeIndex.source_kind == snapshot.source_kind.value,
-                GuardKnowledgeIndex.source_id == snapshot.source_id,
-            )
-            .first()
+        projection_now = datetime.now(timezone.utc)
+        query = db.query(GuardKnowledgeIndex).filter(
+            GuardKnowledgeIndex.source_kind == snapshot.source_kind.value,
+            GuardKnowledgeIndex.source_id == snapshot.source_id,
         )
+        row = apply_projection_search_filter(
+            query,
+            model=GuardKnowledgeIndex,
+            workspace_id=uuid.UUID(snapshot.workspace_id),
+            now=projection_now,
+        ).first()
         return bool(
             row
             and row.content_hash == snapshot.content_hash

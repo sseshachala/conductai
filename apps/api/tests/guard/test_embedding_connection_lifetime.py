@@ -10,6 +10,7 @@ from app.modules.guard.projection_contract import (
 )
 from app.modules.guard.projection_policy import audit_event_source_version
 from app.modules.guard.routers import knowledge_search, session_reports
+from app.tools.registrations.lens import guard_core
 
 
 class PoolState:
@@ -143,6 +144,9 @@ def test_interactive_search_releases_request_session_before_provider(monkeypatch
 
         def execute(self, statement, params):
             assert client.calls == 1
+            assert params["projection_now"].tzinfo is timezone.utc
+            assert "gki.workspace_id = CAST(:workspace_id AS uuid)" in str(statement)
+            assert "gki.expires_at > :projection_now" in str(statement)
             pool.checked_out = 1
             return Result()
 
@@ -324,3 +328,32 @@ def test_conditional_write_rechecks_expiry(monkeypatch):
         knowledge._conditional_write(snapshot, [0.1], intent_id=str(uuid4()))
         is ProjectionIntentStatus.EXPIRED
     )
+
+
+def test_lens_knowledge_search_uses_explicit_active_projection_cutoff(monkeypatch):
+    pool = PoolState()
+    client = BlockingClient(pool)
+
+    class Result:
+        def fetchall(self):
+            return []
+
+    class FakeDB:
+        def execute(self, statement, params):
+            assert client.calls == 1
+            assert params["projection_now"].tzinfo is timezone.utc
+            assert "gki.workspace_id = CAST(:workspace_id AS uuid)" in str(statement)
+            assert "gki.expires_at > :projection_now" in str(statement)
+            return Result()
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(guard_core, "embedding_client_for_workspace", lambda ws: client)
+    monkeypatch.setattr(guard_core, "set_workspace_rls", lambda db, ws: None)
+    import app.core.database as database
+
+    monkeypatch.setattr(database, "SessionLocal", FakeDB)
+
+    ctx = SimpleNamespace(workspace_id=str(uuid4()))
+    assert guard_core.search_knowledge(ctx, "query", limit=5) == []

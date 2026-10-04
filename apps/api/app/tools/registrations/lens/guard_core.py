@@ -9,6 +9,7 @@ Do not import from other domain files — depend only on _shared.
 from __future__ import annotations
 
 import uuid
+from datetime import datetime, timezone
 
 from sqlalchemy import text as sa_text
 
@@ -19,6 +20,7 @@ from app.modules.guard.models import (
     GuardConfig,
     GuardSpendBudget,
 )
+from app.modules.guard.projection_retention import active_projection_sql_predicate
 from app.modules.guard.routers.spend import _get_spend_summary_inner, _org_ws_subquery
 from app.tools.registrations.lens._shared import (
     _DECISION,
@@ -253,13 +255,15 @@ def search_knowledge(ctx, q: str, kind: str | None = None, limit: int = 10):
     db = SessionLocal()
     try:
         set_workspace_rls(db, ctx.workspace_id)
+        projection_now = datetime.now(timezone.utc)
+        active_filter = active_projection_sql_predicate("gki")
         kind_filter = "AND gki.source_kind = :kind" if kind else ""
         rows = db.execute(
             sa_text(
                 f"SELECT gki.source_kind, gki.source_id, gki.canonical_text, gki.metadata, "
                 f"(gki.embedding <=> CAST(:vec AS vector)) AS distance "
                 f"FROM guard_knowledge_index gki "
-                f"WHERE gki.workspace_id = CAST(:workspace_id AS uuid) AND gki.embedding IS NOT NULL AND (gki.expires_at IS NULL OR gki.expires_at > now()) "
+                f"WHERE {active_filter} AND gki.embedding IS NOT NULL "
                 f"{kind_filter} "
                 f"ORDER BY distance ASC LIMIT :limit"
             ),
@@ -268,6 +272,7 @@ def search_knowledge(ctx, q: str, kind: str | None = None, limit: int = 10):
                 "vec": str(embedding),
                 "limit": min(limit, 50),
                 "kind": kind,
+                "projection_now": projection_now,
             },
         ).fetchall()
         return [
