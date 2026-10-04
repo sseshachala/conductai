@@ -203,6 +203,7 @@ def test_whoami_prints_all_sections(tmp_path, capsys):
         patch.object(m, "CONFIG_PATH", cfg_path),
         patch("pathlib.Path.home", return_value=tmp_path),
         patch.object(m.api, "req", return_value=_fake_workspaces()),
+        patch("conduct_cli.identity.current_identity", return_value={"id": "agent-identity-test", "name": "CLI Agent"}),
     ):
         m.cmd_whoami(args)
 
@@ -212,6 +213,8 @@ def test_whoami_prints_all_sections(tmp_path, capsys):
     assert "sudhi@b2bsphere.com" in out
     assert "3 rules" in out
     assert "Booster" in out
+    assert "CLI Agent (agent-identity-test)" in out
+    assert "cond_agt_88a4longkeyxxx" not in out
 
 
 # ---------------------------------------------------------------------------

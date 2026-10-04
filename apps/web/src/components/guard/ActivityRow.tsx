@@ -92,6 +92,8 @@ export interface AuditEvent {
   evaluated_rules?: Array<{ rule_id: string | null; severity?: string; action?: string }> | null
   defense_score?: number | null
   routing_meta?: {
+    gateway_profile_id?: string | null
+    gateway_profile?: string | null
     session_usage?: SessionUsageEvidence
     tier_form?: string | null
     resolved_model?: string | null
@@ -623,6 +625,16 @@ export function ActivityRow({ ev, compact = false, isLast = false, visibleColumn
             <span className="mono" style={{ color: "var(--text-2)" }}>{[ev.provider, ev.model].filter(Boolean).join(" / ")}</span>
           </div>
         )}
+        {ev.agent_identity_id && <div>
+          <span style={{ color: "var(--text-muted)", fontWeight: 600, marginRight: 6 }}>Agent ID</span>
+          <Link href={`/agent-identity?tab=identities&id=${encodeURIComponent(ev.agent_identity_id)}`}
+            className="mono" style={{ color: "var(--text-2)", overflowWrap: "anywhere" }}>{ev.agent_identity_id}</Link>
+        </div>}
+        {ev.routing_meta?.gateway_profile && <div>
+          <span style={{ color: "var(--text-muted)", fontWeight: 600, marginRight: 6 }}>Gateway profile</span>
+          <Link href={`/proxy/gateway-profiles${ev.routing_meta.gateway_profile_id ? `?select=${encodeURIComponent(ev.routing_meta.gateway_profile_id)}` : ""}`}
+            className="mono" style={{ color: "var(--text-2)", overflowWrap: "anywhere" }}>{ev.routing_meta.gateway_profile}</Link>
+        </div>}
         {ev.federation && <AttributionDetails value={ev.federation} />}
         {ev.routing_meta?.session_usage && <>
           <SessionUsageDetails value={ev.routing_meta.session_usage} />

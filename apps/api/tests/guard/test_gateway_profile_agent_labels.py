@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from app.core.config import settings
-from app.routers.gateway_profiles_v2 import _profile_agent_options
+from app.modules.agent_identity.labels import agent_options as _profile_agent_options
 
 
 def agent(identity_id, name):
@@ -72,7 +72,7 @@ def test_missing_local_profiles_do_not_expose_raw_owner_ids(monkeypatch, mode):
     ]
 
 
-def test_agent_only_save_preserves_shared_profile_cap(monkeypatch):
+def test_profile_endpoint_rejects_agent_caps_without_changing_shared_cap(monkeypatch):
     from uuid import uuid4
     from app.routers import gateway_profiles_v2 as router
 
@@ -85,17 +85,20 @@ def test_agent_only_save_preserves_shared_profile_cap(monkeypatch):
     db.query.side_effect = [identity_query, cap_query]
     monkeypatch.setattr(router, "_load_profile", MagicMock())
     monkeypatch.setattr(router, "_profile_rate_limits_output", MagicMock())
-    router.update_profile_rate_limits(workspace, profile, router.ProfileRateLimitsBody(agent_limits=[{
-        "agent_identity_id": identity, "rpm": 10, "tpm": 2000,
-    }]), db)
+    from fastapi import HTTPException
+    with pytest.raises(HTTPException) as error:
+        router.update_profile_rate_limits(workspace, profile, router.ProfileRateLimitsBody(agent_limits=[{
+            "agent_identity_id": identity, "rpm": 10, "tpm": 2000,
+        }]), db)
+    assert error.value.status_code == 400
     assert (shared.rpm, shared.tpm) == (120, 250000)
-    assert (override.rpm, override.tpm) == (10, 2000)
+    assert (override.rpm, override.tpm) == (5, 1000)
     db.delete.assert_not_called()
     db.add.assert_not_called()
-    db.commit.assert_called_once()
+    db.commit.assert_not_called()
 
 
-def test_removing_agent_caps_does_not_remove_shared_profile_cap(monkeypatch):
+def test_empty_legacy_agent_input_does_not_remove_any_caps(monkeypatch):
     from uuid import uuid4
     from app.routers import gateway_profiles_v2 as router
 
@@ -107,7 +110,7 @@ def test_removing_agent_caps_does_not_remove_shared_profile_cap(monkeypatch):
     monkeypatch.setattr(router, "_profile_rate_limits_output", MagicMock())
     router.update_profile_rate_limits(str(uuid4()), uuid4(), router.ProfileRateLimitsBody(agent_limits=[]), db)
     assert (shared.rpm, shared.tpm) == (60, 100000)
-    db.delete.assert_called_once_with(override)
+    db.delete.assert_not_called()
     db.add.assert_not_called()
 
 

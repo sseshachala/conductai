@@ -1,11 +1,11 @@
 """Rate limit CRUD (#980).
 
-GET    /guard/rate-limits            — list workspace default + all per-agent overrides
-PUT    /guard/rate-limits            — upsert (agent_identity_id=None => workspace default)
-DELETE /guard/rate-limits/{id}       — remove override (or default)
+GET    /guard/rate-limits            — list legacy default + agent-wide caps
+PUT    /guard/rate-limits            — upsert (agent_identity_id=None => legacy default)
+DELETE /guard/rate-limits/{id}       — remove cap
 
-Enforcement helper: app.modules.guard.rate_limit.check_rate_limit
-Called from _proxy step 4d.2.
+Gateway v2 admits profile + agent-wide caps atomically in gateway_profile_rate_limit.
+The legacy proxy retains its existing workspace-default enforcement.
 """
 from __future__ import annotations
 
@@ -14,12 +14,14 @@ from typing import Optional
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_workspace_id, require_permission
 from app.core.database import get_db
 from app.modules.guard.models import GuardRateLimit
+from app.modules.agent_identity.models import AgentIdentity
+from app.modules.agent_identity.labels import agent_options
 
 
 log = structlog.get_logger(__name__)
@@ -28,9 +30,10 @@ router = APIRouter(prefix="/guard/rate-limits", tags=["guard"])
 
 
 class RateLimitIn(BaseModel):
-    agent_identity_id: Optional[str] = None
-    rpm: Optional[int] = None
-    tpm: Optional[int] = None
+    model_config = ConfigDict(extra="forbid")
+    agent_identity_id: Optional[uuid.UUID] = None
+    rpm: Optional[int] = Field(default=None, strict=True, gt=0, le=2147483647)
+    tpm: Optional[int] = Field(default=None, strict=True, gt=0, le=2147483647)
 
 
 class RateLimitOut(BaseModel):
@@ -60,6 +63,18 @@ def list_rate_limits(
     return [_to_out(r) for r in rows]
 
 
+@router.get("/agents")
+def list_agent_options(
+    workspace_id: str = Depends(get_workspace_id),
+    _: str = Depends(require_permission("guard.spend.budgets.edit")),
+    db: Session = Depends(get_db),
+):
+    agents = db.query(AgentIdentity).filter(AgentIdentity.workspace_id == workspace_id).order_by(
+        AgentIdentity.name, AgentIdentity.id,
+    ).all()
+    return agent_options(db, workspace_id, agents)
+
+
 @router.put("", response_model=RateLimitOut)
 def upsert_rate_limit(
     body: RateLimitIn,
@@ -67,13 +82,12 @@ def upsert_rate_limit(
     _: str = Depends(require_permission("guard.spend.budgets.edit")),
     db: Session = Depends(get_db),
 ):
-    if body.rpm is not None and body.rpm <= 0:
-        raise HTTPException(400, "rpm must be positive")
-    if body.tpm is not None and body.tpm <= 0:
-        raise HTTPException(400, "tpm must be positive")
-
     ws = uuid.UUID(workspace_id)
-    aid = uuid.UUID(body.agent_identity_id) if body.agent_identity_id else None
+    aid = str(body.agent_identity_id) if body.agent_identity_id else None
+    if aid and not db.query(AgentIdentity).filter(
+        AgentIdentity.id == aid, AgentIdentity.workspace_id == workspace_id,
+    ).with_for_update().first():
+        raise HTTPException(404, "Agent identity not found in this workspace.")
 
     q = db.query(GuardRateLimit).filter(GuardRateLimit.workspace_id == ws)
     q = q.filter(GuardRateLimit.agent_identity_id == aid) if aid else q.filter(GuardRateLimit.agent_identity_id.is_(None))

@@ -260,6 +260,8 @@ def cmd_guard_status(args):
         proxy_line = f"{_guard_shared.RED}not configured{_guard_shared.RESET} — run: {_guard_shared.BOLD}conduct guard sync{_guard_shared.RESET}"
 
     print(f"\n{_guard_shared.BOLD}Guard status{_guard_shared.RESET} — {user_email}")
+    from conduct_cli.identity import identity_label
+    print(f"Agent ID: {identity_label(cfg)}")
     _active_cfg = _guard_shared._load_guard_config()
     if _active_cfg.get("current_goal_id"):
         print(f"  Active goal: {_guard_shared.CYAN}{_active_cfg.get('current_goal_name', 'unnamed')}{_guard_shared.RESET}  ({_active_cfg['current_goal_id'][:8]}...)")

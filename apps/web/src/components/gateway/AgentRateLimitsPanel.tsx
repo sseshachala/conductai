@@ -1,10 +1,10 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import Link from "next/link"
 import { RotateCw } from "lucide-react"
 import { useAuthFetch } from "@/hooks/useAuthFetch"
 import { guard } from "@/lib/api"
-import type { GatewayProfileV2Out } from "@/lib/api/guard"
 import RateLimitsPanel from "./RateLimitsPanel"
 import styles from "./RateLimitsPanel.module.css"
 
@@ -12,7 +12,7 @@ export default function AgentRateLimitsPanel({ workspaceId, isAdmin }: {
   workspaceId: string; isAdmin: boolean
 }) {
   const { authFetch } = useAuthFetch()
-  const [profiles, setProfiles] = useState<GatewayProfileV2Out[]>([])
+  const [agents, setAgents] = useState<Array<{ id: string; name: string }>>([])
   const [selected, setSelected] = useState("")
   const [loadedWorkspace, setLoadedWorkspace] = useState("")
   const [loading, setLoading] = useState(true)
@@ -21,36 +21,38 @@ export default function AgentRateLimitsPanel({ workspaceId, isAdmin }: {
 
   useEffect(() => {
     let current = true
-    setLoading(true); setError(null); setLoadedWorkspace(""); setProfiles([]); setSelected("")
+    setLoading(true); setError(null); setLoadedWorkspace(""); setAgents([]); setSelected("")
     if (!workspaceId || !isAdmin) return
-    guard.gatewayProfilesV2.list(authFetch, workspaceId).then(rows => {
+    guard.rateLimits.agents(authFetch, workspaceId).then(rows => {
       if (!current) return
-      setProfiles(rows); setSelected(rows[0]?.id ?? ""); setLoadedWorkspace(workspaceId)
+      setAgents(rows); setLoadedWorkspace(workspaceId)
     }).catch(reason => {
-      if (current) setError(reason instanceof Error ? reason.message : "Could not load Gateway profiles.")
+      if (current) setError(reason instanceof Error ? reason.message : "Could not load agent identities.")
     }).finally(() => { if (current) setLoading(false) })
     return () => { current = false }
   }, [authFetch, workspaceId, isAdmin, reload])
 
   if (!isAdmin) return <p className={styles.empty}>Rate limits are managed by workspace admins.</p>
   if (error) return <div role="alert" className={styles.error}>{error}
-    <button type="button" className="btn btn-ghost btn-sm" title="Retry loading profiles"
-      aria-label="Retry loading profiles" onClick={() => setReload(value => value + 1)}><RotateCw size={14} /></button>
+    <button type="button" className="btn btn-ghost btn-sm" title="Retry loading agents"
+      aria-label="Retry loading agents" onClick={() => setReload(value => value + 1)}><RotateCw size={14} /></button>
   </div>
   if (loading || loadedWorkspace !== workspaceId) return <p role="status" className={styles.empty}>Loading...</p>
-  if (!profiles.length) return <div className={styles.empty}>
-    <p>No Gateway profiles.</p><a href="/proxy/gateway-profiles">Gateway profiles</a>
+  if (!agents.length) return <div className={styles.empty}>
+    <p>No agent identities.</p><Link href="/agent-identity?tab=identities">Agent identities</Link>
   </div>
+  const agent = agents.find(row => row.id === selected)
 
   return <div className={styles.body}>
-    <label className={styles.profilePicker}>Gateway profile
-      <select aria-label="Gateway profile" value={selected} onChange={event => setSelected(event.target.value)}>
-        {profiles.map(profile => <option key={profile.id} value={profile.id}>
-          {profile.name} - cond-{profile.cond_code}{profile.model_alias ? `-${profile.model_alias}` : ""}
-        </option>)}
+    <label className={styles.profilePicker}>Agent identity
+      <select aria-label="Agent identity" value={selected} onChange={event => setSelected(event.target.value)}>
+        <option value="">Select agent</option>
+        {agents.map(row => <option key={row.id} value={row.id}>{row.name} ({row.id})</option>)}
       </select>
     </label>
-    <RateLimitsPanel key={`${workspaceId}:${selected}`} workspaceId={workspaceId}
-      profileId={selected} isAdmin={isAdmin} agentOnly />
+    {agent && <>
+      <div className={styles.identity}><strong>{agent.name}</strong><code>{agent.id}</code></div>
+      <RateLimitsPanel key={`${workspaceId}:${selected}`} workspaceId={workspaceId} agentId={selected} isAdmin={isAdmin} />
+    </>}
   </div>
 }

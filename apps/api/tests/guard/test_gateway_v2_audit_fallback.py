@@ -61,8 +61,8 @@ async def test_stream_record_legacy_fires_record_audit_on_close(blocked):
         conductai_workflow=None,
         conductai_workflow_id=None,
         hook_session_id=None,
-        routing_meta={"gateway_version": "v2"},
-        agent_identity_id=None,
+        routing_meta={"gateway_version": "v2", "gateway_profile_id": "profile-a", "gateway_profile": "cond-abcdefgh-coding"},
+        agent_identity_id="agent-a",
         route="/gateway/v1/anthropic/v1/messages",
         ingress_decision="allowed",
         ingress_rule_id=None,
@@ -89,6 +89,9 @@ async def test_stream_record_legacy_fires_record_audit_on_close(blocked):
     assert args[6] == ("blocked-tool" if blocked else None)
     # Kwargs: execution_status='success', bytes collected end-to-end.
     assert kwargs["execution_status"] == ("error" if blocked else "success")
+    assert kwargs["agent_identity_id"] == "agent-a"
+    assert kwargs["routing_meta"]["gateway_profile_id"] == "profile-a"
+    assert kwargs["routing_meta"]["gateway_profile"] == "cond-abcdefgh-coding"
     if blocked:
         assert kwargs["response_bytes"] == b"provider usage"
         assert kwargs["routing_meta"]["response_gate_reason"] == "policy_block"

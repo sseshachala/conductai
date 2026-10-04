@@ -1577,6 +1577,8 @@ def cmd_whoami(args):
     print(f"\n{BOLD}Workspace:{RESET}  {ws_display}{ws_id_hint}")
     print(f"{BOLD}Server:{RESET}     {server}")
     print(f"{BOLD}Agent token:{RESET} {api_key_display}")
+    from .identity import identity_label
+    print(f"{BOLD}Agent ID:{RESET}    {identity_label(cfg)}")
 
     # Guard section — all under ~/.conduct/
     policy_path = Path.home() / ".conduct" / "policy.json"
