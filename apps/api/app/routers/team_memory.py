@@ -11,19 +11,64 @@ from sqlalchemy.orm import Session
 
 from app.core.auth import get_workspace_id, require_permission
 from app.core.database import SessionLocal, get_db
+from app.core.workspace_context import set_workspace_rls
 from app.models.team_session_memory import TeamSessionMemory
+from app.modules.guard.embedding import embedding_client_for_workspace
 
 log = structlog.get_logger(__name__)
 router = APIRouter(prefix="/team-memory", tags=["team-memory"])
 
 _TECH_KEYWORDS = [
-    "auth", "jwt", "oauth", "token", "database", "db", "postgres", "redis",
-    "api", "rest", "graphql", "deploy", "docker", "kubernetes", "migration",
-    "index", "cache", "queue", "webhook", "cors", "ssl", "tls", "encryption",
-    "test", "ci", "pipeline", "build", "lint", "schema", "model", "orm",
-    "async", "worker", "celery", "fastapi", "react", "typescript", "python",
-    "bug", "fix", "refactor", "performance", "memory", "leak", "timeout",
-    "rate limit", "retry", "circuit breaker", "logging", "tracing",
+    "auth",
+    "jwt",
+    "oauth",
+    "token",
+    "database",
+    "db",
+    "postgres",
+    "redis",
+    "api",
+    "rest",
+    "graphql",
+    "deploy",
+    "docker",
+    "kubernetes",
+    "migration",
+    "index",
+    "cache",
+    "queue",
+    "webhook",
+    "cors",
+    "ssl",
+    "tls",
+    "encryption",
+    "test",
+    "ci",
+    "pipeline",
+    "build",
+    "lint",
+    "schema",
+    "model",
+    "orm",
+    "async",
+    "worker",
+    "celery",
+    "fastapi",
+    "react",
+    "typescript",
+    "python",
+    "bug",
+    "fix",
+    "refactor",
+    "performance",
+    "memory",
+    "leak",
+    "timeout",
+    "rate limit",
+    "retry",
+    "circuit breaker",
+    "logging",
+    "tracing",
 ]
 
 
@@ -55,7 +100,8 @@ def _summarise(raw_transcript: str | None) -> str | None:
         return truncated[:500]
 
     try:
-        from app.runtime.llm_client import client_for, LLMTextBlock
+        from app.runtime.llm_client import LLMTextBlock, client_for
+
         client = client_for("anthropic", settings.anthropic_api_key)
         msg = client.create(
             model="claude-haiku-4-5-20251001",
@@ -79,16 +125,34 @@ def _summarise(raw_transcript: str | None) -> str | None:
         return truncated[:500]
 
 
-def _embed(text_content: str) -> list[float] | None:
+def _embed(text_content: str, workspace_id: str) -> list[float] | None:
     try:
-        from app.runtime.embedding_client import create_embedding_client
-        client = create_embedding_client()
+        client = embedding_client_for_workspace(workspace_id)
         if client is None:
             return None
         return client.embed(text_content)
     except Exception as exc:
         log.warning("team_memory.embed_failed", error=str(exc))
         return None
+
+
+def _embed_team_memory(row_id: str, workspace_id: str, expected_summary: str) -> None:
+    embedding = _embed(expected_summary, workspace_id)
+    if embedding is None:
+        return
+    try:
+        with SessionLocal() as write_db:
+            set_workspace_rls(write_db, workspace_id)
+            write_db.query(TeamSessionMemory).filter(
+                TeamSessionMemory.id == uuid.UUID(row_id),
+                TeamSessionMemory.workspace_id == uuid.UUID(workspace_id),
+                TeamSessionMemory.light_summary == expected_summary,
+            ).update(
+                {TeamSessionMemory.embedding: embedding}, synchronize_session=False
+            )
+            write_db.commit()
+    except Exception as exc:
+        log.warning("team_memory.embed_write_failed", row_id=row_id, error=str(exc))
 
 
 # Tools already handled by the CLI Stop hook — skip to avoid double-storing
@@ -105,6 +169,7 @@ def _synthesize_mcp_sessions(workspace_id: str) -> None:
     db: Session = SessionLocal()
     try:
         ws_uuid = uuid.UUID(workspace_id)
+        set_workspace_rls(db, workspace_id)
         since = datetime.now(timezone.utc) - timedelta(hours=48)
 
         rows = db.execute(
@@ -148,21 +213,27 @@ def _synthesize_mcp_sessions(workspace_id: str) -> None:
 
             if skey not in sessions:
                 sessions[skey] = {
-                    "session_id":   skey,
-                    "tool":         r.ai_tool,
-                    "user_email":   r.user_email or "",
+                    "session_id": skey,
+                    "tool": r.ai_tool,
+                    "user_email": r.user_email or "",
                     "clerk_user_id": r.clerk_user_id or "",
-                    "summaries":    [],
+                    "summaries": [],
                 }
             sessions[skey]["summaries"].append(r.input_summary)
 
         # Check which session_ids are already stored
         existing = {
-            r[0] for r in db.execute(
-                text("SELECT session_id FROM team_session_memory WHERE workspace_id = :ws"),
+            r[0]
+            for r in db.execute(
+                text(
+                    "SELECT session_id FROM team_session_memory WHERE workspace_id = :ws"
+                ),
                 {"ws": str(workspace_id)},
             ).fetchall()
         }
+
+        db.rollback()
+        db.close()
 
         for skey, meta in sessions.items():
             if skey in existing or len(meta["summaries"]) < 2:
@@ -174,25 +245,33 @@ def _synthesize_mcp_sessions(workspace_id: str) -> None:
                 continue
 
             tags = _extract_topic_tags(summary)
-            embedding = _embed(summary)
+            row_id = uuid.uuid4()
+            with SessionLocal() as write_db:
+                set_workspace_rls(write_db, workspace_id)
+                write_db.add(
+                    TeamSessionMemory(
+                        id=row_id,
+                        workspace_id=ws_uuid,
+                        developer_id=meta["clerk_user_id"] or None,
+                        developer_email=meta["user_email"] or None,
+                        session_id=skey,
+                        tool=meta["tool"],
+                        repo_full_name=None,
+                        topic_tags=tags or None,
+                        light_summary=summary,
+                        files_touched=None,
+                        embedding=None,
+                        visibility="team",
+                    )
+                )
+                write_db.commit()
+            _embed_team_memory(str(row_id), workspace_id, summary)
 
-            db.add(TeamSessionMemory(
-                id=uuid.uuid4(),
-                workspace_id=ws_uuid,
-                developer_id=meta["clerk_user_id"] or None,
-                developer_email=meta["user_email"] or None,
-                session_id=skey,
-                tool=meta["tool"],
-                repo_full_name=None,
-                topic_tags=tags or None,
-                light_summary=summary,
-                files_touched=None,
-                embedding=embedding,
-                visibility="team",
-            ))
-
-        db.commit()
-        log.info("team_memory.mcp_synthesized", workspace_id=workspace_id, candidates=len(sessions))
+        log.info(
+            "team_memory.mcp_synthesized",
+            workspace_id=workspace_id,
+            candidates=len(sessions),
+        )
     except Exception as exc:
         log.warning("team_memory.mcp_synthesize_failed", error=str(exc))
     finally:
@@ -202,25 +281,28 @@ def _synthesize_mcp_sessions(workspace_id: str) -> None:
 @router.post("/sessions", status_code=201)
 def store_session_memory(
     body: SessionMemoryIn,
+    background_tasks: BackgroundTasks,
     workspace_id: str = Depends(get_workspace_id),
     _: str = Depends(require_permission("guard.activity.view_own")),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
+    db.rollback()
     summary = _summarise(body.raw_transcript)
     if summary is None:
         return {"stored": False, "reason": "no_findings"}
 
     tags = _extract_topic_tags(summary)
-    embedding = _embed(summary)
 
     # Resolve email at write time so the DEVELOPER column never shows a raw Clerk user ID
     resolved_email = body.developer_email
     if not resolved_email and body.developer_id:
         from app.core.auth import get_clerk_user_email
+
         resolved_email = get_clerk_user_email(body.developer_id) or None
 
+    row_id = uuid.uuid4()
     row = TeamSessionMemory(
-        id=uuid.uuid4(),
+        id=row_id,
         workspace_id=uuid.UUID(str(workspace_id)),
         developer_id=body.developer_id,
         developer_email=resolved_email,
@@ -230,35 +312,46 @@ def store_session_memory(
         topic_tags=tags or None,
         light_summary=summary,
         files_touched=body.files_touched or None,
-        embedding=embedding,
+        embedding=None,
         visibility=body.visibility,
     )
+    set_workspace_rls(db, workspace_id)
     db.add(row)
     db.commit()
+    db.rollback()
+    background_tasks.add_task(
+        _embed_team_memory, str(row_id), str(workspace_id), summary
+    )
 
     log.info(
         "team_memory.stored",
         workspace_id=workspace_id,
         session_id=body.session_id,
         summary_chars=len(summary),
-        has_embedding=embedding is not None,
+        has_embedding=False,
     )
 
-    return {"stored": True, "session_id": body.session_id, "summary_chars": len(summary)}
+    return {
+        "stored": True,
+        "session_id": body.session_id,
+        "summary_chars": len(summary),
+    }
 
 
 @router.get("/search")
 def search_session_memory(
+    background_tasks: BackgroundTasks,
     q: str | None = Query(default=None),
     repo: str | None = Query(default=None),
     limit: int = Query(default=5, ge=1, le=50),
     workspace_id: str = Depends(get_workspace_id),
     _: str = Depends(require_permission("guard.activity.view_own")),
     db: Session = Depends(get_db),
-    background_tasks: BackgroundTasks = BackgroundTasks(),
 ) -> list[dict[str, Any]]:
     background_tasks.add_task(_synthesize_mcp_sessions, workspace_id)
-    embedding = _embed(q) if q else None
+    db.rollback()
+    embedding = _embed(q, workspace_id) if q else None
+    set_workspace_rls(db, workspace_id)
 
     if embedding is not None:
         params: dict[str, Any] = {

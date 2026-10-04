@@ -1,10 +1,12 @@
 """GET /guard/knowledge/search — unified semantic search across Guard knowledge index."""
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import text as sa_text
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_workspace_id, require_permission
 from app.core.database import get_db
+from app.core.workspace_context import set_workspace_rls
 from app.modules.guard.embedding import embedding_client_for_workspace
 
 router = APIRouter(prefix="/guard/knowledge", tags=["guard"])
@@ -27,11 +29,13 @@ def search_knowledge(
     Returns ranked results from audit events, custom rules, and discovered agents.
     Score is cosine similarity (1.0 = identical, 0.0 = orthogonal).
     """
-    client = embedding_client_for_workspace(db, workspace_id)
+    db.rollback()
+    client = embedding_client_for_workspace(workspace_id)
     if not client:
         raise HTTPException(status_code=503, detail="Embedding service not configured")
 
     embedding = client.embed(q[:2000])
+    set_workspace_rls(db, workspace_id)
     kind_filter = "AND gki.source_kind = :kind" if kind else ""
 
     rows = db.execute(
@@ -40,7 +44,7 @@ def search_knowledge(
             f"(gki.embedding <=> CAST(:vec AS vector)) AS distance "
             f"FROM guard_knowledge_index gki "
             f"WHERE gki.workspace_id = CAST(:workspace_id AS uuid) "
-            f"  AND gki.embedding IS NOT NULL "
+            f"  AND gki.embedding IS NOT NULL AND (gki.expires_at IS NULL OR gki.expires_at > now()) "
             f"{kind_filter} "
             f"ORDER BY distance ASC LIMIT :limit"
         ),
