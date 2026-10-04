@@ -1,4 +1,4 @@
-"""Real PostgreSQL coverage for migration 0164 and tenant constraints."""
+"""Real PostgreSQL coverage for migration 0165 and tenant constraints."""
 
 import importlib.util
 import os
@@ -29,7 +29,7 @@ def projection_database():
     workspace_id, other_workspace_id = uuid4(), uuid4()
     path = (
         Path(__file__).resolve().parents[2]
-        / "alembic/versions/0164_guard_projection_intents.py"
+        / "alembic/versions/0165_guard_projection_intents.py"
     )
     spec = importlib.util.spec_from_file_location("projection_migration", path)
     migration = importlib.util.module_from_spec(spec)

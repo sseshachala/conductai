@@ -5,8 +5,8 @@ from sqlalchemy.dialects import postgresql
 
 from alembic import op
 
-revision = "0164"
-down_revision = "0163"
+revision = "0165"
+down_revision = "0164"
 branch_labels = None
 depends_on = None
 
@@ -198,7 +198,7 @@ def downgrade() -> None:
                 sa.text(f"SELECT EXISTS (SELECT 1 FROM {table})")
             ).scalar_one():
                 raise RuntimeError(
-                    f"Export or drain {table} before downgrading migration 0164"
+                    f"Export or drain {table} before downgrading migration 0165"
                 )
     if bind.execute(
         sa.text(
@@ -206,7 +206,7 @@ def downgrade() -> None:
         )
     ).scalar_one():
         raise RuntimeError(
-            "Export projection retention metadata before downgrading migration 0164"
+            "Export projection retention metadata before downgrading migration 0165"
         )
     op.drop_table("guard_projection_summaries")
     op.drop_table("guard_projection_intents")
