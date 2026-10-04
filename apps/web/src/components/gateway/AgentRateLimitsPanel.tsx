@@ -44,10 +44,13 @@ export default function AgentRateLimitsPanel({ workspaceId, isAdmin }: {
   const agent = agents.find(row => row.id === selected)
 
   return <div className={styles.body}>
-    <label className={styles.profilePicker}>Agent identity
-      <select aria-label="Agent identity" value={selected} onChange={event => setSelected(event.target.value)}>
+    <label className={`${styles.profilePicker} ${styles.agentPicker}`}>Agent identity
+      <select aria-label="Agent identity" title={agent && `${agent.name} (${agent.id})`}
+        value={selected} onChange={event => setSelected(event.target.value)}>
         <option value="">Select agent</option>
-        {agents.map(row => <option key={row.id} value={row.id}>{row.name} ({row.id})</option>)}
+        {agents.map(row => <option key={row.id} value={row.id} title={`${row.name} (${row.id})`}>
+          {row.name} ({row.id.length > 16 ? `${row.id.slice(0, 8)}...${row.id.slice(-4)}` : row.id})
+        </option>)}
       </select>
     </label>
     {agent && <>

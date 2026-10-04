@@ -17,6 +17,7 @@
 .presets { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
 .presets > span { color: var(--text-3); font-size: 12px; margin-right: 4px; }
 .profilePicker { display: grid; gap: 6px; font-size: 13px; font-weight: 600; min-width: 0; }
+.agentPicker { width: 100%; max-width: 28rem; justify-self: start; }
 .profilePicker select { width: 100%; min-width: 0; padding: 9px 12px; font-size: 13px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text); }
 .error { color: var(--danger); font-size: 12px; overflow-wrap: anywhere; }
 @media (max-width: 640px) { .inputs { grid-template-columns: minmax(0, 1fr); } }
