@@ -3,9 +3,24 @@ import uuid
 from datetime import datetime, timezone
 
 import sqlalchemy as sa
-from sqlalchemy import BigInteger, Boolean, CheckConstraint, Column, DateTime, Float, ForeignKey, Index, Integer, LargeBinary, String, Text, UniqueConstraint, func
-from sqlalchemy.dialects.postgresql import ARRAY, JSON, JSONB, UUID
 from pgvector.sqlalchemy import Vector
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    CheckConstraint,
+    Column,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    LargeBinary,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+)
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 
 from app.core.database import Base
 
@@ -758,6 +773,7 @@ class GuardProjectionIntent(Base):
     attempts = Column(Integer, nullable=False, default=0)
     max_attempts = Column(Integer, nullable=False)
     available_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    expires_at = Column(DateTime(timezone=True), nullable=True)
     lease_expires_at = Column(DateTime(timezone=True), nullable=True)
     last_error = Column(String(500), nullable=True)
     dispatched_at = Column(DateTime(timezone=True), nullable=True)
@@ -772,6 +788,17 @@ class GuardProjectionIntent(Base):
         CheckConstraint("status IN ('pending', 'processing', 'retry', 'completed', 'dead_letter', 'superseded', 'expired', 'missing')", name="ck_guard_projection_intents_status"),
         CheckConstraint("source_kind IN ('audit_event', 'rule', 'discovered_agent', 'audit_summary')", name="ck_guard_projection_intents_source_kind"),
         Index("ix_guard_projection_intents_pending", "available_at", "created_at", postgresql_where=sa.text("status IN ('pending', 'retry')")),
+        Index("ix_guard_projection_intents_expires_at", "expires_at"),
+        Index(
+            "uq_guard_projection_intent_outstanding_summary",
+            "workspace_id",
+            "source_kind",
+            "source_id",
+            unique=True,
+            postgresql_where=sa.text(
+                "source_kind = 'audit_summary' AND status IN ('pending', 'retry')"
+            ),
+        ),
         Index("ix_guard_projection_intents_lease", "lease_expires_at", postgresql_where=sa.text("status = 'processing'")),
     )
 

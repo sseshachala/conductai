@@ -104,6 +104,8 @@ def _new_intent(
     source_id: str,
     source_version: str,
     now: datetime,
+    expires_at: datetime | None = None,
+    available_at: datetime | None = None,
 ) -> ProjectionMessage:
     intent = GuardProjectionIntent(
         workspace_id=workspace_id,
@@ -113,11 +115,75 @@ def _new_intent(
         status=ProjectionIntentStatus.PENDING.value,
         attempts=0,
         max_attempts=settings.guard_projection_max_attempts,
-        available_at=now,
+        available_at=available_at or now,
+        expires_at=expires_at,
     )
     db.add(intent)
     db.flush()
     return _message(intent)
+
+
+def _upsert_summary_intent(
+    db: Session,
+    *,
+    workspace_id,
+    source_id: str,
+    source_version: str,
+    available_at: datetime,
+    expires_at: datetime,
+    now: datetime,
+) -> ProjectionMessage:
+    stmt = insert(GuardProjectionIntent).values(
+        workspace_id=workspace_id,
+        source_kind=ProjectionSourceKind.AUDIT_SUMMARY.value,
+        source_id=source_id,
+        source_version=source_version,
+        status=ProjectionIntentStatus.PENDING.value,
+        attempts=0,
+        max_attempts=settings.guard_projection_max_attempts,
+        available_at=available_at,
+        expires_at=expires_at,
+        dispatched_at=None,
+        created_at=now,
+        updated_at=now,
+    )
+    stmt = stmt.on_conflict_do_update(
+        index_elements=[
+            GuardProjectionIntent.workspace_id,
+            GuardProjectionIntent.source_kind,
+            GuardProjectionIntent.source_id,
+        ],
+        index_where=sa.text(
+            "source_kind = 'audit_summary' AND status IN ('pending', 'retry')"
+        ),
+        set_={
+            "source_version": source_version,
+            "status": ProjectionIntentStatus.PENDING.value,
+            "attempts": 0,
+            "max_attempts": settings.guard_projection_max_attempts,
+            "available_at": available_at,
+            "expires_at": expires_at,
+            "lease_expires_at": None,
+            "last_error": None,
+            "dispatched_at": None,
+            "completed_at": None,
+            "updated_at": now,
+        },
+    ).returning(
+        GuardProjectionIntent.id,
+        GuardProjectionIntent.workspace_id,
+        GuardProjectionIntent.source_kind,
+        GuardProjectionIntent.source_id,
+        GuardProjectionIntent.source_version,
+    )
+    row = db.execute(stmt).one()
+    return ProjectionMessage(
+        intent_id=row.id,
+        workspace_id=row.workspace_id,
+        source_kind=ProjectionSourceKind(row.source_kind),
+        source_id=row.source_id,
+        source_version=row.source_version,
+    )
 
 
 def persist_audit_event_projection(
@@ -148,6 +214,7 @@ def persist_audit_event_projection(
             source_id=str(event.id),
             source_version=audit_event_source_version(event),
             now=current,
+            expires_at=expires_at,
         )
     if normalize_projection_decision(event.decision) != "allowed":
         GUARD_PROJECTION_EVENTS.labels(result="skipped").inc()
@@ -204,14 +271,19 @@ def persist_audit_event_projection(
         },
     ).returning(GuardProjectionSummary.id, GuardProjectionSummary.version)
     summary_id, version = db.execute(stmt).one()
-    return _new_intent(
+    _upsert_summary_intent(
         db,
         workspace_id=event.workspace_id,
-        source_kind=ProjectionSourceKind.AUDIT_SUMMARY,
         source_id=str(summary_id),
         source_version=str(version),
+        available_at=window_end,
+        expires_at=summary_expiry,
         now=current,
     )
+    # Summary intents are deliberately not sent to Redis before the window
+    # closes. Reconciliation dispatches the single coalesced durable row when
+    # available_at is reached, avoiding one queue delivery per allowed event.
+    return None
 
 
 def dispatch_projection_message(
@@ -260,7 +332,10 @@ def claim_projection_intent(
     set_workspace_rls(db, message.workspace_id)
     intent = (
         db.query(GuardProjectionIntent)
-        .filter(GuardProjectionIntent.id == message.intent_id)
+        .filter(
+            GuardProjectionIntent.id == message.intent_id,
+            GuardProjectionIntent.workspace_id == message.workspace_id,
+        )
         .with_for_update(skip_locked=True)
         .first()
     )
@@ -272,6 +347,13 @@ def claim_projection_intent(
         or intent.source_id != message.source_id
         or intent.source_version != message.source_version
     ):
+        return None
+    if intent.expires_at is not None and _utc(intent.expires_at) <= current:
+        intent.status = ProjectionIntentStatus.EXPIRED.value
+        intent.completed_at = current
+        intent.lease_expires_at = None
+        intent.updated_at = current
+        db.commit()
         return None
     dispatchable = (
         intent.status in {"pending", "retry"} and intent.available_at <= current
@@ -318,7 +400,10 @@ def _complete_projection_claim(
         set_workspace_rls(db, claim.workspace_id)
         intent = (
             db.query(GuardProjectionIntent)
-            .filter(GuardProjectionIntent.id == claim.intent_id)
+            .filter(
+                GuardProjectionIntent.id == claim.intent_id,
+                GuardProjectionIntent.workspace_id == claim.workspace_id,
+            )
             .with_for_update()
             .first()
         )
@@ -350,7 +435,10 @@ def _fail_projection_claim(
         set_workspace_rls(db, claim.workspace_id)
         intent = (
             db.query(GuardProjectionIntent)
-            .filter(GuardProjectionIntent.id == claim.intent_id)
+            .filter(
+                GuardProjectionIntent.id == claim.intent_id,
+                GuardProjectionIntent.workspace_id == claim.workspace_id,
+            )
             .with_for_update()
             .first()
         )
@@ -402,12 +490,14 @@ def process_projection_message(
         return "duplicate"
 
     try:
-        # Keep this import contract stable: knowledge owns the projection and
-        # accepts only the durable intent id.
+        # Knowledge owns projection generation; the claim supplies the tenant
+        # context so FORCE-RLS lookup is direct and fail-closed.
         from app.modules.guard.knowledge import process_projection_intent
 
         result = ProjectionIntentStatus(
-            process_projection_intent(str(claim.intent_id))
+            process_projection_intent(
+                str(claim.intent_id), str(claim.workspace_id)
+            )
         )
         if result not in _TERMINAL:
             raise ValueError("projection callback returned non-terminal status")
@@ -439,7 +529,14 @@ def mark_projection_dispatched(
     try:
         with SessionLocal() as db:
             set_workspace_rls(db, message.workspace_id)
-            intent = db.get(GuardProjectionIntent, message.intent_id)
+            intent = (
+                db.query(GuardProjectionIntent)
+                .filter(
+                    GuardProjectionIntent.id == message.intent_id,
+                    GuardProjectionIntent.workspace_id == message.workspace_id,
+                )
+                .first()
+            )
             if intent and intent.status in {"pending", "retry"}:
                 intent.dispatched_at = _utc(now or datetime.now(timezone.utc))
                 db.commit()
@@ -511,7 +608,10 @@ def _release_dispatch_reservation(
             set_workspace_rls(db, message.workspace_id)
             intent = (
                 db.query(GuardProjectionIntent)
-                .filter(GuardProjectionIntent.id == message.intent_id)
+                .filter(
+                    GuardProjectionIntent.id == message.intent_id,
+                    GuardProjectionIntent.workspace_id == message.workspace_id,
+                )
                 .with_for_update()
                 .first()
             )

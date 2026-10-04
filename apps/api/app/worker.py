@@ -119,8 +119,8 @@ def _reap_stale_runs() -> int:
         log.exception("reaper.error")
         try:
             db.rollback()
-        except Exception:
-            pass
+        except Exception:  # noqa: BLE001 - rollback failure must not kill reaper
+            log.debug("reaper.rollback_failed")
         return 0
     finally:
         db.close()
@@ -163,8 +163,8 @@ def _reap_stale_pending_runs() -> int:
         log.exception("reaper.pending_error")
         try:
             db.rollback()
-        except Exception:
-            pass
+        except Exception:  # noqa: BLE001 - rollback failure must not kill reaper
+            log.debug("reaper.pending_rollback_failed")
         return 0
     finally:
         db.close()
@@ -421,12 +421,50 @@ def _projection_loop(thread_id: int) -> None:
                 log.debug("projection_worker.queue_depth_metric_failed", thread_id=thread_id)
 
 
-def _projection_reconciliation_loop() -> None:
-    from app.modules.guard.observability.metrics import GUARD_PROJECTION_QUEUE_DEPTH
+def _reconcile_projection_processing_entries(client, *, now: float | None = None) -> int:
     from app.modules.guard.projection_contract import (
         PROJECTION_PROCESSING_KEY,
         PROJECTION_PROCESSING_TIMES_KEY,
+        PROJECTION_QUEUE_KEY,
     )
+
+    current = time.time() if now is None else now
+    cutoff = current - settings.guard_projection_lease_seconds
+    timestamps = client.hgetall(PROJECTION_PROCESSING_TIMES_KEY)
+    recovered = 0
+    # The list is authoritative for capacity. Inspect every entry, including
+    # the BLMOVE-before-HSET crash window where no timestamp exists.
+    for raw in client.lrange(PROJECTION_PROCESSING_KEY, 0, -1):
+        started = timestamps.get(raw)
+        if started is None:
+            # A live worker may still be between BLMOVE and HSET. Adopt the
+            # entry for one lease window instead of immediately duplicating it.
+            client.hset(PROJECTION_PROCESSING_TIMES_KEY, raw, current)
+            timestamps[raw] = str(current)
+            continue
+        try:
+            stale = float(started) <= cutoff
+        except (TypeError, ValueError):
+            stale = True
+        if not stale:
+            continue
+        removed = client.lrem(PROJECTION_PROCESSING_KEY, 0, raw)
+        client.hdel(PROJECTION_PROCESSING_TIMES_KEY, raw)
+        if removed and client.lpos(PROJECTION_QUEUE_KEY, raw) is None:
+            client.rpush(PROJECTION_QUEUE_KEY, raw)
+        if removed:
+            recovered += 1
+    # Hash entries without a corresponding processing-list item are harmless
+    # but must be removed so monitoring and future recovery converge.
+    processing = set(client.lrange(PROJECTION_PROCESSING_KEY, 0, -1))
+    for raw in timestamps:
+        if raw not in processing:
+            client.hdel(PROJECTION_PROCESSING_TIMES_KEY, raw)
+    return recovered
+
+
+def _projection_reconciliation_loop() -> None:
+    from app.modules.guard.observability.metrics import GUARD_PROJECTION_QUEUE_DEPTH
     from app.modules.guard.projection_queue import reconcile_projection_intents
 
     client = redis.from_url(settings.redis_url, decode_responses=True)
@@ -435,17 +473,17 @@ def _projection_reconciliation_loop() -> None:
     while True:
         if not settings.guard_projection_paused:
             try:
-                cutoff = time.time() - settings.guard_projection_lease_seconds
-                for raw, started in client.hgetall(PROJECTION_PROCESSING_TIMES_KEY).items():
-                    if float(started) <= cutoff:
-                        client.lrem(PROJECTION_PROCESSING_KEY, 1, raw)
-                        client.hdel(PROJECTION_PROCESSING_TIMES_KEY, raw)
+                recovered = _reconcile_projection_processing_entries(client)
                 dispatched = reconcile_projection_intents(redis_client=client)
                 # The reconciler updates oldest-pending age from its bounded DB
                 # pass. Refresh depth here so both backlog gauges move during
                 # idle and recovery cycles, not only on enqueue.
                 GUARD_PROJECTION_QUEUE_DEPTH.set(_projection_backlog_depth(client))
-                log.debug("projection_worker.reconciliation_cycle", dispatched=dispatched)
+                log.debug(
+                    "projection_worker.reconciliation_cycle",
+                    recovered=recovered,
+                    dispatched=dispatched,
+                )
             except Exception:
                 log.exception("projection_worker.reconciliation_error")
         time.sleep(interval)
@@ -466,22 +504,30 @@ def _start_projection_workers() -> list[threading.Thread]:
 
 def _record_projection_retention_result(result: dict[str, bool | int]) -> None:
     from app.modules.guard.observability.metrics import (
+        GUARD_PROJECTION_RETENTION_INTENTS_DELETED,
         GUARD_PROJECTION_RETENTION_INTENTS_EXPIRED,
         GUARD_PROJECTION_RETENTION_KNOWLEDGE_DELETED,
         GUARD_PROJECTION_RETENTION_RUNS,
+        GUARD_PROJECTION_RETENTION_SUMMARIES_DELETED,
     )
 
-    dry_run = str(bool(result["dry_run"])).lower()
+    dry_run = str(bool(result.get("dry_run", False))).lower()
     GUARD_PROJECTION_RETENTION_RUNS.labels(
         outcome="success",
         dry_run=dry_run,
-        more_work=str(bool(result["more_work"])).lower(),
+        more_work=str(bool(result.get("more_work", False))).lower(),
     ).inc()
     GUARD_PROJECTION_RETENTION_KNOWLEDGE_DELETED.labels(dry_run=dry_run).inc(
-        int(result["knowledge_deleted"])
+        int(result.get("knowledge_deleted", 0))
     )
     GUARD_PROJECTION_RETENTION_INTENTS_EXPIRED.labels(dry_run=dry_run).inc(
-        int(result["intents_expired"])
+        int(result.get("intents_expired", 0))
+    )
+    GUARD_PROJECTION_RETENTION_INTENTS_DELETED.labels(dry_run=dry_run).inc(
+        int(result.get("intents_deleted", 0))
+    )
+    GUARD_PROJECTION_RETENTION_SUMMARIES_DELETED.labels(dry_run=dry_run).inc(
+        int(result.get("summaries_deleted", 0))
     )
 
 

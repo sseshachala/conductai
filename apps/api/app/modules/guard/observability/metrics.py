@@ -181,3 +181,15 @@ GUARD_PROJECTION_RETENTION_INTENTS_EXPIRED = Counter(
     "Projection intents expired by projection retention.",
     ["dry_run"],
 )
+
+GUARD_PROJECTION_RETENTION_SUMMARIES_DELETED = Counter(
+    'guard_projection_retention_summaries_deleted_total',
+    'Allowed-event summary source rows deleted by projection retention.',
+    ['dry_run'],
+)
+
+GUARD_PROJECTION_RETENTION_INTENTS_DELETED = Counter(
+    'guard_projection_retention_intents_deleted_total',
+    'Terminal projection intent rows deleted by projection retention.',
+    ['dry_run'],
+)

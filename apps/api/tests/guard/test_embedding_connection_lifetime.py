@@ -17,6 +17,17 @@ class PoolState:
     checked_out = 0
 
 
+class _IntentQuery:
+    def __init__(self, intent):
+        self.intent = intent
+
+    def filter(self, *args):
+        return self
+
+    def first(self):
+        return self.intent
+
+
 class BlockingClient:
     dimensions = 1536
 
@@ -106,7 +117,7 @@ def test_projector_provider_wait_has_no_checked_out_connection(monkeypatch):
     snapshot = _snapshot(event)
     client = BlockingClient(pool)
 
-    def snapshot_phase(intent_id):
+    def snapshot_phase(intent_id, workspace_id):
         pool.checked_out = 1
         pool.checked_out = 0
         return None, snapshot
@@ -123,7 +134,7 @@ def test_projector_provider_wait_has_no_checked_out_connection(monkeypatch):
 
     monkeypatch.setattr(knowledge, "_conditional_write", write_phase)
     assert (
-        knowledge.process_projection_intent(str(uuid4()))
+        knowledge.process_projection_intent(str(uuid4()), str(event.workspace_id))
         is ProjectionIntentStatus.COMPLETED
     )
     assert client.calls == 1
@@ -256,8 +267,8 @@ def test_conditional_write_deletes_matching_projection_for_missing_source(monkey
         def __exit__(self, *args):
             return False
 
-        def get(self, model, key):
-            return intent
+        def query(self, model):
+            return _IntentQuery(intent)
 
         def delete(self, row):
             self.deleted = row
@@ -308,8 +319,8 @@ def test_conditional_write_preserves_projection_when_newer_intent_exists(monkeyp
         def __exit__(self, *args):
             return False
 
-        def get(self, model, key):
-            return intent
+        def query(self, model):
+            return _IntentQuery(intent)
 
         def delete(self, row):
             self.deleted = row
@@ -359,8 +370,8 @@ def test_conditional_write_does_not_delete_newer_replacement(monkeypatch):
         def __exit__(self, *args):
             return False
 
-        def get(self, model, key):
-            return intent
+        def query(self, model):
+            return _IntentQuery(intent)
 
         def delete(self, row):
             self.deleted = row
@@ -400,8 +411,8 @@ def test_conditional_write_rechecks_stale_version(monkeypatch):
         def __exit__(self, *args):
             return False
 
-        def get(self, model, key):
-            return intent
+        def query(self, model):
+            return _IntentQuery(intent)
 
     monkeypatch.setattr(knowledge, "SessionLocal", FakeDB)
     monkeypatch.setattr(knowledge, "set_workspace_rls", lambda db, ws: None)
@@ -443,8 +454,8 @@ def test_conditional_write_rechecks_expiry(monkeypatch):
         def __exit__(self, *args):
             return False
 
-        def get(self, model, key):
-            return intent
+        def query(self, model):
+            return _IntentQuery(intent)
 
     monkeypatch.setattr(knowledge, "SessionLocal", FakeDB)
     monkeypatch.setattr(knowledge, "set_workspace_rls", lambda db, ws: None)
@@ -479,7 +490,7 @@ def test_lens_knowledge_search_uses_explicit_active_projection_cutoff(monkeypatc
 
     monkeypatch.setattr(guard_core, "embedding_client_for_workspace", lambda ws: client)
     monkeypatch.setattr(guard_core, "set_workspace_rls", lambda db, ws: None)
-    import app.core.database as database
+    from app.core import database
 
     monkeypatch.setattr(database, "SessionLocal", FakeDB)
 

@@ -15,7 +15,6 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.database import SessionLocal
 from app.core.workspace_context import set_workspace_rls
-from app.models.workspace import Workspace
 from app.modules.guard.embedding import embedding_client_for_workspace
 from app.modules.guard.models import (
     DiscoveredAgent,
@@ -245,28 +244,18 @@ def _snapshot_source(
     )
 
 
-def _intent_snapshot(intent_id: str):
+def _intent_snapshot(intent_id: str, workspace_id: str):
     now = datetime.now(timezone.utc)
+    workspace_uuid = uuid.UUID(workspace_id)
     with SessionLocal() as db:
-        intent_uuid = uuid.UUID(intent_id)
-        intent = db.get(GuardProjectionIntent, intent_uuid)
-        if intent is None:
-            db.rollback()
-            workspace_ids = [row.id for row in db.query(Workspace.id).all()]
-            for candidate_workspace_id in workspace_ids:
-                set_workspace_rls(db, candidate_workspace_id)
-                intent = db.get(
-                    GuardProjectionIntent, intent_uuid, populate_existing=True
-                )
-                if intent is not None:
-                    break
-                db.rollback()
-        if intent is None:
-            return ProjectionIntentStatus.MISSING, None
-        workspace_id = str(intent.workspace_id)
-        set_workspace_rls(db, workspace_id)
-        intent = db.get(
-            GuardProjectionIntent, uuid.UUID(intent_id), populate_existing=True
+        set_workspace_rls(db, workspace_uuid)
+        intent = (
+            db.query(GuardProjectionIntent)
+            .filter(
+                GuardProjectionIntent.id == uuid.UUID(intent_id),
+                GuardProjectionIntent.workspace_id == workspace_uuid,
+            )
+            .first()
         )
         if intent is None:
             return ProjectionIntentStatus.MISSING, None
@@ -374,10 +363,17 @@ def _conditional_write(
         set_workspace_rls(db, snapshot.workspace_id)
         intent = None
         if intent_id is not None:
-            intent = db.get(GuardProjectionIntent, uuid.UUID(intent_id))
+            intent = (
+                db.query(GuardProjectionIntent)
+                .filter(
+                    GuardProjectionIntent.id == uuid.UUID(intent_id),
+                    GuardProjectionIntent.workspace_id
+                    == uuid.UUID(snapshot.workspace_id),
+                )
+                .first()
+            )
             if (
                 intent is None
-                or str(intent.workspace_id) != snapshot.workspace_id
                 or intent.source_kind != snapshot.source_kind.value
                 or intent.source_id != snapshot.source_id
                 or intent.source_version != snapshot.source_version
@@ -458,16 +454,18 @@ def _conditional_write(
     return ProjectionIntentStatus.COMPLETED
 
 
-def process_projection_intent(intent_id: str) -> ProjectionIntentStatus:
-    """Process one intent without holding a connection during the provider call."""
-    status, snapshot = _intent_snapshot(intent_id)
+def process_projection_intent(
+    intent_id: str, workspace_id: str
+) -> ProjectionIntentStatus:
+    # Process one tenant-scoped intent without holding a provider connection.
+    status, snapshot = _intent_snapshot(intent_id, workspace_id)
     if status is not None or snapshot is None:
         return status or ProjectionIntentStatus.MISSING
     if _projection_is_current(snapshot):
         return ProjectionIntentStatus.COMPLETED
     client = embedding_client_for_workspace(snapshot.workspace_id)
     if not client:
-        raise RuntimeError("Embedding service not configured")
+        raise RuntimeError('Embedding service not configured')
     embedding = client.embed(snapshot.canonical_text[:2000])
     return _conditional_write(snapshot, embedding, intent_id=intent_id)
 

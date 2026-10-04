@@ -54,6 +54,7 @@ def upgrade() -> None:
             nullable=False,
             server_default=sa.func.now(),
         ),
+        sa.Column("expires_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("lease_expires_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("last_error", sa.String(500), nullable=True),
         sa.Column("dispatched_at", sa.DateTime(timezone=True), nullable=True),
@@ -103,6 +104,20 @@ def upgrade() -> None:
         "guard_projection_intents",
         ["available_at", "created_at"],
         postgresql_where=sa.text("status IN ('pending', 'retry')"),
+    )
+    op.create_index(
+        "ix_guard_projection_intents_expires_at",
+        "guard_projection_intents",
+        ["expires_at"],
+    )
+    op.create_index(
+        "uq_guard_projection_intent_outstanding_summary",
+        "guard_projection_intents",
+        ["workspace_id", "source_kind", "source_id"],
+        unique=True,
+        postgresql_where=sa.text(
+            "source_kind = 'audit_summary' AND status IN ('pending', 'retry')"
+        ),
     )
     op.create_index(
         "ix_guard_projection_intents_lease",

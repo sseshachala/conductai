@@ -3,6 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
+
 from app import worker
 from app.core.config import Settings
 from app.core.database import SessionLocal
@@ -18,7 +20,6 @@ from app.modules.guard.projection_contract import (
     PROJECTION_PROCESSING_KEY,
     PROJECTION_QUEUE_KEY,
 )
-from pydantic import ValidationError
 
 
 class LoopStopped(Exception):
@@ -158,6 +159,9 @@ def test_reconciliation_refreshes_total_backlog_and_oldest_age(monkeypatch):
         def hgetall(self, _key):
             return {}
 
+        def lrange(self, _key, _start, _end):
+            return []
+
         def llen(self, key):
             return {
                 PROJECTION_QUEUE_KEY: 4,
@@ -187,6 +191,65 @@ def test_reconciliation_refreshes_total_backlog_and_oldest_age(monkeypatch):
     assert GUARD_PROJECTION_QUEUE_DEPTH._value.get() == 7
     assert GUARD_PROJECTION_OLDEST_AGE._value.get() == 42
 
+
+
+def test_processing_recovery_handles_blmove_before_timestamp_without_leak(monkeypatch):
+    raw = "message-1"
+
+    class FakeRedis:
+        def __init__(self):
+            self.processing = [raw, raw]
+            self.queue = []
+            self.times = {"orphan": "1"}
+
+        def hgetall(self, _key):
+            return dict(self.times)
+
+        def hset(self, _key, value, timestamp):
+            self.times[value] = str(timestamp)
+
+        def lrange(self, key, _start, _end):
+            return list(self.processing if key == PROJECTION_PROCESSING_KEY else self.queue)
+
+        def lrem(self, _key, _count, value):
+            removed = self.processing.count(value)
+            self.processing = [item for item in self.processing if item != value]
+            return removed
+
+        def hdel(self, _key, value):
+            return int(self.times.pop(value, None) is not None)
+
+        def lpos(self, _key, value):
+            try:
+                return self.queue.index(value)
+            except ValueError:
+                return None
+
+        def llen(self, key):
+            return len(self.processing if key == PROJECTION_PROCESSING_KEY else self.queue)
+
+        def rpush(self, _key, value):
+            self.queue.append(value)
+            return len(self.queue)
+
+    monkeypatch.setattr(worker.settings, "guard_projection_lease_seconds", 60)
+    client = FakeRedis()
+
+    adopted = worker._reconcile_projection_processing_entries(client, now=1000)
+
+    assert adopted == 0
+    assert client.processing == [raw, raw]
+    assert client.times == {raw: "1000"}
+    assert client.queue == []
+    assert worker._projection_backlog_depth(client) == 2
+
+    recovered = worker._reconcile_projection_processing_entries(client, now=1061)
+
+    assert recovered == 1
+    assert client.processing == []
+    assert client.times == {}
+    assert client.queue == [raw]
+    assert worker._projection_backlog_depth(client) == 1
 
 def test_deployment_defaults_use_safe_projection_rollout():
     root = Path(__file__).resolve().parents[4]

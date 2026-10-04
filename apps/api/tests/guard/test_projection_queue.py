@@ -102,6 +102,9 @@ class FakeDB:
         self.intent = intent
         self.summary_id = summary_id or uuid4()
         self.versions = iter(versions or [1])
+        self.summary_intent_id = uuid4()
+        self.intents = [intent] if intent is not None else []
+        self.executed = []
         self.added = []
         self.commits = 0
 
@@ -114,6 +117,26 @@ class FakeDB:
             self.added[-1].id = uuid4()
 
     def execute(self, statement):
+        data = dict(statement.data or {})
+        self.executed.append(data)
+        if "dimension_key" in data:
+            return FakeResult((self.summary_id, next(self.versions)))
+        if data.get("source_kind") == ProjectionSourceKind.AUDIT_SUMMARY.value:
+            if self.intent is None or self.intent.status not in {"pending", "retry"}:
+                self.intent = GuardProjectionIntent(id=uuid4(), **data)
+                self.intents.append(self.intent)
+            else:
+                for key, value in data.items():
+                    setattr(self.intent, key, value)
+            return FakeResult(
+                SimpleNamespace(
+                    id=self.intent.id,
+                    workspace_id=self.intent.workspace_id,
+                    source_kind=self.intent.source_kind,
+                    source_id=self.intent.source_id,
+                    source_version=self.intent.source_version,
+                )
+            )
         return FakeResult((self.summary_id, next(self.versions)))
 
     def query(self, model):
@@ -151,6 +174,7 @@ def reconciliation_db(monkeypatch):
             "attempts INTEGER NOT NULL, "
             "max_attempts INTEGER NOT NULL, "
             "available_at DATETIME NOT NULL, "
+            "expires_at DATETIME, "
             "lease_expires_at DATETIME, "
             "last_error VARCHAR(500), "
             "dispatched_at DATETIME, "
@@ -188,6 +212,7 @@ def persist_reconciliation_intents(factory, workspace_id, intents):
         db.add_all(intents)
         db.commit()
 
+
 def event(decision="blocked", *, ts=NOW, rule_id="rule-1"):
     return SimpleNamespace(
         id=uuid4(),
@@ -224,7 +249,7 @@ def test_high_severity_allowed_event_routes_individually():
     assert message.source_kind is ProjectionSourceKind.AUDIT_EVENT
 
 
-def test_allowed_summary_is_stable_versioned_and_prompt_free(monkeypatch):
+def test_allowed_summary_coalesces_one_debounced_durable_intent(monkeypatch):
     statement = FakeStatement()
     monkeypatch.setattr(pq, "insert", lambda model: statement)
     summary_id = uuid4()
@@ -232,14 +257,66 @@ def test_allowed_summary_is_stable_versioned_and_prompt_free(monkeypatch):
     first = pq.persist_audit_event_projection(
         db, event("allowed", rule_id="person@example.com"), now=NOW
     )
+    durable_id = db.intent.id
     second = pq.persist_audit_event_projection(
         db, event("allowed", rule_id="person@example.com"), now=NOW
     )
-    assert first.source_id == second.source_id == str(summary_id)
-    assert (first.source_version, second.source_version) == ("1", "2")
-    assert statement.data["canonical_facts"]["rule_id"] != "person@example.com"
-    assert "input_summary" not in statement.data["canonical_facts"]
+
+    assert first is second is None
+    assert db.intent.id == durable_id
+    assert db.intent.source_id == str(summary_id)
+    assert db.intent.source_version == "2"
+    assert db.intent.available_at == pq._summary_window(NOW)[1]
+    assert db.intent.expires_at > db.intent.available_at
+    summary_write = next(data for data in db.executed if "dimension_key" in data)
+    assert summary_write["canonical_facts"]["rule_id"] != "person@example.com"
+    assert "input_summary" not in summary_write["canonical_facts"]
     assert db.commits == 0
+
+
+def test_allowed_summary_processing_race_creates_only_one_next_intent(monkeypatch):
+    statement = FakeStatement()
+    monkeypatch.setattr(pq, "insert", lambda model: statement)
+    processing = make_intent(
+        source_kind=ProjectionSourceKind.AUDIT_SUMMARY.value,
+        source_id=str(uuid4()),
+        source_version="1",
+        status=ProjectionIntentStatus.PROCESSING.value,
+    )
+    db = FakeDB(intent=processing, summary_id=processing.source_id, versions=[2, 3])
+
+    pq.persist_audit_event_projection(db, event("allowed"), now=NOW)
+    next_intent = db.intent
+    pq.persist_audit_event_projection(db, event("allowed"), now=NOW)
+
+    assert db.intents == [processing, next_intent]
+    assert processing.status == ProjectionIntentStatus.PROCESSING.value
+    assert next_intent.status == ProjectionIntentStatus.PENDING.value
+    assert next_intent.source_version == "3"
+    assert next_intent.available_at == pq._summary_window(NOW)[1]
+
+
+def test_intent_snapshot_workspace_mismatch_fails_closed(
+    monkeypatch, reconciliation_db
+):
+    actual_workspace = uuid4()
+    requested_workspace = uuid4()
+    intent = make_intent(workspace_id=actual_workspace)
+    persist_reconciliation_intents(reconciliation_db, actual_workspace, [intent])
+    monkeypatch.setattr(knowledge, "SessionLocal", reconciliation_db)
+    monkeypatch.setattr(knowledge, "set_workspace_rls", lambda db, ws: None)
+    monkeypatch.setattr(
+        knowledge,
+        "_load_source",
+        lambda *args, **kwargs: pytest.fail("mismatched workspace loaded source"),
+    )
+
+    status, snapshot = knowledge._intent_snapshot(
+        str(intent.id), str(requested_workspace)
+    )
+
+    assert status is ProjectionIntentStatus.MISSING
+    assert snapshot is None
 
 
 def test_expired_event_is_rejected():
@@ -379,7 +456,7 @@ def test_retry_then_dead_letter_uses_fresh_rls_transactions(monkeypatch):
     monkeypatch.setattr(
         knowledge,
         "process_projection_intent",
-        lambda intent_id: (_ for _ in ()).throw(RuntimeError("secret prompt")),
+        lambda intent_id, workspace_id: (_ for _ in ()).throw(RuntimeError("secret prompt")),
         raising=False,
     )
     monkeypatch.setattr(pq, "set_workspace_rls", lambda db, ws: rls_calls.append((db, ws)))
@@ -413,7 +490,7 @@ def test_completion_uses_fresh_rls_transaction(monkeypatch):
     monkeypatch.setattr(
         knowledge,
         "process_projection_intent",
-        lambda intent_id: ProjectionIntentStatus.COMPLETED.value,
+        lambda intent_id, workspace_id: ProjectionIntentStatus.COMPLETED.value,
         raising=False,
     )
     monkeypatch.setattr(pq, "set_workspace_rls", lambda db, ws: rls_calls.append((db, ws)))
@@ -587,6 +664,22 @@ def test_reconciliation_query_has_stale_cutoff_lock_and_bound():
     assert "GuardProjectionIntent.dispatched_at <= stale_before" in source
     assert ".with_for_update(skip_locked=True)" in source
     assert ".limit(limit)" in source
+
+def test_summary_partial_index_predicate_quotes_sql_literals():
+    root = Path(__file__).resolve().parents[2]
+    migration = (
+        root / "alembic/versions/0165_guard_projection_intents.py"
+    ).read_text()
+    models = (root / "app/modules/guard/models.py").read_text()
+    quote = chr(39)
+    predicate = (
+        f"source_kind = {quote}audit_summary{quote} "
+        f"AND status IN ({quote}pending{quote}, {quote}retry{quote})"
+    )
+
+    assert predicate in migration
+    assert predicate in models
+
 
 def test_event_and_worker_wiring_preserve_queue_separation():
     root = Path(__file__).resolve().parents[2]
