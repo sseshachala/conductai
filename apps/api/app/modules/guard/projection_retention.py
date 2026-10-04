@@ -27,7 +27,13 @@ _SQL_IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 @dataclass(frozen=True)
 class ProjectionRetentionResult:
-    # Aggregate-only result safe for logs, callbacks, and workers.
+    """Aggregate-only retention outcome safe for logs, callbacks, and workers.
+
+    ``batches_committed`` is zero for ``cleanup_expired_projections`` because
+    that helper never controls its caller transaction. The worker entrypoint
+    reports the number of dedicated batch transactions it committed.
+    """
+
     dry_run: bool
     knowledge_candidates: int = 0
     knowledge_deleted: int = 0
@@ -174,6 +180,77 @@ def _intent_predicates(
     return tuple(predicates)
 
 
+def _validate_batch_size(batch_size: int) -> None:
+    if isinstance(batch_size, bool) or not isinstance(batch_size, int):
+        raise TypeError("batch_size must be a positive integer")
+    if batch_size <= 0:
+        raise ValueError("batch_size must be positive")
+
+
+def _validate_retention_models(
+    knowledge_model: Any | None, intent_model: Any | None
+) -> None:
+    if knowledge_model is not None:
+        _validate_model(
+            knowledge_model,
+            ("id", "workspace_id", "source_kind", "expires_at"),
+            "knowledge",
+        )
+    if intent_model is not None:
+        _validate_model(
+            intent_model,
+            ("id", "workspace_id", "source_kind", "status", "expires_at"),
+            "intent",
+        )
+
+
+def _cleanup_knowledge_batch(
+    db: Session,
+    *,
+    model: Any,
+    workspace_id: Any | None,
+    cutoff: Any,
+    batch_size: int,
+) -> tuple[int, int]:
+    predicates = _knowledge_predicates(model, workspace_id, cutoff)
+    candidate_ids = _candidate_ids(db, model, predicates, batch_size)
+    if not candidate_ids:
+        return 0, 0
+    result = db.execute(
+        delete(model)
+        .where(
+            model.id.in_(candidate_ids),
+            *_knowledge_predicates(model, workspace_id, cutoff),
+        )
+        .execution_options(synchronize_session=False)
+    )
+    return len(candidate_ids), result.rowcount or 0
+
+
+def _cleanup_intent_batch(
+    db: Session,
+    *,
+    model: Any,
+    workspace_id: Any | None,
+    cutoff: Any,
+    batch_size: int,
+) -> tuple[int, int]:
+    predicates = _intent_predicates(model, workspace_id, cutoff)
+    candidate_ids = _candidate_ids(db, model, predicates, batch_size)
+    if not candidate_ids:
+        return 0, 0
+    result = db.execute(
+        update(model)
+        .where(
+            model.id.in_(candidate_ids),
+            *_intent_predicates(model, workspace_id, cutoff),
+        )
+        .values(status=ProjectionIntentStatus.EXPIRED.value)
+        .execution_options(synchronize_session=False)
+    )
+    return len(candidate_ids), result.rowcount or 0
+
+
 def cleanup_expired_projections(
     db: Session,
     *,
@@ -183,41 +260,33 @@ def cleanup_expired_projections(
     now: datetime | None = None,
     model_overrides: Mapping[str, Any] | None = None,
 ) -> ProjectionRetentionResult:
-    # Run one bounded pass, committing each non-empty batch separately.
-    if isinstance(batch_size, bool) or not isinstance(batch_size, int):
-        raise TypeError("batch_size must be a positive integer")
-    if batch_size <= 0:
-        raise ValueError("batch_size must be positive")
+    """Mutate one bounded pass inside the caller-owned transaction.
 
+    This helper never commits or rolls back. Callers decide whether all
+    knowledge and intent mutations should be committed or rolled back together.
+    Use ``run_projection_retention_once`` for independently committed batches.
+    """
+    _validate_batch_size(batch_size)
     knowledge_model, intent_model = _resolve_models(model_overrides)
+    _validate_retention_models(knowledge_model, intent_model)
     cutoff = now if now is not None else func.now()
-    knowledge_predicates: tuple[Any, ...] = ()
-    intent_predicates: tuple[Any, ...] = ()
-    if knowledge_model is not None:
-        _validate_model(
-            knowledge_model,
-            ("id", "workspace_id", "source_kind", "expires_at"),
-            "knowledge",
-        )
-        knowledge_predicates = _knowledge_predicates(
-            knowledge_model, workspace_id, cutoff
-        )
-    if intent_model is not None:
-        _validate_model(
-            intent_model,
-            ("id", "workspace_id", "source_kind", "status", "expires_at"),
-            "intent",
-        )
-        intent_predicates = _intent_predicates(intent_model, workspace_id, cutoff)
 
     if dry_run:
         knowledge_count = (
-            _count_candidates(db, knowledge_model, knowledge_predicates)
+            _count_candidates(
+                db,
+                knowledge_model,
+                _knowledge_predicates(knowledge_model, workspace_id, cutoff),
+            )
             if knowledge_model is not None
             else 0
         )
         intent_count = (
-            _count_candidates(db, intent_model, intent_predicates)
+            _count_candidates(
+                db,
+                intent_model,
+                _intent_predicates(intent_model, workspace_id, cutoff),
+            )
             if intent_model is not None
             else 0
         )
@@ -227,58 +296,36 @@ def cleanup_expired_projections(
             intent_candidates=intent_count,
         )
 
-    knowledge_ids: list[Any] = []
-    intent_ids: list[Any] = []
+    knowledge_candidates = 0
     knowledge_deleted = 0
+    intent_candidates = 0
     intents_expired = 0
-    commits = 0
-    try:
-        if knowledge_model is not None:
-            knowledge_ids = _candidate_ids(
-                db, knowledge_model, knowledge_predicates, batch_size
-            )
-            if knowledge_ids:
-                result = db.execute(
-                    delete(knowledge_model)
-                    .where(
-                        knowledge_model.id.in_(knowledge_ids),
-                        *_knowledge_predicates(knowledge_model, workspace_id, cutoff),
-                    )
-                    .execution_options(synchronize_session=False)
-                )
-                knowledge_deleted = result.rowcount or 0
-                db.commit()
-                commits += 1
-        if intent_model is not None:
-            intent_ids = _candidate_ids(db, intent_model, intent_predicates, batch_size)
-            if intent_ids:
-                result = db.execute(
-                    update(intent_model)
-                    .where(
-                        intent_model.id.in_(intent_ids),
-                        *_intent_predicates(intent_model, workspace_id, cutoff),
-                    )
-                    .values(status=ProjectionIntentStatus.EXPIRED.value)
-                    .execution_options(synchronize_session=False)
-                )
-                intents_expired = result.rowcount or 0
-                db.commit()
-                commits += 1
-    except Exception:
-        db.rollback()
-        log.error(
-            "guard.projection_retention.failed", dry_run=False, batch_size=batch_size
+    if knowledge_model is not None:
+        knowledge_candidates, knowledge_deleted = _cleanup_knowledge_batch(
+            db,
+            model=knowledge_model,
+            workspace_id=workspace_id,
+            cutoff=cutoff,
+            batch_size=batch_size,
         )
-        raise
+    if intent_model is not None:
+        intent_candidates, intents_expired = _cleanup_intent_batch(
+            db,
+            model=intent_model,
+            workspace_id=workspace_id,
+            cutoff=cutoff,
+            batch_size=batch_size,
+        )
 
     return ProjectionRetentionResult(
         dry_run=False,
-        knowledge_candidates=len(knowledge_ids),
+        knowledge_candidates=knowledge_candidates,
         knowledge_deleted=knowledge_deleted,
-        intent_candidates=len(intent_ids),
+        intent_candidates=intent_candidates,
         intents_expired=intents_expired,
-        batches_committed=commits,
-        more_work=(len(knowledge_ids) == batch_size or len(intent_ids) == batch_size),
+        more_work=(
+            knowledge_candidates == batch_size or intent_candidates == batch_size
+        ),
     )
 
 
@@ -294,7 +341,14 @@ def run_projection_retention_once(
     settings_override: Any | None = None,
     on_result: Callable[[Mapping[str, bool | int]], None] | None = None,
 ) -> ProjectionRetentionResult:
-    # Worker-callable pass with aggregate-only logging and callback data.
+    """Run independently committed retention batches in dedicated sessions."""
+    if db is not None:
+        raise ValueError(
+            "run_projection_retention_once does not accept a caller-owned db "
+            "session; pass session_factory so each batch can use an independent "
+            "transaction"
+        )
+
     if batch_size is None:
         settings_obj = settings_override
         if settings_obj is None:
@@ -306,28 +360,90 @@ def run_projection_retention_once(
                 DEFAULT_RETENTION_BATCH_SIZE,
             )
         )
+    _validate_batch_size(batch_size)
 
-    owns_session = db is None
-    if db is None:
-        if session_factory is None:
-            from app.core.database import SessionLocal
+    if session_factory is None:
+        from app.core.database import SessionLocal
 
-            session_factory = SessionLocal
-        db = session_factory()
-    try:
-        result = cleanup_expired_projections(
-            db,
-            workspace_id=workspace_id,
-            batch_size=batch_size,
-            dry_run=dry_run,
-            now=now,
-            model_overrides=model_overrides,
+        session_factory = SessionLocal
+
+    knowledge_model, intent_model = _resolve_models(model_overrides)
+    _validate_retention_models(knowledge_model, intent_model)
+    cutoff = now if now is not None else func.now()
+
+    if dry_run:
+        session = session_factory()
+        try:
+            result = cleanup_expired_projections(
+                session,
+                workspace_id=workspace_id,
+                batch_size=batch_size,
+                dry_run=True,
+                now=now,
+                model_overrides=model_overrides,
+            )
+        finally:
+            if session.in_transaction():
+                session.rollback()
+            session.close()
+    else:
+        knowledge_candidates = 0
+        knowledge_deleted = 0
+        intent_candidates = 0
+        intents_expired = 0
+        commits = 0
+        batches = (
+            ("knowledge", knowledge_model, _cleanup_knowledge_batch),
+            ("intent", intent_model, _cleanup_intent_batch),
         )
-        aggregate = result.to_dict()
-        log.info("guard.projection_retention.completed", **aggregate)
-        if on_result is not None:
-            on_result(aggregate)
-        return result
-    finally:
-        if owns_session:
-            db.close()
+        for label, model, cleanup_batch in batches:
+            if model is None:
+                continue
+            session = session_factory()
+            try:
+                candidates, changed = cleanup_batch(
+                    session,
+                    model=model,
+                    workspace_id=workspace_id,
+                    cutoff=cutoff,
+                    batch_size=batch_size,
+                )
+                if changed:
+                    session.commit()
+                    commits += 1
+                elif session.in_transaction():
+                    session.rollback()
+                if label == "knowledge":
+                    knowledge_candidates = candidates
+                    knowledge_deleted = changed
+                else:
+                    intent_candidates = candidates
+                    intents_expired = changed
+            except Exception:
+                if session.in_transaction():
+                    session.rollback()
+                log.error(
+                    "guard.projection_retention.failed",
+                    dry_run=False,
+                    batch_size=batch_size,
+                )
+                raise
+            finally:
+                session.close()
+        result = ProjectionRetentionResult(
+            dry_run=False,
+            knowledge_candidates=knowledge_candidates,
+            knowledge_deleted=knowledge_deleted,
+            intent_candidates=intent_candidates,
+            intents_expired=intents_expired,
+            batches_committed=commits,
+            more_work=(
+                knowledge_candidates == batch_size or intent_candidates == batch_size
+            ),
+        )
+
+    aggregate = result.to_dict()
+    log.info("guard.projection_retention.completed", **aggregate)
+    if on_result is not None:
+        on_result(aggregate)
+    return result

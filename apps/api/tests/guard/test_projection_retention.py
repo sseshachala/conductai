@@ -4,6 +4,9 @@ from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 import pytest
+from sqlalchemy import DateTime, Integer, String, create_engine, event, select
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
+
 from app.modules.guard import projection_retention as retention
 from app.modules.guard.projection_retention import (
     active_projection_sql_predicate,
@@ -11,8 +14,6 @@ from app.modules.guard.projection_retention import (
     filter_active_projections,
     run_projection_retention_once,
 )
-from sqlalchemy import DateTime, Integer, String, create_engine, select
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
 
 class Base(DeclarativeBase):
@@ -56,10 +57,15 @@ MODELS = {"knowledge": FakeKnowledge, "intent": FakeIntent}
 NOW = datetime(2026, 10, 3, 20, 38, tzinfo=timezone.utc)
 
 
-def _session():
+def _session_factory():
     engine = create_engine("sqlite://")
     Base.metadata.create_all(engine)
-    return sessionmaker(bind=engine)()
+    return engine, sessionmaker(bind=engine)
+
+
+def _session():
+    _, factory = _session_factory()
+    return factory()
 
 
 def _knowledge(session, workspace, kind, expires_at, *, updated_at=None):
@@ -162,6 +168,7 @@ def test_cleanup_exact_cutoff_preserves_other_sources_and_tenants():
     result = cleanup_expired_projections(
         session, workspace_id="ws-a", now=NOW, model_overrides=MODELS
     )
+    session.commit()
 
     remaining = {row.id for row in session.scalars(select(FakeKnowledge))}
     assert result.knowledge_deleted == 2
@@ -188,6 +195,7 @@ def test_expired_knowledge_deletes_from_expires_at_despite_fresh_update():
         now=NOW,
         model_overrides={"knowledge": FakeKnowledge},
     )
+    session.commit()
 
     assert result.knowledge_deleted == 1
     assert session.get(FakeKnowledge, row_id) is None
@@ -224,6 +232,7 @@ def test_intents_only_terminalize_retryable_expired_states():
     result = cleanup_expired_projections(
         session, workspace_id="ws-a", now=NOW, model_overrides=MODELS
     )
+    session.commit()
     session.expire_all()
 
     assert result.intents_expired == 3
@@ -252,6 +261,7 @@ def test_cleanup_is_bounded_deterministic_and_resumable():
         now=NOW,
         model_overrides={"knowledge": FakeKnowledge},
     )
+    session.commit()
     remaining_after_first = set(session.scalars(select(FakeKnowledge.id)))
     second = cleanup_expired_projections(
         session,
@@ -259,6 +269,7 @@ def test_cleanup_is_bounded_deterministic_and_resumable():
         now=NOW,
         model_overrides={"knowledge": FakeKnowledge},
     )
+    session.commit()
 
     assert oldest_id not in remaining_after_first
     assert first.knowledge_deleted == second.knowledge_deleted == 1
@@ -304,23 +315,79 @@ def test_dry_run_aggregates_workspace_counts_without_mutation_or_commit():
     )
 
 
-def test_nonempty_knowledge_and_intent_batches_commit_independently():
-    session = _session()
-    _knowledge(session, "ws-a", "audit_event", NOW)
-    _intent(session, "ws-a", "pending", NOW)
+def test_cleanup_never_commits_or_rolls_back_caller_work():
+    engine, factory = _session_factory()
+    session = factory()
+    expired = _knowledge(session, "ws-a", "audit_event", NOW)
     session.commit()
+    expired_id = expired.id
+    unrelated = _knowledge(session, "ws-a", "rule", None)
     commits = 0
+    rollbacks = 0
     original_commit = session.commit
+    original_rollback = session.rollback
 
     def tracking_commit():
         nonlocal commits
         commits += 1
         original_commit()
 
-    session.commit = tracking_commit
-    result = cleanup_expired_projections(session, now=NOW, model_overrides=MODELS)
+    def tracking_rollback():
+        nonlocal rollbacks
+        rollbacks += 1
+        original_rollback()
 
-    assert result.batches_committed == commits == 2
+    session.commit = tracking_commit
+    session.rollback = tracking_rollback
+
+    result = cleanup_expired_projections(
+        session, now=NOW, model_overrides={"knowledge": FakeKnowledge}
+    )
+
+    assert result.knowledge_deleted == 1
+    assert result.batches_committed == 0
+    assert commits == rollbacks == 0
+    assert unrelated in session
+    assert session.in_transaction()
+
+    original_rollback()
+    with factory() as verifier:
+        assert verifier.get(FakeKnowledge, expired_id) is not None
+        assert (
+            verifier.scalar(
+                select(FakeKnowledge.id).where(FakeKnowledge.source_kind == "rule")
+            )
+            is None
+        )
+    engine.dispose()
+
+
+def test_cleanup_error_does_not_rollback_pending_caller_work(monkeypatch):
+    session = _session()
+    unrelated = _knowledge(session, "ws-a", "rule", None)
+    rollbacks = 0
+    original_rollback = session.rollback
+
+    def tracking_rollback():
+        nonlocal rollbacks
+        rollbacks += 1
+        original_rollback()
+
+    def fail_batch(*args, **kwargs):
+        raise RuntimeError("forced cleanup failure")
+
+    session.rollback = tracking_rollback
+    monkeypatch.setattr(retention, "_cleanup_knowledge_batch", fail_batch)
+
+    with pytest.raises(RuntimeError, match="forced cleanup failure"):
+        cleanup_expired_projections(
+            session, now=NOW, model_overrides={"knowledge": FakeKnowledge}
+        )
+
+    assert rollbacks == 0
+    assert unrelated in session.new
+    assert session.in_transaction()
+    original_rollback()
 
 
 def test_lazy_model_override_does_not_require_current_schema():
@@ -337,11 +404,18 @@ def test_lazy_model_override_does_not_require_current_schema():
 
 
 def test_worker_log_callback_and_result_are_aggregate_only(monkeypatch):
-    session = _session()
-    _knowledge(session, "private-workspace", "audit_event", NOW)
-    session.commit()
+    _, factory = _session_factory()
+    with factory() as seed:
+        _knowledge(seed, "private-workspace", "audit_event", NOW)
+        seed.commit()
     callbacks = []
     logs = []
+    created_sessions = []
+
+    def tracked_factory():
+        session = factory()
+        created_sessions.append(session)
+        return session
 
     class CapturingLog:
         def info(self, event, **values):
@@ -349,7 +423,7 @@ def test_worker_log_callback_and_result_are_aggregate_only(monkeypatch):
 
     monkeypatch.setattr(retention, "log", CapturingLog())
     result = run_projection_retention_once(
-        session,
+        session_factory=tracked_factory,
         workspace_id="private-workspace",
         now=NOW,
         model_overrides=MODELS,
@@ -358,8 +432,88 @@ def test_worker_log_callback_and_result_are_aggregate_only(monkeypatch):
     )
 
     assert result.knowledge_deleted == 1
+    assert result.batches_committed == 1
+    assert len(created_sessions) == 2
+    assert all(not session.in_transaction() for session in created_sessions)
     assert callbacks == [result.to_dict()]
     assert logs == [("guard.projection_retention.completed", result.to_dict())]
     assert "workspace" not in repr(callbacks)
     assert "private-workspace" not in repr(callbacks)
     assert "private-workspace" not in repr(logs)
+
+
+def test_worker_rejects_legacy_caller_session():
+    session = _session()
+
+    with pytest.raises(ValueError, match="does not accept a caller-owned db session"):
+        run_projection_retention_once(session, now=NOW, model_overrides=MODELS)
+
+
+def test_worker_commits_knowledge_before_later_intent_failure(monkeypatch):
+    _, factory = _session_factory()
+    with factory() as seed:
+        knowledge = _knowledge(seed, "ws-a", "audit_event", NOW)
+        intent = _intent(seed, "ws-a", "pending", NOW)
+        seed.commit()
+        knowledge_id = knowledge.id
+        intent_id = intent.id
+    created_sessions = []
+
+    def tracked_factory():
+        session = factory()
+        created_sessions.append(session)
+        return session
+
+    def fail_intent_batch(*args, **kwargs):
+        raise RuntimeError("forced intent failure")
+
+    monkeypatch.setattr(retention, "_cleanup_intent_batch", fail_intent_batch)
+
+    with pytest.raises(RuntimeError, match="forced intent failure"):
+        run_projection_retention_once(
+            session_factory=tracked_factory,
+            now=NOW,
+            model_overrides=MODELS,
+        )
+
+    assert len(created_sessions) == 2
+    assert all(not session.in_transaction() for session in created_sessions)
+    with factory() as verifier:
+        assert verifier.get(FakeKnowledge, knowledge_id) is None
+        assert verifier.get(FakeIntent, intent_id).status == "pending"
+
+
+@pytest.mark.parametrize("dry_run", [True, False])
+def test_worker_dry_run_and_empty_pass_release_connection_and_transaction(dry_run):
+    engine, factory = _session_factory()
+    checkouts = 0
+    checkins = 0
+    created_sessions = []
+
+    @event.listens_for(engine, "checkout")
+    def track_checkout(*args):
+        nonlocal checkouts
+        checkouts += 1
+
+    @event.listens_for(engine, "checkin")
+    def track_checkin(*args):
+        nonlocal checkins
+        checkins += 1
+
+    def tracked_factory():
+        session = factory()
+        created_sessions.append(session)
+        return session
+
+    result = run_projection_retention_once(
+        session_factory=tracked_factory,
+        dry_run=dry_run,
+        now=NOW,
+        model_overrides=MODELS,
+    )
+
+    assert result.knowledge_deleted == result.intents_expired == 0
+    assert checkouts == checkins
+    assert checkouts == (1 if dry_run else 2)
+    assert len(created_sessions) == (1 if dry_run else 2)
+    assert all(not session.in_transaction() for session in created_sessions)
