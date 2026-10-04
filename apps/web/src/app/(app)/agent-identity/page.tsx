@@ -15,18 +15,20 @@ import { AgentSessions } from "@/components/AgentSessions"
 import { AgentActivitySessions } from "@/components/AgentActivitySessions"
 import { Activity, KeyRound } from "lucide-react"
 import { FederationPanel } from "@/components/federation/FederationPanel"
+import AgentRateLimitsPanel from "@/components/gateway/AgentRateLimitsPanel"
 
-type Tab = "tokens" | "run_tokens" | "identities" | "agent_sessions" | "lens_sessions" | "integrations" | "delegation"
+type Tab = "tokens" | "run_tokens" | "identities" | "agent_sessions" | "lens_sessions" | "rate_limits" | "integrations" | "delegation"
 const TAB_LABELS: Record<Tab, string> = {
   tokens: "Tokens",
   run_tokens: "Run tokens",
   identities: "Identities",
   agent_sessions: "Agent sessions",
   lens_sessions: "Lens sessions",
+  rate_limits: "Rate limits",
   integrations: "Integrations",
   delegation: "Delegation",
 }
-const TABS: Tab[] = ["tokens", "run_tokens", "identities", "agent_sessions", "lens_sessions", "integrations", "delegation"]
+const TABS: Tab[] = ["tokens", "run_tokens", "identities", "agent_sessions", "lens_sessions", "rate_limits", "integrations", "delegation"]
 
 interface RunToken {
   id: string
@@ -818,6 +820,10 @@ function Inner({ getToken }: { getToken: (() => Promise<string | null>) | null }
             )}
           </div>
         </div>
+
+        {activeTab === "rate_limits" && <div role="tabpanel" id="tabpanel-rate_limits" aria-labelledby="tab-rate_limits">
+          <AgentRateLimitsPanel key={workspaceId} workspaceId={workspaceId} isAdmin={isAdmin} />
+        </div>}
 
         <div role="tabpanel" id="tabpanel-integrations" aria-labelledby="tab-integrations" hidden={activeTab !== "integrations"} style={{ display: activeTab === "integrations" ? "block" : "none" }}>
           <TabBar tabs={["okta", "oidc"] as const} labels={{ okta: "Okta", oidc: "OIDC" }} activeTab={integrationTab} onSelect={value => { setIntegrationTab(value); selectTab("integrations", { integration: value }) }} idPrefix="integration" />

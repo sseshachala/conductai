@@ -40,12 +40,14 @@ const profile = { id: "profile-id", name: "Production", model_alias: "coding", c
   active_revision_id: "revision-id", created_at: "2026-10-02", revisions: [],
   working_copy: { name: "Production", model_alias: "coding", targets: [{ id: "primary", provider: "openai" }] } }
 
-it("opens old rate-limit bookmarks as profiles, with editable published-profile limits", async () => {
+it("opens old rate-limit bookmarks as profiles, with explicit editing of published-profile limits", async () => {
   state.tab = "rate_limits"
   state.profiles.mockResolvedValue([profile])
   render(<Page />)
   await waitFor(() => expect(screen.getByRole("spinbutton", { name: "Requests / min (RPM)" })).toHaveValue(60), { timeout: 5000 })
   expect(state.rates).toHaveBeenCalledWith(state.fetch, "workspace-a", "profile-id")
+  expect(screen.getByRole("spinbutton", { name: "Requests / min (RPM)" })).toHaveAttribute("readonly")
+  fireEvent.click(screen.getByRole("button", { name: "Edit limits" }))
   expect(screen.getByRole("button", { name: "Save limits" })).toBeEnabled()
 })
 

@@ -2,11 +2,17 @@
 .heading { display: flex; align-items: center; gap: 8px; padding: 16px 0; }
 .heading h3 { margin: 0; font-size: 14px; font-weight: 650; }
 .saved { margin-left: auto; color: var(--ok); font-size: 12px; }
+.edit { margin-left: auto; }
+.edit, .actions button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .body { display: grid; gap: 14px; }
+.subheading { margin: 0; font-size: 13px; font-weight: 600; }
+.empty { color: var(--text-3); font-size: 13px; }
 .inputs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 .inputs label { display: grid; gap: 4px; font-size: 12px; color: var(--text-2); font-weight: 600; }
 .inputs input, .add select { width: 100%; min-width: 0; padding: 9px 12px; font-size: 13px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text); }
 .inputs input[aria-invalid="true"] { border-color: var(--danger); }
+.inputs input[readonly] { background: transparent; }
 .presets { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
 .presets > span { color: var(--text-3); font-size: 12px; margin-right: 4px; }
 .agents { display: grid; gap: 12px; border-top: 1px solid var(--border); padding-top: 14px; }
@@ -16,6 +22,8 @@
 .agentHeading > span { overflow-wrap: anywhere; }
 .add { display: flex; align-items: center; gap: 8px; }
 .add select { max-width: 360px; }
+.profilePicker { display: grid; gap: 6px; font-size: 13px; font-weight: 600; min-width: 0; }
+.profilePicker select { width: 100%; min-width: 0; padding: 9px 12px; font-size: 13px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text); }
 .add button, .agentHeading button { flex-shrink: 0; width: 32px; height: 32px; padding: 0; display: grid; place-items: center; }
 .error { color: var(--danger); font-size: 12px; overflow-wrap: anywhere; }
 @media (max-width: 640px) { .inputs { grid-template-columns: minmax(0, 1fr); } }
