@@ -13,7 +13,9 @@ from app.modules.guard.observability.metrics import (
     GUARD_PROJECTION_OLDEST_AGE,
     GUARD_PROJECTION_QUEUE_DEPTH,
     GUARD_PROJECTION_RETENTION_INTENTS_EXPIRED,
+    GUARD_PROJECTION_RETENTION_KNOWLEDGE_BACKFILLED,
     GUARD_PROJECTION_RETENTION_KNOWLEDGE_DELETED,
+    GUARD_PROJECTION_RETENTION_ORPHANS_DELETED,
     GUARD_PROJECTION_RETENTION_RUNS,
 )
 from app.modules.guard.projection_contract import (
@@ -31,11 +33,17 @@ def test_retention_settings_are_safe_and_interval_is_bounded():
     assert configured.guard_projection_retention_cleanup_enabled is False
     assert configured.guard_projection_retention_dry_run is True
     assert configured.guard_projection_retention_interval_seconds == 3600
+    assert configured.guard_projection_redis_connect_timeout_seconds == 0.25
+    assert configured.guard_projection_redis_socket_timeout_seconds == 0.5
 
     with pytest.raises(ValidationError):
         Settings(guard_projection_retention_interval_seconds=59)
     with pytest.raises(ValidationError):
         Settings(guard_projection_retention_interval_seconds=86401)
+    with pytest.raises(ValidationError):
+        Settings(guard_projection_redis_connect_timeout_seconds=0)
+    with pytest.raises(ValidationError):
+        Settings(guard_projection_redis_socket_timeout_seconds=0)
 
 
 def test_retention_start_is_independent_and_safe_off(monkeypatch):
@@ -109,11 +117,22 @@ def test_retention_metrics_record_only_aggregate_changes():
     )
     knowledge = GUARD_PROJECTION_RETENTION_KNOWLEDGE_DELETED.labels(dry_run="true")
     intents = GUARD_PROJECTION_RETENTION_INTENTS_EXPIRED.labels(dry_run="true")
-    before = (runs._value.get(), knowledge._value.get(), intents._value.get())
+    backfilled = GUARD_PROJECTION_RETENTION_KNOWLEDGE_BACKFILLED.labels(dry_run='true')
+    orphans = GUARD_PROJECTION_RETENTION_ORPHANS_DELETED.labels(dry_run='true')
+    before = (
+        runs._value.get(),
+        backfilled._value.get(),
+        orphans._value.get(),
+        knowledge._value.get(),
+        intents._value.get(),
+    )
 
     worker._record_projection_retention_result(
         {
             "dry_run": True,
+            "backfill_candidates": 6,
+            "knowledge_backfilled": 4,
+            "knowledge_orphans_deleted": 1,
             "knowledge_candidates": 8,
             "knowledge_deleted": 3,
             "intent_candidates": 5,
@@ -124,8 +143,10 @@ def test_retention_metrics_record_only_aggregate_changes():
     )
 
     assert runs._value.get() == before[0] + 1
-    assert knowledge._value.get() == before[1] + 3
-    assert intents._value.get() == before[2] + 2
+    assert backfilled._value.get() == before[1] + 4
+    assert orphans._value.get() == before[2] + 1
+    assert knowledge._value.get() == before[3] + 3
+    assert intents._value.get() == before[4] + 2
 
 
 def test_retention_loop_survives_cleanup_error(monkeypatch):
@@ -175,7 +196,7 @@ def test_reconciliation_refreshes_total_backlog_and_oldest_age(monkeypatch):
         GUARD_PROJECTION_OLDEST_AGE.set(42)
         return 0
 
-    monkeypatch.setattr(worker.redis, "from_url", lambda *_args, **_kwargs: client)
+    monkeypatch.setattr(projection_queue, "projection_redis_client", lambda: client)
     monkeypatch.setattr(projection_queue, "reconcile_projection_intents", reconcile)
     monkeypatch.setattr(worker.settings, "guard_projection_paused", False)
     monkeypatch.setattr(

@@ -98,8 +98,9 @@ class FakeQuery:
 
 
 class FakeDB:
-    def __init__(self, *, intent=None, summary_id=None, versions=None):
+    def __init__(self, *, intent=None, successor=None, summary_id=None, versions=None):
         self.intent = intent
+        self.successor = successor
         self.summary_id = summary_id or uuid4()
         self.versions = iter(versions or [1])
         self.summary_intent_id = uuid4()
@@ -140,6 +141,8 @@ class FakeDB:
         return FakeResult((self.summary_id, next(self.versions)))
 
     def query(self, model):
+        if model is GuardProjectionIntent.id:
+            return FakeQuery(self.successor)
         return FakeQuery(self.intent)
 
     def commit(self):
@@ -408,6 +411,57 @@ def test_redis_payload_is_projection_message_json_only():
     assert ProjectionMessage.from_json(raw) == msg
 
 
+def test_projection_redis_clients_bound_nonblocking_reads(monkeypatch):
+    calls = []
+
+    def from_url(url, **kwargs):
+        calls.append((url, kwargs))
+        return object()
+
+    monkeypatch.setattr(pq.redis, 'from_url', from_url)
+    monkeypatch.setattr(pq.settings, 'guard_projection_redis_connect_timeout_seconds', 0.1)
+    monkeypatch.setattr(pq.settings, 'guard_projection_redis_socket_timeout_seconds', 0.2)
+
+    pq.projection_redis_client()
+    pq.projection_redis_client(blocking=True)
+
+    assert calls[0][1]['socket_connect_timeout'] == 0.1
+    assert calls[0][1]['socket_timeout'] == 0.2
+    assert calls[0][1]['retry_on_timeout'] is False
+    assert 'socket_timeout' not in calls[1][1]
+
+
+def test_dispatch_timeouts_fail_open_without_swallowing_programming_errors(monkeypatch):
+    intent = make_intent()
+    msg = message_for(intent)
+
+    class ConnectTimeoutRedis:
+        def pipeline(self):
+            raise pq.redis.TimeoutError('bounded connect timeout')
+
+    class ReadTimeoutPipeline(FakePipeline):
+        def execute(self):
+            raise pq.redis.TimeoutError('bounded read timeout')
+
+    class ReadTimeoutRedis:
+        def __init__(self):
+            self.pipe = ReadTimeoutPipeline()
+
+        def pipeline(self):
+            return self.pipe
+
+    monkeypatch.setattr(pq, 'projection_redis_client', lambda: ConnectTimeoutRedis())
+    assert pq.dispatch_projection_message(msg) is False
+    assert pq.dispatch_projection_message(msg, redis_client=ReadTimeoutRedis()) is False
+
+    class BrokenRedis:
+        def pipeline(self):
+            raise TypeError('programming defect')
+
+    with pytest.raises(TypeError, match='programming defect'):
+        pq.dispatch_projection_message(msg, redis_client=BrokenRedis())
+
+
 def test_redis_unavailable_or_full_is_nonfatal(monkeypatch):
     intent = make_intent()
     msg = message_for(intent)
@@ -475,6 +529,43 @@ def test_retry_then_dead_letter_uses_fresh_rls_transactions(monkeypatch):
         (sessions[3], intent.workspace_id),
     ]
 
+
+
+def test_summary_provider_failure_supersedes_claim_when_successor_exists(monkeypatch):
+    processing = make_intent(
+        source_kind=ProjectionSourceKind.AUDIT_SUMMARY.value,
+        source_id='summary-1',
+        status=ProjectionIntentStatus.PROCESSING.value,
+        attempts=1,
+    )
+    successor = make_intent(
+        workspace_id=processing.workspace_id,
+        source_kind=ProjectionSourceKind.AUDIT_SUMMARY.value,
+        source_id=processing.source_id,
+        source_version='2',
+        status=ProjectionIntentStatus.PENDING.value,
+    )
+    db = FakeDB(intent=processing, successor=successor)
+    claim = pq.ProjectionClaim(
+        intent_id=processing.id,
+        workspace_id=processing.workspace_id,
+        attempts=1,
+        max_attempts=processing.max_attempts,
+    )
+
+    outcome = pq._fail_projection_claim(
+        lambda: db,
+        claim,
+        message_for(processing),
+        RuntimeError('provider failed'),
+        redis_client=None,
+        now=NOW,
+    )
+
+    assert outcome == 'superseded'
+    assert processing.status == ProjectionIntentStatus.SUPERSEDED.value
+    assert processing.completed_at == NOW
+    assert successor.status == ProjectionIntentStatus.PENDING.value
 
 
 def test_completion_uses_fresh_rls_transaction(monkeypatch):
@@ -607,6 +698,37 @@ def test_reconciliation_recovers_expired_processing(monkeypatch):
     assert expired.available_at == NOW
     assert expired.lease_expires_at is None
     assert expired.dispatched_at == NOW
+
+
+def test_reconciliation_supersedes_expired_summary_with_successor(monkeypatch):
+    expired = make_intent(
+        source_kind=ProjectionSourceKind.AUDIT_SUMMARY.value,
+        source_id='summary-1',
+        status=ProjectionIntentStatus.PROCESSING.value,
+        lease_expires_at=NOW - timedelta(seconds=1),
+        dispatched_at=NOW - timedelta(minutes=10),
+    )
+    successor = make_intent(
+        workspace_id=expired.workspace_id,
+        source_kind=ProjectionSourceKind.AUDIT_SUMMARY.value,
+        source_id=expired.source_id,
+        source_version='2',
+        status=ProjectionIntentStatus.PENDING.value,
+    )
+    db = FakeDB(intent=expired, successor=successor)
+    monkeypatch.setattr(pq, 'SessionLocal', lambda: db)
+
+    messages, _ = pq._reserve_reconciliation_messages(
+        expired.workspace_id,
+        current=NOW,
+        stale_before=NOW - timedelta(seconds=120),
+        limit=1,
+    )
+
+    assert messages == []
+    assert expired.status == ProjectionIntentStatus.SUPERSEDED.value
+    assert expired.completed_at == NOW
+    assert successor.status == ProjectionIntentStatus.PENDING.value
 
 
 def test_failed_dispatch_retains_attempted_reservation_and_releases_later_ones(

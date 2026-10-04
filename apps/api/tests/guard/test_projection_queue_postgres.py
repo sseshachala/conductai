@@ -2,6 +2,7 @@
 
 import importlib.util
 import os
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from uuid import uuid4
 
@@ -10,9 +11,16 @@ from alembic.migration import MigrationContext
 from alembic.operations import Operations
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import IntegrityError, ProgrammingError
+from sqlalchemy.orm import sessionmaker
 from sqlalchemy.schema import CreateSchema, DropSchema
 
 from app.core.config import settings
+from app.modules.guard import projection_queue as pq
+from app.modules.guard.projection_contract import (
+    ProjectionIntentStatus,
+    ProjectionMessage,
+    ProjectionSourceKind,
+)
 
 
 @pytest.fixture
@@ -166,3 +174,105 @@ def test_atomic_source_and_projection_rollback_visibility(projection_database):
         )
         assert conn.execute(text("SELECT count(*) FROM guard_audit_events")).scalar_one() == 0
         assert conn.execute(text("SELECT count(*) FROM guard_projection_intents")).scalar_one() == 0
+
+
+
+def _insert_summary_pair(conn, workspace_id, *, now):
+    source_id = str(uuid4())
+    processing_id = uuid4()
+    successor_id = uuid4()
+    conn.execute(
+        text("""INSERT INTO guard_projection_intents
+        (id, workspace_id, source_kind, source_id, source_version, status,
+         attempts, max_attempts, available_at, lease_expires_at, created_at, updated_at)
+        VALUES
+        (:processing_id, :ws, 'audit_summary', :source_id, '1', 'processing',
+         1, 5, :available, :expired_lease, :processing_created, :processing_created),
+        (:successor_id, :ws, 'audit_summary', :source_id, '2', 'pending',
+         0, 5, :available, NULL, :successor_created, :successor_created)"""),
+        {
+            'processing_id': processing_id,
+            'successor_id': successor_id,
+            'ws': workspace_id,
+            'source_id': source_id,
+            'available': now - timedelta(minutes=1),
+            'expired_lease': now - timedelta(seconds=1),
+            'processing_created': now - timedelta(minutes=2),
+            'successor_created': now - timedelta(minutes=1),
+        },
+    )
+    return processing_id, successor_id, source_id
+
+
+def test_summary_provider_failure_supersedes_old_claim_postgres(projection_database):
+    engine, _role, workspace_id, _other_workspace_id, _migration = projection_database
+    now = datetime.now(timezone.utc)
+    with engine.begin() as conn:
+        processing_id, successor_id, source_id = _insert_summary_pair(
+            conn, workspace_id, now=now
+        )
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+    claim = pq.ProjectionClaim(
+        intent_id=processing_id,
+        workspace_id=workspace_id,
+        attempts=1,
+        max_attempts=5,
+    )
+    message = ProjectionMessage(
+        intent_id=processing_id,
+        workspace_id=workspace_id,
+        source_kind=ProjectionSourceKind.AUDIT_SUMMARY,
+        source_id=source_id,
+        source_version='1',
+    )
+
+    outcome = pq._fail_projection_claim(
+        factory,
+        claim,
+        message,
+        RuntimeError('provider failed'),
+        redis_client=None,
+        now=now,
+    )
+
+    assert outcome == 'superseded'
+    with engine.begin() as conn:
+        rows = dict(
+            conn.execute(
+                text('SELECT id, status FROM guard_projection_intents WHERE id IN (:old, :new)'),
+                {'old': processing_id, 'new': successor_id},
+            ).all()
+        )
+    assert rows[processing_id] == ProjectionIntentStatus.SUPERSEDED.value
+    assert rows[successor_id] == ProjectionIntentStatus.PENDING.value
+
+
+def test_summary_expired_lease_supersedes_old_claim_postgres(
+    projection_database, monkeypatch
+):
+    engine, _role, workspace_id, _other_workspace_id, _migration = projection_database
+    now = datetime.now(timezone.utc)
+    with engine.begin() as conn:
+        processing_id, successor_id, _source_id = _insert_summary_pair(
+            conn, workspace_id, now=now
+        )
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+    monkeypatch.setattr(pq, 'SessionLocal', factory)
+
+    messages, _oldest = pq._reserve_reconciliation_messages(
+        workspace_id,
+        current=now,
+        stale_before=now - timedelta(minutes=5),
+        limit=10,
+    )
+
+    assert [message.intent_id for message in messages] == [successor_id]
+    with engine.begin() as conn:
+        rows = dict(
+            conn.execute(
+                text('SELECT id, status FROM guard_projection_intents WHERE id IN (:old, :new)'),
+                {'old': processing_id, 'new': successor_id},
+            ).all()
+        )
+    assert rows[processing_id] == ProjectionIntentStatus.SUPERSEDED.value
+    assert rows[successor_id] == ProjectionIntentStatus.PENDING.value

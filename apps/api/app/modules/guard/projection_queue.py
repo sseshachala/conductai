@@ -290,9 +290,7 @@ def dispatch_projection_message(
     message: ProjectionMessage, *, redis_client=None
 ) -> bool:
     try:
-        client = redis_client or redis.from_url(
-            settings.redis_url, decode_responses=True
-        )
+        client = redis_client or projection_redis_client()
         with client.pipeline() as pipe:
             for _ in range(5):
                 try:
@@ -303,6 +301,11 @@ def dispatch_projection_message(
                     if depth >= settings.guard_projection_queue_max_depth:
                         pipe.unwatch()
                         GUARD_PROJECTION_DISPATCH.labels(result="full").inc()
+                        log.warning(
+                            "guard.projection.queue_full",
+                            depth=depth,
+                            max_depth=settings.guard_projection_queue_max_depth,
+                        )
                         return False
                     pipe.multi()
                     pipe.rpush(PROJECTION_QUEUE_KEY, message.to_json())
@@ -313,7 +316,7 @@ def dispatch_projection_message(
             else:
                 GUARD_PROJECTION_DISPATCH.labels(result="contention").inc()
                 return False
-    except (redis.RedisError, ConnectionError, OSError, ValueError) as exc:
+    except (redis.RedisError, ConnectionError, OSError) as exc:
         GUARD_PROJECTION_DISPATCH.labels(result="unavailable").inc()
         log.warning("guard.projection.redis_unavailable", error_type=type(exc).__name__)
         return False
@@ -323,6 +326,21 @@ def dispatch_projection_message(
     except Exception:  # noqa: BLE001 - metrics must never break dispatch
         log.debug("guard.projection.queue_depth_metric_failed")
     return True
+
+
+def projection_redis_client(*, blocking: bool = False):
+    """Build a projection Redis client with bounded nonblocking operations."""
+    kwargs = {
+        "decode_responses": True,
+        "socket_connect_timeout": (
+            settings.guard_projection_redis_connect_timeout_seconds
+        ),
+        "retry_on_timeout": False,
+        "health_check_interval": 30,
+    }
+    if not blocking:
+        kwargs["socket_timeout"] = settings.guard_projection_redis_socket_timeout_seconds
+    return redis.from_url(settings.redis_url, **kwargs)
 
 
 def claim_projection_intent(
@@ -389,6 +407,30 @@ def _retry_delay(attempts: int) -> int:
     )
 
 
+def _summary_successor_exists(db: Session, intent: GuardProjectionIntent) -> bool:
+    """Lock and detect a pending/retry successor for a processing summary."""
+    if intent.source_kind != ProjectionSourceKind.AUDIT_SUMMARY.value:
+        return False
+    successor = (
+        db.query(GuardProjectionIntent.id)
+        .filter(
+            GuardProjectionIntent.workspace_id == intent.workspace_id,
+            GuardProjectionIntent.source_kind == intent.source_kind,
+            GuardProjectionIntent.source_id == intent.source_id,
+            GuardProjectionIntent.id != intent.id,
+            GuardProjectionIntent.status.in_(
+                [
+                    ProjectionIntentStatus.PENDING.value,
+                    ProjectionIntentStatus.RETRY.value,
+                ]
+            ),
+        )
+        .with_for_update()
+        .first()
+    )
+    return successor is not None
+
+
 def _complete_projection_claim(
     db_factory: Callable[[], Session],
     claim: ProjectionClaim,
@@ -452,7 +494,11 @@ def _fail_projection_claim(
         intent.lease_expires_at = None
         intent.dispatched_at = None
         intent.updated_at = now
-        if claim.attempts >= claim.max_attempts:
+        if _summary_successor_exists(db, intent):
+            intent.status = ProjectionIntentStatus.SUPERSEDED.value
+            intent.completed_at = now
+            outcome = "superseded"
+        elif claim.attempts >= claim.max_attempts:
             intent.status = ProjectionIntentStatus.DEAD_LETTER.value
             intent.completed_at = now
             outcome = "dead_letter"
@@ -588,14 +634,22 @@ def _reserve_reconciliation_messages(
             .all()
         )
         oldest = rows[0].created_at if rows else None
-        messages = [_message(row) for row in rows]
+        messages = []
         for row in rows:
             if row.status == ProjectionIntentStatus.PROCESSING.value:
+                if _summary_successor_exists(db, row):
+                    row.status = ProjectionIntentStatus.SUPERSEDED.value
+                    row.completed_at = current
+                    row.lease_expires_at = None
+                    row.dispatched_at = None
+                    row.updated_at = current
+                    continue
                 row.status = ProjectionIntentStatus.RETRY.value
                 row.available_at = current
                 row.lease_expires_at = None
             row.dispatched_at = current
             row.updated_at = current
+            messages.append(_message(row))
         db.commit()
         return messages, oldest
 
