@@ -884,6 +884,8 @@ def ingest_event(
         goal_id=body.goal_id,
         goal_name=body.goal_name,
         routing_meta={"session_usage": body._session_usage} if body._session_usage else None,
+        evaluated_rules=body.evaluated_rules,
+        defense_score=body.defense_score,
     )
     db.add(event)
     db.flush()  # get event.id before commit
@@ -957,8 +959,22 @@ def ingest_event(
     db.flush()
     db.refresh(event)
 
-    # 3 & 4 & 5: commit DB writes first, then dispatch non-fatal work to background
+    projection_message = None
+    if settings.guard_projection_queue_enabled and not settings.guard_projection_paused:
+        from app.modules.guard.projection_queue import persist_audit_event_projection
+        projection_message = persist_audit_event_projection(
+            db,
+            event,
+            evaluated_rules=body.evaluated_rules,
+            now=now,
+        )
+
+    # Source + durable intent/summary commit atomically. Redis is best-effort after commit.
     db.commit()
+    if projection_message is not None:
+        from app.modules.guard.projection_queue import dispatch_projection_message, mark_projection_dispatched
+        if dispatch_projection_message(projection_message):
+            mark_projection_dispatched(projection_message)
 
     # Slack notification (background — non-fatal, must not delay response)
     background.add_task(
@@ -988,8 +1004,9 @@ def ingest_event(
         event_id=str(event.id),
     )
 
-    # Knowledge index projection (background — non-fatal, powers GLens search)
-    background.add_task(_bg_project_event, str(event.id), body.workspace_id)
+    # Rollout compatibility: legacy direct projection remains until the queue is enabled.
+    if not settings.guard_projection_paused and not settings.guard_projection_queue_enabled:
+        background.add_task(_bg_project_event, str(event.id), body.workspace_id)
 
     return EventOut(**_event_to_dict(event))
 

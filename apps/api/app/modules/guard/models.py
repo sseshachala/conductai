@@ -3,7 +3,7 @@ import uuid
 from datetime import datetime, timezone
 
 import sqlalchemy as sa
-from sqlalchemy import BigInteger, Boolean, Column, DateTime, Float, ForeignKey, Index, Integer, LargeBinary, String, Text, UniqueConstraint, func
+from sqlalchemy import BigInteger, Boolean, CheckConstraint, Column, DateTime, Float, ForeignKey, Index, Integer, LargeBinary, String, Text, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import ARRAY, JSON, JSONB, UUID
 from pgvector.sqlalchemy import Vector
 
@@ -722,6 +722,8 @@ class GuardKnowledgeIndex(Base):
     meta          = Column("metadata", JSONB, nullable=False, default=dict)
     content_hash  = Column(Text, nullable=False)
     embedding     = Column(Vector(1536), nullable=True)
+    source_timestamp = Column(DateTime(timezone=True), nullable=True)
+    expires_at = Column(DateTime(timezone=True), nullable=True)
     updated_at    = Column(
         DateTime(timezone=True),
         nullable=False,
@@ -731,12 +733,78 @@ class GuardKnowledgeIndex(Base):
     __table_args__ = (
         UniqueConstraint("workspace_id", "source_kind", "source_id", name="guard_knowledge_index_workspace_id_source_kind_source_id_key"),
         Index("guard_knowledge_index_workspace_id_source_kind_idx", "workspace_id", "source_kind"),
+        Index("ix_guard_knowledge_index_expires_at", "expires_at"),
         Index(
             "guard_knowledge_index_embedding_idx", "embedding",
             postgresql_using="ivfflat",
             postgresql_ops={"embedding": "vector_cosine_ops"},
             postgresql_with={"lists": "100"},
         ),
+    )
+
+
+
+class GuardProjectionIntent(Base):
+    """Durable projection outbox row; Redis only carries its identifier contract."""
+
+    __tablename__ = "guard_projection_intents"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id = Column(UUID(as_uuid=True), ForeignKey("workspaces.id", name="fk_guard_projection_intents_workspace_id", ondelete="CASCADE"), nullable=False)
+    source_kind = Column(String(32), nullable=False)
+    source_id = Column(Text, nullable=False)
+    source_version = Column(Text, nullable=False)
+    status = Column(String(20), nullable=False, default="pending")
+    attempts = Column(Integer, nullable=False, default=0)
+    max_attempts = Column(Integer, nullable=False)
+    available_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    lease_expires_at = Column(DateTime(timezone=True), nullable=True)
+    last_error = Column(String(500), nullable=True)
+    dispatched_at = Column(DateTime(timezone=True), nullable=True)
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "source_kind", "source_id", "source_version", name="uq_guard_projection_intent_source_version"),
+        CheckConstraint("attempts >= 0", name="ck_guard_projection_intents_attempts"),
+        CheckConstraint("max_attempts > 0", name="ck_guard_projection_intents_max_attempts"),
+        CheckConstraint("status IN ('pending', 'processing', 'retry', 'completed', 'dead_letter', 'superseded', 'expired', 'missing')", name="ck_guard_projection_intents_status"),
+        CheckConstraint("source_kind IN ('audit_event', 'rule', 'discovered_agent', 'audit_summary')", name="ck_guard_projection_intents_source_kind"),
+        Index("ix_guard_projection_intents_pending", "available_at", "created_at", postgresql_where=sa.text("status IN ('pending', 'retry')")),
+        Index("ix_guard_projection_intents_lease", "lease_expires_at", postgresql_where=sa.text("status = 'processing'")),
+    )
+
+
+class GuardProjectionSummary(Base):
+    """Bounded, PII-free aggregate source for routine allowed activity."""
+
+    __tablename__ = "guard_projection_summaries"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id = Column(UUID(as_uuid=True), ForeignKey("workspaces.id", name="fk_guard_projection_summaries_workspace_id", ondelete="CASCADE"), nullable=False)
+    window_start = Column(DateTime(timezone=True), nullable=False)
+    window_end = Column(DateTime(timezone=True), nullable=False)
+    dimension_key = Column(String(64), nullable=False)
+    ai_tool = Column(String(50), nullable=False)
+    tool_call = Column(String(255), nullable=False)
+    rule_id = Column(String(255), nullable=False, default="")
+    event_count = Column(Integer, nullable=False, default=0)
+    version = Column(Integer, nullable=False, default=1)
+    canonical_facts = Column(JSONB, nullable=False, default=dict)
+    source_timestamp = Column(DateTime(timezone=True), nullable=False)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "window_start", "dimension_key", name="uq_guard_projection_summary_window_dimension"),
+        CheckConstraint("window_end > window_start", name="ck_guard_projection_summary_window"),
+        CheckConstraint("event_count > 0", name="ck_guard_projection_summary_event_count"),
+        CheckConstraint("version > 0", name="ck_guard_projection_summary_version"),
+        CheckConstraint("expires_at > source_timestamp", name="ck_guard_projection_summary_expiry"),
+        Index("ix_guard_projection_summaries_workspace_window", "workspace_id", "window_start"),
+        Index("ix_guard_projection_summaries_expires_at", "expires_at"),
     )
 
 

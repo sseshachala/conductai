@@ -12,7 +12,7 @@ here for two reasons:
 Workspace context is preserved in the Slack post and structlog line where
 it belongs, not in the metric labels.
 """
-from prometheus_client import Counter
+from prometheus_client import Counter, Gauge
 
 GUARD_ENGINE_ERRORS = Counter(
     "guard_engine_errors_total",
@@ -99,4 +99,33 @@ GUARD_BUDGET_ENFORCEMENT_ACTIVE = Counter(
     "guard_budget_enforcement_active_total",
     "Reserve calls admitted by the ledger for an enforcing workspace.",
     ["workspace_id"],
+)
+
+
+GUARD_PROJECTION_EVENTS = Counter(
+    "guard_projection_events_total",
+    "Audit events considered by projection policy.",
+    ["result"],
+)
+
+GUARD_PROJECTION_DISPATCH = Counter(
+    "guard_projection_dispatch_total",
+    "Projection outbox dispatch attempts.",
+    ["result"],
+)
+
+GUARD_PROJECTION_OUTCOMES = Counter(
+    "guard_projection_outcomes_total",
+    "Projection intent processing outcomes.",
+    ["outcome"],
+)
+
+GUARD_PROJECTION_QUEUE_DEPTH = Gauge(
+    "guard_projection_queue_depth",
+    "Current Redis projection queue depth.",
+)
+
+GUARD_PROJECTION_OLDEST_AGE = Gauge(
+    "guard_projection_oldest_pending_age_seconds",
+    "Age of the oldest dispatchable projection intent.",
 )

@@ -1,4 +1,6 @@
+from pydantic import Field
 from pydantic_settings import BaseSettings
+
 from app.core.auth_deployment import AuthMode, validate_auth_mode
 
 
@@ -152,6 +154,25 @@ class Settings(BaseSettings):
     # would let unscanned tool_call arguments flow back to callers.
     # Flip on per-workspace via env var after PR 2 lands.
     guard_gateway_tools_enabled: bool = False
+
+
+    # #2331 durable knowledge projection outbox. Disabled by default for a
+    # schema-first rollout; pause is an independent emergency stop that leaves
+    # audit ingestion and enforcement untouched.
+    guard_projection_queue_enabled: bool = False
+    guard_projection_paused: bool = False
+    guard_projection_retention_days: int = Field(default=30, gt=0, le=3650)
+    guard_projection_allowed_summary_window_minutes: int = Field(default=60, gt=0, le=1440)
+    guard_projection_queue_max_depth: int = Field(default=10_000, gt=0)
+    guard_projection_consumer_concurrency: int = Field(default=1, ge=0, le=64)
+    guard_projection_lease_seconds: int = Field(default=300, gt=0)
+    guard_projection_max_attempts: int = Field(default=5, gt=0, le=100)
+    guard_projection_retry_base_seconds: int = Field(default=5, gt=0)
+    guard_projection_retry_max_seconds: int = Field(default=900, gt=0)
+    guard_projection_reconciliation_interval_seconds: int = Field(default=60, gt=0)
+    guard_projection_reconciliation_batch_size: int = Field(default=100, gt=0, le=5000)
+    guard_projection_prune_after_days: int = Field(default=7, gt=0, le=3650)
+    guard_projection_prune_batch_size: int = Field(default=500, gt=0, le=5000)
 
     # #2155 — Streaming + tools with buffered-delta validation. When on,
     # ``stream=true`` combined with ``tools`` is accepted; the streaming

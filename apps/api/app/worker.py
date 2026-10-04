@@ -52,6 +52,7 @@ SWEEP_LOCK_TTL_SECONDS = 30                                # lock expires after 
 ONLINE_EVAL_KEY        = "marshal:eval:online:queue"
 CONCURRENCY            = int(os.environ.get("WORKER_CONCURRENCY", "1"))
 JUDGE_SAMPLE_RATE      = float(os.environ.get("ONLINE_EVAL_JUDGE_SAMPLE_RATE", "0.20"))
+PROJECTION_CONCURRENCY = settings.guard_projection_consumer_concurrency
 
 # Reaper configuration -- tunable via environment variables.
 STALE_RUN_THRESHOLD_MINUTES        = int(os.environ.get("STALE_RUN_THRESHOLD_MINUTES", "20"))
@@ -363,6 +364,72 @@ def _recover_stalled(r) -> int:
         r.delete(SWEEP_LOCK_KEY)
 
 
+# -- projection queue worker ---------------------------------------------------
+
+def _projection_loop(thread_id: int) -> None:
+    from app.modules.guard.projection_contract import PROJECTION_PROCESSING_KEY, PROJECTION_PROCESSING_TIMES_KEY, PROJECTION_QUEUE_KEY, ProjectionMessage
+    from app.modules.guard.projection_queue import process_projection_message
+
+    client = redis.from_url(settings.redis_url, decode_responses=True)
+    log.info("projection_worker.thread_started", thread_id=thread_id, queue=PROJECTION_QUEUE_KEY)
+    while True:
+        if settings.guard_projection_paused:
+            time.sleep(1)
+            continue
+        raw = None
+        try:
+            raw = client.blmove(PROJECTION_QUEUE_KEY, PROJECTION_PROCESSING_KEY, 5, "LEFT", "RIGHT")
+            if not raw:
+                continue
+            client.hset(PROJECTION_PROCESSING_TIMES_KEY, raw, time.time())
+            message = ProjectionMessage.from_json(raw)
+            process_projection_message(message, redis_client=client)
+        except redis.exceptions.ConnectionError:
+            log.warning("projection_worker.redis_disconnected", thread_id=thread_id)
+            time.sleep(3)
+        except Exception:
+            log.exception("projection_worker.loop_error", thread_id=thread_id)
+            time.sleep(1)
+        finally:
+            if raw is not None:
+                try:
+                    client.lrem(PROJECTION_PROCESSING_KEY, 1, raw)
+                    client.hdel(PROJECTION_PROCESSING_TIMES_KEY, raw)
+                except Exception:
+                    log.warning("projection_worker.cleanup_failed", thread_id=thread_id)
+
+
+def _projection_reconciliation_loop() -> None:
+    from app.modules.guard.projection_contract import PROJECTION_PROCESSING_KEY, PROJECTION_PROCESSING_TIMES_KEY
+    from app.modules.guard.projection_queue import reconcile_projection_intents
+
+    client = redis.from_url(settings.redis_url, decode_responses=True)
+    interval = settings.guard_projection_reconciliation_interval_seconds
+    while True:
+        if not settings.guard_projection_paused:
+            try:
+                cutoff = time.time() - settings.guard_projection_lease_seconds
+                for raw, started in client.hgetall(PROJECTION_PROCESSING_TIMES_KEY).items():
+                    if float(started) <= cutoff:
+                        client.lrem(PROJECTION_PROCESSING_KEY, 1, raw)
+                        client.hdel(PROJECTION_PROCESSING_TIMES_KEY, raw)
+                reconcile_projection_intents(redis_client=client)
+            except Exception:
+                log.exception("projection_worker.reconciliation_error")
+        time.sleep(interval)
+
+
+def _start_projection_workers() -> list[threading.Thread]:
+    if not settings.guard_projection_queue_enabled or settings.guard_projection_paused or PROJECTION_CONCURRENCY <= 0:
+        log.info("projection_worker.disabled")
+        return []
+    threads = [threading.Thread(target=_projection_loop, args=(i,), daemon=True, name=f"projection-worker-{i}") for i in range(PROJECTION_CONCURRENCY)]
+    threads.append(threading.Thread(target=_projection_reconciliation_loop, daemon=True, name="projection-reconciler"))
+    for thread in threads:
+        thread.start()
+    return threads
+
+
 # -- queue worker --------------------------------------------------------------
 
 def _loop(thread_id: int) -> None:
@@ -412,6 +479,7 @@ def _loop(thread_id: int) -> None:
 
 def main() -> None:
     log.info("worker.starting", concurrency=CONCURRENCY, queue=QUEUE_KEY)
+    _start_projection_workers()
 
     # The reaper, watchdog, and online eval scorer run regardless of concurrency.
     reaper = threading.Thread(target=_reaper_loop, daemon=True, name="reaper")
