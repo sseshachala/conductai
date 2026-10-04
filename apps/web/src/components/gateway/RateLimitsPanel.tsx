@@ -96,7 +96,7 @@ export default function RateLimitsPanel({ isAdmin, workspaceId, profileId, agent
             onChange={e => change({ ...cap, [metric]: e.target.value })} />
         </label>)}
       </div>
-      {editing && !agentId && <div className={styles.presets}>
+      {editing && <div className={styles.presets}>
         <span>Presets</span>
         {[{ label: "Smoke test", rpm: 2, tpm: 500 }, { label: "Small team", rpm: 60, tpm: 100000 },
           { label: "Larger team", rpm: 300, tpm: 500000 }].map(p => <button key={p.label}
