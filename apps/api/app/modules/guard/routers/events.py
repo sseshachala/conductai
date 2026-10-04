@@ -33,6 +33,7 @@ from app.core.config import settings
 from app.core.stream_auth import stream_credentials
 from app.core.database import SessionLocal, get_db
 from app.core.pii import redact_secrets
+from app.core.workspace_context import set_workspace_rls
 from app.models.workspace import Workspace
 from app.modules.guard.models import DiscoveredAgent, GuardAuditEvent, GuardConfig, GuardSession, GuardSpendBudget, chain_hash_for_insert, get_policy_hash
 
@@ -828,6 +829,10 @@ def ingest_event(
     import uuid
 
     ws_uuid = _authenticated_workspace_uuid(body.workspace_id, auth_context)
+    # Projection intent/summary tables enforce FORCE RLS. Set the canonical,
+    # authenticated workspace on this same transaction before any source or
+    # outbox persistence so the raw event and projection remain atomic.
+    set_workspace_rls(db, ws_uuid)
     actor_clerk_user_id, actor_email = _authenticated_actor(body, auth_context, db)
     verified_identity = getattr(request.state, "guard_hook_identity", None)
     agent_identity_id = None

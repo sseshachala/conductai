@@ -171,6 +171,10 @@ class Settings(BaseSettings):
     guard_projection_retry_max_seconds: int = Field(default=900, gt=0)
     guard_projection_reconciliation_interval_seconds: int = Field(default=60, gt=0)
     guard_projection_reconciliation_batch_size: int = Field(default=100, gt=0, le=5000)
+    # Maximum time an enqueued pending/retry intent may remain unclaimed before
+    # reconciliation reserves and redispatches it. When unset, projection_queue
+    # derives a conservative value from the lease and reconciliation interval.
+    guard_projection_delivery_timeout_seconds: int | None = Field(default=None, gt=0)
     guard_projection_prune_after_days: int = Field(default=7, gt=0, le=3650)
     guard_projection_prune_batch_size: int = Field(default=500, gt=0, le=5000)
 

@@ -4,6 +4,10 @@ from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
+import sqlalchemy as sa
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
 try:
     import prometheus_client  # noqa: F401
@@ -82,6 +86,15 @@ class FakeQuery:
     def first(self):
         return self.intent
 
+    def order_by(self, *args):
+        return self
+
+    def limit(self, value):
+        return self
+
+    def all(self):
+        return [self.intent] if self.intent is not None else []
+
 
 class FakeDB:
     def __init__(self, *, intent=None, summary_id=None, versions=None):
@@ -114,6 +127,65 @@ class FakeDB:
     def __exit__(self, *args):
         return False
 
+
+@pytest.fixture
+def reconciliation_db(monkeypatch):
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    with engine.begin() as connection:
+        connection.exec_driver_sql(
+            "CREATE TABLE workspaces (id VARCHAR(32) PRIMARY KEY)"
+        )
+        connection.exec_driver_sql(
+            "CREATE TABLE guard_projection_intents ("
+            "id VARCHAR(32) PRIMARY KEY, "
+            "workspace_id VARCHAR(32) NOT NULL, "
+            "source_kind VARCHAR(32) NOT NULL, "
+            "source_id TEXT NOT NULL, "
+            "source_version TEXT NOT NULL, "
+            "status VARCHAR(20) NOT NULL, "
+            "attempts INTEGER NOT NULL, "
+            "max_attempts INTEGER NOT NULL, "
+            "available_at DATETIME NOT NULL, "
+            "lease_expires_at DATETIME, "
+            "last_error VARCHAR(500), "
+            "dispatched_at DATETIME, "
+            "completed_at DATETIME, "
+            "created_at DATETIME NOT NULL, "
+            "updated_at DATETIME NOT NULL"
+            ")"
+        )
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+    monkeypatch.setattr(pq, "SessionLocal", factory)
+    yield factory
+    engine.dispose()
+
+
+class ReconciliationRedis:
+    def __init__(self):
+        self.values = {}
+
+    def get(self, key):
+        return self.values.get(key)
+
+    def set(self, key, value):
+        self.values[key] = value
+
+    def delete(self, key):
+        self.values.pop(key, None)
+
+
+def persist_reconciliation_intents(factory, workspace_id, intents):
+    with factory() as db:
+        db.execute(
+            sa.text("INSERT INTO workspaces (id) VALUES (:id)"),
+            {"id": workspace_id.hex},
+        )
+        db.add_all(intents)
+        db.commit()
 
 def event(decision="blocked", *, ts=NOW, rule_id="rule-1"):
     return SimpleNamespace(
@@ -282,36 +354,248 @@ def test_expired_lease_is_recovered():
         status="processing", lease_expires_at=NOW - timedelta(seconds=1)
     )
     db = FakeDB(intent=intent)
-    assert pq.claim_projection_intent(db, message_for(intent), now=NOW) is intent
+    claim = pq.claim_projection_intent(db, message_for(intent), now=NOW)
+    assert claim == pq.ProjectionClaim(
+        intent_id=intent.id,
+        workspace_id=intent.workspace_id,
+        attempts=1,
+        max_attempts=intent.max_attempts,
+    )
     assert intent.attempts == 1
     assert intent.lease_expires_at > NOW
 
 
-def test_retry_then_dead_letter(monkeypatch):
+def test_retry_then_dead_letter_uses_fresh_rls_transactions(monkeypatch):
     intent = make_intent()
-    db = FakeDB(intent=intent)
+    sessions = []
+    rls_calls = []
+
+    def db_factory():
+        db = FakeDB(intent=intent)
+        sessions.append(db)
+        return db
+
     monkeypatch.setattr(
         knowledge,
         "process_projection_intent",
         lambda intent_id: (_ for _ in ()).throw(RuntimeError("secret prompt")),
         raising=False,
     )
-    monkeypatch.setattr(pq, "SessionLocal", lambda: db)
+    monkeypatch.setattr(pq, "set_workspace_rls", lambda db, ws: rls_calls.append((db, ws)))
     msg = message_for(intent)
-    assert pq.process_projection_message(msg, db_factory=lambda: db) == "retry"
+    assert pq.process_projection_message(msg, db_factory=db_factory) == "retry"
     assert intent.last_error == "Projection processing failed (RuntimeError)"
-    intent.available_at = datetime.now(timezone.utc) - timedelta(seconds=1)
-    assert pq.process_projection_message(msg, db_factory=lambda: db) == "dead_letter"
-    assert intent.status == ProjectionIntentStatus.DEAD_LETTER.value
+    assert len(sessions) == 2
+    assert rls_calls == [(sessions[0], intent.workspace_id), (sessions[1], intent.workspace_id)]
 
+    intent.available_at = datetime.now(timezone.utc) - timedelta(seconds=1)
+    assert pq.process_projection_message(msg, db_factory=db_factory) == "dead_letter"
+    assert intent.status == ProjectionIntentStatus.DEAD_LETTER.value
+    assert len(sessions) == 4
+    assert rls_calls[-2:] == [
+        (sessions[2], intent.workspace_id),
+        (sessions[3], intent.workspace_id),
+    ]
+
+
+
+def test_completion_uses_fresh_rls_transaction(monkeypatch):
+    intent = make_intent()
+    sessions = []
+    rls_calls = []
+
+    def db_factory():
+        db = FakeDB(intent=intent)
+        sessions.append(db)
+        return db
+
+    monkeypatch.setattr(
+        knowledge,
+        "process_projection_intent",
+        lambda intent_id: ProjectionIntentStatus.COMPLETED.value,
+        raising=False,
+    )
+    monkeypatch.setattr(pq, "set_workspace_rls", lambda db, ws: rls_calls.append((db, ws)))
+
+    assert pq.process_projection_message(message_for(intent), db_factory=db_factory) == "completed"
+    assert intent.status == ProjectionIntentStatus.COMPLETED.value
+    assert len(sessions) == 2
+    assert rls_calls == [(sessions[0], intent.workspace_id), (sessions[1], intent.workspace_id)]
+
+
+
+def test_stale_claim_cannot_complete_newer_attempt():
+    intent = make_intent(
+        status=ProjectionIntentStatus.PROCESSING.value,
+        attempts=2,
+    )
+    claim = pq.ProjectionClaim(
+        intent_id=intent.id,
+        workspace_id=intent.workspace_id,
+        attempts=1,
+        max_attempts=intent.max_attempts,
+    )
+    db = FakeDB(intent=intent)
+    assert pq._complete_projection_claim(
+        lambda: db,
+        claim,
+        ProjectionIntentStatus.COMPLETED,
+        now=NOW,
+    ) is False
+    assert intent.status == ProjectionIntentStatus.PROCESSING.value
+    assert db.commits == 0
+
+def test_delivery_timeout_is_configurable_or_derived(monkeypatch):
+    monkeypatch.setattr(pq.settings, "guard_projection_delivery_timeout_seconds", 17)
+    assert pq._delivery_timeout_seconds() == 17
+    monkeypatch.setattr(pq.settings, "guard_projection_delivery_timeout_seconds", None)
+    monkeypatch.setattr(pq.settings, "guard_projection_lease_seconds", 90)
+    monkeypatch.setattr(pq.settings, "guard_projection_reconciliation_interval_seconds", 60)
+    assert pq._delivery_timeout_seconds() == 120
+
+
+def test_reconciliation_reserves_stale_delivery_but_excludes_fresh_marker(
+    reconciliation_db,
+):
+    workspace_id = uuid4()
+    stale = make_intent(
+        workspace_id=workspace_id,
+        source_id="stale",
+        dispatched_at=NOW - timedelta(seconds=121),
+        created_at=NOW - timedelta(minutes=2),
+        updated_at=NOW - timedelta(minutes=2),
+    )
+    fresh = make_intent(
+        workspace_id=workspace_id,
+        source_id="fresh",
+        dispatched_at=NOW - timedelta(seconds=119),
+        created_at=NOW - timedelta(minutes=1),
+        updated_at=NOW - timedelta(minutes=1),
+    )
+    persist_reconciliation_intents(
+        reconciliation_db,
+        workspace_id,
+        [stale, fresh],
+    )
+
+    messages, oldest = pq._reserve_reconciliation_messages(
+        workspace_id,
+        current=NOW,
+        stale_before=NOW - timedelta(seconds=120),
+        limit=10,
+    )
+    assert messages == [message_for(stale)]
+    assert pq._utc(oldest) == stale.created_at
+    with reconciliation_db() as db:
+        stored = {
+            intent.id: intent
+            for intent in db.query(GuardProjectionIntent)
+            .order_by(GuardProjectionIntent.created_at)
+            .all()
+        }
+    assert pq._utc(stored[stale.id].dispatched_at) == NOW
+    assert pq._utc(stored[fresh.id].dispatched_at) == NOW - timedelta(seconds=119)
+
+    timeout = NOW + timedelta(seconds=1)
+    messages, _ = pq._reserve_reconciliation_messages(
+        workspace_id,
+        current=timeout,
+        stale_before=timeout - timedelta(seconds=120),
+        limit=10,
+    )
+    assert messages == [message_for(fresh)]
+    with reconciliation_db() as db:
+        refreshed = db.get(GuardProjectionIntent, fresh.id)
+    assert pq._utc(refreshed.dispatched_at) == timeout
+
+
+def test_reconciliation_recovers_expired_processing(monkeypatch):
+    expired = make_intent(
+        status=ProjectionIntentStatus.PROCESSING.value,
+        lease_expires_at=NOW - timedelta(seconds=1),
+        dispatched_at=NOW - timedelta(minutes=10),
+    )
+    db = FakeDB(intent=expired)
+    monkeypatch.setattr(pq, "SessionLocal", lambda: db)
+
+    messages, _ = pq._reserve_reconciliation_messages(
+        expired.workspace_id,
+        current=NOW,
+        stale_before=NOW - timedelta(seconds=120),
+        limit=1,
+    )
+    assert messages == [message_for(expired)]
+    assert expired.status == ProjectionIntentStatus.RETRY.value
+    assert expired.available_at == NOW
+    assert expired.lease_expires_at is None
+    assert expired.dispatched_at == NOW
+
+
+def test_failed_dispatch_retains_attempted_reservation_and_releases_later_ones(
+    monkeypatch,
+    reconciliation_db,
+):
+    workspace_id = uuid4()
+    intents = [
+        make_intent(
+            workspace_id=workspace_id,
+            source_id=f"source-{index}",
+            created_at=NOW - timedelta(minutes=3 - index),
+            updated_at=NOW - timedelta(minutes=3 - index),
+        )
+        for index in range(3)
+    ]
+    persist_reconciliation_intents(reconciliation_db, workspace_id, intents)
+    attempted = []
+
+    def fail_dispatch(message, *, redis_client):
+        attempted.append(message.intent_id)
+        return False
+
+    monkeypatch.setattr(pq, "dispatch_projection_message", fail_dispatch)
+    monkeypatch.setattr(
+        pq.settings, "guard_projection_reconciliation_batch_size", 3
+    )
+    monkeypatch.setattr(
+        pq.settings, "guard_projection_delivery_timeout_seconds", 120
+    )
+
+    assert (
+        pq.reconcile_projection_intents(
+            redis_client=ReconciliationRedis(),
+            now=NOW,
+        )
+        == 0
+    )
+    assert attempted == [intents[0].id]
+
+    with reconciliation_db() as db:
+        stored = {
+            intent.id: intent
+            for intent in db.query(GuardProjectionIntent)
+            .order_by(GuardProjectionIntent.created_at)
+            .all()
+        }
+    assert pq._utc(stored[intents[0].id].dispatched_at) == NOW
+    assert stored[intents[1].id].dispatched_at is None
+    assert stored[intents[2].id].dispatched_at is None
+
+def test_reconciliation_query_has_stale_cutoff_lock_and_bound():
+    source = Path(pq.__file__).read_text()
+    assert "GuardProjectionIntent.dispatched_at <= stale_before" in source
+    assert ".with_for_update(skip_locked=True)" in source
+    assert ".limit(limit)" in source
 
 def test_event_and_worker_wiring_preserve_queue_separation():
     root = Path(__file__).resolve().parents[2]
     events_source = (root / "app/modules/guard/routers/events.py").read_text()
+    ingest_source = events_source[events_source.index("def ingest_event("):]
     worker_source = (root / "app/worker.py").read_text()
-    assert events_source.index("db.commit()") < events_source.index(
-        "dispatch_projection_message(projection_message"
-    )
+    rls_index = ingest_source.index("set_workspace_rls(db, ws_uuid)")
+    persist_index = ingest_source.index("persist_audit_event_projection(")
+    commit_index = ingest_source.index("db.commit()", persist_index)
+    dispatch_index = ingest_source.index("dispatch_projection_message(projection_message")
+    assert rls_index < persist_index < commit_index < dispatch_index
     assert (
         "not settings.guard_projection_paused and not settings.guard_projection_queue_enabled"
         in events_source
