@@ -17,7 +17,7 @@ def render_block(
     decision, background, workspace_id, clerk_user_id, ai_tool, provider,
     model, body, prompt_summary, user_email, run_id, workflow,
     workflow_id, hook_session_id, started, record_audit_fn, fail_closed_fn,
-    *, is_trial: bool = False,
+    *, is_trial: bool = False, routing_meta=None, agent_identity_id=None, route=None,
 ):
     from app.guard.receipts import build_receipt_url, mint_share_token
 
@@ -48,6 +48,12 @@ def render_block(
         if with_verdict:
             kwargs["evaluated_rules"] = decision.matched_rules
             kwargs["defense_score"] = decision.defense_score
+        if routing_meta is not None:
+            kwargs["routing_meta"] = routing_meta
+        if agent_identity_id is not None:
+            kwargs["agent_identity_id"] = agent_identity_id
+        if route is not None:
+            kwargs["route"] = route
         background.add_task(
             record_audit_fn, workspace_id, clerk_user_id, ai_tool, provider, model,
             decision_str, rule_id, duration_ms, **kwargs,
@@ -117,6 +123,7 @@ def render_approval(
     decision, background, workspace_id, clerk_user_id, ai_tool, provider,
     model, body, prompt_summary, user_email, run_id, workflow,
     workflow_id, hook_session_id, started, record_audit_fn,
+    *, routing_meta=None, agent_identity_id=None, route=None,
 ):
     from app.modules.guard.models import GuardApprovalRequest as _GAR
     from app.modules.guard import approval as _approval
@@ -163,6 +170,9 @@ def render_approval(
             conductai_workflow_id=workflow_id, hook_session_id=hook_session_id,
             evaluated_rules=decision.matched_rules,
             defense_score=decision.defense_score,
+            **({"routing_meta": routing_meta} if routing_meta is not None else {}),
+            **({"agent_identity_id": agent_identity_id} if agent_identity_id is not None else {}),
+            **({"route": route} if route is not None else {}),
         )
         return JSONResponse(
             status_code=428,

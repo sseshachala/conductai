@@ -13,7 +13,7 @@ from fastapi.security import HTTPAuthorizationCredentials
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.core.auth import _bearer, _resolve_agent_token, _resolve_okta_jwt, get_workspace_id
+from app.core.auth import _bearer, _resolve_agent_token, _resolve_okta_jwt, get_workspace_id, get_user_id
 from app.core.database import get_db
 
 
@@ -24,6 +24,30 @@ class WhoAmIOut(BaseModel):
     workspace_id: str
     token_kind: str  # "cond_agt" | "cond_api" | "cond_run" | "okta_jwt" | "clerk" | "unknown"
     identity: Optional[dict[str, Any]] = None
+
+
+class CLIIdentityOut(BaseModel):
+    workspace_id: str
+    identity: Optional[dict[str, str]] = None
+
+
+@router.get("/cli-identity", response_model=CLIIdentityOut)
+def cli_identity(
+    workspace_id: str = Depends(get_workspace_id),
+    user_id: str = Depends(get_user_id),
+    db: Session = Depends(get_db),
+) -> CLIIdentityOut:
+    from app.modules.agent_identity.models import AgentIdentity
+    from app.modules.agent_identity.labels import agent_options
+    from app.modules.guard.models import GuardMemberConfig
+    row = db.query(AgentIdentity).join(GuardMemberConfig, GuardMemberConfig.agent_identity_id == AgentIdentity.id).filter(
+        GuardMemberConfig.workspace_id == workspace_id, GuardMemberConfig.clerk_user_id == user_id,
+        GuardMemberConfig.active.is_(True), AgentIdentity.workspace_id == workspace_id,
+    ).first()
+    identity = None
+    if row and row.lifecycle_state not in ("deactivated", "expired"):
+        identity = agent_options(db, workspace_id, [row])[0]
+    return CLIIdentityOut(workspace_id=workspace_id, identity=identity)
 
 
 def _classify(token: str) -> str:
@@ -80,4 +104,7 @@ def whoami(
         else:
             kind = "clerk"  # JWT that didn't match any Okta issuer
 
+    if identity:
+        from app.modules.agent_identity.labels import agent_options
+        identity["name"] = agent_options(db, workspace_id, [ai])[0]["name"]
     return WhoAmIOut(workspace_id=workspace_id, token_kind=kind, identity=identity)

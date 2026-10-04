@@ -1,4 +1,4 @@
-"""Shared profile RPM and reserved/actual TPM, independent of routing revisions."""
+"""Atomic profile and agent-wide RPM and reserved/actual TPM admission."""
 from __future__ import annotations
 
 import base64
@@ -8,9 +8,8 @@ from dataclasses import dataclass
 from uuid import UUID
 
 import structlog
-from sqlalchemy import or_
-
 from app.models.gateway_profile import GatewayProfile, GatewayProfileRateLimit
+from app.modules.guard.models import GuardRateLimit
 from app.modules.guard.rate_limit import _redis_client
 from app.runtime.accounting.contracts import UsageCompleteness
 from app.runtime.accounting.normalizers import ProviderFamily, normalize_json, normalize_sse
@@ -87,9 +86,12 @@ def check_profile_rate_limit(db, *, workspace_id: str, profile_id: UUID | None,
         rows = db.query(GatewayProfileRateLimit).filter(
             GatewayProfileRateLimit.workspace_id == UUID(str(workspace_id)),
             GatewayProfileRateLimit.profile_id == profile_id,
-            or_(GatewayProfileRateLimit.agent_identity_id.is_(None),
-                GatewayProfileRateLimit.agent_identity_id == agent_identity_id),
+            GatewayProfileRateLimit.agent_identity_id.is_(None),
         ).all()
+        agent_rows = db.query(GuardRateLimit).filter(
+            GuardRateLimit.workspace_id == UUID(str(workspace_id)),
+            GuardRateLimit.agent_identity_id == agent_identity_id,
+        ).all() if agent_identity_id else []
     except Exception:
         log.warning("gateway.profile_rate_limits.lookup_unavailable", workspace_id=workspace_id)
         return ProfileRateDecision(True, "Profile rate limits unavailable; retry later.",
@@ -100,10 +102,10 @@ def check_profile_rate_limit(db, *, workspace_id: str, profile_id: UUID | None,
     # suffix still gives every new window an independent counter.
     keys, arguments, buckets, token_keys = [], [7200], [], []
     reserved_tokens = max(0, reserved_tokens)
-    for row in rows:
-        scope = "agent" if row.agent_identity_id else "profile"
-        # The hash tag keeps shared and agent buckets in one Redis slot.
-        prefix = f"guard:prl:{{{workspace_id}:{profile_id}}}:{row.agent_identity_id or 'shared'}"
+    for scope, row in [("profile", r) for r in rows] + [("agent", r) for r in agent_rows]:
+        # Workspace hash tags allow atomic admission across profiles and agents.
+        subject = f"profile:{profile_id}" if scope == "profile" else f"agent:{agent_identity_id}"
+        prefix = f"guard:prl:{{{workspace_id}}}:{subject}"
         for metric, cap, amount in (("rpm", row.rpm, 1), ("tpm", row.tpm, reserved_tokens)):
             if cap is None:
                 continue

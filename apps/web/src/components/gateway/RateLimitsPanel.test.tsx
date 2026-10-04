@@ -2,174 +2,133 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import { afterEach, beforeEach, expect, it, vi } from "vitest"
 import RateLimitsPanel from "./RateLimitsPanel"
 
-const state = vi.hoisted(() => ({ fetch: vi.fn(), get: vi.fn(), set: vi.fn() }))
+const state = vi.hoisted(() => ({ fetch: vi.fn(), get: vi.fn(), set: vi.fn(), list: vi.fn(), upsert: vi.fn() }))
 vi.mock("@/hooks/useAuthFetch", () => ({ useAuthFetch: () => ({ authFetch: state.fetch }) }))
-vi.mock("@/lib/api", () => ({ guard: { gatewayProfilesV2: { rateLimits: { get: state.get, set: state.set } } } }))
+vi.mock("@/lib/api", () => ({ guard: {
+  gatewayProfilesV2: { rateLimits: { get: state.get, set: state.set } },
+  rateLimits: { list: state.list, upsert: state.upsert },
+} }))
 const props = { isAdmin: true, workspaceId: "workspace-a", profileId: "profile-a" }
-const caps = { rpm: 60, tpm: 100000, agent_limits: [{ agent_identity_id: "agent-a", rpm: 2, tpm: 500 }],
-  available_agents: [{ id: "agent-a", name: "Worker A" }, { id: "agent-b", name: "Worker B" }] }
-const saveButton = () => screen.getByRole("button", { name: "Save limits" })
-const editButton = () => screen.getByRole("button", { name: "Edit limits" })
-async function editLimits() {
-  await waitFor(() => expect(editButton()).toBeEnabled())
-  fireEvent.click(editButton())
+const agentProps = { isAdmin: true, workspaceId: "workspace-a", agentId: "agent-a" }
+const caps = { rpm: 60, tpm: 100000 }
+const rpm = () => screen.getByRole("spinbutton", { name: "Requests / min (RPM)" })
+const save = () => screen.getByRole("button", { name: "Save limits" })
+async function edit() {
+  await waitFor(() => expect(screen.getByRole("button", { name: "Edit limits" })).toBeEnabled())
+  fireEvent.click(screen.getByRole("button", { name: "Edit limits" }))
 }
-beforeEach(() => { vi.clearAllMocks(); state.get.mockResolvedValue(caps); state.set.mockResolvedValue(caps) })
+beforeEach(() => {
+  vi.clearAllMocks()
+  state.get.mockResolvedValue({ ...caps, agent_limits: [{ agent_identity_id: "old-agent", rpm: 1 }], available_agents: [] })
+  state.list.mockResolvedValue([{ agent_identity_id: null, rpm: 999, tpm: 999 }, { agent_identity_id: "agent-a", rpm: 5, tpm: 500 }])
+  state.set.mockImplementation((_f, _w, _p, body) => Promise.resolve(body))
+  state.upsert.mockImplementation((_f, body) => Promise.resolve(body))
+})
 afterEach(cleanup)
 
-it("loads the selected profile separately from its additional agent caps", async () => {
+it("loads only the shared profile cap, read-only, without agent controls", async () => {
   render(<RateLimitsPanel {...props} />)
-  await waitFor(() => expect(screen.getByRole("spinbutton", { name: "Requests / min (RPM)" })).toHaveValue(60))
+  await waitFor(() => expect(rpm()).toHaveValue(60))
   expect(state.get).toHaveBeenCalledWith(state.fetch, "workspace-a", "profile-a")
-  expect(screen.getByRole("spinbutton", { name: "Worker A Requests / min (RPM)" })).toHaveValue(2)
-  expect(screen.getByRole("spinbutton", { name: "Requests / min (RPM)" })).toHaveAttribute("readonly")
-  expect(screen.queryByRole("button", { name: "Save limits" })).toBeNull()
-  expect(screen.queryByRole("button", { name: "Remove Worker A limit" })).toBeNull()
+  expect(rpm()).toHaveAttribute("readonly")
+  expect(screen.queryByRole("combobox")).toBeNull()
+  expect(screen.getAllByRole("spinbutton")).toHaveLength(2)
+  expect(state.list).not.toHaveBeenCalled()
 })
 
-it("saves a profile preset without losing migrated agent caps", async () => {
+it("saves a profile preset without sending agent caps", async () => {
   render(<RateLimitsPanel {...props} />)
-  await editLimits()
-  fireEvent.click(screen.getByRole("button", { name: "Smoke test" })); fireEvent.click(saveButton())
-  await waitFor(() => expect(state.set).toHaveBeenCalledWith(state.fetch, "workspace-a", "profile-a",
-    { rpm: 2, tpm: 500, agent_limits: caps.agent_limits }))
-  expect(await screen.findByText("Saved")).toBeInTheDocument()
-  expect(screen.queryByRole("button", { name: "Save limits" })).toBeNull()
-  expect(screen.getByRole("spinbutton", { name: "Requests / min (RPM)" })).toHaveAttribute("readonly")
+  await edit()
+  fireEvent.click(screen.getByRole("button", { name: "Smoke test" })); fireEvent.click(save())
+  await screen.findByText("Saved")
+  expect(state.set).toHaveBeenCalledWith(state.fetch, "workspace-a", "profile-a", { rpm: 2, tpm: 500 })
+  expect(state.upsert).not.toHaveBeenCalled()
+  expect(rpm()).toHaveAttribute("readonly")
 })
 
-it("preserves blank fields as uncapped values", async () => {
-  render(<RateLimitsPanel {...props} />)
-  await editLimits()
+it("saves blank profile fields as uncapped", async () => {
+  render(<RateLimitsPanel {...props} />); await edit()
   for (const name of ["Requests / min (RPM)", "Tokens / min (TPM)"]) {
     fireEvent.change(screen.getByRole("spinbutton", { name }), { target: { value: "" } })
   }
-  fireEvent.click(saveButton())
-  await waitFor(() => expect(state.set).toHaveBeenCalledWith(state.fetch, "workspace-a", "profile-a",
-    { rpm: null, tpm: null, agent_limits: caps.agent_limits }))
+  fireEvent.click(save())
+  await waitFor(() => expect(state.set).toHaveBeenCalledWith(state.fetch, "workspace-a", "profile-a", { rpm: null, tpm: null }))
 })
 
-it.each(["0", "-1", "1.5", "2147483648"])("rejects invalid cap %s before saving", async value => {
-  render(<RateLimitsPanel {...props} />)
-  await editLimits()
-  fireEvent.change(screen.getByRole("spinbutton", { name: "Requests / min (RPM)" }), { target: { value } })
-  expect(saveButton()).toBeDisabled(); expect(screen.getByRole("alert")).toHaveTextContent("positive whole number")
+it.each(["0", "-1", "1.5", "2147483648"])("rejects invalid cap %s", async value => {
+  render(<RateLimitsPanel {...props} />); await edit()
+  fireEvent.change(rpm(), { target: { value } })
+  expect(save()).toBeDisabled()
+  expect(screen.getByRole("alert")).toHaveTextContent("positive whole number")
   expect(state.set).not.toHaveBeenCalled()
 })
 
-it("adds and removes named agent caps", async () => {
-  render(<RateLimitsPanel {...props} />)
-  await editLimits()
-  fireEvent.click(screen.getByRole("button", { name: "Remove Worker A limit" }))
-  fireEvent.change(screen.getByRole("combobox"), { target: { value: "agent-b" } })
-  fireEvent.click(screen.getByRole("button", { name: "Add agent limit" }))
-  fireEvent.change(screen.getByRole("spinbutton", { name: "Worker B Tokens / min (TPM)" }), { target: { value: "50" } })
-  fireEvent.click(saveButton())
-  await waitFor(() => expect(state.set).toHaveBeenCalledWith(state.fetch, "workspace-a", "profile-a",
-    { rpm: 60, tpm: 100000, agent_limits: [{ agent_identity_id: "agent-b", rpm: null, tpm: 50 }] }))
+it("loads and saves the selected agent-wide cap without a profile request", async () => {
+  render(<RateLimitsPanel {...agentProps} />); await edit()
+  expect(rpm()).toHaveValue(5)
+  expect(screen.queryByRole("button", { name: "Smoke test" })).toBeNull()
+  fireEvent.change(rpm(), { target: { value: "10" } }); fireEvent.click(save())
+  await screen.findByText("Saved")
+  expect(state.upsert).toHaveBeenCalledWith(state.fetch, { agent_identity_id: "agent-a", rpm: 10, tpm: 500 }, "workspace-a")
+  expect(state.get).not.toHaveBeenCalled(); expect(state.set).not.toHaveBeenCalled()
 })
 
-it("distinguishes repeated names without merging identities and saves the selected identity", async () => {
-  const first = { id: "abc12345-1111", name: "alice@example.test (auto)" }
-  const second = { id: "abc12345-2222", name: first.name }
-  state.get.mockResolvedValue({ ...caps, agent_limits: [], available_agents: [first, second, first] })
-  render(<RateLimitsPanel {...props} />)
-  await editLimits()
-  const picker = await screen.findByRole("combobox", { name: "Agent identity" })
-  expect(screen.getAllByRole("option")).toHaveLength(3)
-  expect(screen.getByRole("option", { name: "alice@example.test (auto) (abc12345-1)" })).toHaveValue(first.id)
-  expect(screen.getByRole("option", { name: "alice@example.test (auto) (abc12345-2)" })).toHaveValue(second.id)
-  fireEvent.change(picker, { target: { value: second.id } })
-  fireEvent.click(screen.getByRole("button", { name: "Add agent limit" }))
-  expect(screen.getByRole("spinbutton", { name: "alice@example.test (auto) (abc12345-2) Requests / min (RPM)" })).toBeInTheDocument()
-  fireEvent.click(saveButton())
-  await waitFor(() => expect(state.set).toHaveBeenCalledWith(state.fetch, "workspace-a", "profile-a", {
-    rpm: 60, tpm: 100000, agent_limits: [{ agent_identity_id: second.id, rpm: null, tpm: null }],
-  }))
+it("does not apply a legacy workspace default to an uncapped agent", async () => {
+  state.list.mockResolvedValue([{ agent_identity_id: null, rpm: 999, tpm: 999 }])
+  render(<RateLimitsPanel {...agentProps} />); await edit()
+  expect(rpm()).toHaveValue(null)
+  fireEvent.click(save())
+  await waitFor(() => expect(state.upsert).toHaveBeenCalledWith(state.fetch, { agent_identity_id: "agent-a", rpm: null, tpm: null }, "workspace-a"))
 })
-
-it.each(["user_member (auto)", "oidc_member (auto)", "Auto-provisioned agent"])(
-  "gives legacy or unresolved auto names a readable, distinct label: %s", async name => {
-    state.get.mockResolvedValue({ ...caps, agent_limits: [], available_agents: [
-      { id: "11111111-one", name }, { id: "22222222-two", name },
-    ] })
-    render(<RateLimitsPanel {...props} />)
-    await editLimits()
-    expect(await screen.findByRole("option", { name: "Auto-provisioned agent (11111111)" })).toHaveValue("11111111-one")
-    expect(screen.getByRole("option", { name: "Auto-provisioned agent (22222222)" })).toHaveValue("22222222-two")
-    expect(screen.queryByText(name === "Auto-provisioned agent" ? "unresolved" : name)).toBeNull()
-  },
-)
 
 it("does not load or expose controls for non-admins", () => {
   render(<RateLimitsPanel {...props} isAdmin={false} />)
   expect(state.get).not.toHaveBeenCalled(); expect(screen.queryByRole("region")).toBeNull()
 })
 
-it("does not overwrite stored caps after a failed load and supports retry", async () => {
+it("does not save after a failed load and supports retry", async () => {
   state.get.mockRejectedValueOnce(new Error("Could not load limits"))
   render(<RateLimitsPanel {...props} />)
-  expect(await screen.findByText("Could not load limits")).toBeInTheDocument()
-  expect(editButton()).toBeDisabled(); expect(state.set).not.toHaveBeenCalled()
+  expect(await screen.findByRole("alert")).toHaveTextContent("Could not load limits")
+  expect(screen.getByRole("button", { name: "Edit limits" })).toBeDisabled()
   fireEvent.click(screen.getByRole("button", { name: "Retry loading limits" }))
-  await waitFor(() => expect(editButton()).toBeEnabled())
+  await waitFor(() => expect(rpm()).toHaveValue(60))
 })
 
-it("reports save failures without claiming success", async () => {
-  state.set.mockRejectedValue(new Error("Rate limit update denied"))
-  render(<RateLimitsPanel {...props} />)
-  await editLimits(); fireEvent.click(saveButton())
-  expect(await screen.findByText("Rate limit update denied")).toBeInTheDocument()
+it("reports save failure without claiming success", async () => {
+  state.set.mockRejectedValueOnce(new Error("Update denied"))
+  render(<RateLimitsPanel {...props} />); await edit(); fireEvent.click(save())
+  expect(await screen.findByRole("alert")).toHaveTextContent("Update denied")
   expect(screen.queryByText("Saved")).toBeNull()
 })
 
-it("cancel restores stored profile and agent caps without a request", async () => {
-  render(<RateLimitsPanel {...props} />)
-  await editLimits()
-  fireEvent.click(screen.getByRole("button", { name: "Smoke test" }))
-  fireEvent.click(screen.getByRole("button", { name: "Remove Worker A limit" }))
-  fireEvent.click(screen.getByRole("button", { name: "Cancel" }))
-  expect(screen.getByRole("spinbutton", { name: "Requests / min (RPM)" })).toHaveValue(60)
-  expect(screen.getByRole("spinbutton", { name: "Worker A Requests / min (RPM)" })).toHaveValue(2)
-  expect(screen.queryByRole("button", { name: "Save limits" })).toBeNull()
-  expect(state.set).not.toHaveBeenCalled()
-})
-
-it("cancel uses the latest saved caps rather than the initial load", async () => {
-  render(<RateLimitsPanel {...props} />)
-  await editLimits()
-  fireEvent.click(screen.getByRole("button", { name: "Smoke test" })); fireEvent.click(saveButton())
-  await screen.findByText("Saved")
-  await editLimits()
+it("cancel restores the latest saved values", async () => {
+  render(<RateLimitsPanel {...props} />); await edit()
+  fireEvent.click(screen.getByRole("button", { name: "Smoke test" })); fireEvent.click(save())
+  await screen.findByText("Saved"); await edit()
   fireEvent.click(screen.getByRole("button", { name: "Larger team" }))
   fireEvent.click(screen.getByRole("button", { name: "Cancel" }))
-  expect(screen.getByRole("spinbutton", { name: "Requests / min (RPM)" })).toHaveValue(2)
-  expect(state.set).toHaveBeenCalledTimes(1)
+  expect(rpm()).toHaveValue(2); expect(state.set).toHaveBeenCalledTimes(1)
 })
 
-it("agent-only editing preserves the shared cap and sends only agent limits", async () => {
-  state.set.mockResolvedValue({ ...caps, rpm: 120, tpm: 250000 })
-  render(<RateLimitsPanel {...props} agentOnly />)
-  await editLimits()
-  expect(screen.getByRole("spinbutton", { name: "Requests / min (RPM)" })).toHaveAttribute("readonly")
-  expect(screen.getByRole("spinbutton", { name: "Worker A Requests / min (RPM)" })).not.toHaveAttribute("readonly")
-  expect(screen.queryByRole("button", { name: "Smoke test" })).toBeNull()
-  fireEvent.change(screen.getByRole("spinbutton", { name: "Worker A Requests / min (RPM)" }), { target: { value: "10" } })
-  fireEvent.click(saveButton())
-  await waitFor(() => expect(state.set).toHaveBeenCalledWith(state.fetch, "workspace-a", "profile-a", {
-    agent_limits: [{ agent_identity_id: "agent-a", rpm: 10, tpm: 500 }],
-  }))
-  await screen.findByText("Saved")
-  expect(screen.getByRole("spinbutton", { name: "Requests / min (RPM)" })).toHaveValue(120)
-})
-
-it("clears prior caps on profile changes and ignores a late response", async () => {
-  let finish: (value: typeof caps) => void = () => {}
+it("ignores a late profile load after selection changes", async () => {
+  let finish!: (value: typeof caps) => void
   state.get.mockReturnValueOnce(new Promise(resolve => { finish = resolve }))
   const view = render(<RateLimitsPanel {...props} />)
-  state.get.mockResolvedValueOnce({ ...caps, rpm: 10 })
+  state.get.mockResolvedValueOnce({ rpm: 10, tpm: 100 })
   view.rerender(<RateLimitsPanel {...props} profileId="profile-b" />)
-  await waitFor(() => expect(screen.getByRole("spinbutton", { name: "Requests / min (RPM)" })).toHaveValue(10))
+  await waitFor(() => expect(rpm()).toHaveValue(10))
   await act(async () => { finish(caps) })
-  expect(screen.getByRole("spinbutton", { name: "Requests / min (RPM)" })).toHaveValue(10)
+  expect(rpm()).toHaveValue(10)
+})
+
+it("ignores a late agent save after the workspace changes", async () => {
+  let finish!: (value: typeof caps) => void
+  state.upsert.mockReturnValueOnce(new Promise(resolve => { finish = resolve }))
+  const view = render(<RateLimitsPanel {...agentProps} />); await edit(); fireEvent.click(save())
+  state.list.mockResolvedValueOnce([{ agent_identity_id: "agent-b", rpm: 20, tpm: 200 }])
+  view.rerender(<RateLimitsPanel {...agentProps} workspaceId="workspace-b" agentId="agent-b" />)
+  await waitFor(() => expect(rpm()).toHaveValue(20))
+  await act(async () => { finish(caps) })
+  expect(rpm()).toHaveValue(20); expect(screen.queryByText("Saved")).toBeNull()
 })

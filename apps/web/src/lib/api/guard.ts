@@ -461,14 +461,17 @@ export const guard = {
   },
 
   rateLimits: {
+    agents: (f: AuthFetch, workspaceId: string) =>
+      json<Array<{ id: string; name: string }>>(f, `${base()}/rate-limits/agents?${new URLSearchParams({ workspace_id: workspaceId })}`),
     list: (f: AuthFetch, workspaceId?: string) => {
       const q = workspaceId ? `?workspace_id=${encodeURIComponent(workspaceId)}` : ""
       return json<Array<{ id: string; agent_identity_id: string | null; rpm: number | null; tpm: number | null }>>(
         f, `${base()}/rate-limits${q}`,
       )
     },
-    upsert: (f: AuthFetch, body: { agent_identity_id?: string | null; rpm?: number | null; tpm?: number | null }) =>
-      put(f, `${base()}/rate-limits`, body),
+    upsert: (f: AuthFetch, body: { agent_identity_id?: string | null; rpm?: number | null; tpm?: number | null }, workspaceId?: string) =>
+      _mutateJson<{ id: string; agent_identity_id: string | null; rpm: number | null; tpm: number | null }>(f, "PUT",
+        `${base()}/rate-limits${workspaceId ? `?${new URLSearchParams({ workspace_id: workspaceId })}` : ""}`, body),
     remove: (f: AuthFetch, id: string) => del(f, `${base()}/rate-limits/${encodeURIComponent(id)}`),
   },
 

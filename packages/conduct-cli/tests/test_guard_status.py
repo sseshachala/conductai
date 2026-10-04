@@ -34,12 +34,15 @@ def test_status_reports_recent_hook_heartbeat(tmp_path, capsys, monkeypatch):
 
     with patch.object(_guard_shared, "_req", side_effect=[{}, []]), patch(
         "conduct_cli.hooks.base.drain_daemon_status", return_value=("running", 123)
+    ), patch(
+        "conduct_cli.identity.current_identity", return_value={"id": "status-agent", "name": "Build bot"}
     ):
         guard.cmd_guard_status(None)
 
     output = capsys.readouterr().out
     assert "Hook heartbeat: post_tool_use" in output
     assert "7s ago" in output
+    assert "Agent ID: Build bot (status-agent)" in output
 
 
 def test_replay_events_requeues_and_starts_drain(tmp_path, capsys, monkeypatch):

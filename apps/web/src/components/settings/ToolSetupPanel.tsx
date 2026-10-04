@@ -4,7 +4,7 @@ import { useEffect, useState } from "react"
 import Link from "next/link"
 import { Check, Copy, RefreshCw, Terminal } from "lucide-react"
 import { useAuthFetch } from "@/hooks/useAuthFetch"
-import { guard } from "@/lib/api"
+import { API, guard } from "@/lib/api"
 import { publicApiUrl } from "@/lib/auth/runtime"
 import styles from "./ToolSetupPanel.module.css"
 import { setupTools } from "@/lib/toolCatalog"
@@ -46,7 +46,23 @@ export default function ToolSetupPanel({ workspaceId, isAdmin, enabled = true }:
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
   const [login, setLogin] = useState<string | null>(null)
+  const [identity, setIdentity] = useState<{ workspace: string; id: string; name: string } | null>(null)
+  const [identityError, setIdentityError] = useState(false)
   useEffect(() => { setLogin(setupCommand(publicApiUrl(), window.location.origin)) }, [])
+  useEffect(() => {
+    let current = true
+    setIdentity(null); setIdentityError(false)
+    if (!enabled || !workspaceId) return
+    authFetch(`${API}/auth/cli-identity?${new URLSearchParams({ workspace_id: workspaceId })}`).then(async response => {
+      if (!response.ok) throw new Error("Identity unavailable")
+      const result = await response.json()
+      if (!current) return
+      if (result.workspace_id === workspaceId && result.identity) {
+        setIdentity({ workspace: workspaceId, id: result.identity.id, name: result.identity.name })
+      }
+    }).catch(() => { if (current) setIdentityError(true) })
+    return () => { current = false }
+  }, [authFetch, workspaceId, enabled, refresh])
   useEffect(() => {
     setData(null); setError(""); setLoading(false)
     if (!enabled || !workspaceId || !isAdmin) return
@@ -76,7 +92,15 @@ export default function ToolSetupPanel({ workspaceId, isAdmin, enabled = true }:
     <div className={styles.commands}>
       {login ? <Command value={login} /> : <p>Console or public API URL is not configured.</p>}
       <Command value="conduct guard sync" />
+      <Command value="conduct whoami" />
     </div>
+    {identity?.workspace === workspaceId ? <div className={styles.models}>
+      <strong>Linked CLI identity</strong>
+      <Link href={`/agent-identity?tab=identities&id=${encodeURIComponent(identity.id)}`}>{identity.name}</Link>
+      <code>{identity.id}</code>
+    </div> : <div className={styles.models}><strong>Linked CLI identity</strong>
+      <span>{identityError ? "Unavailable" : "None"}</span>
+    </div>}
     {!workspaceId && <p>Select a workspace.</p>}
     {loading && <p role="status">Loading published models...</p>}
     {error && <p role="alert">{error}</p>}

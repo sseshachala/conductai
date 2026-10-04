@@ -2,76 +2,78 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import { afterEach, beforeEach, expect, it, vi } from "vitest"
 import AgentRateLimitsPanel from "./AgentRateLimitsPanel"
 
-const state = vi.hoisted(() => ({ fetch: vi.fn(), list: vi.fn(), get: vi.fn(), set: vi.fn() }))
+const state = vi.hoisted(() => ({ fetch: vi.fn(), agents: vi.fn(), list: vi.fn(), upsert: vi.fn() }))
 vi.mock("@/hooks/useAuthFetch", () => ({ useAuthFetch: () => ({ authFetch: state.fetch }) }))
-vi.mock("@/lib/api", () => ({ guard: { gatewayProfilesV2: {
-  list: state.list, rateLimits: { get: state.get, set: state.set },
-} } }))
-
+vi.mock("@/lib/api", () => ({ guard: { rateLimits: { agents: state.agents, list: state.list, upsert: state.upsert } } }))
 const props = { workspaceId: "workspace-a", isAdmin: true }
-const profiles = [
-  { id: "profile-a", name: "Production", cond_code: "abcdefgh", model_alias: "coding" },
-  { id: "profile-b", name: "Production", cond_code: "ijklmnop", model_alias: "coding" },
-]
-const caps = { rpm: 60, tpm: 100000, agent_limits: [], available_agents: [{ id: "agent-a", name: "Worker" }] }
+const agents = [{ id: "identity-1111", name: "Alice (auto)" }, { id: "identity-2222", name: "Alice (auto)" }]
 beforeEach(() => {
-  vi.clearAllMocks(); state.list.mockResolvedValue(profiles); state.get.mockResolvedValue(caps)
-  state.set.mockResolvedValue(caps)
+  vi.clearAllMocks(); state.agents.mockResolvedValue(agents)
+  state.list.mockResolvedValue([{ agent_identity_id: agents[0].id, rpm: 5, tpm: 500 }])
+  state.upsert.mockImplementation((_f, body) => Promise.resolve(body))
 })
 afterEach(cleanup)
 
-it("selects a profile and reuses the read-only rate-limit editor", async () => {
+it("requires explicit agent selection and has no Gateway profile picker", async () => {
   render(<AgentRateLimitsPanel {...props} />)
-  expect(await screen.findByRole("combobox", { name: "Gateway profile" })).toHaveValue("profile-a")
-  await waitFor(() => expect(state.get).toHaveBeenCalledWith(state.fetch, "workspace-a", "profile-a"))
-  expect(screen.getByRole("option", { name: "Production - cond-abcdefgh-coding" })).toHaveValue("profile-a")
-  expect(screen.getByRole("option", { name: "Production - cond-ijklmnop-coding" })).toHaveValue("profile-b")
-  expect(screen.getByRole("spinbutton", { name: "Requests / min (RPM)" })).toHaveAttribute("readonly")
+  const picker = await screen.findByRole("combobox", { name: "Agent identity" })
+  expect(picker).toHaveValue("")
+  expect(screen.queryByRole("combobox", { name: "Gateway profile" })).toBeNull()
+  expect(state.list).not.toHaveBeenCalled()
+  for (const row of agents) expect(screen.getByRole("option", { name: row.name + " (" + row.id + ")" })).toHaveValue(row.id)
+  fireEvent.change(picker, { target: { value: agents[0].id } })
+  await waitFor(() => expect(screen.getByRole("spinbutton", { name: "Requests / min (RPM)" })).toHaveValue(5))
+  expect(screen.getByText(agents[0].id, { selector: "code" })).toBeInTheDocument()
+  expect(screen.queryByText("Profile limit")).toBeNull()
 })
 
-it("switches profiles and discards unsaved agent edits", async () => {
+it("switching agents discards unsaved edits and saves only the selected ID", async () => {
   render(<AgentRateLimitsPanel {...props} />)
+  const picker = await screen.findByRole("combobox", { name: "Agent identity" })
+  fireEvent.change(picker, { target: { value: agents[0].id } })
   await waitFor(() => expect(screen.getByRole("button", { name: "Edit limits" })).toBeEnabled())
   fireEvent.click(screen.getByRole("button", { name: "Edit limits" }))
-  fireEvent.change(screen.getByRole("combobox", { name: "Agent identity" }), { target: { value: "agent-a" } })
-  fireEvent.click(screen.getByRole("button", { name: "Add agent limit" }))
-  fireEvent.change(screen.getByRole("combobox", { name: "Gateway profile" }), { target: { value: "profile-b" } })
-  await waitFor(() => expect(state.get).toHaveBeenLastCalledWith(state.fetch, "workspace-a", "profile-b"))
+  fireEvent.change(screen.getByRole("spinbutton", { name: "Requests / min (RPM)" }), { target: { value: "10" } })
+  fireEvent.change(picker, { target: { value: agents[1].id } })
+  await waitFor(() => expect(screen.getByRole("button", { name: "Edit limits" })).toBeEnabled())
   expect(screen.queryByRole("button", { name: "Save limits" })).toBeNull()
-  expect(screen.queryByRole("spinbutton", { name: "Worker Requests / min (RPM)" })).toBeNull()
-  expect(state.set).not.toHaveBeenCalled()
+  fireEvent.click(screen.getByRole("button", { name: "Edit limits" }))
+  fireEvent.click(screen.getByRole("button", { name: "Save limits" }))
+  await waitFor(() => expect(state.upsert).toHaveBeenCalledWith(state.fetch, {
+    agent_identity_id: agents[1].id, rpm: null, tpm: null,
+  }, "workspace-a"))
 })
 
 it("does not fetch protected data for a non-admin", () => {
   render(<AgentRateLimitsPanel {...props} isAdmin={false} />)
-  expect(state.list).not.toHaveBeenCalled(); expect(state.get).not.toHaveBeenCalled()
+  expect(state.agents).not.toHaveBeenCalled()
   expect(screen.getByText("Rate limits are managed by workspace admins.")).toBeInTheDocument()
 })
 
-it("shows an empty state linking to Gateway profiles", async () => {
-  state.list.mockResolvedValue([])
+it("links an empty state to Agent identities", async () => {
+  state.agents.mockResolvedValue([])
   render(<AgentRateLimitsPanel {...props} />)
-  expect(await screen.findByText("No Gateway profiles.")).toBeInTheDocument()
-  expect(screen.getByRole("link", { name: "Gateway profiles" })).toHaveAttribute("href", "/proxy/gateway-profiles")
-  expect(state.get).not.toHaveBeenCalled()
+  expect(await screen.findByText("No agent identities.")).toBeInTheDocument()
+  expect(screen.getByRole("link", { name: "Agent identities" })).toHaveAttribute("href", "/agent-identity?tab=identities")
+  expect(state.list).not.toHaveBeenCalled()
 })
 
-it("reports a profile load failure and supports retry", async () => {
-  state.list.mockRejectedValueOnce(new Error("Could not load profiles"))
+it("supports retry after an agent list failure", async () => {
+  state.agents.mockRejectedValueOnce(new Error("Could not load agents"))
   render(<AgentRateLimitsPanel {...props} />)
-  expect(await screen.findByRole("alert")).toHaveTextContent("Could not load profiles")
-  fireEvent.click(screen.getByRole("button", { name: "Retry loading profiles" }))
-  expect(await screen.findByRole("combobox", { name: "Gateway profile" })).toHaveValue("profile-a")
+  expect(await screen.findByRole("alert")).toHaveTextContent("Could not load agents")
+  fireEvent.click(screen.getByRole("button", { name: "Retry loading agents" }))
+  expect(await screen.findByRole("combobox", { name: "Agent identity" })).toHaveValue("")
 })
 
-it("does not expose old profile caps after a workspace switch or late response", async () => {
-  let finish: (value: typeof profiles) => void = () => {}
-  state.list.mockReturnValueOnce(new Promise(resolve => { finish = resolve }))
+it("ignores old agents after a workspace switch", async () => {
+  let finish!: (value: typeof agents) => void
+  state.agents.mockReturnValueOnce(new Promise(resolve => { finish = resolve }))
   const view = render(<AgentRateLimitsPanel {...props} />)
-  state.list.mockResolvedValueOnce([{ ...profiles[1], id: "workspace-b-profile" }])
+  state.agents.mockResolvedValueOnce([{ id: "new-identity", name: "Bob" }])
   view.rerender(<AgentRateLimitsPanel {...props} workspaceId="workspace-b" />)
-  await waitFor(() => expect(state.get).toHaveBeenCalledWith(state.fetch, "workspace-b", "workspace-b-profile"))
-  await act(async () => { finish(profiles) })
-  expect(screen.getByRole("combobox", { name: "Gateway profile" })).toHaveValue("workspace-b-profile")
-  expect(state.get).not.toHaveBeenCalledWith(state.fetch, "workspace-b", "profile-a")
+  await screen.findByRole("option", { name: "Bob (new-identity)" })
+  await act(async () => { finish(agents) })
+  expect(screen.queryByRole("option", { name: /Alice/ })).toBeNull()
+  expect(state.agents).toHaveBeenLastCalledWith(state.fetch, "workspace-b")
 })

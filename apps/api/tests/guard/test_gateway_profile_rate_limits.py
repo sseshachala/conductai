@@ -83,7 +83,10 @@ def redis(monkeypatch):
 
 def check(rows, *, workspace=None, profile=None, revision=None, agent=None, tokens=10):
     db = MagicMock()
-    db.query.return_value.filter.return_value.all.return_value = rows
+    profile_query, agent_query = MagicMock(), MagicMock()
+    profile_query.filter.return_value.all.return_value = [r for r in rows if r.agent_identity_id is None]
+    agent_query.filter.return_value.all.return_value = [r for r in rows if r.agent_identity_id == agent and agent]
+    db.query.side_effect = [profile_query, agent_query]
     return limiter.check_profile_rate_limit(
         db, workspace_id=str(workspace or uuid4()), profile_id=profile or uuid4(),
         revision_id=revision or uuid4(), agent_identity_id=agent, reserved_tokens=tokens,
@@ -127,6 +130,41 @@ def test_agent_caps_are_additional_not_overrides(redis):
     assert smaller.limited and smaller.scope == "agent"
 
 
+def test_agent_rpm_is_shared_across_profiles_clients_and_revisions(redis):
+    ws, first, second, identity = uuid4(), uuid4(), uuid4(), str(uuid4())
+    rows = [cap(rpm=100), cap(rpm=2, agent=identity)]
+    assert not check(rows, workspace=ws, profile=first, agent=identity).limited
+    assert not check(rows, workspace=ws, profile=second, agent=identity).limited
+    blocked = check(rows, workspace=ws, profile=uuid4(), revision=uuid4(), agent=identity)
+    assert blocked.limited and blocked.scope == "agent" and blocked.metric == "rpm"
+    assert len(redis.values) == 3  # The refused profile was never charged.
+    assert sorted(redis.values.values()) == [1, 1, 2]
+    assert not check([cap(rpm=2, agent="other")], workspace=ws, profile=first, agent="other").limited
+    assert not check(rows, workspace=uuid4(), profile=first, agent=identity).limited
+    assert all("{" + str(ws) + "}" in key for key in redis.values if ":agent:other:" not in key and str(ws) in key)
+
+
+def test_agent_tpm_settles_usage_across_profiles_and_rejected_calls_charge_neither(redis):
+    ws, identity = uuid4(), str(uuid4())
+    rows = [cap(tpm=1000), cap(tpm=100, agent=identity)]
+    accepted = check(rows, workspace=ws, profile=uuid4(), agent=identity, tokens=90)
+    limiter.settle_profile_rate_limit(accepted.admission, plan({"usage": {"prompt_tokens": 10, "completion_tokens": 5}}))
+    assert sorted(redis.values.values()) == [15, 15]
+    assert not check(rows, workspace=ws, profile=uuid4(), agent=identity, tokens=80).limited
+    before = dict(redis.values)
+    blocked = check(rows, workspace=ws, profile=uuid4(), agent=identity, tokens=6)
+    assert blocked.limited and blocked.scope == "agent" and blocked.metric == "tpm"
+    assert redis.values == before
+
+
+def test_profile_and_agent_keys_share_a_redis_cluster_slot(redis):
+    identity = str(uuid4())
+    admitted = check([cap(rpm=10, tpm=100), cap(rpm=10, tpm=100, agent=identity)], agent=identity)
+    keys = list(redis.values)
+    assert len(keys) == 4 and len({key.split("{")[1].split("}")[0] for key in keys}) == 1
+    assert admitted.admission is not None
+
+
 def test_tpm_reserves_input_plus_output_and_rejects_without_charging(redis):
     ws, profile = uuid4(), uuid4()
     assert not check([cap(tpm=100)], workspace=ws, profile=profile, tokens=70).limited
@@ -152,11 +190,12 @@ def test_token_count_requests_do_not_reserve_generation_allowance(operation):
     ("anthropic_count_tokens", {"input_tokens": 12}, 12),
 ])
 def test_all_operations_settle_actual_input_output_and_cache_tokens(redis, operation, payload, expected):
-    admitted = check([cap(tpm=1000)], tokens=100).admission
+    identity = str(uuid4())
+    admitted = check([cap(tpm=1000), cap(tpm=1000, agent=identity)], agent=identity, tokens=100).admission
     limiter.settle_profile_rate_limit(admitted, plan(payload, operation))
-    assert list(redis.values.values()) == [expected]
+    assert sorted(redis.values.values()) == [expected, expected]
     limiter.settle_profile_rate_limit(admitted, plan(payload, operation))
-    assert list(redis.values.values()) == [expected]
+    assert sorted(redis.values.values()) == [expected, expected]
 
 
 def test_failed_attempt_usage_is_not_dropped_before_fallback(redis):

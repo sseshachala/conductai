@@ -400,6 +400,8 @@ async def handle_gateway_request(
                         **(_routing_meta or {}),
                         "gateway_version": "v2",
                         "cond_code": _cond_code,
+                        "gateway_profile_id": str(_v2_plan.resolved.profile_id) if getattr(_v2_plan.resolved, "profile_id", None) else None,
+                        "gateway_profile": model,
                         "revision_id": str(_v2_plan.resolved.revision_id),
                         "v2_operation": _v2_plan.operation,
                     }
@@ -522,6 +524,8 @@ async def handle_gateway_request(
                 model, body, prompt_summary, _user_email, _run_id, _workflow,
                 _workflow_id, _hook_session_id, started, _record_audit, _fail_closed,
                 is_trial=_is_trial,
+                routing_meta=_routing_meta, agent_identity_id=_agent_identity_id,
+                route=request.url.path,
             )
 
         if _pd.needs_approval:
@@ -530,6 +534,8 @@ async def handle_gateway_request(
                 _pd, background, workspace_id, clerk_user_id, ai_tool, provider,
                 model, body, prompt_summary, _user_email, _run_id, _workflow,
                 _workflow_id, _hook_session_id, started, _record_audit,
+                routing_meta=_routing_meta, agent_identity_id=_agent_identity_id,
+                route=request.url.path,
             )
 
         # Map internal action to audit decision string
@@ -552,7 +558,7 @@ async def handle_gateway_request(
                 route=request.url.path,
             )
 
-        # v2 quotas belong to the stable profile, pooled across every client.
+        # v2 checks shared profile and agent-wide quotas atomically.
         # Legacy traffic keeps its original workspace/agent limits.
         from app.modules.guard.rate_limit import check_rate_limit as _check_rate_limit
         def _rate_check_owned():
