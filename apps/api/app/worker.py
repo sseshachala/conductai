@@ -576,6 +576,33 @@ def _projection_retention_loop() -> None:
         time.sleep(interval)
 
 
+def _audit_retention_loop() -> None:
+    from app.modules.guard.audit_retention import run_audit_retention_once
+    from app.modules.guard.observability.metrics import (
+        GUARD_AUDIT_RETENTION_RUNS, GUARD_AUDIT_RETENTION_LAST_SUCCESS,
+    )
+    while True:
+        mode = str(settings.guard_audit_retention_dry_run).lower()
+        try:
+            result = run_audit_retention_once()
+            outcome = "error" if result["errors"] else "success"
+            GUARD_AUDIT_RETENTION_RUNS.labels(outcome=outcome, dry_run=mode).inc()
+            if not result["errors"]:
+                GUARD_AUDIT_RETENTION_LAST_SUCCESS.set(time.time())
+        except Exception as exc:
+            GUARD_AUDIT_RETENTION_RUNS.labels(outcome="error", dry_run=mode).inc()
+            log.error("audit_retention.cycle_error", error_type=type(exc).__name__)
+        time.sleep(settings.guard_audit_retention_interval_seconds)
+
+
+def _start_audit_retention() -> threading.Thread | None:
+    if not settings.guard_audit_retention_enabled:
+        return None
+    thread = threading.Thread(target=_audit_retention_loop, daemon=True, name="audit-retention")
+    thread.start()
+    return thread
+
+
 def _start_projection_retention() -> threading.Thread | None:
     if not settings.guard_projection_retention_cleanup_enabled:
         log.info(
@@ -643,6 +670,7 @@ def main() -> None:
     log.info("worker.starting", concurrency=CONCURRENCY, queue=QUEUE_KEY)
     _start_projection_workers()
     _start_projection_retention()
+    _start_audit_retention()
 
     # The reaper, watchdog, and online eval scorer run regardless of concurrency.
     reaper = threading.Thread(target=_reaper_loop, daemon=True, name="reaper")

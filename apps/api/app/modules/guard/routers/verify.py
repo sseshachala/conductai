@@ -8,7 +8,6 @@ Reads existing guard_config, policies, signing keys, and audit events.
 """
 from __future__ import annotations
 
-import hashlib
 import uuid
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
@@ -239,45 +238,14 @@ def verify_chain(
 ):
     """Walk every audit event in insertion order and recompute the SHA-256 chain.
     Returns valid=True only when every entry_hash matches its recomputed value."""
-    ws_uuid = uuid.UUID(workspace_id)
-    org_ws  = _org_ws_subquery(db, workspace_id)
-
-    rows = (
-        db.query(
-            GuardAuditEvent.ts,
-            GuardAuditEvent.tool_call,
-            GuardAuditEvent.decision,
-            GuardAuditEvent.entry_hash,
-        )
-        .filter(GuardAuditEvent.workspace_id.in_(org_ws))
-        .order_by(GuardAuditEvent.ts.asc())
-        .yield_per(1000)
-    )
-
-    broken_at = None
-    prev = ""
-    count = 0
-    first_event = None
-    last_event = None
-    for ev in rows:
-        count += 1
-        if first_event is None:
-            first_event = ev.ts.isoformat()
-        last_event = ev.ts.isoformat()
-        expected = hashlib.sha256(
-            f"{ev.ts.isoformat()}|{ev.tool_call or ''}|{ev.decision}|{prev}".encode()
-        ).hexdigest()
-        if ev.entry_hash and ev.entry_hash != expected:
-            broken_at = ev.ts.isoformat()
-            break
-        prev = ev.entry_hash or prev
-
+    from app.modules.guard.audit_retention import verify_audit_history
+    result = verify_audit_history(db, workspace_id)
     return ChainVerifyOut(
-        valid=broken_at is None,
-        events_checked=count,
-        broken_at=broken_at,
-        first_event=first_event,
-        last_event=last_event,
+        valid=result["valid"],
+        events_checked=result["total"],
+        broken_at=result["broken_at"],
+        first_event=result["verified_from"],
+        last_event=result["last_event"],
         verified_at=datetime.now(timezone.utc).isoformat(),
     )
 

@@ -69,6 +69,13 @@ For an existing database or Redis service, set `postgres.enabled=false` or
 The chart uses proxy login. Do not include Clerk credentials in the backend Secret.
 Keep TLS verification enabled. Configure your ingress to redirect HTTP to HTTPS.
 
+### Audit archives
+
+Use S3-compatible storage for old audit payloads. Configure your storage endpoint,
+bucket, credentials and compliance period; cleanup is disabled by default.
+The same implementation runs on SaaS. See [audit retention](https://github.com/sseshachala/conductai/blob/main/docs/reference/audit-retention.md)
+for the configuration and dry-run commands. Put archive keys in the backend Secret.
+
 ### Check the install
 
 ```sh

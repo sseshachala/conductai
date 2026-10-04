@@ -74,6 +74,8 @@ jobs:
           DATABASE_URL: postgresql://marshal:marshal@localhost:5432/marshal_test
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GATEWAY_PROFILE_RATE_REAL_TESTS: "1"
+          PROJECTION_QUEUE_REAL_TESTS: "1"
+          AUDIT_RETENTION_REAL_TESTS: "1"
       - name: Credential session isolation (PostgreSQL)
         env:
           CREDENTIAL_TEST_DATABASE_URL: postgresql://marshal:marshal@localhost:5432/marshal_test

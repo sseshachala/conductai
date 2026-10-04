@@ -27,6 +27,11 @@ migrate -> worker deployed -> dry-run -> queue enable -> cleanup enable. Keep
 logs match the expected volume. The retention daemon is independent of workflow
 and projection consumer concurrency.
 
+Audit archives use S3-compatible storage on SaaS and on-prem. Cleanup defaults
+off. Supply the bucket, compliance period, and separate signing/encryption keys;
+use `GUARD_AUDIT_ARCHIVE_ENDPOINT` for private storage. See the
+[retention guide](../../../docs/reference/audit-retention.md) for settings and checks.
+
 Check `values.yaml` for configuration. The chart uses the same components as the
 local test stack; customer-cluster installation is not yet verified.
 File problems at https://github.com/sseshachala/conductai/issues with redacted logs.

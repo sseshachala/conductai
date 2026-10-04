@@ -57,6 +57,15 @@ config:
     GUARD_PROJECTION_RECONCILIATION_INTERVAL_SECONDS: 60
     GUARD_PROJECTION_RECONCILIATION_BATCH_SIZE: 100
     GUARD_PROJECTION_PRUNE_BATCH_SIZE: 500
+    GUARD_AUDIT_RETENTION_ENABLED: false
+    GUARD_AUDIT_RETENTION_DRY_RUN: true
+    GUARD_AUDIT_RETENTION_INTERVAL_SECONDS: 3600
+    GUARD_AUDIT_RETENTION_BATCH_SIZE: 100
+    # Set a compliance period, bucket and HTTPS endpoint before enabling.
+    # Keys belong in secrets.existingSecret, not in this values file.
+    GUARD_AUDIT_ARCHIVE_REGION: us-east-1
+    GUARD_AUDIT_ARCHIVE_PREFIX: conduct/audit
+    GUARD_AUDIT_ARCHIVE_PATH_STYLE: false
 
 api:
   replicas: 1

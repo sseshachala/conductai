@@ -1547,42 +1547,10 @@ def verify_audit_chain(
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
 ):
-    """Walk the hash chain for this workspace. Returns valid=True if unbroken.
-    Only rows with entry_hash set (post-migration) are verified."""
-    import uuid as _uuid
-    ws_uuid = _uuid.UUID(workspace_id)
-
-    rows = (
-        db.query(GuardAuditEvent.ts, GuardAuditEvent.tool_call, GuardAuditEvent.decision,
-                 GuardAuditEvent.previous_hash, GuardAuditEvent.entry_hash)
-        .filter(GuardAuditEvent.workspace_id == ws_uuid, GuardAuditEvent.entry_hash.isnot(None))
-        .order_by(GuardAuditEvent.ts.asc())
-        .all()
-    )
-
-    if not rows:
-        return {"valid": True, "total": 0, "verified_from": None, "broken_at": None}
-
-    prev = ""
-    for row in rows:
-        expected = hashlib.sha256(
-            f"{row.ts.isoformat()}|{row.tool_call or ''}|{row.decision}|{prev}".encode()
-        ).hexdigest()
-        if expected != row.entry_hash:
-            return {
-                "valid": False,
-                "total": len(rows),
-                "verified_from": rows[0].ts.isoformat(),
-                "broken_at": row.ts.isoformat(),
-            }
-        prev = row.entry_hash
-
-    return {
-        "valid": True,
-        "total": len(rows),
-        "verified_from": rows[0].ts.isoformat(),
-        "broken_at": None,
-    }
+    """Authenticate archived boundaries, then verify the retained chain."""
+    from app.modules.guard.audit_retention import verify_audit_history
+    result = verify_audit_history(db, workspace_id)
+    return {key: result[key] for key in ("valid", "total", "verified_from", "broken_at")}
 
 
 @router.get("/correlated", tags=["guard"])
