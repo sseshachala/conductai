@@ -162,6 +162,14 @@ class Settings(BaseSettings):
     guard_projection_queue_enabled: bool = False
     guard_projection_paused: bool = False
     guard_projection_retention_days: int = Field(default=30, gt=0, le=3650)
+    # Retention cleanup is an independent worker daemon. Keep destructive
+    # cleanup disabled and dry-run enabled until operators have inspected the
+    # aggregate candidate metrics/logs for their deployment.
+    guard_projection_retention_cleanup_enabled: bool = False
+    guard_projection_retention_dry_run: bool = True
+    guard_projection_retention_interval_seconds: int = Field(
+        default=3600, ge=60, le=86400
+    )
     guard_projection_allowed_summary_window_minutes: int = Field(default=60, gt=0, le=1440)
     guard_projection_queue_max_depth: int = Field(default=10_000, gt=0)
     guard_projection_consumer_concurrency: int = Field(default=1, ge=0, le=64)
@@ -175,6 +183,10 @@ class Settings(BaseSettings):
     # reconciliation reserves and redispatches it. When unset, projection_queue
     # derives a conservative value from the lease and reconciliation interval.
     guard_projection_delivery_timeout_seconds: int | None = Field(default=None, gt=0)
+    # DEPRECATED compatibility setting retained for existing deployments.
+    # New retention behavior is driven by per-row retention metadata and
+    # guard_projection_retention_days; do not remove until old env/config
+    # inventories have been migrated.
     guard_projection_prune_after_days: int = Field(default=7, gt=0, le=3650)
     guard_projection_prune_batch_size: int = Field(default=500, gt=0, le=5000)
 

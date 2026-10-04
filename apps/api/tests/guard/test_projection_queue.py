@@ -29,12 +29,13 @@ except ModuleNotFoundError:
             pass
 
     sys.modules["prometheus_client"] = types.SimpleNamespace(
-        Counter=_Metric, Gauge=_Metric
+        Counter=_Metric, Gauge=_Metric, Histogram=_Metric
     )
 
 from app.modules.guard import knowledge
 from app.modules.guard import projection_queue as pq
 from app.modules.guard.models import GuardProjectionIntent
+from app.modules.guard.observability.metrics import GUARD_PROJECTION_OLDEST_AGE
 from app.modules.guard.projection_contract import (
     PROJECTION_QUEUE_KEY,
     ProjectionIntentStatus,
@@ -568,6 +569,7 @@ def test_failed_dispatch_retains_attempted_reservation_and_releases_later_ones(
         == 0
     )
     assert attempted == [intents[0].id]
+    assert GUARD_PROJECTION_OLDEST_AGE._value.get() == 180
 
     with reconciliation_db() as db:
         stored = {
