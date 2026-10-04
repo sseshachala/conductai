@@ -66,11 +66,44 @@ it.each(["0", "-1", "1.5", "2147483648"])("rejects invalid cap %s", async value 
 it("loads and saves the selected agent-wide cap without a profile request", async () => {
   render(<RateLimitsPanel {...agentProps} />); await edit()
   expect(rpm()).toHaveValue(5)
-  expect(screen.queryByRole("button", { name: "Smoke test" })).toBeNull()
+  expect(screen.getByRole("button", { name: "Smoke test" })).toBeEnabled()
   fireEvent.change(rpm(), { target: { value: "10" } }); fireEvent.click(save())
   await screen.findByText("Saved")
   expect(state.upsert).toHaveBeenCalledWith(state.fetch, { agent_identity_id: "agent-a", rpm: 10, tpm: 500 }, "workspace-a")
   expect(state.get).not.toHaveBeenCalled(); expect(state.set).not.toHaveBeenCalled()
+})
+
+it.each([
+  { label: "Smoke test", rpm: 2, tpm: 500 },
+  { label: "Small team", rpm: 60, tpm: 100000 },
+  { label: "Larger team", rpm: 300, tpm: 500000 },
+])("saves the $label preset only for the selected agent", async preset => {
+  render(<RateLimitsPanel {...agentProps} />); await edit()
+  fireEvent.click(screen.getByRole("button", { name: preset.label }))
+  expect(rpm()).toHaveValue(preset.rpm)
+  expect(screen.getByRole("spinbutton", { name: "Tokens / min (TPM)" })).toHaveValue(preset.tpm)
+  expect(state.upsert).not.toHaveBeenCalled()
+  fireEvent.click(save())
+  await screen.findByText("Saved")
+  expect(state.upsert).toHaveBeenCalledTimes(1)
+  expect(state.upsert).toHaveBeenCalledWith(state.fetch, {
+    agent_identity_id: "agent-a", rpm: preset.rpm, tpm: preset.tpm,
+  }, "workspace-a")
+  expect(state.get).not.toHaveBeenCalled(); expect(state.set).not.toHaveBeenCalled()
+  expect(screen.queryByRole("button", { name: preset.label })).toBeNull()
+})
+
+it("cancel discards an agent preset and restores the saved cap", async () => {
+  render(<RateLimitsPanel {...agentProps} />)
+  await waitFor(() => expect(rpm()).toHaveValue(5))
+  expect(screen.queryByRole("button", { name: "Smoke test" })).toBeNull()
+  await edit()
+  fireEvent.click(screen.getByRole("button", { name: "Larger team" }))
+  fireEvent.click(screen.getByRole("button", { name: "Cancel" }))
+  expect(rpm()).toHaveValue(5)
+  expect(screen.getByRole("spinbutton", { name: "Tokens / min (TPM)" })).toHaveValue(500)
+  expect(rpm()).toHaveAttribute("readonly")
+  expect(state.upsert).not.toHaveBeenCalled(); expect(state.set).not.toHaveBeenCalled()
 })
 
 it("does not apply a legacy workspace default to an uncapped agent", async () => {
