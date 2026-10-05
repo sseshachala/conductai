@@ -309,6 +309,8 @@ def _detect_surface(client_info: dict[str, Any]) -> str:
         return "cursor"
     if "windsurf" in name or "codeium" in name:
         return "windsurf"
+    if any(label in name for label in ("copilot cli", "copilot-cli", "copilot_cli")):
+        return "copilot-cli"
     if "vscode" in name or "copilot" in name:
         return "vscode"
     if "codex" in name:

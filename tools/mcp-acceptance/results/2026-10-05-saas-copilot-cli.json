@@ -1,0 +1,33 @@
+{
+  "deployment": "saas",
+  "client": "copilot-cli",
+  "version": "1.0.91",
+  "authentication": "Bearer token",
+  "started_at": "2026-10-05T16:10:24.555870+00:00",
+  "scenario": "connect",
+  "status": "Failed",
+  "native_invocation": "Succeeded",
+  "saved_credential_status": 401,
+  "configuration": "Temporary environment-referenced override using the valid current CLI login",
+  "saved_configuration_changed": false,
+  "mcp_audit": {
+    "event_id": "50081ad3-012b-44ce-9d4b-4a129850a756",
+    "tool": "guard_activity",
+    "decision": "allowed",
+    "source": "mcp",
+    "recorded_client": "vscode",
+    "workspace_matches": true,
+    "actor_matches": false,
+    "agent_matches": false,
+    "agent_present": false
+  },
+  "hook_audit": {
+    "event_id": "edb70fbf-22a7-4efd-8a67-10f6e5fcdfd4",
+    "source": "hook",
+    "recorded_client": "copilot-cli",
+    "workspace_matches": true,
+    "actor_matches": true,
+    "agent_matches": true
+  },
+  "not_run": ["refresh", "reconnect", "workspace-switch", "revocation", "mutation", "approval"]
+}

@@ -97,6 +97,24 @@ def _wrap(named_impl: Callable[..., str]) -> Callable[..., Any]:
         db = SessionLocal()
         try:
             gctx = _build_gctx(ctx, db)
+            from app.core.auth import resolve_agent_identity_row
+            caller = resolve_agent_identity_row(gctx.resolved_token, db)
+            db.info["mcp_actor"] = {
+                "clerk_user_id": gctx.clerk_user_id,
+                "agent_identity_id": caller.id if caller is not None else None,
+            }
+            from app.modules.agent_identity.credentials import SESSION_ACCESS_PREFIX, token_hash
+            if gctx.resolved_token.startswith(SESSION_ACCESS_PREFIX):
+                if caller is None:
+                    raise PermissionError("MCP credential is no longer active")
+                from app.modules.agent_identity.models import AgentCredentialSession
+                credential = db.query(AgentCredentialSession.id).filter(
+                    AgentCredentialSession.access_token_hash == token_hash(gctx.resolved_token),
+                    AgentCredentialSession.revoked_at.is_(None),
+                ).scalar()
+                if credential is None:
+                    raise PermissionError("MCP credential is no longer active")
+                db.info["mcp_actor"]["credential_session_id"] = credential
             if gctx.identity is not None:
                 from app.modules.auth.federation.resolver import FederationDenied, recheck
                 from sqlalchemy.exc import SQLAlchemyError

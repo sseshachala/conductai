@@ -85,6 +85,14 @@ jobs:
           CREDENTIAL_TEST_DATABASE_URL: postgresql://marshal:marshal@localhost:5432/marshal_test
         run: python -m pytest tests/test_credential_sessions_postgres.py -q
         working-directory: apps/api
+      - name: Canonical MCP OAuth acceptance (PostgreSQL)
+        env:
+          CREDENTIAL_TEST_DATABASE_URL: postgresql://marshal:marshal@localhost:5432/marshal_test
+          MCP_ACCEPTANCE_REQUIRED: "1"
+        run: python -m pytest tests/test_mcp_oauth_acceptance_postgres.py -q
+        working-directory: apps/api
+      - name: Native MCP acceptance runner contracts
+        run: python -m pytest tools/mcp-acceptance/test_acceptance.py -q
       - name: Discovery evidence migration and isolation (PostgreSQL)
         env:
           DISCOVERY_TEST_DATABASE_URL: postgresql://marshal:marshal@localhost:5432/marshal_test
