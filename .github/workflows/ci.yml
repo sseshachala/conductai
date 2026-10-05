@@ -159,6 +159,9 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
         working-directory: apps/web
+      - name: Web smoke regressions
+        run: npx vitest run src/lib/__tests__/internalLinks.test.ts src/lib/__tests__/smokeNetwork.test.ts src/lib/__tests__/api-security-origin.test.ts 'src/app/(app)/theguard/page.test.tsx'
+        working-directory: apps/web
       - name: Lens entry and Vault settings
         run: npx vitest run src/lib/lens-entry.test.ts src/components/glens/GLensChatPage.entry.test.tsx src/components/glens/LensSettings.test.tsx src/components/settings/LLMPrimitivesPanel.defaults.test.ts
         working-directory: apps/web

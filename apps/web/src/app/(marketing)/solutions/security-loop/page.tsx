@@ -37,7 +37,7 @@ function HeroSection() {
       </p>
       <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
         <a
-          href="/secure"
+          href="/packs?tab=modules"
           className="rounded-xl bg-stone-900 text-white px-7 py-3.5 text-base font-semibold hover:bg-stone-700 transition-colors w-full sm:w-auto text-center"
         >
           Install Security Loop
@@ -213,7 +213,7 @@ function CtaSection() {
         </p>
         <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
           <a
-            href="/secure"
+            href="/packs?tab=modules"
             className="rounded-xl bg-white text-indigo-600 px-8 py-3.5 text-base font-bold hover:bg-indigo-50 transition-colors w-full sm:w-auto text-center"
           >
             Install Security Loop

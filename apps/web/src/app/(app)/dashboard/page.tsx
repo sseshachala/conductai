@@ -699,7 +699,7 @@ function AgentHealthRow({ agent }: { agent: AgentHealth }) {
 function EmptyChecklist() {
   const steps = [
     { label: "Install a starter playbook", href: "/packs", cta: "Browse playbooks →" },
-    { label: "Add credentials (GitHub token, Slack)", href: "/settings/integrations", cta: "Open integrations →" },
+    { label: "Add credentials (GitHub token, Slack)", href: "/settings?tab=credentials", cta: "Open vault →" },
     { label: "Run a test trigger", href: "/runs", cta: "Go to Runs →" },
     { label: "Review the AI trace", href: "/runs", cta: "Open a run →" },
   ]

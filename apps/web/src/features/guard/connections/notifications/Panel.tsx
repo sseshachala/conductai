@@ -347,7 +347,7 @@ export default function NotificationsPanel({
         </p>
         <p style={{ fontSize: 12, color: "var(--info)" }}>
           No Slack credentials yet?{" "}
-          <a href="/settings/environments" style={{ color: "var(--info)", textDecoration: "underline" }}>
+          <a href="/settings?tab=credentials" style={{ color: "var(--info)", textDecoration: "underline" }}>
             Add them in Settings &rarr; Vault
           </a>
           .

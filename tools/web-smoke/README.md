@@ -37,6 +37,11 @@ On failure, download the Playwright report and traces from the run's artifacts.
 Auth-setup screenshots are uploaded separately. Saved session-cookie JSON is
 never uploaded.
 
+CI also checks static internal links against App Router pages, configured
+redirects/rewrites, and public assets. This catches removed destinations before
+Next.js prefetch timing makes them intermittent browser failures. Dynamic links
+still need browser flows.
+
 ## Nightly Failure Triage: September 14 - October 4, 2026
 
 All 21 open web-smoke reports were inspected using their failed steps and
@@ -91,6 +96,9 @@ Recurring causes:
 - The Guard dashboard read token guardrails before its configuration was
   initialized, intermittently returning 404 on first use. It now waits for
   configuration for the selected workspace.
+- The dashboard, Vault setup hints, and solution pages still linked to removed
+  `/settings/*`, `/demo`, and `/secure` pages. They now use current destinations;
+  a source-level link check runs on PRs and both smoke workflows.
 
 Historical console warnings and other intermittent failures remain subject to
 the full current-branch run; a triage count alone is not a passing result.
