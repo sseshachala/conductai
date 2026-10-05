@@ -133,8 +133,9 @@ jobs:
         working-directory: apps/api
       - name: Install isolated LiteLLM integration harness
         run: |
+          LITELLM_VERSION=$(python -c 'from importlib.metadata import version; print(version("litellm"))')
           python -m venv "$RUNNER_TEMP/federation-litellm"
-          "$RUNNER_TEMP/federation-litellm/bin/pip" install 'litellm[proxy]==1.103.0' -e './packages/conduct-litellm-guard[dev]'
+          "$RUNNER_TEMP/federation-litellm/bin/pip" install "litellm[proxy]==${LITELLM_VERSION}" -e './packages/conduct-litellm-guard[dev]'
           "$RUNNER_TEMP/federation-litellm/bin/python" -m pytest packages/conduct-litellm-guard/tests -q
       - name: Federation LiteLLM, Gateway and workflow HTTP journeys
         env:
