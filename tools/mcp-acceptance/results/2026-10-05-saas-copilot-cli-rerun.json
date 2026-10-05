@@ -1,0 +1,36 @@
+{
+  "deployment": "saas",
+  "client": "copilot-cli",
+  "version": "1.0.91",
+  "authentication": "Bearer token",
+  "started_at": "2026-10-05T17:22:45.099299+00:00",
+  "finished_at": "2026-10-05T17:23:03.805363+00:00",
+  "configuration": "Unchanged saved Copilot MCP configuration; no override",
+  "saved_configuration_changed": false,
+  "saved_credential_status": 200,
+  "phases": {
+    "connect": {
+      "status": "Passed",
+      "event_id": "9ddf16f4-2b45-4858-8444-f56de5eb6fa1",
+      "tool": "guard_activity",
+      "decision": "allowed",
+      "source": "mcp",
+      "recorded_client": "copilot-cli",
+      "workspace_matches": true,
+      "actor_matches": true,
+      "agent_matches": true
+    },
+    "reconnect": {
+      "status": "Passed",
+      "event_id": "450e450f-c07a-49cc-9bd6-68866ce7bbb1",
+      "tool": "guard_activity",
+      "decision": "allowed",
+      "source": "mcp",
+      "recorded_client": "copilot-cli",
+      "workspace_matches": true,
+      "actor_matches": true,
+      "agent_matches": true
+    }
+  },
+  "not_run": ["refresh", "workspace-switch", "revocation", "mutation", "approval"]
+}

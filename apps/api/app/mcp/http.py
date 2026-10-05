@@ -23,8 +23,10 @@ from starlette.concurrency import run_in_threadpool
 
 from app.core.admission import AdmissionRefused, admission_refused_jsonrpc, admit
 from app.core.database import get_db
+from app.mcp import surface_session
 from app.mcp.server import (
     MCPContext,
+    _detect_surface,
     dispatch,
     new_session_id,
 )
@@ -125,19 +127,33 @@ async def mcp_endpoint(request: Request) -> JSONResponse:
     if isinstance(identity, JSONResponse):
         return identity
 
-    # Detect surface from clientInfo if present (initialize call), else headers.
-    client_info = (body.get("params") or {}).get("clientInfo") or {}
-    from app.mcp.server import _detect_surface  # type: ignore
-    surface = _detect_surface(client_info) if client_info else "http"
-    # Explicit surface header wins (Copilot rmcp reveals itself via User-Agent
-    # rather than clientInfo on tools/call — mirror the /guard/mcp resolution).
-    _hdr_surface = request.headers.get("x-claude-surface")
-    if _hdr_surface:
-        surface = _hdr_surface
-    elif surface in ("http", "unknown"):
+    mcp_session_id = request.headers.get("mcp-session-id") or new_session_id()
+    initializing = body.get("method") == "initialize"
+    client_info = ((body.get("params") or {}).get("clientInfo") or {}) if initializing else {}
+    reported_surface = _detect_surface(client_info)
+    explicit_surface = _detect_surface({"name": request.headers.get("x-conduct-ai-tool", "")})
+    initialized_session = (
+        None if initializing else
+        surface_session.resolve(mcp_session_id, workspace_id, clerk_user_id, token)
+    )
+
+    # Prefer the frontend identified at initialization over a shared backend's
+    # legacy header or User-Agent. Every request still authenticates separately.
+    surface = (
+        (explicit_surface if explicit_surface != "unknown" else None)
+        or (initialized_session.surface if initialized_session else None)
+    )
+    if not surface:
+        surface = (
+            (reported_surface if reported_surface != "unknown" else None)
+            or request.headers.get("x-claude-surface")
+        )
+    if not surface:
         ua_surface = _detect_surface({"name": request.headers.get("User-Agent", "")})
-        if ua_surface != "unknown":
-            surface = ua_surface
+        surface = ua_surface if ua_surface != "unknown" else "http"
+    if initializing and surface in surface_session.SURFACES:
+        mcp_session_id = surface_session.issue(surface, workspace_id, clerk_user_id, token)
+        initialized_session = surface_session.resolve(mcp_session_id, workspace_id, clerk_user_id, token)
 
     # Guard tools need user_email + session_id for audit attribution and HITL
     # resume. Fetch email once per request; mint fresh session_id when the
@@ -150,11 +166,11 @@ async def mcp_endpoint(request: Request) -> JSONResponse:
         except Exception as e:
             log.warning("mcp.http.email_lookup_failed", err=str(e))
             user_email = clerk_user_id
-    # Streamable-HTTP spec: server issues Mcp-Session-Id on initialize; client
-    # echoes it on every subsequent request. Stateless server → accept whatever
-    # the client sends; only mint fresh when absent.
-    mcp_session_id = request.headers.get("mcp-session-id") or new_session_id()
-    session_id = request.headers.get("x-session-id") or mcp_session_id
+    # Keep audit/approval correlation UUID-shaped; only the transport header
+    # carries signed client metadata.
+    session_id = request.headers.get("x-session-id") or (
+        initialized_session.session_id if initialized_session else mcp_session_id
+    )
 
     ctx = MCPContext(
         workspace_id=workspace_id,
@@ -181,6 +197,9 @@ async def mcp_endpoint(request: Request) -> JSONResponse:
         # RuntimeError("Response content longer than Content-Length") mid-send.
         # That truncated response is why Claude.ai's toolbox proxy returned 502.
         return Response(status_code=204)
+
+    if initializing and isinstance(response.get("result"), dict):
+        response["result"]["_surface"] = surface
 
     return JSONResponse(
         status_code=200,
