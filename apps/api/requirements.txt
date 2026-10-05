@@ -8,7 +8,7 @@ pydantic>=2.13.5,<3
 pydantic-settings==2.15.0
 anthropic==0.125.0
 openai==2.54.0
-litellm==1.99.0
+litellm==1.103.2
 python-dotenv==1.2.3
 httpx==0.28.1
 boto3==1.43.78  # S3-compatible verified audit archives (#2331)
