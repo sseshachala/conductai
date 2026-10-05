@@ -68,7 +68,7 @@ jobs:
         # runtime probe runs on every PR (catches auth regressions same-day
         # instead of the 24h nightly window). Nightly still runs the full
         # matrix as belt-and-suspenders — see .github/workflows/nightly.yml.
-        run: python -m pytest tests/ -q --ignore=tests/test_guard.py
+        run: python -m pytest tests/ -q -rs --ignore=tests/test_guard.py --junitxml=api-test-results.xml
         working-directory: apps/api
         env:
           DATABASE_URL: postgresql://marshal:marshal@localhost:5432/marshal_test
@@ -76,6 +76,10 @@ jobs:
           GATEWAY_PROFILE_RATE_REAL_TESTS: "1"
           PROJECTION_QUEUE_REAL_TESTS: "1"
           AUDIT_RETENTION_REAL_TESTS: "1"
+          ENDPOINT_MATRIX_REQUIRED: "1"
+      - name: Verify completed endpoint probes
+        run: python scripts/check_endpoint_matrix_results.py api-test-results.xml
+        working-directory: apps/api
       - name: Credential session isolation (PostgreSQL)
         env:
           CREDENTIAL_TEST_DATABASE_URL: postgresql://marshal:marshal@localhost:5432/marshal_test
