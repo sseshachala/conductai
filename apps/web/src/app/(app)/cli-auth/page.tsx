@@ -66,7 +66,7 @@ export default function CliAuthPage() {
   }, [isLoaded, isSignedIn, getToken, params, activeWorkspace])
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "60vh", gap: "16px", fontFamily: "sans-serif" }}>
+    <main style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "60vh", gap: "16px", fontFamily: "sans-serif" }}>
       {state === "loading" && (
         <>
           <div style={{ fontSize: "24px" }}>⚡</div>
@@ -88,6 +88,6 @@ export default function CliAuthPage() {
           <p style={{ color: "#888", fontSize: "13px" }}>Re-run <code>conduct login</code> to try again.</p>
         </>
       )}
-    </div>
+    </main>
   )
 }

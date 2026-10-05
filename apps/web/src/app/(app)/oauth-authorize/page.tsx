@@ -72,7 +72,7 @@ export default function OauthAuthorizePage() {
   }, [isLoaded, isSignedIn, getToken, params, activeWorkspace])
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "60vh", gap: "16px", fontFamily: "sans-serif" }}>
+    <main style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "60vh", gap: "16px", fontFamily: "sans-serif" }}>
       {state === "loading" && (
         <>
           <div style={{ fontSize: "24px" }}>⚡</div>
@@ -92,6 +92,6 @@ export default function OauthAuthorizePage() {
           <p style={{ color: "#555", maxWidth: "400px", textAlign: "center" }}>{error}</p>
         </>
       )}
-    </div>
+    </main>
   )
 }

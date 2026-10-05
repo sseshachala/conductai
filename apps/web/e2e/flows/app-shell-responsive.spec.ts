@@ -1,10 +1,12 @@
 import { test, expect } from "@playwright/test"
 
 test.beforeEach(async ({ page }) => {
-  await page.route("**/api/**", async route => {
-    const path = new URL(route.request().url()).pathname
+  const apiOrigin = new URL(process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000").origin
+  await page.route(url => url.origin === apiOrigin || url.pathname.startsWith("/api/"), async route => {
+    const path = new URL(route.request().url()).pathname.replace(/^\/api(?:\/backend)?(?=\/)/, "")
     let json: unknown = []
-    if (path === "/api/projects") json = [{ id: "11111111-1111-4111-8111-111111111111", name: "Preview workspace", owner_id: "preview", is_approved: true }]
+    if (path === "/projects") json = [{ id: "11111111-1111-4111-8111-111111111111", name: "Preview workspace", owner_id: "preview", is_approved: true }]
+    else if (path === "/me/setup-status") json = { setup_completed: true }
     else if (path.endsWith("/my-role")) json = { role: "admin" }
     else if (path.endsWith("/installed")) json = { installed: true }
     else if (path.endsWith("/permissions")) json = { role: "admin", permissions: [] }
@@ -17,7 +19,7 @@ test.beforeEach(async ({ page }) => {
 for (const width of [320, 390, 768, 1440]) {
   test(`shell stays within ${width}px with a wide activity table`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 })
-    await page.goto("/agent-identity?tab=agent_sessions")
+    await page.goto("/agent-identity?tab=agent_sessions", { waitUntil: "domcontentloaded" })
     await expect(page.getByRole("link", { name: "session-" })).toBeVisible()
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
     if (width < 768) {
@@ -31,7 +33,7 @@ for (const width of [320, 390, 768, 1440]) {
 
 test("mobile navigation opens as an overlay and restores keyboard access", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
-  await page.goto("/agent-identity?tab=agent_sessions")
+  await page.goto("/agent-identity?tab=agent_sessions", { waitUntil: "domcontentloaded" })
   await page.getByRole("button", { name: "Expand sidebar" }).click()
   const navigation = page.getByRole("dialog", { name: "Main navigation" })
   await expect(navigation).toBeVisible()
