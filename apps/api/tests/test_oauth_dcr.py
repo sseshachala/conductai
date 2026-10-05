@@ -76,3 +76,25 @@ def test_register_rejects_bad_scheme():
     with pytest.raises(HTTPException) as exc:
         dcr.register_client(_req(redirect_uris=["ftp://foo/cb"]), db)
     assert "invalid_redirect_uri" in str(exc.value.detail)
+
+
+@pytest.mark.parametrize("uri", [
+    "http://localhost.evil.example/cb", "http://127.0.0.1.evil.example/cb",
+    "http://localhost@evil.example/cb", "https://user:password@example.test/cb",
+    "https://example.test/cb#fragment", "https://example.test:invalid/cb",
+    "https://example.test/white space", "https://example.test/\\evil", "https:///cb",
+])
+def test_register_rejects_unsafe_redirect_without_writing(uri):
+    db = _StubSession()
+    with pytest.raises(HTTPException) as error:
+        dcr.register_client(_req(redirect_uris=[uri]), db)
+    assert error.value.status_code == 400
+    assert not db.added and not db.committed
+
+
+@pytest.mark.parametrize("uri", [
+    "http://localhost:7777/cb", "http://127.0.0.1:7777/cb", "http://[::1]:7777/cb",
+    "https://example.test/oauth/callback", "mcp://client/callback",
+])
+def test_register_accepts_secure_or_loopback_redirects(uri):
+    assert dcr.register_client(_req(redirect_uris=[uri]), _StubSession())["redirect_uris"] == [uri]

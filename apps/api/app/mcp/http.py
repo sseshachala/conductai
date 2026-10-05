@@ -43,12 +43,13 @@ def _extract_bearer(request: Request) -> str | None:
     return None
 
 
-_UNAUTH_HEADERS = {
-    "WWW-Authenticate": (
-        'Bearer realm="https://api.conductai.ai/mcp", '
-        'resource_metadata="https://api.conductai.ai/.well-known/oauth-protected-resource/mcp"'
-    ),
-}
+def _unauth_headers() -> dict[str, str]:
+    from app.modules.auth.oauth.deployment import issuer_url
+    issuer = issuer_url().rstrip("/")
+    return {"WWW-Authenticate": (
+        f'Bearer realm="{issuer}/mcp", '
+        f'resource_metadata="{issuer}/.well-known/oauth-protected-resource/mcp"'
+    )}
 
 
 def _unauthorized(msg_id: Any = None, message: str = "missing token (use Authorization: Bearer)") -> JSONResponse:
@@ -59,7 +60,7 @@ def _unauthorized(msg_id: Any = None, message: str = "missing token (use Authori
             "id": msg_id,
             "error": {"code": -32600, "message": message},
         },
-        headers=_UNAUTH_HEADERS,
+        headers=_unauth_headers(),
     )
 
 
@@ -247,8 +248,10 @@ async def oauth_resource_metadata() -> dict[str, Any]:
 
     Same shape as /guard/mcp's existing well-known — points at the same
     authorization server. The resource URL changes to /mcp."""
+    from app.modules.auth.oauth.deployment import issuer_url
+    issuer = issuer_url().rstrip("/")
     return {
-        "resource": "https://api.conductai.ai/mcp",
-        "authorization_servers": ["https://api.conductai.ai"],
+        "resource": issuer + "/mcp",
+        "authorization_servers": [issuer],
         "bearer_methods_supported": ["header"],
     }

@@ -12,6 +12,7 @@ from __future__ import annotations
 import os
 from datetime import datetime, timezone
 from typing import Any
+from urllib.parse import urlsplit
 
 from fastapi import HTTPException
 from pydantic import BaseModel, Field
@@ -39,11 +40,19 @@ def _mint_client_id() -> str:
 
 def _validate_redirect_uris(uris: list[str]) -> None:
     for u in uris:
-        if not (u.startswith("http://") or u.startswith("https://") or u.startswith("mcp://")):
-            raise HTTPException(400, detail=f"invalid_redirect_uri: {u!r}")
-        # Localhost http is fine for CLI / dev clients; everything else must be https/mcp.
-        if u.startswith("http://") and "://localhost" not in u and "://127.0.0.1" not in u:
-            raise HTTPException(400, detail=f"insecure_redirect_uri: {u!r}")
+        try:
+            parsed = urlsplit(u)
+            valid = (parsed.scheme in {"http", "https", "mcp"} and parsed.hostname
+                     and parsed.username is None and parsed.password is None and not parsed.fragment
+                     and not any(c.isspace() or ord(c) < 32 for c in u) and "\\" not in u)
+            parsed.port
+        except ValueError:
+            valid = False
+        if not valid:
+            raise HTTPException(400, detail="invalid_redirect_uri")
+        # Compare the parsed host, not a prefix that also matches localhost.evil.
+        if parsed.scheme == "http" and parsed.hostname not in {"localhost", "127.0.0.1", "::1"}:
+            raise HTTPException(400, detail="insecure_redirect_uri")
 
 
 def register_client(

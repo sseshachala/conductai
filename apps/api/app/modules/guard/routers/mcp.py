@@ -544,9 +544,11 @@ def _record_event(
     if prompt:
         raw_summary = f"[prompt: {prompt[:100]}] {raw_summary}"
 
+    actor = db.info.get("mcp_actor") or {}
     event = GuardAuditEvent(
         workspace_id=ws_uuid,
-        clerk_user_id=user_email,
+        clerk_user_id=actor.get("clerk_user_id", user_email),
+        agent_identity_id=actor.get("agent_identity_id"),
         user_email=user_email,
         ai_tool=ai_tool,
         tool_call=tool_name,
@@ -563,6 +565,8 @@ def _record_event(
         entry_hash=entry_hash,
         policy_hash=policy_hash,
     )
+    if actor.get("credential_session_id"):
+        event.routing_meta = {"credential_session_id": actor["credential_session_id"]}
     db.add(event)
     identity = db.info.get("federation_identity")
     if identity is not None:
@@ -570,7 +574,7 @@ def _record_event(
         from app.core.workspace_context import set_workspace_rls
         from app.modules.auth.federation.mcp_ingress import provenance
         set_workspace_rls(db, ws_uuid)
-        event.routing_meta = {"federation": provenance(identity), "evidence_kind": "policy_check"}
+        event.routing_meta = {**(event.routing_meta or {}), "federation": provenance(identity), "evidence_kind": "policy_check"}
         db.flush()
         db.add(AuditLog(workspace_id=ws_uuid, action="federation.guard.decision",
                         resource_type="guard_audit_event", resource_id=str(event.id),

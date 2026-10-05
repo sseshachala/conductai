@@ -8,6 +8,8 @@ import oktaTrackingMd from "../../../../../../docs/reference/okta-tracking.md"
 import oidcSetupMd from "../../../../../../docs/reference/oidc-setup.md"
 // @ts-expect-error - .md imported as raw string via webpack asset/source
 import onpremDeploymentMd from "../../../../../../docs/reference/onprem-deployment.md"
+// @ts-expect-error - .md imported as raw string via webpack asset/source
+import mcpClientSupportMd from "../../../../../../docs/reference/mcp-client-support.md"
 
 const VALID_TABS = ["overview", "guard", "mcp-tools", "getting-started", "blocks", "api", "integrations", "on-prem"] as const
 
@@ -140,6 +142,7 @@ const TAB_NAV: Record<TabId, { href: string; label: string }[]> = {
     { href: "#guard-policy-reference", label: "Policy reference" },
   ],
   "mcp-tools": [
+    { href: "#mcp-client-acceptance", label: "Client acceptance" },
     { href: "#mcp-overview",     label: "Overview" },
     { href: "#mcp-workspace-url",label: "Workspace URL" },
     { href: "#mcp-claude-web",   label: "Claude.ai (web)" },
@@ -2591,7 +2594,12 @@ export default function DocsPage() {
           {activeTab === "api"             && <TabApi />}
           {activeTab === "blocks"          && <TabBlocks />}
           {activeTab === "guard"           && <TabGuard />}
-          {activeTab === "mcp-tools"       && <TabMcpTools />}
+          {activeTab === "mcp-tools" && <>
+            <TabMcpTools />
+            <section id="mcp-client-acceptance"
+              className="mt-12 min-w-0 break-words [&_h2]:text-xl [&_h2]:font-bold [&_h2]:mb-4 [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:mt-8 [&_h3]:mb-3 [&_p]:text-sm [&_p]:leading-relaxed [&_p]:mb-4 [&_ul]:list-disc [&_ul]:pl-5 [&_li]:text-sm [&_li]:mb-2 [&_pre]:overflow-x-auto [&_pre]:bg-stone-100 [&_pre]:p-4 [&_pre]:mb-4 [&_code]:text-xs [&_table]:block [&_table]:max-w-full [&_table]:overflow-x-auto [&_table]:text-sm [&_table]:mb-4 [&_th]:text-left [&_th]:p-2 [&_td]:p-2 [&_td]:align-top [&_td]:border-b [&_a]:underline"
+              dangerouslySetInnerHTML={{ __html: marked.parse(mcpClientSupportMd, { async: false }) as string }} />
+          </>}
           {activeTab === "integrations"    && <TabIntegrations />}
           {activeTab === "on-prem" && <section id="on-prem-deployment"
             className="min-w-0 break-words [&_h2]:text-xl [&_h2]:font-bold [&_h2]:mb-4 [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:mt-8 [&_h3]:mb-3 [&_h4]:font-semibold [&_h4]:mt-6 [&_h4]:mb-3 [&_p]:text-sm [&_p]:leading-relaxed [&_p]:mb-4 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:text-sm [&_li]:mb-2 [&_pre]:overflow-x-auto [&_pre]:bg-stone-100 [&_pre]:p-4 [&_pre]:mb-4 [&_code]:text-xs [&_table]:w-full [&_table]:table-fixed [&_table]:text-sm [&_table]:mb-4 [&_th]:text-left [&_th]:p-2 [&_td]:p-2 [&_td]:align-top [&_td]:border-b [&_a]:underline"

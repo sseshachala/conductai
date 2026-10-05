@@ -106,6 +106,7 @@ Wire Conduct into your other tools. CI, MCP, agents.
 
 - [Automate](automate.md) — CLI, MCP, CI, hooks, HTTP API, webhooks
 - [ConductGuard MCP](modules/conductguard/conductguard_mcp.md) — MCP server spec (Claude Code, Cursor, Codex)
+- [MCP client acceptance](reference/mcp-client-support.md) - native-client support matrix and automated checks
 
 ---
 
