@@ -80,10 +80,10 @@ function NewWorkflowForm({ getToken }: { getToken: (() => Promise<string | null>
   const { activeWorkspace } = useWorkspace()
   const urlProjectId = searchParams.get("project_id") ?? ""
 
-  const [template, setTemplate]           = useState("autopilot_quick")
+  const [template, setTemplate]           = useState(TEMPLATES[0].id)
   const [templateOpen, setTemplateOpen]   = useState(false)
   const templateRef                        = useRef<HTMLDivElement>(null)
-  const [agentName, setAgentName]         = useState(FRIENDLY_NAMES["autopilot_quick"])
+  const [agentName, setAgentName]         = useState(FRIENDLY_NAMES[TEMPLATES[0].id])
   const [projects, setProjects]           = useState<Project[]>([])
   const [selectedProjectId, setSelectedProjectId] = useState(urlProjectId)
   const [environments, setEnvironments]   = useState<Environment[]>([])

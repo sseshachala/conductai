@@ -84,6 +84,10 @@ Recurring causes:
 - Production CSP omitted the configured HTTP loopback API and upgraded its
   requests to HTTPS. Explicit local environments now allow only the configured
   loopback API; HTTPS upgrading remains enabled outside local HTTP pages.
+- New workflows still requested the removed `autopilot_quick` catalog entry.
+  The default now comes from the visible template list (`autopilot_full`).
+- The submission page linked to the nonexistent `/docs/playbook-spec` page.
+  It now links to the repository's playbook reference.
 
 Historical console warnings and other intermittent failures remain subject to
 the full current-branch run; a triage count alone is not a passing result.

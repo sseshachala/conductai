@@ -232,8 +232,8 @@ export default function SubmitPlaybookPage() {
           <div className="flex items-center justify-between">
             <p className="text-xs text-stone-400">
               {!isSignedIn && SITE_KEY && "Protected by reCAPTCHA · "}
-              <Link href="/docs/playbook-spec" className="hover:underline">
-                Playbook spec
+              <Link href="https://github.com/sseshachala/conductai/blob/main/docs/mental-models/08-playbooks.md" className="hover:underline">
+                Playbook reference
               </Link>
             </p>
             <button
