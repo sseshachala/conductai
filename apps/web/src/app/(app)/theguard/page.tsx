@@ -449,7 +449,9 @@ function GuardDashboard() {
   const { activeWorkspace } = useWorkspace()
   const { permissions, loading: permissionsLoading } = useGuardRole(teamId, activeWorkspace?.id ?? null)
   const { savings, loading: savingsLoading } = useGuardSavings(teamId)
-  const { guardrails } = useTokenGuardrails(activeWorkspace?.id ?? null)
+  const { guardrails } = useTokenGuardrails(
+    !teamLoading && teamId === activeWorkspace?.id ? teamId : null,
+  )
 
   const [events, setEvents]           = useState<GuardEvent[]>([])
   const [stats, setStats]             = useState<SpendStats | null>(null)

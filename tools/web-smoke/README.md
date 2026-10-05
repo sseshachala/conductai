@@ -88,6 +88,9 @@ Recurring causes:
   The default now comes from the visible template list (`autopilot_full`).
 - The submission page linked to the nonexistent `/docs/playbook-spec` page.
   It now links to the repository's playbook reference.
+- The Guard dashboard read token guardrails before its configuration was
+  initialized, intermittently returning 404 on first use. It now waits for
+  configuration for the selected workspace.
 
 Historical console warnings and other intermittent failures remain subject to
 the full current-branch run; a triage count alone is not a passing result.
