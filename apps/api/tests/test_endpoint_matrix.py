@@ -14,19 +14,23 @@ The static layer uses AST parsing (like scripts/check_auth_coverage.py) so
 it doesn't depend on Python import order or the conftest closure patch —
 those two coupling points broke it in CI on the first run.
 
-The runtime layer resolves permission by cross-referencing the AST result
-with `app.routes[*].name`, then swaps the noop closure planted by conftest
-back to the real check.
+The runtime layer uses effective routes (including nested routers) and their
+permission dependencies, then restores real checks with dependency overrides.
 """
 from __future__ import annotations
 
 import ast
+import inspect
+import os
 import re
 import uuid
 from datetime import datetime, timezone
+from functools import wraps
 from pathlib import Path
 
 import pytest
+from fastapi import APIRouter, Depends, FastAPI, HTTPException
+from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
 from sqlalchemy import text
 
@@ -115,29 +119,51 @@ ENDPOINT_PERMISSIONS = _discover_permissions()
 
 
 def _substitute_path_params(path: str) -> str:
+    path = path.replace("{workspace_id}", str(TEST_WS_ID))
     return re.sub(r"\{[^}]+\}", UUID_ZERO, path)
 
 
-def _discover_routes() -> list[dict]:
-    """Cross-reference AST permissions with runtime routes to get full
-    (method, url, permission, name) tuples for the RBAC probe."""
+def _api_routes(application=app):
+    # FastAPI 0.141 keeps included routers lazy; effective contexts contain
+    # the actual mounted paths and dependency trees used to serve requests.
+    for route in application.routes:
+        if isinstance(route, APIRoute):
+            yield route
+        elif callable(getattr(route, "effective_route_contexts", None)):
+            for context in route.effective_route_contexts():
+                if isinstance(context.original_route, APIRoute):
+                    yield context
+
+
+def _walk_dependants(dep):
+    yield dep
+    for child in dep.dependencies:
+        yield from _walk_dependants(child)
+
+
+def _permission_checks(route):
+    for dep in _walk_dependants(route.dependant):
+        call = dep.call
+        permission = getattr(call, "__conduct_permission__", None)
+        if permission is None and inspect.isfunction(call):
+            permission = inspect.getclosurevars(call).nonlocals.get("permission")
+        if isinstance(permission, str):
+            yield call, permission
+
+
+def _discover_routes(application=app) -> list[dict]:
     out: list[dict] = []
-    for r in app.routes:
-        name = getattr(r, "name", None)
-        if not name or name not in ENDPOINT_PERMISSIONS:
+    for r in _api_routes(application):
+        permissions = {permission for _, permission in _permission_checks(r)}
+        if not permissions:
             continue
-        methods = getattr(r, "methods", None) or set()
-        methods = {m for m in methods if m != "HEAD"}
-        if not methods:
-            continue
-        perm = ENDPOINT_PERMISSIONS[name]
-        for method in sorted(methods):
+        for method in sorted(r.methods - {"HEAD"}):
             out.append({
                 "method": method,
                 "path": r.path,
                 "url": _substitute_path_params(r.path),
-                "permission": perm,
-                "name": name,
+                "permissions": permissions,
+                "name": r.name,
             })
     return out
 
@@ -156,7 +182,17 @@ def _db_available() -> bool:
 
 
 DB_AVAILABLE = _db_available()
-requires_db = pytest.mark.skipif(not DB_AVAILABLE, reason="Postgres not reachable")
+MATRIX_REQUIRED = os.environ.get("ENDPOINT_MATRIX_REQUIRED") == "1"
+requires_db = pytest.mark.skipif(
+    not DB_AVAILABLE and not MATRIX_REQUIRED, reason="Postgres not reachable",
+)
+
+
+def _require_database(available, required):
+    if not available:
+        if required:
+            pytest.fail("Required endpoint matrix database is unavailable", pytrace=False)
+        pytest.skip("Postgres not reachable")
 
 
 def _seeded_permissions() -> set[str]:
@@ -188,6 +224,101 @@ def test_permissions_discovered_from_source():
     )
 
 
+@pytest.mark.matrix
+def test_runtime_routes_discovered():
+    assert ROUTES, "Endpoint matrix discovered zero permission-gated routes"
+
+
+def test_empty_runtime_discovery_fails(monkeypatch):
+    monkeypatch.setitem(globals(), "ROUTES", [])
+    with pytest.raises(AssertionError, match="zero permission-gated routes"):
+        test_runtime_routes_discovered()
+
+
+def test_nested_router_discovery_preserves_paths_and_distinct_permissions():
+    application = FastAPI()
+    nested = APIRouter()
+
+    def permission_check():
+        return "admin"
+
+    permission_check.__conduct_permission__ = "platform.workflows.edit"
+
+    @nested.get("/items/{item_id}", name="shared_name")
+    def first(_: str = Depends(permission_check)):
+        return {}
+
+    outer = APIRouter()
+    outer.include_router(nested, prefix="/nested")
+    application.include_router(outer, prefix="/v1")
+    application.include_router(outer, prefix="/v2")
+
+    def other_check():
+        return "viewer"
+
+    other_check.__conduct_permission__ = "platform.workflows.view"
+
+    @application.get("/direct", name="shared_name")
+    def second(_: str = Depends(other_check)):
+        return {}
+
+    routes = _discover_routes(application)
+    assert {r["path"] for r in routes} == {
+        "/v1/nested/items/{item_id}", "/v2/nested/items/{item_id}", "/direct",
+    }
+    assert routes[-1]["permissions"] == {"platform.workflows.view"}
+    assert routes[0]["permissions"] == {"platform.workflows.edit"}
+    assert routes[0]["url"] == f"/v1/nested/items/{UUID_ZERO}"
+
+
+def test_required_matrix_database_fails_instead_of_skipping():
+    with pytest.raises(pytest.fail.Exception, match="database is unavailable"):
+        _require_database(False, True)
+    with pytest.raises(pytest.skip.Exception, match="Postgres not reachable"):
+        _require_database(False, False)
+    _require_database(True, True)
+
+
+def test_probe_path_uses_the_seeded_workspace():
+    assert _substitute_path_params("/workspaces/{workspace_id}/gateways/{gateway_id}") == (
+        f"/workspaces/{TEST_WS_ID}/gateways/{UUID_ZERO}"
+    )
+
+
+@pytest.mark.parametrize("allowed", [True, False])
+def test_nested_router_override_runs_real_check_and_records_outcome(allowed):
+    application = FastAPI()
+    router = APIRouter()
+
+    def noop():
+        return "admin"
+
+    noop.__conduct_permission__ = "example.edit"
+
+    @router.get("/protected")
+    def protected(_: str = Depends(noop)):
+        return {"ok": True}
+
+    application.include_router(router, prefix="/nested")
+
+    def identity():
+        return "viewer"
+
+    def real_check(user: str = Depends(identity)):
+        if not allowed:
+            raise HTTPException(status_code=403, detail="Permission denied")
+        return user
+
+    results = []
+    route = next(_api_routes(application))
+    call, permission = next(_permission_checks(route))
+    application.dependency_overrides[call] = _tracked_check(real_check, permission, results)
+    with TestClient(application) as client:
+        response = client.get("/nested/protected")
+    assert response.status_code == (200 if allowed else 403)
+    assert results == [("example.edit", "viewer" if allowed else None)]
+
+
 @requires_db
 def test_every_code_permission_is_seeded():
     seeded = _seeded_permissions()
@@ -217,6 +348,8 @@ WRITE_VERB_ALLOWLIST: set[tuple[str, str]] = {
     ("POST", "/eval/run/{slug}"),                    # eval simulation
     ("POST", "/eval/run"),                           # eval simulation
     ("POST", "/guard/policies/lint"),                # static lint
+    ("POST", "/guard/trial/demo/{verb}"),           # fixed sandbox demo, no workspace edits
+    ("POST", "/guard/fixture-approvals/consume"),     # caller-bound, preapproved one-use action
 }
 
 
@@ -224,10 +357,11 @@ WRITE_VERB_ALLOWLIST: set[tuple[str, str]] = {
 def test_write_verbs_do_not_use_view_permission():
     write_verbs = {"POST", "PUT", "PATCH", "DELETE"}
     offenders = [
-        f'{r["method"]} {r["path"]} → {r["permission"]}'
+        f'{r["method"]} {r["path"]} → {permission}'
         for r in ROUTES
+        for permission in r["permissions"]
         if r["method"] in write_verbs
-        and r["permission"].endswith(".view")
+        and permission.endswith(".view")
         and (r["method"], r["path"]) not in WRITE_VERB_ALLOWLIST
     ]
     assert not offenders, f"Mutating routes gated only by a .view permission: {offenders}"
@@ -236,8 +370,7 @@ def test_write_verbs_do_not_use_view_permission():
 # ── Runtime probing (Layer B) ────────────────────────────────────────────────
 @pytest.fixture(scope="module")
 def seeded_matrix_env():
-    if not DB_AVAILABLE:
-        pytest.skip("Postgres not reachable")
+    _require_database(DB_AVAILABLE, MATRIX_REQUIRED)
     with SessionLocal() as db:
         now = datetime.now(timezone.utc)
         db.execute(text("""
@@ -254,7 +387,7 @@ def seeded_matrix_env():
             """), {"ws": str(TEST_WS_ID), "uid": uid, "role": role, "now": now})
         db.commit()
     yield
-    # Teardown is best-effort — 664 probes create integrations / audit rows
+    # Teardown is best-effort — probes create integrations / audit rows
     # via side effects and not every FK cascades. CI DB is ephemeral so
     # leaked rows are harmless. Swallowing the error keeps the job green
     # when only test data (not test assertions) is dirty.
@@ -266,57 +399,55 @@ def seeded_matrix_env():
         print(f"[matrix-teardown] non-fatal cleanup error: {exc!r}")
 
 
-def _walk_dependants(dep):
-    yield dep
-    for child in dep.dependencies:
-        yield from _walk_dependants(child)
+def _tracked_check(check, permission, results):
+    @wraps(check)
+    def tracked(*args, **kwargs):
+        try:
+            role = check(*args, **kwargs)
+        except HTTPException as exc:
+            if exc.status_code == 403:
+                results.append((permission, None))
+            raise
+        results.append((permission, role))
+        return role
+    return tracked
+
+
+@pytest.mark.parametrize("error", [RuntimeError("broken check"), HTTPException(500)])
+def test_permission_errors_are_not_recorded_as_completed_decisions(error):
+    results = []
+
+    def broken_check():
+        raise error
+
+    with pytest.raises(type(error)):
+        _tracked_check(broken_check, "example.edit", results)()
+    assert results == []
 
 
 @pytest.fixture
 def matrix_client(seeded_matrix_env, monkeypatch, request):
-    """TestClient wired for real RBAC:
-      * `_clerk_enabled` → True (else require_permission short-circuits)
-      * `get_user_id` / `get_workspace_id` → seeded rows
-      * every noop closure planted by conftest is swapped back to the real
-        _ORIG_REQUIRE_PERMISSION for the route's declared permission."""
+    """Keep identity fixtures local while exercising real DB-backed RBAC."""
     from tests.conftest import _ORIG_REQUIRE_PERMISSION
 
     monkeypatch.setattr(_auth_mod, "_clerk_enabled", lambda: True)
 
-    # Build {name: permission} from AST, then rewire each route's dependant
-    # whose `.name` matches. We do NOT rely on the closure tag surviving
-    # import-order weirdness.
-    swapped: list[tuple[object, object]] = []
-    for r in app.routes:
-        name = getattr(r, "name", None)
-        perm = ENDPOINT_PERMISSIONS.get(name) if name else None
-        if not perm:
-            continue
-        dep = getattr(r, "dependant", None)
-        if dep is None:
-            continue
-        for d in _walk_dependants(dep):
-            call = getattr(d, "call", None)
-            # Recognise both the tagged noop and any callable named _check
-            # returned by _permissive_permission — either way, replace with
-            # a real check bound to the AST-declared permission.
-            if call is None:
-                continue
-            if getattr(call, "__conduct_permission__", None) or getattr(call, "__name__", "") == "_check":
-                swapped.append((d, d.call))
-                d.call = _ORIG_REQUIRE_PERMISSION(perm)
-                break
+    results = []
+    for route in _api_routes():
+        for call, permission in _permission_checks(route):
+            real_check = _ORIG_REQUIRE_PERMISSION(permission)
+            monkeypatch.setitem(
+                app.dependency_overrides, call,
+                _tracked_check(real_check, permission, results),
+            )
 
     role = request.node.callspec.params["role"]
-    app.dependency_overrides[get_user_id] = lambda: USER_IDS[role]
-    app.dependency_overrides[get_workspace_id] = lambda: str(TEST_WS_ID)
-
-    yield TestClient(app, raise_server_exceptions=False)
-
-    for target, orig in swapped:
-        target.call = orig
-    app.dependency_overrides.pop(get_user_id, None)
-    app.dependency_overrides.pop(get_workspace_id, None)
+    monkeypatch.setitem(app.dependency_overrides, get_user_id, lambda: USER_IDS[role])
+    monkeypatch.setitem(app.dependency_overrides, get_workspace_id, lambda: str(TEST_WS_ID))
+    client = TestClient(app, raise_server_exceptions=False)
+    client.permission_results = results
+    yield client
+    client.close()
 
 
 def _probe(client: TestClient, method: str, url: str):
@@ -359,15 +490,25 @@ def _is_non_auth_403(resp) -> bool:
 @pytest.mark.parametrize("role", ROLES)
 @pytest.mark.parametrize(
     "route",
-    ROUTES,
+    ROUTES or [None],
     ids=[f'{r["method"]} {r["path"]}' for r in ROUTES] or ["no-routes"],
 )
 def test_rbac_matrix(matrix_client, role, route):
+    assert route is not None, "Endpoint matrix discovered zero permission-gated routes"
     role_perms = _seeded_role_permissions()[role]
-    should_pass = route["permission"] in role_perms
+    should_pass = route["permissions"] <= role_perms
     key = (route["method"], route["path"])
 
     resp = _probe(matrix_client, route["method"], route["url"])
+    checked = set(matrix_client.permission_results)
+    if should_pass:
+        assert {(p, role) for p in route["permissions"]} <= checked, (
+            "Request did not complete its real permission checks"
+        )
+    else:
+        assert any((p, None) in checked for p in route["permissions"] - role_perms), (
+            "Request was rejected without exercising its real permission denial"
+        )
 
     if should_pass:
         # Authorised: must NOT be a permission 403. Three ways a 403 is OK:
@@ -378,20 +519,12 @@ def test_rbac_matrix(matrix_client, role, route):
         if resp.status_code == 403 and (key in BUSINESS_403_ALLOWLIST or _is_non_auth_403(resp)):
             return
         assert resp.status_code != 403, (
-            f'{role} has {route["permission"]} but got 403 on '
+            f'{role} has {route["permissions"]} but got 403 on '
             f'{route["method"]} {route["path"]} — body: {resp.text[:200]}'
         )
     else:
-        # Unauthorised: acceptable rejections are:
-        #   * 4xx (auth or body-validate said no)
-        #   * 5xx whose body is an internal-error marker — the endpoint
-        #     crashed post-auth, still not a data-leak. Separate endpoint
-        #     bug to fix; not this test's job.
-        # 2xx from an unauthorised role is the real failure mode this test guards.
-        acceptable = 400 <= resp.status_code < 500 or (
-            resp.status_code >= 500 and _body_has_non_auth_marker(resp)
-        )
-        assert acceptable, (
-            f'{role} lacks {route["permission"]} but got {resp.status_code} on '
+        # A completed real denial must reach the client as a permission 403.
+        assert resp.status_code == 403, (
+            f'{role} lacks {route["permissions"]} but got {resp.status_code} on '
             f'{route["method"]} {route["path"]} — body: {resp.text[:200]}'
         )
