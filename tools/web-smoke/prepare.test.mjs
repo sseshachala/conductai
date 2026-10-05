@@ -14,6 +14,7 @@ test("derives the required API issuer when the optional frontend secret is absen
   const result = prepareEnvironment(fixture())
   assert.equal(result.CLERK_FRONTEND_API, frontend)
   assert.equal(result.AUTH_MODE, "clerk")
+  assert.equal(result.ENVIRONMENT, "local")
   assert.equal(result.PLAYWRIGHT_SERVER_MODE, "production")
   assert.equal(result.NEXT_PUBLIC_API_URL, "http://127.0.0.1:8000")
   assert.ok(!JSON.stringify(result).includes("fixture-password"))

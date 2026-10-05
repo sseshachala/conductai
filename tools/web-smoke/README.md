@@ -81,6 +81,9 @@ Recurring causes:
 - Narratr's optional marketing widget returned 403 on localhost.
 - On-demand compilation in `next dev` contributed to navigation timeouts.
   CI now builds once and tests `next start`.
+- Production CSP omitted the configured HTTP loopback API and upgraded its
+  requests to HTTPS. Explicit local environments now allow only the configured
+  loopback API; HTTPS upgrading remains enabled outside local HTTP pages.
 
 Historical console warnings and other intermittent failures remain subject to
 the full current-branch run; a triage count alone is not a passing result.

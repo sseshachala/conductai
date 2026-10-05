@@ -19,7 +19,7 @@ test.beforeEach(async ({ page }) => {
 for (const width of [320, 390, 768, 1440]) {
   test(`shell stays within ${width}px with a wide activity table`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 })
-    await page.goto("/agent-identity?tab=agent_sessions")
+    await page.goto("/agent-identity?tab=agent_sessions", { waitUntil: "domcontentloaded" })
     await expect(page.getByRole("link", { name: "session-" })).toBeVisible()
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
     if (width < 768) {
@@ -33,7 +33,7 @@ for (const width of [320, 390, 768, 1440]) {
 
 test("mobile navigation opens as an overlay and restores keyboard access", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
-  await page.goto("/agent-identity?tab=agent_sessions")
+  await page.goto("/agent-identity?tab=agent_sessions", { waitUntil: "domcontentloaded" })
   await page.getByRole("button", { name: "Expand sidebar" }).click()
   const navigation = page.getByRole("dialog", { name: "Main navigation" })
   await expect(navigation).toBeVisible()

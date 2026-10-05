@@ -2,6 +2,7 @@ import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server"
 import { type NextRequest, NextResponse } from "next/server"
 import { clerkDevelopmentOrigin } from "./lib/clerk-development-origin"
 import { consoleAppOrigin, deploymentConfig } from "./lib/auth/runtime"
+import { apiSecurityOrigin, isLocalHttpOrigin } from "./lib/api-security-origin"
 
 const isPublicRoute = createRouteMatcher(["/", "/sign-in(.*)", "/sign-up(.*)", "/compare", "/privacy", "/terms", "/benchmark(.*)", "/eval(.*)", "/registry", "/playbooks", "/token-guardrails", "/docs(.*)", "/accept-invite(.*)", "/sdd(.*)", "/tools(.*)", "/about(.*)", "/blog(.*)", "/share(.*)", "/solutions(.*)", "/partners(.*)", "/guard", "/evidence", "/mcp-gateway", "/security", "/deployment", "/pricing", "/open-source", "/router", "/team-os", "/frameworks(.*)", "/discovery", "/book-demo", "/use-cases", "/what-is-conduct-ai", "/api/mcp/guard/oauth/(.*)", "/.well-known/(.*)",])
 
@@ -25,7 +26,7 @@ function _isAppRoute(pathname: string): boolean {
   return APP_ROUTE_PREFIXES.some((p) => pathname === p || pathname.startsWith(p + "/"))
 }
 
-function _cspFor(pathname: string, enforce: boolean): string {
+function _cspFor(pathname: string, upgradeInsecure: boolean): string {
   // Common building blocks. Clerk lives on cdn.clerk.com / *.clerk.accounts.dev.
   // challenges.cloudflare.com is Clerk's bot-detection provider (Cloudflare
   // Turnstile) — Clerk 5 uses it by default for suspicious sign-ups. Must
@@ -43,7 +44,7 @@ function _cspFor(pathname: string, enforce: boolean): string {
   // wildcard covered it. Silent break: user avatars fail + Clerk's SDK
   // logs repeated CSP violations, which correlates with a session-token
   // stall we saw around the same time.
-  const apiOrigin = runtime.apiUrl.startsWith("https://") ? new URL(runtime.apiUrl).origin : ""
+  const apiOrigin = apiSecurityOrigin(runtime.apiUrl, process.env.ENVIRONMENT)
   const _connect = `'self' ${apiOrigin} https://api.conductai.ai https://clerk.conductai.ai https://clerk.com https://*.clerk.accounts.dev https://img.clerk.com wss:`
   const _img = "'self' data: https:"
   const _font = "'self' https://fonts.gstatic.com data:"
@@ -66,7 +67,7 @@ function _cspFor(pathname: string, enforce: boolean): string {
     "form-action 'self'",
     "base-uri 'self'",
     "object-src 'none'",
-    ...(enforce ? ["upgrade-insecure-requests"] : []),
+    ...(upgradeInsecure ? ["upgrade-insecure-requests"] : []),
   ]
 
   if (_isAppRoute(pathname)) {
@@ -88,7 +89,7 @@ function _cspFor(pathname: string, enforce: boolean): string {
   ].join("; ")
 }
 
-function _applySecurityHeaders(res: NextResponse, pathname: string): NextResponse {
+function _applySecurityHeaders(res: NextResponse, req: NextRequest): NextResponse {
   // Enforce CSP only in production. Local dev + preview deploys often have
   // different API URLs (localhost:8000, api-git-branch.vercel.app, ...) that
   // aren't easily enumerated in a static header — we ship Report-Only there
@@ -98,7 +99,8 @@ function _applySecurityHeaders(res: NextResponse, pathname: string): NextRespons
   const _cspHeader = enforce
     ? "Content-Security-Policy"
     : "Content-Security-Policy-Report-Only"
-  res.headers.set(_cspHeader, _cspFor(pathname, enforce))
+  const upgradeInsecure = enforce && !isLocalHttpOrigin(req.url, process.env.ENVIRONMENT)
+  res.headers.set(_cspHeader, _cspFor(req.nextUrl.pathname, upgradeInsecure))
   res.headers.set("X-Content-Type-Options", "nosniff")
   res.headers.set("Referrer-Policy", "strict-origin-when-cross-origin")
   res.headers.set("X-Frame-Options", "DENY")
@@ -220,7 +222,7 @@ export default async function middleware(req: NextRequest, evt: unknown) {
   // Clerk's middleware returns undefined for pass-through; NextResponse
   // constructor gives us a fresh headers-writable response.
   const _res = _clerkResp instanceof NextResponse ? _clerkResp : NextResponse.next()
-  return _applySecurityHeaders(_res, req.nextUrl.pathname)
+  return _applySecurityHeaders(_res, req)
 }
 
 export const config = {

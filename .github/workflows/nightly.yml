@@ -222,5 +222,6 @@ jobs:
         with:
           name: auth-setup-diagnostics-${{ github.run_id }}
           path: apps/web/.auth/*.png
+          include-hidden-files: true
           if-no-files-found: ignore
           retention-days: 14

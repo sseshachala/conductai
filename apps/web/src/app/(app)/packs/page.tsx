@@ -425,14 +425,16 @@ function RegistryContent({ getToken }: { getToken: (() => Promise<string | null>
       // avoid one guaranteed 404 per playbook on a fresh deployment.
       if (loadedPlaybooks.length > 0) {
         const scoreHeaders = await authHeaders()
-        const scoreResponse = await fetch(`${apiUrl()}/playbooks/submissions`, { headers: scoreHeaders })
         const scoreMap = new Map<string, PlaybookScore>()
-        if (scoreResponse.ok) {
-          const submissions: PlaybookScore[] = await scoreResponse.json()
-          for (const score of submissions) {
-            if (!scoreMap.has(score.slug)) scoreMap.set(score.slug, score)
+        try {
+          const scoreResponse = await fetch(`${apiUrl()}/playbooks/submissions`, { headers: scoreHeaders })
+          if (scoreResponse.ok) {
+            const submissions: PlaybookScore[] = await scoreResponse.json()
+            for (const score of submissions) {
+              if (!scoreMap.has(score.slug)) scoreMap.set(score.slug, score)
+            }
           }
-        }
+        } catch { /* Optional scores must not keep the catalog loading. */ }
         setScores(scoreMap)
       }
 

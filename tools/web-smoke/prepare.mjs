@@ -19,7 +19,7 @@ export function prepareEnvironment(env) {
   }
   return {
     AUTH_MODE: "clerk",
-    NEXT_PUBLIC_AUTH_MODE: "clerk",
+    ENVIRONMENT: "local",
     CLERK_FRONTEND_API: key.frontendApi,
     PLAYWRIGHT_SERVER_MODE: "production",
     NEXT_PUBLIC_API_URL: new URL("//127.0.0.1:8000", "http://localhost").origin,
