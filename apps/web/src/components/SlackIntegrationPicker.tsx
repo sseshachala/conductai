@@ -62,8 +62,8 @@ export function SlackIntegrationPicker({ wsId, integrationId, channel, isAdmin, 
     return (
       <div style={{ marginTop: 12, padding: "10px 14px", borderRadius: 8, background: "var(--warn-bg, #fffbeb)", border: "1px solid var(--warn-bd, #fde68a)", fontSize: 12, color: "var(--warn, #92400e)" }}>
         No Slack integration found.{" "}
-        <a href="/settings/credentials" style={{ color: "inherit", fontWeight: 600, textDecoration: "underline" }}>
-          Add in Settings → Credentials →
+        <a href="/settings?tab=credentials" style={{ color: "inherit", fontWeight: 600, textDecoration: "underline" }}>
+          Add in Settings → Vault →
         </a>
       </div>
     )

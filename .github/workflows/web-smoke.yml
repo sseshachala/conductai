@@ -90,6 +90,10 @@ jobs:
           node --test tools/web-smoke/prepare.test.mjs
           node tools/web-smoke/prepare.mjs
 
+      - name: Validate internal links
+        run: npx vitest run src/lib/__tests__/internalLinks.test.ts
+        working-directory: apps/web
+
       - name: Migrate DB
         run: alembic upgrade head
         working-directory: apps/api
