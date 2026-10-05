@@ -421,22 +421,18 @@ function RegistryContent({ getToken }: { getToken: (() => Promise<string | null>
         setInstalledWorkflowId(ids)
       }
 
-      // Fetch quality scores, graceful if endpoint not yet available
+      // Submissions are newest-first. Unscored catalog entries have no row;
+      // avoid one guaranteed 404 per playbook on a fresh deployment.
       if (loadedPlaybooks.length > 0) {
         const scoreHeaders = await authHeaders()
-        const scoreResults = await Promise.allSettled(
-          loadedPlaybooks.map(p =>
-            fetch(`${apiUrl()}/playbooks/${p.slug}/score`, { headers: scoreHeaders })
-              .then(r => (r.ok ? r.json() as Promise<PlaybookScore> : null))
-              .catch(() => null)
-          )
-        )
+        const scoreResponse = await fetch(`${apiUrl()}/playbooks/submissions`, { headers: scoreHeaders })
         const scoreMap = new Map<string, PlaybookScore>()
-        scoreResults.forEach((result, idx) => {
-          if (result.status === "fulfilled" && result.value) {
-            scoreMap.set(loadedPlaybooks[idx].slug, result.value)
+        if (scoreResponse.ok) {
+          const submissions: PlaybookScore[] = await scoreResponse.json()
+          for (const score of submissions) {
+            if (!scoreMap.has(score.slug)) scoreMap.set(score.slug, score)
           }
-        })
+        }
         setScores(scoreMap)
       }
 

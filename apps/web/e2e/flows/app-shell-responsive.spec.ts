@@ -1,10 +1,12 @@
 import { test, expect } from "@playwright/test"
 
 test.beforeEach(async ({ page }) => {
-  await page.route("**/api/**", async route => {
-    const path = new URL(route.request().url()).pathname
+  const apiOrigin = new URL(process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000").origin
+  await page.route(url => url.origin === apiOrigin || url.pathname.startsWith("/api/"), async route => {
+    const path = new URL(route.request().url()).pathname.replace(/^\/api(?:\/backend)?(?=\/)/, "")
     let json: unknown = []
-    if (path === "/api/projects") json = [{ id: "11111111-1111-4111-8111-111111111111", name: "Preview workspace", owner_id: "preview", is_approved: true }]
+    if (path === "/projects") json = [{ id: "11111111-1111-4111-8111-111111111111", name: "Preview workspace", owner_id: "preview", is_approved: true }]
+    else if (path === "/me/setup-status") json = { setup_completed: true }
     else if (path.endsWith("/my-role")) json = { role: "admin" }
     else if (path.endsWith("/installed")) json = { installed: true }
     else if (path.endsWith("/permissions")) json = { role: "admin", permissions: [] }

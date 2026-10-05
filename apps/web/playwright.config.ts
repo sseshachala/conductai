@@ -16,6 +16,11 @@ const clerkPublishable = env[clerkKey] || ""
 const clerkSecret = env.CLERK_SECRET_KEY || ""
 const clerkEnabled = !!(clerkPublishable && clerkSecret)
 const adminState = clerkEnabled ? { storageState: ".auth/admin.json" } : {}
+const productionServer = env.PLAYWRIGHT_SERVER_MODE === "production"
+
+if (env.CI && !clerkEnabled) {
+  throw new Error("CI web smoke requires Clerk sandbox credentials and all four role accounts")
+}
 
 // Use localhost (not 127.0.0.1) so cookies from Clerk's *.accounts.dev
 // origin play nicely with the app origin during sign-in. Clerk Development
@@ -48,7 +53,7 @@ export default defineConfig({
   // One retry preserves flake evidence without tripling every shared failure.
   retries: env.CI ? 1 : 0,
   workers: env.CI ? 2 : undefined,
-  reporter: env.CI ? [["github"], ["html", { open: "never" }]] : "list",
+  reporter: env.CI ? [["github"], ["html", { open: "never" }], ["json", { outputFile: "playwright-report/results.json" }]] : "list",
   ...(clerkEnabled ? { globalSetup: require.resolve("./e2e/auth-setup.ts") } : {}),
   use: {
     baseURL,
@@ -95,7 +100,7 @@ export default defineConfig({
     ...roleProjects,
   ],
   webServer: {
-    command: "npm run dev",
+    command: productionServer ? "npm run start" : "npm run dev",
     url: baseURL,
     reuseExistingServer: !env.CI,
     timeout: 120_000,

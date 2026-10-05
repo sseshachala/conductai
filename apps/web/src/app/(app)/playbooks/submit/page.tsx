@@ -78,9 +78,9 @@ export default function SubmitPlaybookPage() {
   // Wait for Clerk to initialise before rendering auth-dependent UI
   if (!isLoaded) {
     return (
-      <div className="min-h-screen bg-stone-50 flex items-center justify-center">
+      <main className="min-h-screen bg-stone-50 flex items-center justify-center">
         <div className="w-5 h-5 border-2 border-stone-300 border-t-stone-600 rounded-full animate-spin" />
-      </div>
+      </main>
     )
   }
 
@@ -139,7 +139,7 @@ export default function SubmitPlaybookPage() {
 
   if (result?.ok) {
     return (
-      <div className="min-h-screen bg-stone-50 flex items-center justify-center px-4">
+      <main className="min-h-screen bg-stone-50 flex items-center justify-center px-4">
         <div className="bg-white rounded-2xl border border-stone-200 shadow-sm p-10 max-w-md w-full text-center space-y-4">
           <div className="text-3xl">&#10003;</div>
           <h1 className="text-lg font-semibold text-stone-900">Submission received</h1>
@@ -156,7 +156,7 @@ export default function SubmitPlaybookPage() {
             </Link>
           </div>
         </div>
-      </div>
+      </main>
     )
   }
 
@@ -169,7 +169,7 @@ export default function SubmitPlaybookPage() {
       : "Submit playbook"
 
   return (
-    <div className="min-h-screen bg-stone-50 px-4 py-12">
+    <main className="min-h-screen bg-stone-50 px-4 py-12">
       <div className="max-w-2xl mx-auto space-y-6">
         {/* Header */}
         <div>
@@ -246,6 +246,6 @@ export default function SubmitPlaybookPage() {
           </div>
         </form>
       </div>
-    </div>
+    </main>
   )
 }

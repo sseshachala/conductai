@@ -164,6 +164,12 @@ jobs:
           cache-dependency-path: package-lock.json
       - name: Install API deps
         run: pip install -r apps/api/requirements.txt
+      - name: Install web deps
+        run: npm ci
+      - name: Validate Clerk sandbox configuration
+        run: |
+          node --test tools/web-smoke/prepare.test.mjs
+          node tools/web-smoke/prepare.mjs
       - name: Migrate DB
         run: alembic upgrade head
         working-directory: apps/api
@@ -179,14 +185,8 @@ jobs:
           done
           curl -sf 127.0.0.1:8000/health
         working-directory: apps/api
-      - name: Point web at local API
-        # Web fetches /projects etc via NEXT_PUBLIC_API_URL. Without it, requests
-        # hit :3000 same-origin and every page renders "Failed to fetch".
-        # printf dodges Guard's http:// literal rule.
-        run: echo "NEXT_PUBLIC_API_URL=$(printf 'http:%s' '//127.0.0.1:8000')" >> "$GITHUB_ENV"
-      - name: Install web deps
-        # apps/web is an npm workspace — install at repo root.
-        run: npm ci
+      - name: Build web
+        run: npm run build --workspace apps/web
       - name: Install Playwright browsers
         # WebKit is disabled in playwright.config.ts; install only active engines.
         run: npx playwright install --with-deps chromium firefox
@@ -212,5 +212,15 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: playwright-traces-${{ github.run_id }}
-          path: apps/web/test-results
+          path: |
+            apps/web/test-results
+            apps/web/playwright-report
+          retention-days: 14
+      - name: Upload auth-setup diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: auth-setup-diagnostics-${{ github.run_id }}
+          path: apps/web/.auth/*.png
+          if-no-files-found: ignore
           retention-days: 14

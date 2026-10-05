@@ -8,16 +8,16 @@ on:
       - 'apps/web/**'
       - 'apps/api/**'
       - '.github/workflows/web-smoke.yml'
+      - 'tools/web-smoke/**'
 
 # Phase 3 harness — every-page Playwright smoke + golden flows against a
-# real FastAPI + Postgres stack. Golden flows run as backend dev-mode admin
-# (Clerk disabled). Per-role variants land once a Clerk sandbox is
-# provisioned and CLERK_TEST_SECRET_KEY is added to GH secrets.
+# real FastAPI + Postgres stack and production web build. All four roles
+# authenticate with the Clerk sandbox; missing credentials fail setup.
 
 jobs:
   smoke:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     services:
       postgres:
         image: pgvector/pgvector:pg16
@@ -82,6 +82,14 @@ jobs:
       - name: Install API deps
         run: pip install -r apps/api/requirements.txt
 
+      - name: Install web deps
+        run: npm ci
+
+      - name: Validate Clerk sandbox configuration
+        run: |
+          node --test tools/web-smoke/prepare.test.mjs
+          node tools/web-smoke/prepare.mjs
+
       - name: Migrate DB
         run: alembic upgrade head
         working-directory: apps/api
@@ -102,16 +110,8 @@ jobs:
           curl -sf 127.0.0.1:8000/health
         working-directory: apps/api
 
-      - name: Point web at local API
-        # Web fetches /projects etc via process.env.NEXT_PUBLIC_API_URL. Empty
-        # value routes to same-origin (:3000) → "Failed to fetch" on every page.
-        # printf dodges Guard's http:// literal rule in committed YAML.
-        run: echo "NEXT_PUBLIC_API_URL=$(printf 'http:%s' '//127.0.0.1:8000')" >> "$GITHUB_ENV"
-
-      - name: Install web deps
-        # Install at repo root — apps/web is declared as an npm workspace,
-        # so the lock file lives here, not in apps/web/.
-        run: npm ci
+      - name: Build web
+        run: npm run build --workspace apps/web
 
       - name: Install Playwright browsers
         # Chromium covers the page sweep and role matrix; Firefox covers the
@@ -132,7 +132,9 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: playwright-traces
-          path: apps/web/test-results
+          path: |
+            apps/web/test-results
+            apps/web/playwright-report
           retention-days: 7
 
       - name: Upload auth-setup diagnostics on failure
