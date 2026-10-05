@@ -120,6 +120,16 @@ services:
         value: "true"
       - key: GUARD_PROJECTION_RETENTION_INTERVAL_SECONDS
         value: "3600"
+      # Archive credentials/keys, endpoint, bucket and compliance period are
+      # operator-supplied on API and worker (or a shared environment group).
+      - key: GUARD_AUDIT_RETENTION_ENABLED
+        value: "false"
+      - key: GUARD_AUDIT_RETENTION_DRY_RUN
+        value: "true"
+      - key: GUARD_AUDIT_RETENTION_INTERVAL_SECONDS
+        value: "3600"
+      - key: GUARD_AUDIT_RETENTION_BATCH_SIZE
+        value: "100"
       # Admission caps (PRs #2063 / #2064 of #2057). Declared so
       # delegator-gateway inherits — delegator-api itself keeps
       # ADMISSION_ENABLED unset, so these values are dormant on api.
@@ -282,6 +292,14 @@ services:
         value: "100"
       - key: GUARD_PROJECTION_PRUNE_BATCH_SIZE
         value: "500"
+      - key: GUARD_AUDIT_RETENTION_ENABLED
+        value: "false"
+      - key: GUARD_AUDIT_RETENTION_DRY_RUN
+        value: "true"
+      - key: GUARD_AUDIT_RETENTION_INTERVAL_SECONDS
+        value: "3600"
+      - key: GUARD_AUDIT_RETENTION_BATCH_SIZE
+        value: "100"
       - key: API_BASE_URL
         fromService:
           type: web

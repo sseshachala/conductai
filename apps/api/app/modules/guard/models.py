@@ -265,6 +265,10 @@ class GuardAuditEvent(Base):
     finalized_at = Column(DateTime(timezone=True), nullable=True)
     lease_expires_at = Column(DateTime(timezone=True), nullable=True)
 
+    # Full payload is in a verified archive; retain receipt/accounting facts and
+    # original chain fields online so existing references and rollups survive.
+    archive_segment_id = Column(UUID(as_uuid=True), nullable=True)
+
     __table_args__ = (
         Index("ix_guard_audit_events_source", "workspace_id", "source", "ts"),
         Index("ix_guard_audit_events_route", "route"),
@@ -292,7 +296,45 @@ class GuardAuditEvent(Base):
         ),
         Index("ix_guard_audit_events_ws_ts", "workspace_id", sa.text("ts DESC")),
         Index("ix_guard_audit_events_agent_identity_id", "agent_identity_id"),
+        Index("ix_guard_audit_events_unarchived", "workspace_id", "ts", "id",
+              postgresql_where=sa.text("archive_segment_id IS NULL")),
+        sa.ForeignKeyConstraint(
+            ["archive_segment_id", "workspace_id"],
+            ["guard_audit_archive_segments.id", "guard_audit_archive_segments.workspace_id"],
+            name="fk_guard_audit_event_archive_workspace", ondelete="RESTRICT",
+        ),
     )
+
+
+class GuardAuditArchiveSegment(Base):
+    __tablename__ = "guard_audit_archive_segments"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id = Column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False)
+    ordinal = Column(BigInteger, nullable=False)
+    manifest = Column(JSONB, nullable=False)
+    manifest_hash = Column(String(64), nullable=False)
+    signature = Column(String(64), nullable=False)
+    archived_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "ordinal", name="uq_guard_archive_ordinal"),
+        UniqueConstraint("workspace_id", "manifest_hash", name="uq_guard_archive_manifest"),
+        UniqueConstraint("id", "workspace_id", name="uq_guard_archive_id_workspace"),
+        CheckConstraint("ordinal > 0", name="ck_guard_archive_ordinal"),
+    )
+
+
+class GuardAuditRetentionHold(Base):
+    __tablename__ = "guard_audit_retention_holds"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id = Column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
+    starts_at = Column(DateTime(timezone=True), nullable=False)
+    ends_at = Column(DateTime(timezone=True), nullable=True)
+    reason = Column(String(500), nullable=False)
+    active = Column(Boolean, nullable=False, default=True, server_default=sa.true())
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    __table_args__ = (CheckConstraint("ends_at IS NULL OR ends_at >= starts_at", name="ck_guard_hold_range"),)
 
 
 class GuardSavings(Base):

@@ -16,6 +16,7 @@ from app.modules.guard.routers import members as guard_members
 from app.modules.guard.routers import policies as guard_policies
 from app.modules.guard.routers import durable_audit as guard_durable_audit
 from app.modules.guard.routers import events as guard_events
+from app.modules.guard.routers import audit_retention as guard_audit_retention
 from app.modules.guard.routers import spend as guard_spend
 from app.modules.guard.routers import savings as guard_savings
 from app.modules.guard.routers import rate_limits as guard_rate_limits
@@ -256,6 +257,7 @@ app.include_router(guard_config.join_router)
 app.include_router(guard_members.router)
 app.include_router(guard_policies.router)
 app.include_router(guard_events.router)
+app.include_router(guard_audit_retention.router)
 app.include_router(guard_durable_audit.router)
 app.include_router(guard_spend.router)
 app.include_router(guard_savings.router)

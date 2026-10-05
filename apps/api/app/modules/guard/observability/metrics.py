@@ -164,6 +164,18 @@ GUARD_PROJECTION_OLDEST_AGE = Gauge(
     "Age of the oldest dispatchable projection intent.",
 )
 
+GUARD_AUDIT_RETENTION_RUNS = Counter(
+    "guard_audit_retention_runs_total", "Audit archival passes by aggregate outcome and mode.",
+    ["outcome", "dry_run"],
+)
+GUARD_AUDIT_RETENTION_EVENTS = Counter(
+    "guard_audit_retention_events_total", "Audit archive candidates/compacted payloads by outcome and mode.",
+    ["outcome", "dry_run"],
+)
+GUARD_AUDIT_RETENTION_LAST_SUCCESS = Gauge(
+    "guard_audit_retention_last_success_timestamp_seconds", "Last successful audit retention cycle.",
+)
+
 GUARD_PROJECTION_RETENTION_RUNS = Counter(
     "guard_projection_retention_runs_total",
     "Projection retention daemon passes by aggregate outcome and mode.",

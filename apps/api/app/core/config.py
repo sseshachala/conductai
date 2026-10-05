@@ -1,4 +1,4 @@
-from pydantic import Field
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings
 
 from app.core.auth_deployment import AuthMode, validate_auth_mode
@@ -198,6 +198,27 @@ class Settings(BaseSettings):
     # inventories have been migrated.
     guard_projection_prune_after_days: int = Field(default=7, gt=0, le=3650)
     guard_projection_prune_batch_size: int = Field(default=500, gt=0, le=5000)
+
+    # Raw payload retention is independent of search retention. No compliance
+    # period is assumed; operators must configure storage and inspect dry-run.
+    guard_audit_retention_enabled: bool = False
+    guard_audit_retention_dry_run: bool = True
+    guard_audit_retention_days: int | None = Field(default=None, gt=0, le=36500)
+    guard_audit_retention_interval_seconds: int = Field(default=3600, ge=60, le=86400)
+    guard_audit_retention_batch_size: int = Field(default=100, gt=0, le=1000)
+    guard_audit_archive_endpoint: str | None = None
+    guard_audit_archive_bucket: str = ""
+    guard_audit_archive_region: str = "us-east-1"
+    guard_audit_archive_prefix: str = "conduct/audit"
+    guard_audit_archive_access_key_id: SecretStr | None = None
+    guard_audit_archive_secret_access_key: SecretStr | None = None
+    guard_audit_archive_session_token: SecretStr | None = None
+    guard_audit_archive_signing_key: SecretStr | None = None
+    guard_audit_archive_encryption_key: SecretStr | None = None
+    guard_audit_archive_ca_bundle: str | None = None
+    guard_audit_archive_path_style: bool = False
+    guard_audit_archive_timeout_seconds: int = Field(default=10, gt=0, le=60)
+    guard_audit_archive_max_bytes: int = Field(default=16_777_216, ge=1024, le=67_108_864)
 
     # #2155 — Streaming + tools with buffered-delta validation. When on,
     # ``stream=true`` combined with ``tools`` is accepted; the streaming

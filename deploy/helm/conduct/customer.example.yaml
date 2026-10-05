@@ -24,6 +24,11 @@ config:
     GUARD_PROJECTION_QUEUE_ENABLED: false
     GUARD_PROJECTION_RETENTION_CLEANUP_ENABLED: false
     GUARD_PROJECTION_RETENTION_DRY_RUN: true
+    GUARD_AUDIT_RETENTION_ENABLED: false
+    GUARD_AUDIT_RETENTION_DRY_RUN: true
+    # Add GUARD_AUDIT_RETENTION_DAYS and GUARD_AUDIT_ARCHIVE_BUCKET.
+    # For private S3 storage, add GUARD_AUDIT_ARCHIVE_ENDPOINT (HTTPS).
+    # Put archive credentials and signing/encryption keys in the backend Secret.
 bootstrap:
   workspaceId: bbbbbbbb-0000-4000-8000-000000000001
   workspaceName: My workspace

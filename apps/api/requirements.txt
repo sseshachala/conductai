@@ -11,6 +11,7 @@ openai==2.54.0
 litellm==1.99.0
 python-dotenv==1.2.3
 httpx==0.28.1
+boto3==1.43.78  # S3-compatible verified audit archives (#2331)
 brotli==1.2.0
 cryptography>=50.0.1,<51
 PyJWT[crypto]>=2.15.0
