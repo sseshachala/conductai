@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 import type { Edge, Node } from "@xyflow/react"
 import { searchNodes } from "../nodeSearch"
 import { reorderZ } from "../zOrder"
@@ -81,5 +81,30 @@ describe("historyKey", () => {
 
   it("ignores selection and measured size", () => {
     expect(historyKey([{ ...base[0], selected: true, measured: { width: 10, height: 10 } }], [])).toBe(historyKey(base, []))
+  })
+})
+
+describe("useUndoHistory", () => {
+  it("undo inside the debounce window reverts the pending edit, not the one before it", async () => {
+    const { renderHook, act } = await import("@testing-library/react")
+    const { useUndoHistory } = await import("@/components/canvas/hooks/useUndoHistory")
+    vi.useFakeTimers()
+    const isFirstLoad = { current: true }
+    const setNodes = vi.fn()
+    const setEdges = vi.fn()
+    const at = (x: number) => [node("a", {}, { position: { x, y: 0 } })]
+    const { result, rerender } = renderHook(
+      ({ nodes }) => useUndoHistory(nodes, [], setNodes, setEdges, { disabled: false, isFirstLoad }),
+      { initialProps: { nodes: at(0) } },
+    )
+    isFirstLoad.current = false
+    rerender({ nodes: at(100) })
+    act(() => { vi.advanceTimersByTime(500) }) // committed: x=100
+    rerender({ nodes: at(200) })               // pending: x=200
+    act(() => { result.current.undo() })
+    expect(setNodes).toHaveBeenLastCalledWith(at(100))
+    act(() => { vi.advanceTimersByTime(500) }) // stale timer must not resurrect x=200
+    expect(result.current.canRedo).toBe(true)
+    vi.useRealTimers()
   })
 })

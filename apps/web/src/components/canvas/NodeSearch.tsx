@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import type { Node } from "@xyflow/react"
 import { searchNodes } from "@/lib/canvas/nodeSearch"
 
@@ -15,6 +15,12 @@ export default function NodeSearch({ nodes, onSelect, onClose }: {
   const results = useMemo(() => searchNodes(nodes, query), [nodes, query])
   const activeIdx = Math.min(active, Math.max(results.length - 1, 0))
 
+  // Return focus to whatever opened the palette (toolbar button or canvas).
+  useEffect(() => {
+    const opener = document.activeElement as HTMLElement | null
+    return () => opener?.focus?.()
+  }, [])
+
   const choose = (node: Node | undefined) => {
     if (!node) return
     onSelect(node.id)
@@ -26,6 +32,8 @@ export default function NodeSearch({ nodes, onSelect, onClose }: {
     else if (e.key === "ArrowUp") { e.preventDefault(); setActive((activeIdx - 1 + results.length) % Math.max(results.length, 1)) }
     else if (e.key === "Enter") { e.preventDefault(); choose(results[activeIdx]) }
     else if (e.key === "Escape") { e.preventDefault(); onClose() }
+    // The input is the dialog's only focusable element — keep focus inside (aria-modal).
+    else if (e.key === "Tab") { e.preventDefault() }
   }
 
   return (

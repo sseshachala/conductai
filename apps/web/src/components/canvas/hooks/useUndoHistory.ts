@@ -30,6 +30,30 @@ export function useUndoHistory(
   const [canUndo, setCanUndo] = useState(false)
   const [canRedo, setCanRedo] = useState(false)
 
+  const latestRef = useRef<Snapshot>({ nodes, edges })
+  latestRef.current = { nodes, edges }
+
+  const commit = useCallback(({ nodes, edges }: Snapshot) => {
+    const prev = historyRef.current[historyIdxRef.current]
+    if (prev && historyKey(nodes, edges) === historyKey(prev.nodes, prev.edges)) return
+    // Truncate redo branch
+    const trimmed = historyRef.current.slice(0, historyIdxRef.current + 1)
+    trimmed.push({ nodes: [...nodes], edges: [...edges] })
+    if (trimmed.length > 50) trimmed.shift()
+    historyRef.current = trimmed
+    historyIdxRef.current = trimmed.length - 1
+    setCanUndo(historyIdxRef.current > 0)
+    setCanRedo(false)
+  }, [])
+
+  /** Commit an edit still inside the debounce window, so undo/redo act on it. */
+  const flushPending = useCallback(() => {
+    if (!historyTimerRef.current) return
+    clearTimeout(historyTimerRef.current)
+    historyTimerRef.current = null
+    commit(latestRef.current)
+  }, [commit])
+
   // History snapshot — debounced 400ms so one drag / paste / layout = one entry
   useEffect(() => {
     if (disabled || skipHistoryRef.current) return
@@ -41,16 +65,8 @@ export function useUndoHistory(
     }
     if (historyTimerRef.current) clearTimeout(historyTimerRef.current)
     historyTimerRef.current = setTimeout(() => {
-      const prev = historyRef.current[historyIdxRef.current]
-      if (prev && historyKey(nodes, edges) === historyKey(prev.nodes, prev.edges)) return
-      // Truncate redo branch
-      const trimmed = historyRef.current.slice(0, historyIdxRef.current + 1)
-      trimmed.push({ nodes: [...nodes], edges: [...edges] })
-      if (trimmed.length > 50) trimmed.shift()
-      historyRef.current = trimmed
-      historyIdxRef.current = trimmed.length - 1
-      setCanUndo(historyIdxRef.current > 0)
-      setCanRedo(false)
+      historyTimerRef.current = null
+      commit({ nodes, edges })
     }, 400)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nodes, edges])
@@ -67,12 +83,14 @@ export function useUndoHistory(
   }, [setNodes, setEdges])
 
   const undo = useCallback(() => {
+    flushPending()
     if (historyIdxRef.current > 0) restore(historyIdxRef.current - 1)
-  }, [restore])
+  }, [flushPending, restore])
 
   const redo = useCallback(() => {
+    flushPending()
     if (historyIdxRef.current < historyRef.current.length - 1) restore(historyIdxRef.current + 1)
-  }, [restore])
+  }, [flushPending, restore])
 
   return { undo, redo, canUndo, canRedo }
 }

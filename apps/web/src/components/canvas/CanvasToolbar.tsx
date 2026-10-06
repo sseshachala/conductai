@@ -39,8 +39,8 @@ export default function CanvasToolbar({ focusMode, onOrganize, onToggleFocus, mi
     },
     { title: minimapOpen ? "Hide minimap" : "Show minimap", onClick: onToggleMinimap, active: minimapOpen, icon: svg(<><rect x="3" y="3" width="18" height="18" rx="2" /><rect x="12" y="12" width="6" height="6" /></>) },
     ...(canReorder ? [
-      { title: "Bring to front (⌘⇧] / Ctrl+Shift+])", onClick: () => onZOrder("front"), icon: svg(<><rect x="8" y="8" width="13" height="13" rx="2" fill="currentColor" /><path d="M16 4H5a2 2 0 00-2 2v10" /></>) },
-      { title: "Send to back (⌘⇧[ / Ctrl+Shift+[)", onClick: () => onZOrder("back"), icon: svg(<><rect x="3" y="3" width="13" height="13" rx="2" fill="currentColor" /><path d="M20 8v11a2 2 0 01-2 2H8" /></>) },
+      { title: "Bring to front (Alt+Shift+])", onClick: () => onZOrder("front"), icon: svg(<><rect x="8" y="8" width="13" height="13" rx="2" fill="currentColor" /><path d="M16 4H5a2 2 0 00-2 2v10" /></>) },
+      { title: "Send to back (Alt+Shift+[)", onClick: () => onZOrder("back"), icon: svg(<><rect x="3" y="3" width="13" height="13" rx="2" fill="currentColor" /><path d="M20 8v11a2 2 0 01-2 2H8" /></>) },
     ] : []),
   ]
   return (

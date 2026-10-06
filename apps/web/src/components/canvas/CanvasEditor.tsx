@@ -271,6 +271,9 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
                 connectionRadius={40}
                 snapGrid={[16, 16]}
                 snapToGrid
+                // Explicit z-order (bring to front / send to back) is the source of truth;
+                // React Flow's +1000 selection boost would hide it while a node is selected.
+                elevateNodesOnSelect={false}
                 defaultEdgeOptions={{
                   type: "smoothstep",
                   markerEnd: { type: MarkerType.ArrowClosed, width: 10, height: 10, color: "#d6d3d1" },
