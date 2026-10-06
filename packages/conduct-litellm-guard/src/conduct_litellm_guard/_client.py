@@ -68,12 +68,46 @@ class GuardCheckClient:
             arguments["model"] = model
         if provider is not None:
             arguments["provider"] = provider
+        return await self._call(
+            "guard_check_prompt", arguments, session_id, federation_connection, subject_token
+        )
 
+    async def guard_check_action(
+        self,
+        *,
+        tool_name: str,
+        tool_input: dict[str, Any],
+        session_id: str | None = None,
+        federation_connection: str | None = None,
+        subject_token: str | None = None,
+    ) -> str:
+        """Call the ``guard_check`` tool (action gate) for an MCP tool call.
+
+        Same envelope as ``guard_check``. Used for LiteLLM ``pre_mcp_call``
+        so action-persona rules (tool name + argument patterns, approvals)
+        see the real tool, not a prompt-shaped rendering of it.
+        """
+        return await self._call(
+            "guard_check",
+            {"tool_name": tool_name, "tool_input": tool_input},
+            session_id,
+            federation_connection,
+            subject_token,
+        )
+
+    async def _call(
+        self,
+        name: str,
+        arguments: dict[str, Any],
+        session_id: str | None,
+        federation_connection: str | None,
+        subject_token: str | None,
+    ) -> str:
         payload = {
             "jsonrpc": "2.0",
             "id": str(uuid.uuid4()),
             "method": "tools/call",
-            "params": {"name": "guard_check_prompt", "arguments": arguments},
+            "params": {"name": name, "arguments": arguments},
         }
 
         headers = {

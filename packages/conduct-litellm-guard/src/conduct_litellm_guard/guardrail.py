@@ -7,6 +7,7 @@ audit chain, no extra proxy hop for the model call itself.
 """
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import logging
 import os
@@ -29,6 +30,8 @@ try:
     # ``.value`` on each entry — must be the ``GuardrailEventHooks`` enum,
     # not a bare string. Regression fix in 0.2.4 (BerriAI/litellm#38143).
     _PRE_CALL_HOOK: Any = _LiteLLMHooks.pre_call
+    # Older LiteLLM builds predate MCP guardrail modes; advertise only what exists.
+    _PRE_MCP_CALL_HOOK: Any = getattr(_LiteLLMHooks, "pre_mcp_call", None)
 except Exception:  # pragma: no cover — exercised via test double
     _LITELLM_AVAILABLE = False
 
@@ -42,6 +45,7 @@ except Exception:  # pragma: no cover — exercised via test double
             self.default_on = kwargs.get("default_on", True)
 
     _PRE_CALL_HOOK = "pre_call"
+    _PRE_MCP_CALL_HOOK = "pre_mcp_call"
 
 
 Verdict = Literal["allow", "advisory", "warning", "block", "approval", "unknown"]
@@ -182,7 +186,11 @@ class ConductGuard(CustomGuardrail):
     # LiteLLM's registry scan calls ``.value`` on each entry — must be
     # the ``GuardrailEventHooks`` enum member when LiteLLM is installed
     # (the only case anyone actually uses this class in prod).
-    SUPPORTED_EVENT_HOOKS: ClassVar[tuple[Any, ...]] = (_PRE_CALL_HOOK,)
+    # ``pre_mcp_call``: LiteLLM's MCP gateway runs the same pre-call hook
+    # before each tool invocation; ``check`` routes it to the action gate.
+    SUPPORTED_EVENT_HOOKS: ClassVar[tuple[Any, ...]] = tuple(
+        h for h in (_PRE_CALL_HOOK, _PRE_MCP_CALL_HOOK) if h is not None
+    )
 
     @classmethod
     def get_supported_event_hooks(cls) -> list:
@@ -289,7 +297,13 @@ class ConductGuard(CustomGuardrail):
     # ── Public helpers usable outside LiteLLM ─────────────────────────
 
     async def check(self, *, data: dict[str, Any], call_type: str, auth=None) -> GuardDecision:
-        """Run one ``guard_check_prompt`` for the given LiteLLM request payload."""
+        """Run ``guard_check_prompt`` for the LiteLLM request payload, plus
+        ``guard_check`` (action gate) when it is an MCP tool call.
+
+        LiteLLM's MCP gateway marks tool calls with ``mcp_tool_name`` /
+        ``mcp_arguments``. The prompt check always runs, so a stray
+        ``mcp_tool_name`` key on a chat request can only add a check, never
+        skip one. Most severe verdict wins."""
         session_id = _extract_session_id(data)
         prompt = _extract_prompt_text(data) or ""
         model = data.get("model") or None
@@ -304,13 +318,25 @@ class ConductGuard(CustomGuardrail):
                     raise IdentityRequiredError("Authenticated subject evidence required")
                 identity_args = {"federation_connection": self._federation_connection,
                                  "subject_token": evidence}
-            raw = await self._client.guard_check(
+            calls = [self._client.guard_check(
                 prompt=prompt,
                 model=model,
                 provider=provider,
                 session_id=session_id,
                 **identity_args,
-            )
+            )]
+            tool_name = data.get("mcp_tool_name")
+            if tool_name:
+                calls.append(self._client.guard_check_action(
+                    tool_name=str(tool_name),
+                    tool_input=_tool_input(data.get("mcp_arguments")),
+                    session_id=session_id,
+                    **identity_args,
+                ))
+            raws = await asyncio.gather(*calls, return_exceptions=True)
+            for r in raws:
+                if isinstance(r, BaseException):
+                    raise r
         except IdentityRequiredError:
             return GuardDecision(verdict="block", raw="identity_required",
                                  message="Conduct identity verification required or denied.")
@@ -333,6 +359,9 @@ class ConductGuard(CustomGuardrail):
                 )
             return GuardDecision(verdict="allow", raw="fail_open")
 
+        return max((self._decide(r) for r in raws), key=lambda d: _SEVERITY[d.verdict])
+
+    def _decide(self, raw: str) -> GuardDecision:
         decision = GuardDecision.parse(raw)
         if self._federation_connection and (not raw or decision.verdict in ("unknown", "advisory")):
             return GuardDecision(verdict="block", raw="unverified_policy_result",
@@ -347,6 +376,19 @@ class ConductGuard(CustomGuardrail):
 
 
 # ── Session-ID + prompt helpers ────────────────────────────────────────
+
+
+_SEVERITY: dict[str, int] = {
+    "allow": 0, "unknown": 1, "advisory": 2, "warning": 3, "approval": 4, "block": 5,
+}
+
+
+def _tool_input(arguments: Any) -> dict[str, Any]:
+    """MCP arguments are normally a dict; wrap anything else so the action
+    gate still sees it."""
+    if isinstance(arguments, dict):
+        return arguments
+    return {} if arguments is None else {"arguments": arguments}
 
 
 def _extract_session_id(data: dict[str, Any]) -> str | None:

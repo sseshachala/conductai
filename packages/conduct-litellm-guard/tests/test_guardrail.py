@@ -241,22 +241,21 @@ class TestEventHooks:
     AttributeError on other guardrails' tests.
     """
 
-    def test_supported_event_hooks_carries_pre_call(self) -> None:
+    def test_supported_event_hooks_carries_pre_call_and_pre_mcp_call(self) -> None:
         from conduct_litellm_guard import ConductGuard
-        assert len(ConductGuard.SUPPORTED_EVENT_HOOKS) == 1
-        (entry,) = ConductGuard.SUPPORTED_EVENT_HOOKS
         # LiteLLM's registry does ``entry.value`` — that expression must
-        # yield the wire string ``"pre_call"``.
-        assert getattr(entry, "value", entry) == "pre_call"
+        # yield the wire strings.
+        assert [getattr(e, "value", e) for e in ConductGuard.SUPPORTED_EVENT_HOOKS] == [
+            "pre_call", "pre_mcp_call",
+        ]
 
     def test_get_supported_event_hooks_returns_fresh_list(self) -> None:
         from conduct_litellm_guard import ConductGuard
         hooks = ConductGuard.get_supported_event_hooks()
-        assert len(hooks) == 1
-        assert getattr(hooks[0], "value", hooks[0]) == "pre_call"
+        assert [getattr(h, "value", h) for h in hooks] == ["pre_call", "pre_mcp_call"]
         # Must return a fresh list, not a reference to the ClassVar.
         hooks.append("mutation")
-        assert len(ConductGuard.get_supported_event_hooks()) == 1
+        assert len(ConductGuard.get_supported_event_hooks()) == 2
 
 
 class TestPromptExtraction:
