@@ -33,19 +33,19 @@ service-only setup below is unchanged.
      - guardrail_name: conduct-guard
        litellm_params:
          guardrail: conduct_litellm_guard.ConductGuard
-         mode: pre_call
+         mode: [pre_call, pre_mcp_call]
          api_url: https://gateway.conductai.ai
          agent_token: os.environ/CONDUCT_AGENT_TOKEN
          unreachable_fallback: fail_closed
    ```
 
-   **Native (once [BerriAI/litellm#38143](https://github.com/BerriAI/litellm/pull/38143) merges):**
+   **Native (LiteLLM with [BerriAI/litellm#40785](https://github.com/BerriAI/litellm/pull/40785)):**
    ```yaml
    guardrails:
      - guardrail_name: conduct-guard
        litellm_params:
          guardrail: conduct
-         mode: pre_call
+         mode: [pre_call, pre_mcp_call]
          api_key: os.environ/CONDUCT_AGENT_TOKEN
          unreachable_fallback: fail_closed
    ```
@@ -78,6 +78,15 @@ Guard returns one of five verdicts:
 | `WARNING`          | Forwarded, warning surfaced in metadata.            |
 | `BLOCKED`          | LiteLLM returns an error to the caller. No upstream token spent. |
 | `PENDING approval` | Blocked pending HITL. Caller receives an error citing the rule. |
+
+### MCP tool calls (`pre_mcp_call`, 0.2.7+)
+
+When LiteLLM's MCP gateway runs a tool, the guardrail also calls Guard's
+`guard_check` **action gate** with the real tool name and arguments, the
+same check the CLI hook uses. Rules on tool + arguments (block, approval)
+apply to MCP traffic. The prompt check still scans the arguments for
+credentials / PII. The most severe verdict wins. Drop `pre_mcp_call` from
+`mode:` to keep the guardrail LLM-only.
 
 ## Configuration reference
 

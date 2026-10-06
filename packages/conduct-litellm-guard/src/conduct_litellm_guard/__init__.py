@@ -12,12 +12,12 @@ Basic usage in a LiteLLM ``config.yaml``::
       - guardrail_name: conduct-guard
         litellm_params:
           guardrail: conduct_litellm_guard.ConductGuard
-          mode: pre_call
+          mode: [pre_call, pre_mcp_call]  # pre_mcp_call: LiteLLM MCP tool calls
           api_url: https://gateway.conductai.ai
           agent_token: os.environ/CONDUCT_AGENT_TOKEN
           unreachable_fallback: fail_closed
 """
 from conduct_litellm_guard.guardrail import ConductGuard, GuardDecision
 
-__version__ = "0.2.4"
+__version__ = "0.2.7"
 __all__ = ["ConductGuard", "GuardDecision", "__version__"]
