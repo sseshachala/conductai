@@ -28,7 +28,7 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture
 def workspace_id() -> str:
     from app.core.database import SessionLocal
     from sqlalchemy import text
@@ -114,6 +114,33 @@ def _write_audit(
 
 
 # ─── AccountingReader.spend_micros_by_workspace ───────────────────────
+
+
+def test_hook_estimates_without_request_ids_are_preserved(workspace_id):
+    """Production hook estimates still depend on the accounting fallback."""
+    from app.core.database import SessionLocal
+    from app.core.budget_ledger import BudgetLedger, _scope_keys, monthly_period_key
+    from app.runtime.accounting.reader import AccountingReader
+    from sqlalchemy import text
+    import fakeredis
+
+    clerk = f"hook-estimate-{uuid.uuid4().hex[:8]}"
+    with SessionLocal() as db:
+        db.execute(text("""
+            INSERT INTO guard_audit_events
+                (id, workspace_id, ts, source, ai_tool, decision, cost_usd_after, clerk_user_id)
+            VALUES (gen_random_uuid(), CAST(:ws AS uuid), now(), 'hook', 'codex', 'allowed', 0.001, :clerk)
+        """), {"ws": workspace_id, "clerk": clerk})
+        db.commit()
+        totals = AccountingReader(db).spend_micros_by_workspace(
+            workspace_id=uuid.UUID(workspace_id), since=datetime.now(timezone.utc) - timedelta(hours=1),
+            ai_tool="codex", clerk_user_id=clerk,
+        )
+        assert totals == {None: 1_000}
+        redis = fakeredis.FakeRedis()
+        BudgetLedger(redis_client=redis).reconcile(db, workspace_id, ai_tool="codex", clerk_user_id=clerk)
+        keys = _scope_keys(workspace_id, clerk, None, "codex", monthly_period_key())
+        assert int(redis.get(keys["committed"])) == 1_000
 
 
 def test_spend_micros_sums_receipts_and_pre_cutover_audit(workspace_id):
