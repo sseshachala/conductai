@@ -45,16 +45,36 @@ def _extract_bearer(request: Request) -> str | None:
     return None
 
 
-def _unauth_headers() -> dict[str, str]:
+def _public_origin(request: Request) -> str:
+    """Origin the MCP client called: the API issuer or the gateway service host.
+
+    RFC 9728 clients reject resource metadata whose `resource` differs from the
+    URL they requested, so /mcp on gateway.conductai.ai must advertise itself.
+    The Host header is client-controlled — only configured origins are echoed;
+    anything else falls back to the issuer.
+    """
+    from urllib.parse import urlsplit
+    from app.core.config import settings
     from app.modules.auth.oauth.deployment import issuer_url
     issuer = issuer_url().rstrip("/")
+    gateway = urlsplit(settings.conduct_proxy_url or "")
+    gateway_origin = f"{gateway.scheme}://{gateway.netloc}" if gateway.scheme == "https" and gateway.netloc else ""
+    host = (request.headers.get("host") or "").lower()
+    for origin in (issuer, gateway_origin):
+        if origin and urlsplit(origin).netloc.lower() == host:
+            return origin
+    return issuer
+
+
+def _unauth_headers(request: Request) -> dict[str, str]:
+    origin = _public_origin(request)
     return {"WWW-Authenticate": (
-        f'Bearer realm="{issuer}/mcp", '
-        f'resource_metadata="{issuer}/.well-known/oauth-protected-resource/mcp"'
+        f'Bearer realm="{origin}/mcp", '
+        f'resource_metadata="{origin}/.well-known/oauth-protected-resource/mcp"'
     )}
 
 
-def _unauthorized(msg_id: Any = None, message: str = "missing token (use Authorization: Bearer)") -> JSONResponse:
+def _unauthorized(request: Request, msg_id: Any = None, message: str = "missing token (use Authorization: Bearer)") -> JSONResponse:
     return JSONResponse(
         status_code=401,
         content={
@@ -62,7 +82,7 @@ def _unauthorized(msg_id: Any = None, message: str = "missing token (use Authori
             "id": msg_id,
             "error": {"code": -32600, "message": message},
         },
-        headers=_unauth_headers(),
+        headers=_unauth_headers(request),
     )
 
 
@@ -70,7 +90,7 @@ def _auth_or_401(request: Request) -> tuple[str, str | None] | JSONResponse:
     """Resolve Bearer → (workspace_id, clerk_user_id) or return 401 JSONResponse."""
     token = _extract_bearer(request)
     if not token:
-        return _unauthorized()
+        return _unauthorized(request)
     from app.core.database import SessionLocal
     db = SessionLocal()
     try:
@@ -78,7 +98,7 @@ def _auth_or_401(request: Request) -> tuple[str, str | None] | JSONResponse:
     finally:
         db.close()
     if resolved is None:
-        return _unauthorized(message="Token not recognized")
+        return _unauthorized(request, message="Token not recognized")
     return resolved
 
 
@@ -262,15 +282,16 @@ well_known_router = APIRouter(tags=["mcp"])
 
 
 @well_known_router.get("/.well-known/oauth-protected-resource/mcp")
-async def oauth_resource_metadata() -> dict[str, Any]:
+async def oauth_resource_metadata(request: Request) -> dict[str, Any]:
     """Advertised metadata for OAuth-capable MCP clients (Claude.ai etc).
 
-    Same shape as /guard/mcp's existing well-known — points at the same
-    authorization server. The resource URL changes to /mcp."""
+    `resource` is the host the client called (API or gateway service); the
+    authorization server is always the issuer. Tokens are not audience-bound,
+    so one sign-in works against either host."""
     from app.modules.auth.oauth.deployment import issuer_url
     issuer = issuer_url().rstrip("/")
     return {
-        "resource": issuer + "/mcp",
+        "resource": _public_origin(request) + "/mcp",
         "authorization_servers": [issuer],
         "bearer_methods_supported": ["header"],
     }
