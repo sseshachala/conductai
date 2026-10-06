@@ -7,7 +7,7 @@ import { validateNodes, type ValidationError } from "@/lib/canvas/validateNodes"
 import { resolveIssueTriggerState } from "@/lib/canvas/issueTrigger"
 
 export type GetToken = (() => Promise<string | null>) | null | undefined
-export type CanvasView = "canvas" | "definition" | "runs" | "settings"
+export type CanvasView = "canvas" | "definition" | "runs" | "history" | "settings"
 export type RunListItem = { id: string; status: string; triggered_by: string | null; created_at: string }
 export type Preflight = { suggestedTurns: number; files: string[]; pendingDryRun: boolean; initialState?: Record<string, unknown> }
 

@@ -2,7 +2,7 @@
 
 import { authEnabled } from "@/lib/auth/runtime"
 
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth/client"
 import { useWorkspace } from "@/lib/WorkspaceContext"
@@ -27,6 +27,8 @@ import {
 import "@xyflow/react/dist/style.css"
 
 import BlockNode, { type BlockNodeData } from "./BlockNode"
+import AnnotationNode, { CanvasReadOnlyContext } from "./AnnotationNode"
+import VersionHistory from "./VersionHistory"
 import BlockEditor from "./BlockEditor"
 import BlockPalette from "./BlockPalette"
 import RunDrawer from "./RunDrawer"
@@ -41,15 +43,17 @@ import RunModals from "./RunModals"
 import RunsListView from "./RunsListView"
 import { useCanvasRuns, type CanvasView, type GetToken } from "./hooks/useCanvasRuns"
 import { useUndoHistory } from "./hooks/useUndoHistory"
-import { useWorkflowDocument, cycleNotice } from "./hooks/useWorkflowDocument"
+import { useWorkflowDocument, cycleNotice, toStoredGraph } from "./hooks/useWorkflowDocument"
+import { useCanvasClipboard } from "./hooks/useCanvasClipboard"
 import { useCanvasShortcuts } from "./hooks/useCanvasShortcuts"
 import { autoLayout } from "@/lib/auto-layout"
 import { reorderZ } from "@/lib/canvas/zOrder"
+import { ANNOTATION_TYPE, isAnnotation, newAnnotation, splitAnnotations } from "@/lib/canvas/annotations"
 import { type BlockType } from "@/lib/block-types"
 import { projects } from "@/lib/api"
 import type { AuthFetch } from "@/lib/api"
 
-const nodeTypes = { block: BlockNode }
+const nodeTypes = { block: BlockNode, [ANNOTATION_TYPE]: AnnotationNode }
 const MINIMAP_KEY = "conduct:canvas:minimap"
 
 interface CanvasEditorProps {
@@ -76,12 +80,14 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
   const [minimapOpen, setMinimapOpen] = useState(true)
   const [layoutNotice, setLayoutNotice] = useState<string | null>(null)
 
+  // Notes share React Flow state but are invisible to everything that reasons about blocks.
+  const blockNodes = useMemo(() => splitAnnotations(nodes).blocks, [nodes])
   const {
-    workflowName, setWorkflowName, githubHookRepo, setGithubHookRepo, githubHookId, setGithubHookId, githubWebhook,
+    restoreGraph, workflowName, setWorkflowName, githubHookRepo, setGithubHookRepo, githubHookId, setGithubHookId, githubWebhook,
     saveStatus, canvasLoading, environments, selectedEnvId, envCredentials, handleEnvChange, playbookSlug, projectSlug, projectName,
   } = useWorkflowDocument({ workflowId, getToken, wsId, isViewer, nodes, edges, setNodes, setEdges, isFirstLoad, setLayoutNotice })
   const runs = useCanvasRuns({
-    workflowId, getToken, wsId, nodes, setNodes, selectedEnvId, githubHookRepo,
+    workflowId, getToken, wsId, nodes: blockNodes, setNodes, selectedEnvId, githubHookRepo,
     activeView, setActiveView, navigate: href => router.push(href),
   })
   const { undo, redo } = useUndoHistory(nodes, edges, setNodes, setEdges, { disabled: isViewer, isFirstLoad })
@@ -101,7 +107,15 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
     if (ids.size) setNodes(reorderZ(nodes, ids, direction))
   }
 
-  useCanvasShortcuts({ undo, redo, openSearch: () => setSearchOpen(true), zOrder: applyZOrder, editable: !isViewer && activeView === "canvas" })
+  const { duplicate } = useCanvasClipboard({ nodes, edges, setNodes, setEdges, editable: !isViewer && activeView === "canvas" })
+  useCanvasShortcuts({ undo, redo, duplicate, openSearch: () => setSearchOpen(true), zOrder: applyZOrder, editable: !isViewer && activeView === "canvas" })
+
+  const addNote = () => {
+    const pane = document.querySelector(".react-flow")?.getBoundingClientRect()
+    const centre = pane ? screenToFlowPosition({ x: pane.left + pane.width / 2, y: pane.top + pane.height / 2 }) : { x: 0, y: 0 }
+    const note = newAnnotation(`note-${Date.now().toString(36)}`, { x: centre.x - 120, y: centre.y - 80 })
+    setNodes((nds: Node[]) => [...nds.map(n => (n.selected ? { ...n, selected: false } : n)), { ...note, selected: true }])
+  }
 
   const onConnect = useCallback(
     (connection: Connection) => setEdges((eds: Edge[]) => addEdge({
@@ -114,6 +128,8 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
   )
 
   const onNodeClick = useCallback((_: React.MouseEvent, node: Node) => {
+    // Notes edit in place; the config panel is for executable blocks only.
+    if (isAnnotation(node)) { setSelectedNode(null); return }
     setSelectedNode(node)
     setRightOpen(true)
   }, [])
@@ -168,7 +184,7 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
     if (!node) return
     setActiveView("canvas")
     setNodes((nds: Node[]) => nds.map((n: Node) => (n.selected === (n.id === nodeId) ? n : { ...n, selected: n.id === nodeId })))
-    setSelectedNode(node)
+    setSelectedNode(isAnnotation(node) ? null : node)
     setRightOpen(true)
     const x = (node.position.x ?? 0) + (node.measured?.width ?? node.width ?? 200) / 2
     const y = (node.position.y ?? 0) + (node.measured?.height ?? node.height ?? 80) / 2
@@ -176,9 +192,10 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
   }
 
   const applyLayout = (fitOptions: { padding: number; minZoom?: number }, delay: number) => {
-    const laid = autoLayout(nodes, edges)
-    setNodes(laid.nodes)
-    setLayoutNotice(cycleNotice(laid.cycleNodeIds, nodes))
+    // Notes keep their hand-placed positions; only blocks are laid out.
+    const laid = autoLayout(blockNodes, edges)
+    setNodes([...laid.nodes, ...nodes.filter(isAnnotation)])
+    setLayoutNotice(cycleNotice(laid.cycleNodeIds, blockNodes))
     setTimeout(() => fitView({ ...fitOptions, duration: 400 }), delay)
   }
 
@@ -196,9 +213,10 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
   })
 
   return (
+    <CanvasReadOnlyContext.Provider value={isViewer}>
     <div className="flex flex-col h-full bg-stone-50">
       <CanvasHeader
-        workflowId={workflowId} getToken={getToken} isViewer={isViewer} nodes={nodes}
+        workflowId={workflowId} getToken={getToken} isViewer={isViewer} nodes={blockNodes}
         workflowName={workflowName} setWorkflowName={setWorkflowName} projectName={projectName} playbookSlug={playbookSlug}
         environments={environments} selectedEnvId={selectedEnvId} envCredentials={envCredentials} onEnvChange={handleEnvChange}
         activeView={activeView} setActiveView={setActiveView} saveStatus={saveStatus} runs={runs}
@@ -301,6 +319,7 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
                   minimapOpen={minimapOpen}
                   onToggleMinimap={toggleMinimap}
                   onSearch={() => setSearchOpen(true)}
+                  onAddNote={isViewer ? undefined : addNote}
                   canReorder={!isViewer && nodes.some(n => n.selected)}
                   onZOrder={applyZOrder}
                 />
@@ -354,9 +373,14 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
             </div>
           </>
         ) : activeView === "definition" ? (
-          <DefinitionPanel nodes={nodes} edges={edges} workflowName={workflowName} getToken={getToken} workflowId={workflowId} runState={runs.lastRunState} runSummary={runs.lastRunSummary} />
+          <DefinitionPanel nodes={blockNodes} edges={edges} workflowName={workflowName} getToken={getToken} workflowId={workflowId} runState={runs.lastRunState} runSummary={runs.lastRunSummary} />
         ) : activeView === "runs" ? (
           <RunsListView workflowId={workflowId} workflowName={workflowName} runs={runs} />
+        ) : activeView === "history" ? (
+          <VersionHistory
+            workflowId={workflowId} getToken={getToken} wsId={wsId} isViewer={isViewer}
+            currentGraph={toStoredGraph(nodes, edges)} onRestore={restoreGraph}
+          />
         ) : activeView === "settings" ? (
           <WorkflowSettingsPanel workflowId={workflowId} getToken={getToken} isViewer={isViewer} onDelete={() => router.push("/workflows")} />
         ) : null}
@@ -366,6 +390,7 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
       <RunModals workflowId={workflowId} getToken={getToken} wsId={wsId} runs={runs} />
       {searchOpen && <NodeSearch nodes={nodes} onSelect={focusNode} onClose={() => setSearchOpen(false)} />}
     </div>
+    </CanvasReadOnlyContext.Provider>
   )
 }
 

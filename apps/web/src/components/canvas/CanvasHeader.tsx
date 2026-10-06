@@ -72,7 +72,7 @@ export default function CanvasHeader({
               onChange={id => !isViewer && onEnvChange(id)}
             />
             <div className="ml-3 flex bg-stone-100 rounded-md p-0.5 text-xs">
-              {(["canvas", "definition", "runs", "settings"] as const).map(v => (
+              {(["canvas", "definition", "runs", "history", "settings"] as const).map(v => (
                 <button
                   key={v}
                   onClick={() => setActiveView(v)}
@@ -82,7 +82,7 @@ export default function CanvasHeader({
                       : "text-stone-500 hover:text-stone-800"
                   }`}
                 >
-                  {v === "canvas" ? "Canvas" : v === "definition" ? "Definition" : v === "runs" ? "Runs" : "Settings"}
+                  {v === "canvas" ? "Canvas" : v === "definition" ? "Definition" : v === "runs" ? "Runs" : v === "history" ? "History" : "Settings"}
                 </button>
               ))}
             </div>
