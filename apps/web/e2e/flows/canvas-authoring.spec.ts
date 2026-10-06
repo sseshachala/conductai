@@ -27,15 +27,19 @@ test("canvas: minimap toggle, block search, sticky note, version history", async
   await page.keyboard.press("Escape")
   await expect(search).toHaveCount(0)
 
-  // Sticky note — added, edited, autosaved (PUT carries it under graph.annotations)
+  // Sticky note — added, edited, autosaved (PUT carries it under graph.annotations).
+  // The seeded workflow is shared across browser projects and retries, so earlier
+  // runs may have left notes: count them and target the one this run adds.
+  await expect(page.getByText("Loading canvas…")).toHaveCount(0)
+  const existing = await page.getByRole("note").count()
   const saved = page.waitForResponse(r =>
     r.request().method() === "PUT" &&
     new URL(r.url()).pathname.endsWith(`/workflows/${E2E_WORKFLOW_ID}`) &&
     (r.request().postData() ?? "").includes("this exists"),
   )
   await controls.getByRole("button", { name: "Add note" }).click()
-  const note = page.getByRole("note")
-  await expect(note).toBeVisible()
+  await expect(page.getByRole("note")).toHaveCount(existing + 1)
+  const note = page.getByRole("note").last()
   await note.dblclick()
   await page.getByLabel("Note text (Markdown)").fill("**Why** this exists")
   await page.getByLabel("Note title").click() // focus stays inside the note → still editing
@@ -45,11 +49,12 @@ test("canvas: minimap toggle, block search, sticky note, version history", async
   const put = await saved
   expect(put.status()).toBe(200)
   const body = JSON.parse(put.request().postData() ?? "{}")
-  expect(body.graph.annotations).toHaveLength(1)
+  expect(body.graph.annotations).toHaveLength(existing + 1)
   expect(body.graph.nodes.some((n: { type?: string }) => n.type === "annotation")).toBe(false)
 
   // History lists the autosaved version with its note
   await page.getByRole("button", { name: "History", exact: true }).click()
   const versions = page.getByRole("complementary", { name: "Versions" })
-  await expect(versions.getByText(/1 note\b/).first()).toBeVisible({ timeout: 10_000 })
+  const total = existing + 1
+  await expect(versions.getByText(`${total} note${total === 1 ? "" : "s"}`, { exact: false }).first()).toBeVisible({ timeout: 10_000 })
 })
