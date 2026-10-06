@@ -63,12 +63,12 @@ class PolicyContext:
     #   - ``tool_names_generated`` : names in ``choices[].message.tool_calls[]``
     #                                (what the model returned this turn;
     #                                 response-gate only).
-    #   - ``tool_names_supplied``  : ``tool_call_id``s from ``role:tool``
-    #                                messages (previous-turn tool results the
-    #                                caller supplied THIS turn).
+    #   - ``tool_names_supplied``  : function names resolved from assistant
+    #                                tool_calls using each role:tool result's
+    #                                tool_call_id (not the IDs themselves).
     # None = "not populated by the PEP" (legacy callers, non-inference
-    # gates). Empty list = "PEP populated, no tools present" — semantically
-    # distinct so rules can distinguish "unset" from "explicitly empty".
+    # gates). Empty list = "PEP populated, no tools present". Name selectors
+    # match neither unset nor empty lists.
     tool_names_offered: list[str] | None = None
     tool_names_generated: list[str] | None = None
     tool_names_supplied: list[str] | None = None

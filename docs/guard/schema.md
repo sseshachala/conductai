@@ -90,6 +90,9 @@ when {
 | `match_tool` | string | Comma-separated tool names (`edit,write,bash`). Empty or `*` = all. |
 | `match_pattern` | regex string | Matched against tool_input.prompt / body. |
 | `match_path_pattern` | regex string | Matched against tool_input.path (file ops). |
+| `match_tool_name_offered` | regex string | Matches a function name offered to the model in the Gateway request. |
+| `match_tool_name_generated` | regex string | Matches a function name returned by the model. Requires the `response` gate. |
+| `match_tool_name_supplied` | regex string | Matches a function name resolved from a supplied tool result and its assistant tool call. |
 | `message` | string | Shown to user on match. Cedar `@message`. |
 | `recommendation` | string | Remediation guidance. Cedar `@recommendation`. |
 | `severity` | enum | `low` \| `medium` \| `high` \| `critical`. Cedar `@severity`. |
@@ -98,6 +101,37 @@ when {
 | `frameworks` | string[] | Compliance tags (`PCI_DSS:3.4`, `SOC2:CC6.1`, `ISO_42001:8.24`, `MITRE_ATLAS:AML.T0051`, `OWASP_AGENTIC:A01`). Cedar `@compliance`. |
 | `iso_control` | string | ISO 27001/42001 control ID. Cedar `@iso_control`. |
 | `enforcement` | object | Surface-by-surface enforcement capability (see below). |
+
+### Gateway tool-name selectors
+
+The Gateway populates three lists on `PolicyContext`:
+
+| Signal | What it contains |
+|---|---|
+| `tool_names_offered` | Names in request `tools[].function.name`: tools available to the model. |
+| `tool_names_generated` | Names in response `choices[].message.tool_calls[].function.name`: calls the model generated this turn. |
+| `tool_names_supplied` | Names for request `role: "tool"` results, resolved by matching `tool_call_id` to assistant `tool_calls[].id`. |
+
+Selectors use case-insensitive regex matching. A selector matches when any name
+in its list matches. Missing or empty lists do not match. Multiple selectors and
+other match fields must all match. Rules without tool-name selectors are unchanged.
+
+For example, block a generated `bank_transfer` call before returning it to the caller:
+
+```json
+{
+  "id": "block-bank-transfer-generation",
+  "gates": ["response"],
+  "match_tool_name_generated": "^bank_transfer$",
+  "action": "block",
+  "message": "Bank transfers are not allowed."
+}
+```
+
+Use the `prompt` gate for offered and supplied selectors. Supplied selectors match
+function names, not IDs such as `call_abc`; results with no matching assistant
+declaration are skipped. These signals describe the model conversation, not proof
+that a tool executed. The Gateway does not execute tools.
 
 ### Enforcement metadata
 
