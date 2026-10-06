@@ -244,9 +244,6 @@ def _poll_run(server: str, workflow_id: str, run_id: str, hdrs: dict) -> bool:
 # `npx -y mcp-remote <url> --header "Authorization: Bearer <token>"` is what
 # Claude.ai / Claude Code / Cursor / Codex / VS Code Copilot all speak — one
 # bridge, one endpoint. Native Python bridge tracked in #1229.
-_MCP_URL_DEFAULT = deployment.SAAS_API + "/mcp"
-
-
 def _mcp_remote_args(api_url: str, token: str) -> list:
     """Args list for the mcp-remote invocation. Kept as a helper so JSON and
     TOML writers stay in sync."""
