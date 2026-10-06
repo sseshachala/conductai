@@ -2,7 +2,6 @@
 
 import { authEnabled } from "@/lib/auth/runtime"
 
-
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth/client"
@@ -10,6 +9,7 @@ import { useWorkspace } from "@/lib/WorkspaceContext"
 import {
   ReactFlow,
   Background,
+  MiniMap,
   addEdge,
   useNodesState,
   useEdgesState,
@@ -27,101 +27,36 @@ import {
 import "@xyflow/react/dist/style.css"
 
 import BlockNode, { type BlockNodeData } from "./BlockNode"
-import StatusBadge from "@/components/runs/StatusBadge"
-import { effectiveStatus } from "@/lib/runUtils"
 import BlockEditor from "./BlockEditor"
 import BlockPalette from "./BlockPalette"
-import RunInputsModal from "./RunInputsModal"
 import RunDrawer from "./RunDrawer"
-import CostEstimate from "./CostEstimate"
 import DefinitionPanel from "./DefinitionPanel"
 import WorkflowSettingsPanel from "./WorkflowSettingsPanel"
+import CanvasHeader from "./CanvasHeader"
+import CanvasToolbar from "./CanvasToolbar"
+import CanvasOverlays from "./CanvasOverlays"
+import NodeSearch from "./NodeSearch"
+import RunBanners from "./RunBanners"
+import RunModals from "./RunModals"
+import RunsListView from "./RunsListView"
+import { useCanvasRuns, type CanvasView, type GetToken } from "./hooks/useCanvasRuns"
+import { useUndoHistory } from "./hooks/useUndoHistory"
+import { useWorkflowDocument, cycleNotice } from "./hooks/useWorkflowDocument"
+import { useCanvasShortcuts } from "./hooks/useCanvasShortcuts"
 import { autoLayout } from "@/lib/auto-layout"
+import { reorderZ } from "@/lib/canvas/zOrder"
 import { type BlockType } from "@/lib/block-types"
-import { usePreferences } from "@/lib/PreferencesContext"
-import { cn } from "@/lib/utils"
-import { workflows, credentials, environments as environmentsApi, projects } from "@/lib/api"
+import { projects } from "@/lib/api"
 import type { AuthFetch } from "@/lib/api"
-import { API as API_URL } from "@/lib/api/client"
 
 const nodeTypes = { block: BlockNode }
-
-type SaveStatus = "idle" | "saving" | "saved" | "error"
-
-interface ValidationError {
-  blockId: string
-  label: string
-  message: string
-}
-
-function validateNodes(nodes: Node[]): ValidationError[] {
-  const errors: ValidationError[] = []
-
-  for (const node of nodes) {
-    const data = node.data as BlockNodeData
-    const blockType = data.type
-    const label = data.label || node.id
-    const config = (data.config as Record<string, unknown>) ?? {}
-    const integration = data.integration as string | undefined
-
-    if (blockType === "tool" || blockType === "cleanup") {
-      if (!integration) {
-        errors.push({ blockId: node.id, label, message: "No integration selected" })
-        continue
-      }
-      const action = (config.action as string) || ""
-      if (!action) {
-        errors.push({ blockId: node.id, label, message: `No action selected for ${integration}` })
-        continue
-      }
-      // Check required params (non-empty, no defaultValue)
-      const params = (config.params as Record<string, unknown>) ?? {}
-      const requiredEmpty: string[] = []
-      for (const [key, val] of Object.entries(params)) {
-        if ((val === "" || val === null || val === undefined) && !String(val ?? "").startsWith("{{")) {
-          requiredEmpty.push(key)
-        }
-      }
-      if (requiredEmpty.length > 0) {
-        errors.push({ blockId: node.id, label, message: `Missing: ${requiredEmpty.join(", ")}` })
-      }
-    }
-
-    if (blockType === "output") {
-      const via = integration || "slack"
-      if ((via === "slack" || via === "both") && !config.channel) {
-        errors.push({ blockId: node.id, label, message: "Slack channel is required (e.g. #general)" })
-      }
-      if ((via === "email" || via === "both") && !(config.to as string)) {
-        errors.push({ blockId: node.id, label, message: "Email address (To) is required" })
-      }
-    }
-
-    if (blockType === "approval") {
-      if (!config.message) {
-        errors.push({ blockId: node.id, label, message: "Approval message is required" })
-      }
-    }
-  }
-
-  return errors
-}
+const MINIMAP_KEY = "conduct:canvas:minimap"
 
 interface CanvasEditorProps {
   workflowId: string
-  getToken?: (() => Promise<string | null>) | null
+  getToken?: GetToken
   isViewer?: boolean
   isAdmin?: boolean
-}
-
-async function authHeaders(getToken?: (() => Promise<string | null>) | null, wsId?: string | null): Promise<Record<string, string>> {
-  const headers: Record<string, string> = { "Content-Type": "application/json" }
-  if (getToken) {
-    const token = await getToken()
-    if (token) headers["Authorization"] = `Bearer ${token}`
-  }
-  if (wsId) headers["X-Workspace-Id"] = wsId
-  return headers
 }
 
 function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = false }: CanvasEditorProps) {
@@ -130,404 +65,43 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([])
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([])
   const [selectedNode, setSelectedNode] = useState<Node | null>(null)
-  const [workflowName, setWorkflowName] = useState("Untitled agent")
-  const [githubHookRepo, setGithubHookRepo] = useState<string | null>(null)
-  const [githubHookId, setGithubHookId] = useState<string | null>(null)
-  const [githubWebhook, setGithubWebhook] = useState<boolean>(false)
-  const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle")
-  const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const isFirstLoad = useRef(true)
-  // Undo / redo history
-  const historyRef    = useRef<Array<{ nodes: Node[]; edges: Edge[] }>>([])
-  const historyIdxRef = useRef(-1)
-  const skipHistoryRef = useRef(false)
-  const historyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const [canUndo, setCanUndo] = useState(false)
-  const [canRedo, setCanRedo] = useState(false)
-  const { screenToFlowPosition, setCenter, fitView, zoomIn, zoomOut } = useReactFlow()
+  const { screenToFlowPosition, setCenter, fitView } = useReactFlow()
   const router = useRouter()
-  const [canvasLoading, setCanvasLoading] = useState(true)
-  const [running, setRunning] = useState<"idle" | "dry" | "live">("idle")
-  const [activeRunId, setActiveRunId] = useState<string | null>(null)
-  const [drawerVisible, setDrawerVisible] = useState(false)
-  const [validationErrors, setValidationErrors] = useState<ValidationError[]>([])
-  const [preflight, setPreflight] = useState<{
-    suggestedTurns: number
-    files: string[]
-    pendingDryRun: boolean
-    initialState?: Record<string, unknown>
-  } | null>(null)
   const [leftOpen, setLeftOpen] = useState(true)
   const [rightOpen, setRightOpen] = useState(true)
   const [focusMode, setFocusMode] = useState(false)
-  const [canvasMode, setCanvasMode] = useState<"engineer" | "liverun" | "reviewer">("engineer")
-  const [activeView, setActiveView] = useState<"canvas" | "definition" | "runs" | "settings">("canvas")
-  const [runs, setRuns] = useState<{id:string;status:string;triggered_by:string|null;created_at:string}[]>([])
-  const [runsLoading, setRunsLoading] = useState(false)
-  const [environments, setEnvironments] = useState<Array<{ id: string; name: string }>>([])
-  const [selectedEnvId, setSelectedEnvId] = useState<string>("")
-  const [envCredentials, setEnvCredentials] = useState<Array<{ handle: string; service: string }>>([])
-  // Webhook test modal — shown when manually running a webhook-triggered workflow
-  const [webhookModal, setWebhookModal] = useState<{ dryRun: boolean } | null>(null)
-  const [webhookRepo, setWebhookRepo] = useState("")
-  const [webhookPrNumber, setWebhookPrNumber] = useState("")
-  const [testTriggerModal, setTestTriggerModal] = useState(false)
-  const [testRunning, setTestRunning] = useState(false)
-  // #734 pre-run modal — opens when /trigger returns 422 missing_required_inputs
-  const [inputsModalPayload, setInputsModalPayload] = useState<Record<string, unknown> | null>(null)
-  const [testRunId, setTestRunId] = useState<string | null>(null)
-  const [testRunStatus, setTestRunStatus] = useState<string | null>(null)
-  const [lastRunState, setLastRunState] = useState<Record<string, Record<string, unknown>> | undefined>(undefined)
-  const [lastRunSummary, setLastRunSummary] = useState<{ status: string; created_at?: string; run_id?: string } | undefined>(undefined)
-  const [testPrNumber, setTestPrNumber] = useState("")
-  const [testMaxTurns, setTestMaxTurns] = useState("")
-  const { prefs } = usePreferences()
-  const [playbookSlug, setPlaybookSlug] = useState<string | null>(null)
-  const [projectSlug, setProjectSlug] = useState<string | null>(null)
-  const [projectName, setProjectName] = useState<string | null>(null)
-  const [runError, setRunError] = useState<string | null>(null)
+  const [activeView, setActiveView] = useState<CanvasView>("canvas")
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [minimapOpen, setMinimapOpen] = useState(true)
+  const [layoutNotice, setLayoutNotice] = useState<string | null>(null)
 
-  const STORAGE_KEY = `marshal:active-run:${workflowId}`
-  const TEST_RUN_KEY = `marshal:test-run:${workflowId}`
-  const isMountedRef = useRef(true)
-  const savingInFlightRef = useRef(false)
-  useEffect(() => () => { isMountedRef.current = false }, [])
+  const {
+    workflowName, setWorkflowName, githubHookRepo, setGithubHookRepo, githubHookId, setGithubHookId, githubWebhook,
+    saveStatus, canvasLoading, environments, selectedEnvId, envCredentials, handleEnvChange, playbookSlug, projectSlug, projectName,
+  } = useWorkflowDocument({ workflowId, getToken, wsId, isViewer, nodes, edges, setNodes, setEdges, isFirstLoad, setLayoutNotice })
+  const runs = useCanvasRuns({
+    workflowId, getToken, wsId, nodes, setNodes, selectedEnvId, githubHookRepo,
+    activeView, setActiveView, navigate: href => router.push(href),
+  })
+  const { undo, redo } = useUndoHistory(nodes, edges, setNodes, setEdges, { disabled: isViewer, isFirstLoad })
 
-  // On mount, check if there's an in-progress run we navigated away from.
+  // Minimap visibility is a per-viewer convenience; storage may be unavailable.
   useEffect(() => {
-    const stored = localStorage.getItem(STORAGE_KEY)
-    if (!stored) return
-    const { runId, startedAt } = JSON.parse(stored)
-    // Ignore stale entries older than 2 hours
-    if (Date.now() - startedAt > 2 * 60 * 60 * 1000) {
-      localStorage.removeItem(STORAGE_KEY)
-      return
-    }
-    const abort = new AbortController()
-    ;(async () => {
-      try {
-        const headers = await authHeaders(getToken, wsId)
-        if (abort.signal.aborted) return
-        const authFetch: AuthFetch = (url, opts) => fetch(url, { signal: abort.signal, ...opts, headers: { ...headers, ...(opts?.headers as Record<string, string> | undefined) } })
-        const run = await workflows.runs.get(authFetch, workflowId, runId).catch(() => null)
-        if (!run) { localStorage.removeItem(STORAGE_KEY); return }
-        if (abort.signal.aborted) return
-        if (run.status === "running" || run.status === "pending") {
-          setActiveRunId(runId)
-          setDrawerVisible(true)
-        } else {
-          localStorage.removeItem(STORAGE_KEY)
-        }
-      } catch {
-        localStorage.removeItem(STORAGE_KEY)
-      }
-    })()
-    return () => abort.abort()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workflowId])
-
-  // Restore test run banner on mount + poll status until terminal
-  useEffect(() => {
-    const stored = localStorage.getItem(TEST_RUN_KEY)
-    if (!stored) return
-    const { runId } = JSON.parse(stored)
-    setTestRunId(runId)
-    setTestRunStatus("pending")
-  }, [workflowId])
-
-  useEffect(() => {
-    if (!testRunId) return
-    const terminal = new Set(["succeeded", "failed", "cancelled"])
-    if (testRunStatus && terminal.has(testRunStatus)) return
-
-    const poll = async () => {
-      try {
-        const headers = await authHeaders(getToken, wsId)
-        const authFetch: AuthFetch = (url, opts) => fetch(url, { ...opts, headers: { ...headers, ...(opts?.headers as Record<string, string> | undefined) } })
-        const run = await workflows.runs.get(authFetch, workflowId, testRunId!)
-        setTestRunStatus(run.status)
-        // Feed live state into Definition panel as blocks complete
-        if (run.state) setLastRunState(run.state)
-        setLastRunSummary({ status: run.status, created_at: run.created_at, run_id: run.id })
-        if (terminal.has(run.status)) localStorage.removeItem(TEST_RUN_KEY)
-      } catch {}
-    }
-
-    poll()
-    const interval = setInterval(poll, 2000)
-    return () => clearInterval(interval)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [testRunId, testRunStatus])
-
-  // Load available environments for the environment picker
-  useEffect(() => {
-    const abort = new AbortController()
-    ;(async () => {
-      try {
-        const headers = await authHeaders(getToken, wsId)
-        if (abort.signal.aborted) return
-        const authFetch: AuthFetch = (url, opts) => fetch(url, { signal: abort.signal, ...opts, headers: { ...headers, ...(opts?.headers as Record<string, string> | undefined) } })
-        if (!abort.signal.aborted) setEnvironments(await environmentsApi.list(authFetch).catch(() => []))
-      } catch {}
-    })()
-    return () => abort.abort()
-  }, [getToken])
-
-  // Load credentials for the selected environment
-  useEffect(() => {
-    if (!selectedEnvId) { setEnvCredentials([]); return }
-    const abort = new AbortController()
-    ;(async () => {
-      try {
-        const headers = await authHeaders(getToken, wsId)
-        if (abort.signal.aborted) return
-        const authFetch: AuthFetch = (url, opts) => fetch(url, { signal: abort.signal, ...opts, headers: { ...headers, ...(opts?.headers as Record<string, string> | undefined) } })
-        if (!abort.signal.aborted) setEnvCredentials(await credentials.byEnvironment(authFetch, selectedEnvId).catch(() => []))
-      } catch {}
-    })()
-    return () => abort.abort()
-  }, [getToken, selectedEnvId])
-
-  const fetchRuns = () => {
-    if (!workflowId) return
-    setRunsLoading(true)
-    authHeaders(getToken, wsId).then(headers => {
-      const authFetch: AuthFetch = (url, opts) => fetch(url, { ...opts, headers: { ...headers, ...(opts?.headers as Record<string, string> | undefined) } })
-      return workflows.runs.list(authFetch, workflowId, { limit: 50 })
-        .then(data => { setRuns(data); setRunsLoading(false) })
-        .catch(() => setRunsLoading(false))
-    }).catch(() => setRunsLoading(false))
+    try { if (localStorage.getItem(MINIMAP_KEY) === "0") setMinimapOpen(false) } catch { /* default open */ }
+  }, [])
+  const toggleMinimap = () => {
+    const next = !minimapOpen
+    setMinimapOpen(next)
+    try { localStorage.setItem(MINIMAP_KEY, next ? "1" : "0") } catch { /* not persisted */ }
   }
 
-  useEffect(() => {
-    if (activeView !== "runs") return
-    fetchRuns()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeView, workflowId, getToken])
+  const applyZOrder = (direction: "front" | "back") => {
+    const ids = new Set(nodes.filter(n => n.selected).map(n => n.id))
+    if (ids.size) setNodes(reorderZ(nodes, ids, direction))
+  }
 
-  // Auto-poll every 5s while any run is active
-  useEffect(() => {
-    if (activeView !== "runs") return
-    const hasActive = runs.some(r => r.status === "pending" || r.status === "running")
-    if (!hasActive) return
-    const t = setInterval(fetchRuns, 5000)
-    return () => clearInterval(t)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeView, runs])
-
-  // Poll live run state for the active (non-dry) run — feeds Definition panel
-  useEffect(() => {
-    if (!activeRunId) return
-    const terminal = new Set(["succeeded", "failed", "cancelled"])
-    let stopped = false
-    const poll = async () => {
-      if (stopped) return
-      try {
-        const headers = await authHeaders(getToken, wsId)
-        const authFetch: AuthFetch = (url, opts) => fetch(url, { ...opts, headers: { ...headers, ...(opts?.headers as Record<string, string> | undefined) } })
-        const run = await workflows.runs.get(authFetch, workflowId, activeRunId)
-        if (stopped) return
-        setLastRunState(run.state ?? {})
-        setLastRunSummary({ status: run.status, created_at: run.created_at, run_id: run.id })
-        if (terminal.has(run.status)) stopped = true
-      } catch {}
-    }
-    poll()
-    const interval = setInterval(poll, 2000)
-    return () => { stopped = true; clearInterval(interval) }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeRunId])
-
-  // Fetch last run state when Definition tab is active
-  useEffect(() => {
-    if (activeView !== "definition" || !workflowId) return
-    const abort = new AbortController()
-    ;(async () => {
-      try {
-        const headers = await authHeaders(getToken, wsId)
-        if (abort.signal.aborted) return
-        const authFetch: AuthFetch = (url, opts) => fetch(url, { signal: abort.signal, ...opts, headers: { ...headers, ...(opts?.headers as Record<string, string> | undefined) } })
-        const [latest] = await workflows.runs.list(authFetch, workflowId, { limit: 1 })
-        if (!latest || abort.signal.aborted) return
-        const full = await workflows.runs.get(authFetch, workflowId, latest.id)
-        if (abort.signal.aborted) return
-        setLastRunSummary({ status: full.status, created_at: full.created_at, run_id: full.id })
-        setLastRunState(full.state ?? {})
-      } catch { /* silent */ }
-    })()
-    return () => abort.abort()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeView, workflowId])
-
-  // Load workflow on mount. When a graph arrives without meaningful positions
-  // (the YAML loader writes placeholder coords), run dagre so it doesn't open
-  // as a stack of overlapping nodes.
-  useEffect(() => {
-    if (!workflowId || workflowId === "undefined") return
-    const abort = new AbortController()
-    authHeaders(getToken, wsId).then(headers => {
-      const authFetch: AuthFetch = (url, opts) => fetch(url, { signal: abort.signal, ...opts, headers: { ...headers, ...(opts?.headers as Record<string, string> | undefined) } })
-      return workflows.get(authFetch, workflowId)
-    })
-      .then((data) => {
-        setWorkflowName(data.name)
-        setSelectedEnvId(data.environment_id ?? "")
-        setGithubHookRepo(data.github_hook_repo ?? null)
-        setGithubHookId(data.github_hook_id ?? null)
-        setGithubWebhook(data.github_webhook ?? false)
-        setPlaybookSlug(data.playbook_slug ?? null)
-        setProjectSlug(data.project_slug ?? null)
-        setProjectName(data.project_name ?? null)
-        const graph = data.current_version?.graph
-        if (graph?.nodes && graph?.edges) {
-          // Run auto-layout when:
-          // (a) all nodes are at (0,0) — no positions assigned yet
-          // (b) all nodes share the same y — backend placeholder grid (yaml_to_graph
-          //     assigns sequential x columns but y=80 for every node)
-          // In both cases the stored positions are meaningless and dagre produces
-          // a much cleaner result. User-repositioned graphs will have varied y values.
-          const allAtOrigin = graph.nodes.every(
-            (n: Node) => !n.position || (n.position.x === 0 && n.position.y === 0),
-          )
-          const allSameY = graph.nodes.length > 1 &&
-            graph.nodes.every((n: Node) => n.position?.y === graph.nodes[0].position?.y)
-          const styledEdges = (es: Edge[]) => es.map(e => ({
-            ...e,
-            type: e.type ?? "smoothstep",
-            markerEnd: e.markerEnd ?? { type: MarkerType.ArrowClosed, width: 12, height: 12, color: "#a8a29e" },
-            style: e.style ?? { stroke: "#a8a29e", strokeWidth: 2 },
-          }))
-          if (allAtOrigin || allSameY) {
-            const laid = autoLayout(graph.nodes, graph.edges)
-            setNodes(laid.nodes)
-            setEdges(styledEdges(laid.edges))
-          } else {
-            setNodes(graph.nodes)
-            setEdges(styledEdges(graph.edges))
-          }
-        } else {
-          if (graph?.nodes) setNodes(graph.nodes)
-          if (graph?.edges) setEdges(graph.edges.map((e: Edge) => ({
-            ...e,
-            type: e.type ?? "smoothstep",
-            markerEnd: e.markerEnd ?? { type: MarkerType.ArrowClosed, width: 12, height: 12, color: "#a8a29e" },
-            style: e.style ?? { stroke: "#a8a29e", strokeWidth: 2 },
-          })))
-        }
-        setTimeout(() => { isFirstLoad.current = false }, 100)
-        setCanvasLoading(false)
-        setTimeout(() => fitView({ padding: 0.15, duration: 400 }), 150)
-      })
-      .catch(() => { if (!abort.signal.aborted) { isFirstLoad.current = false; setCanvasLoading(false) } })
-    return () => abort.abort()
-  }, [workflowId, getToken, setNodes, setEdges])
-
-  const handleEnvChange = useCallback(async (envId: string) => {
-    setSelectedEnvId(envId)
-    try {
-      const headers = await authHeaders(getToken, wsId)
-      const authFetch: AuthFetch = (url, opts) => fetch(url, { ...opts, headers: { ...headers, ...(opts?.headers as Record<string, string> | undefined) } })
-      await workflows.patchEnvironment(authFetch, workflowId, { environment_id: envId || null })
-    } catch { /* non-fatal */ }
-  }, [workflowId, getToken])
-
-  const save = useCallback(async (currentNodes: Node[], currentEdges: Edge[], name: string) => {
-    if (!workflowId || workflowId === "undefined") return
-    if (savingInFlightRef.current) return
-    savingInFlightRef.current = true
-    setSaveStatus("saving")
-    try {
-      const headers = await authHeaders(getToken, wsId)
-      const authFetch: AuthFetch = (url, opts) => fetch(url, { ...opts, headers: { ...headers, ...(opts?.headers as Record<string, string> | undefined) } })
-      const res = await workflows.update(authFetch, workflowId, { name, graph: { nodes: currentNodes, edges: currentEdges } })
-      if (!res.ok) {
-        setSaveStatus("error")
-        setTimeout(() => setSaveStatus("idle"), 3000)
-        return
-      }
-      setSaveStatus("saved")
-      setTimeout(() => setSaveStatus("idle"), 2000)
-    } catch {
-      setSaveStatus("error")
-      setTimeout(() => setSaveStatus("idle"), 3000)
-    } finally {
-      savingInFlightRef.current = false
-    }
-  }, [workflowId, getToken])
-
-  // Autosave — debounced 1.5s after any node/edge change (skip for viewers)
-  useEffect(() => {
-    if (isFirstLoad.current || isViewer) return
-    if (autosaveTimer.current) clearTimeout(autosaveTimer.current)
-    autosaveTimer.current = setTimeout(() => {
-      save(nodes, edges, workflowName)
-    }, 1500)
-    return () => { if (autosaveTimer.current) clearTimeout(autosaveTimer.current) }
-  }, [nodes, edges, workflowName, save, isViewer])
-
-  // History snapshot — debounced 400ms; only on structural/config changes, not bare position moves
-  useEffect(() => {
-    if (isFirstLoad.current || skipHistoryRef.current || isViewer) return
-    if (historyTimerRef.current) clearTimeout(historyTimerRef.current)
-    historyTimerRef.current = setTimeout(() => {
-      // Build a key that captures structure + config but not x/y positions
-      const nodeKey = nodes.map(n => `${n.id}:${JSON.stringify(n.data)}`).join("|")
-      const edgeKey = edges.map(e => `${e.id}:${e.source}:${e.target}`).join("|")
-      const key = nodeKey + "||" + edgeKey
-      const prev = historyRef.current[historyIdxRef.current]
-      const prevNodeKey = prev ? prev.nodes.map(n => `${n.id}:${JSON.stringify(n.data)}`).join("|") : ""
-      const prevEdgeKey = prev ? prev.edges.map(e => `${e.id}:${e.source}:${e.target}`).join("|") : ""
-      if (key === prevNodeKey + "||" + prevEdgeKey) return // nothing meaningful changed
-      // Truncate redo branch
-      const trimmed = historyRef.current.slice(0, historyIdxRef.current + 1)
-      trimmed.push({ nodes: [...nodes], edges: [...edges] })
-      if (trimmed.length > 50) trimmed.shift()
-      historyRef.current = trimmed
-      historyIdxRef.current = trimmed.length - 1
-      setCanUndo(historyIdxRef.current > 0)
-      setCanRedo(false)
-    }, 400)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nodes, edges])
-
-  const undo = useCallback(() => {
-    if (historyIdxRef.current <= 0) return
-    skipHistoryRef.current = true
-    historyIdxRef.current--
-    const snap = historyRef.current[historyIdxRef.current]
-    setNodes([...snap.nodes])
-    setEdges([...snap.edges])
-    setCanUndo(historyIdxRef.current > 0)
-    setCanRedo(true)
-    requestAnimationFrame(() => { skipHistoryRef.current = false })
-  }, [setNodes, setEdges])
-
-  const redo = useCallback(() => {
-    if (historyIdxRef.current >= historyRef.current.length - 1) return
-    skipHistoryRef.current = true
-    historyIdxRef.current++
-    const snap = historyRef.current[historyIdxRef.current]
-    setNodes([...snap.nodes])
-    setEdges([...snap.edges])
-    setCanUndo(true)
-    setCanRedo(historyIdxRef.current < historyRef.current.length - 1)
-    requestAnimationFrame(() => { skipHistoryRef.current = false })
-  }, [setNodes, setEdges])
-
-  // Keyboard shortcuts for undo/redo
-  useEffect(() => {
-    if (isViewer) return
-    function onKeyDown(e: KeyboardEvent) {
-      const meta = e.metaKey || e.ctrlKey
-      if (!meta) return
-      const tag = (e.target as HTMLElement).tagName
-      if (tag === "INPUT" || tag === "TEXTAREA") return
-      if (e.key === "z" && !e.shiftKey) { e.preventDefault(); undo() }
-      if ((e.key === "z" && e.shiftKey) || e.key === "y") { e.preventDefault(); redo() }
-    }
-    document.addEventListener("keydown", onKeyDown)
-    return () => document.removeEventListener("keydown", onKeyDown)
-  }, [undo, redo, isViewer])
+  useCanvasShortcuts({ undo, redo, openSearch: () => setSearchOpen(true), zOrder: applyZOrder, editable: !isViewer && activeView === "canvas" })
 
   const onConnect = useCallback(
     (connection: Connection) => setEdges((eds: Edge[]) => addEdge({
@@ -576,422 +150,6 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
     [screenToFlowPosition, setNodes]
   )
 
-  const startRun = useCallback(async (dryRun: boolean) => {
-    // Client-side quick checks first
-    if (!selectedEnvId) {
-      setValidationErrors([{ blockId: "__env__", label: "Vault", message: "Select a vault before running — add one in Settings → Vault" }])
-      return
-    }
-    const localErrors = validateNodes(nodes)
-    if (localErrors.length > 0) {
-      setValidationErrors(localErrors)
-      return
-    }
-    setValidationErrors([])
-    setRunning(dryRun ? "dry" : "live")
-
-    // Server-side pre-flight: credentials, brain descriptions, required fields
-    try {
-      const headers = await authHeaders(getToken, wsId)
-      const authFetch: AuthFetch = (url, opts) => fetch(url, { ...opts, headers: { ...headers, ...(opts?.headers as Record<string, string> | undefined) } })
-      const vRes = await workflows.validate(authFetch, workflowId, {})
-      if (vRes.ok) {
-        const { valid, errors } = await vRes.json()
-        if (!valid) {
-          setValidationErrors(errors.map((e: { block_id: string; label: string; message: string }) => ({
-            blockId: e.block_id,
-            label: e.label,
-            message: e.message,
-          })))
-          setRunning("idle")
-          return
-        }
-      }
-    } catch {
-      setRunning("idle")
-      return
-    }
-
-    try {
-      const headers = await authHeaders(getToken, wsId)
-      let initialState: Record<string, unknown> | undefined
-
-      // For webhook-triggered workflows, replicate what the CLI does:
-      // find the trigger block, query GitHub for matching issues, inject initial_state.
-      const triggerNode = nodes.find(n => {
-        const d = n.data as BlockNodeData
-        const cfg = (d.config as Record<string, unknown>) ?? {}
-        return d.type === "trigger" && (
-          cfg.event_type === "github_issue_labeled" ||
-          cfg.event_type === "github_issue"
-        )
-      })
-
-      // Webhook trigger — prompt for PR details before running
-      const webhookTriggerNode = nodes.find(n => {
-        const d = n.data as BlockNodeData
-        const cfg = (d.config as Record<string, unknown>) ?? {}
-        return d.type === "trigger" && cfg.event_type === "webhook"
-      })
-      if (webhookTriggerNode && !triggerNode) {
-        const cfg = (webhookTriggerNode.data as BlockNodeData).config as Record<string, unknown>
-        // Use github_hook_repo (authoritative) — test_repo is removed
-        setWebhookRepo(githubHookRepo || "")
-        setWebhookPrNumber((cfg.test_pr_number as string) || "")
-        setRunning("idle")
-        setWebhookModal({ dryRun })
-        return
-      }
-
-      if (triggerNode) {
-        const cfg = (triggerNode.data as BlockNodeData).config as Record<string, unknown>
-        const repoAllowlist = (cfg.repo_allowlist as string) || ""
-        // Canvas stores labels as an array at cfg.labels — the only canonical path.
-        const labelsRaw = cfg.labels
-        const labelsArr: string[] = Array.isArray(labelsRaw)
-          ? (labelsRaw as string[]).map(s => String(s).trim()).filter(Boolean)
-          : []
-        const label = labelsArr[0] || ""
-        const repos = repoAllowlist.split(",").map(s => s.trim()).filter(Boolean)
-        const repo = repos[0] // try first configured repo
-
-        if (!repo || !label) {
-          const missing: string[] = []
-          if (!repo) missing.push("Repository")
-          if (!label) missing.push("Label")
-          setValidationErrors([{
-            blockId: triggerNode.id,
-            label: (triggerNode.data as BlockNodeData).label,
-            message: `Set ${missing.join(" and ")} on the trigger block before running`,
-          }])
-          setRunning("idle")
-          return
-        }
-
-        // Pass environment_id so the credential lookup uses the workflow's env,
-        // not whichever workspace-level GitHub token comes back first.
-        const issueAuthFetch: AuthFetch = (url, opts) => fetch(url, { ...opts, headers: { ...headers, ...(opts?.headers as Record<string, string> | undefined) } })
-        const issueParams = new URLSearchParams({ repo, label })
-        if (selectedEnvId) issueParams.set("environment_id", selectedEnvId)
-        const issueRes = await issueAuthFetch(
-          `${API_URL}/credentials/github/issues?${issueParams.toString()}`
-        )
-        if (!issueRes.ok) {
-          // Read server detail + GitHub message buried inside it
-          let serverDetail = ""
-          try {
-            const body = await issueRes.json()
-            serverDetail = typeof body?.detail === "string" ? body.detail : JSON.stringify(body)
-          } catch {
-            try { serverDetail = await issueRes.text() } catch { /* give up */ }
-          }
-          // Translate known GitHub errors into actionable user-facing text
-          const friendly = (() => {
-            if (issueRes.status === 404) {
-              return `No GitHub credential connected for this workspace. Add one in Settings → Vault and reload.`
-            }
-            if (/Resource not accessible by personal access token/i.test(serverDetail)) {
-              return `Your GitHub token does not have permission to read issues on ${repo}. Fine-grained PAT: grant Repository → ${repo} and Permissions → Issues (Read). Classic PAT: include the 'repo' scope (private) or 'public_repo' scope (public). Then reconnect in Settings → Vault.`
-            }
-            if (/Bad credentials/i.test(serverDetail)) {
-              return `GitHub rejected your token as invalid or expired. Reconnect in Settings → Vault.`
-            }
-            if (/API rate limit exceeded/i.test(serverDetail)) {
-              return `GitHub API rate limit hit. Wait a few minutes or use an authenticated token with higher limits.`
-            }
-            if (/Not Found/i.test(serverDetail) && issueRes.status === 404) {
-              return `${repo} doesn't exist or your token can't see it. Check the repo name and PAT access scope.`
-            }
-            // Fallback — show the raw error if we don't have a translation
-            return `GitHub returned HTTP ${issueRes.status}${serverDetail ? `: ${serverDetail.slice(0, 200)}` : ""}`
-          })()
-          setValidationErrors([{
-            blockId: triggerNode.id,
-            label: (triggerNode.data as BlockNodeData).label,
-            message: friendly,
-          }])
-          setRunning("idle")
-          return
-        }
-
-        const issues: Array<{ number: number; title: string; body: string; url: string; author: string; labels: string[]; clone_url: string }> = await issueRes.json()
-
-        if (issues.length === 0) {
-          setValidationErrors([{
-            blockId: triggerNode.id,
-            label: (triggerNode.data as BlockNodeData).label,
-            message: `No open issues with label "${label}" found in ${repo}`,
-          }])
-          setRunning("idle")
-          return
-        }
-
-        // Multiple matching issues — pick the most recent (GitHub returns by
-        // created_at DESC) and proceed. No more hostile blocking. Production
-        // webhook fires one run per labeling event anyway; this is just a
-        // manual test fire.
-        const issue = issues[0]
-        if (issues.length > 1) {
-          console.info(
-            `[canvas] ${issues.length} issues match "${label}" on ${repo}; ` +
-            `running against the most recent: #${issue.number} - ${issue.title}`
-          )
-        }
-        const [repoOwner, repoName] = repo.split("/")
-        initialState = {
-          github_issue: {
-            issue_number:   issue.number,
-            title:          issue.title,
-            body:           issue.body,
-            url:            issue.url,
-            author:         issue.author,
-            labels:         issue.labels,
-            label_added:    label,
-            repo_full_name: repo,
-            repo_name:      repoName,
-            repo_owner:     repoOwner,
-            default_branch: "main",
-            clone_url:      issue.clone_url,
-          },
-          github_trigger: {
-            event_type: "github_issue_labeled",
-            label,
-            repo: {
-              full_name:      repo,
-              name:           repoName,
-              owner:          repoOwner,
-              default_branch: "main",
-              clone_url:      issue.clone_url,
-            },
-            issue: {
-              number: issue.number,
-              title:  issue.title,
-              body:   issue.body,
-              url:    issue.url,
-              author: issue.author,
-              labels: issue.labels,
-            },
-          },
-        }
-      }
-
-      // Preflight: estimate turn budget using Claude (cheap single call per brain block)
-      const issue = initialState
-        ? (initialState.github_issue as Record<string, string> | undefined)
-        : undefined
-      try {
-        const pfAuthFetch: AuthFetch = (url, opts) => fetch(url, { ...opts, headers: { ...headers, ...(opts?.headers as Record<string, string> | undefined) } })
-        const pfRes = await workflows.preflight(pfAuthFetch, workflowId, {
-          issue_title: issue?.title ?? "",
-          issue_body:  issue?.body  ?? "",
-          run_inputs: initialState ?? {},
-        })
-        if (pfRes.ok) {
-          const pf = await pfRes.json()
-          if (pf.suggested_max_turns > 20) {
-            setPreflight({
-              suggestedTurns: pf.suggested_max_turns,
-              files: pf.total_files ?? [],
-              pendingDryRun: dryRun,
-              initialState: initialState,
-            })
-            setRunning("idle")
-            return
-          }
-        }
-      } catch { /* preflight is best-effort */ }
-
-      await _fireRun(headers, dryRun, initialState ?? { __manual: true }, undefined)
-    } catch (e) {
-      setRunning("idle")
-      const msg = e instanceof Error ? e.message : "Failed to start run — check your connection."
-      setRunError(msg)
-      setTimeout(() => setRunError(null), 6000)
-    }
-  }, [workflowId, getToken, router, nodes, selectedEnvId])
-
-  const handleModeChange = useCallback((m: "engineer" | "liverun" | "reviewer") => {
-    setCanvasMode(m)
-    if (m === "engineer") {
-      setLeftOpen(true)
-      setNodes((nds: Node[]) => nds.map(n => ({ ...n, data: { ...n.data, reviewerDim: false } })))
-    } else if (m === "liverun") {
-      setLeftOpen(false)
-      setNodes((nds: Node[]) => nds.map(n => ({ ...n, data: { ...n.data, reviewerDim: false } })))
-      if (running === "idle" && !activeRunId) startRun(false)
-    } else if (m === "reviewer") {
-      setLeftOpen(false)
-      setNodes((nds: Node[]) => nds.map(n => {
-        const type = (n.data as BlockNodeData).type
-        const isDecision = type === "brain" || type === "approval" || type === "trigger"
-        return { ...n, data: { ...n.data, reviewerDim: !isDecision } }
-      }))
-    }
-  }, [setLeftOpen, setNodes, running, activeRunId, startRun])
-
-  const startWebhookRun = useCallback(async (dryRun: boolean, repo: string, prNumber: string) => {
-    setWebhookModal(null)
-    setRunning(dryRun ? "dry" : "live")
-    try {
-      const headers = await authHeaders(getToken, wsId)
-      const [owner, repoName] = repo.split("/")
-      const num = parseInt(prNumber, 10)
-      const initialState = {
-        _trigger: {
-          action: "opened",
-          number: num,
-          repository: { full_name: repo, name: repoName, owner: { login: owner } },
-          pull_request: {
-            number: num,
-            title: `Test PR #${num}`,
-            user: { login: "test-user", type: "User" },
-            html_url: `https://github.com/${repo}/pull/${num}`,
-            diff_url: `https://github.com/${repo}/pull/${num}.diff`,
-            base: { ref: "main" },
-            head: { ref: `test-branch-${num}` },
-          },
-        },
-      }
-      const runAuthFetch: AuthFetch = (url, opts) => fetch(url, { ...opts, headers: { ...headers, ...(opts?.headers as Record<string, string> | undefined) } })
-      const res = await workflows.runs.trigger(runAuthFetch, workflowId, { triggered_by: "manual", dry_run: dryRun, initial_state: initialState })
-      if (!res.ok) throw new Error("Failed to start run")
-      const run = await res.json()
-      if (!isMountedRef.current) return
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ runId: run.id, startedAt: Date.now() }))
-      setActiveRunId(run.id)
-      setDrawerVisible(true)
-      setRunning("idle")
-      setLastRunSummary({ status: "pending", created_at: new Date().toISOString(), run_id: run.id })
-      setActiveView("definition")
-    } catch (e) {
-      if (isMountedRef.current) {
-        setRunning("idle")
-        const msg = e instanceof Error ? e.message : "Failed to start run — check your connection."
-        setRunError(msg)
-        setTimeout(() => setRunError(null), 6000)
-      }
-    }
-  }, [workflowId, getToken, STORAGE_KEY])
-
-  const _fireRun = useCallback(async (
-    headers: Record<string, string>,
-    dryRun: boolean,
-    initialState: Record<string, unknown> | undefined,
-    maxTurns: number | undefined,
-  ) => {
-    const authFetch: AuthFetch = (url, opts) => fetch(url, { ...opts, headers: { ...headers, ...(opts?.headers as Record<string, string> | undefined) } })
-    const res = await workflows.runs.trigger(authFetch, workflowId, {
-      triggered_by: "manual",
-      dry_run: dryRun,
-      // #1515 — non-dry canvas runs land in a Lens session; the RunBubble
-      // auto-spawns via the #1502 rehydration path. Dry runs keep the old
-      // /workflows/{id}/runs/{id} inspector page.
-      create_lens_session: !dryRun,
-      ...(initialState ? { initial_state: initialState } : {}),
-      ...(maxTurns    ? { max_turns: maxTurns }          : {}),
-    })
-    if (!res.ok) throw new Error("Failed to start run")
-    const run = await res.json()
-    if (dryRun) {
-      router.push(`/workflows/${workflowId}/runs/${run.id}`)
-    } else if (run.session_id) {
-      // Land in Lens; the session's rehydration effect picks up the run and
-      // renders the RunBubble inline. Keep localStorage marker so a return
-      // to canvas still shows "recent run" affordances.
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ runId: run.id, startedAt: Date.now() }))
-      router.push(`/lens/${run.session_id}`)
-    } else {
-      // Server didn't mint a session (older API, or feature disabled) —
-      // fall back to the drawer path so nothing regresses.
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ runId: run.id, startedAt: Date.now() }))
-      setActiveRunId(run.id)
-      setDrawerVisible(true)
-      setRunning("idle")
-      setLastRunSummary({ status: "pending", created_at: new Date().toISOString(), run_id: run.id })
-      setActiveView("definition")
-    }
-  }, [workflowId, router, STORAGE_KEY])
-
-  const performTestTrigger = useCallback(async (payload: Record<string, unknown>, headers: Record<string, string>) => {
-    const authFetch: AuthFetch = (url, opts) => fetch(url, { ...opts, headers: { ...headers, ...(opts?.headers as Record<string, string> | undefined) } })
-    // #1515 P1 — canvas Run lands in a Lens session with RunBubble.
-    // Backend auto-mints a session when lens_attach=true and no lens_session_id is supplied.
-    const res = await workflows.trigger(authFetch, workflowId, { ...payload, lens_attach: true })
-    if (res.status === 422) {
-      const errBody = await res.json().catch(() => null)
-      if (errBody?.detail?.error === "missing_required_inputs") {
-        setInputsModalPayload(payload)
-        return
-      }
-    }
-    if (!res.ok) throw new Error("Failed to start test run")
-    const data = await res.json()
-    localStorage.setItem(TEST_RUN_KEY, JSON.stringify({ runId: data.run_id, startedAt: Date.now() }))
-    setTestRunId(data.run_id)
-    setTestRunStatus("pending")
-    setLastRunSummary({ status: "pending", created_at: new Date().toISOString(), run_id: data.run_id })
-    setActiveView("definition")
-    // #1515 P1 — redirect to the Lens session so the RunBubble renders with live SSE.
-    if (data.session_id) {
-      router.push(`/lens/${data.session_id}`)
-    }
-  }, [workflowId, TEST_RUN_KEY, router])
-
-  const startTestTrigger = useCallback(async () => {
-    setTestTriggerModal(false)
-    setTestRunning(true)
-    setTestRunId(null)
-    try {
-      const headers = await authHeaders(getToken, wsId)
-      const payload: Record<string, unknown> = {}
-      if (testPrNumber.trim()) {
-        const pr = parseInt(testPrNumber.trim(), 10)
-        const repo = githubHookRepo ?? ""
-        payload.number = pr
-        payload.pull_request = {
-          number: pr,
-          html_url: repo ? `https://github.com/${repo}/pull/${pr}` : "",
-          diff_url: repo ? `https://github.com/${repo}/pull/${pr}.diff` : "",
-          title: `PR #${pr}`,
-          user: { login: "" },
-          base: { ref: "main" },
-          head: { ref: "" },
-        }
-      }
-      const turns = parseInt(testMaxTurns.trim(), 10)
-      if (!isNaN(turns) && turns > 0) payload.__max_turns_override = turns
-      await performTestTrigger(payload, headers)
-    } catch {
-      // test run failed to start — setTestRunning resets below
-    } finally {
-      setTestRunning(false)
-    }
-  }, [workflowId, getToken, TEST_RUN_KEY])
-
-  const handleBlockStatus = useCallback((blockId: string, status: "running" | "completed" | "failed" | "skipped") => {
-    setNodes((nds: Node[]) => nds.map(n =>
-      n.id === blockId ? { ...n, data: { ...n.data, runStatus: status, ...(status === "running" ? { liveTurn: undefined } : {}) } } : n
-    ))
-  }, [setNodes])
-
-  const handleBlockTurns = useCallback((blockId: string, turn: number) => {
-    setNodes((nds: Node[]) => nds.map(n =>
-      n.id === blockId ? { ...n, data: { ...n.data, liveTurn: turn } } : n
-    ))
-  }, [setNodes])
-
-  const handleDrawerHide = useCallback(() => {
-    setDrawerVisible(false)
-  }, [])
-
-  const handleDrawerClose = useCallback(() => {
-    localStorage.removeItem(STORAGE_KEY)
-    setActiveRunId(null)
-    setDrawerVisible(false)
-    setRunning("idle")
-    setNodes((nds: Node[]) => nds.map(n => ({ ...n, data: { ...n.data, runStatus: undefined, liveTurn: undefined } })))
-  }, [setNodes, STORAGE_KEY])
-
   const handleBlockChange = useCallback(
     (blockId: string, changes: Record<string, unknown>) => {
       setNodes((nds: Node[]) =>
@@ -1004,135 +162,47 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
     [setNodes]
   )
 
+  /** Select a block, open its config and centre the viewport on it. */
+  const focusNode = (nodeId: string) => {
+    const node = nodes.find(n => n.id === nodeId)
+    if (!node) return
+    setActiveView("canvas")
+    setNodes((nds: Node[]) => nds.map((n: Node) => (n.selected === (n.id === nodeId) ? n : { ...n, selected: n.id === nodeId })))
+    setSelectedNode(node)
+    setRightOpen(true)
+    const x = (node.position.x ?? 0) + (node.measured?.width ?? node.width ?? 200) / 2
+    const y = (node.position.y ?? 0) + (node.measured?.height ?? node.height ?? 80) / 2
+    setCenter(x, y, { zoom: 1, duration: 400 })
+  }
+
+  const applyLayout = (fitOptions: { padding: number; minZoom?: number }, delay: number) => {
+    const laid = autoLayout(nodes, edges)
+    setNodes(laid.nodes)
+    setLayoutNotice(cycleNotice(laid.cycleNodeIds, nodes))
+    setTimeout(() => fitView({ ...fitOptions, duration: 400 }), delay)
+  }
+
+  const toggleFocus = () => {
+    if (focusMode) { setFocusMode(false); setLeftOpen(true); setRightOpen(true) }
+    else { setFocusMode(true); setLeftOpen(false); setRightOpen(false); applyLayout({ padding: 0.2, minZoom: 0.5 }, 80) }
+  }
+
   const selectedData = selectedNode?.data as BlockNodeData | undefined
+  const rightVisible = rightOpen && !!selectedNode
+  const panelStyle = (open: boolean, width: number, side: "borderRight" | "borderLeft") => ({
+    flexBasis: open ? width : 0, width: open ? width : 0, maxWidth: open ? width : 0, minWidth: 0,
+    flexGrow: 0, flexShrink: 0, overflow: "hidden" as const, position: "relative" as const,
+    [side]: open ? "1px solid #e7e5e4" : "none", background: "white",
+  })
 
   return (
     <div className="flex flex-col h-full bg-stone-50">
-      {/* #734 pre-run inputs modal — opens when /trigger returns 422 missing_required_inputs */}
-      {inputsModalPayload && (
-        <RunInputsModal
-          open
-          workflowId={workflowId}
-          getToken={getToken ?? null}
-          workspaceId={wsId ?? ""}
-          initialInputs={(inputsModalPayload.inputs as Record<string, unknown>) ?? {}}
-          onCancel={() => { setInputsModalPayload(null); setTestRunning(false) }}
-          onConfirm={async (newInputs) => {
-            const payload = { ...inputsModalPayload, inputs: newInputs }
-            setInputsModalPayload(null)
-            try {
-              const headers = await authHeaders(getToken, wsId)
-              await performTestTrigger(payload, headers)
-            } catch { /* surfaced via existing state */ }
-            finally { setTestRunning(false) }
-          }}
-        />
-      )}
-      {/* Top bar */}
-      <header className="flex items-center justify-between px-5 py-3 bg-white border-b border-stone-200 shrink-0">
-        <div className="flex flex-col gap-0.5">
-          <nav className="flex items-center gap-1 text-[10px] text-stone-400">
-            {projectName ? (
-              <>
-                <button onClick={() => router.push("/projects")} className="hover:text-stone-600 transition-colors">Projects</button>
-                <span>/</span>
-                <button onClick={() => router.back()} className="hover:text-stone-600 transition-colors max-w-[120px] truncate">{projectName}</button>
-                <span>/</span>
-                <span className="text-stone-500 font-medium max-w-[140px] truncate">{workflowName}</span>
-              </>
-            ) : (
-              <>
-                <button onClick={() => router.push("/workflows")} className="hover:text-stone-600 transition-colors">← Workflows</button>
-                <span>/</span>
-                <span className="text-stone-500 font-medium max-w-[200px] truncate">{workflowName}</span>
-              </>
-            )}
-          </nav>
-        <div className="flex items-center gap-3">
-          <input
-            value={workflowName}
-            onChange={(e) => !isViewer && setWorkflowName(e.target.value)}
-            readOnly={isViewer}
-            className="text-base font-semibold text-stone-900 bg-transparent border-none outline-none focus:ring-0 w-64"
-          />
-          {/* Environment picker with integration status */}
-          <EnvDropdown
-            environments={environments}
-            selectedEnvId={selectedEnvId}
-            credentials={envCredentials}
-            nodes={nodes}
-            disabled={isViewer}
-            onChange={id => !isViewer && handleEnvChange(id)}
-          />
-          <div className="ml-3 flex bg-stone-100 rounded-md p-0.5 text-xs">
-            {(["canvas", "definition", "runs", "settings"] as const).map(v => (
-              <button
-                key={v}
-                onClick={() => setActiveView(v)}
-                className={`px-2.5 py-1 rounded capitalize ${
-                  activeView === v
-                    ? "bg-white text-stone-900 shadow-sm font-medium"
-                    : "text-stone-500 hover:text-stone-800"
-                }`}
-              >
-                {v === "canvas" ? "Canvas" : v === "definition" ? "Definition" : v === "runs" ? "Runs" : "Settings"}
-              </button>
-            ))}
-          </div>
-        </div>
-        </div>
-        <div className="flex items-center gap-3">
-          {/* Autosave status */}
-          <span className={`text-xs transition-opacity duration-300 ${
-            saveStatus === "saving" ? "text-amber-500 opacity-100" :
-            saveStatus === "saved"  ? "text-green-500 opacity-100" :
-            saveStatus === "error"  ? "text-red-500 opacity-100" :
-            "opacity-0"
-          }`}>
-            {saveStatus === "saving" ? "Saving…" : saveStatus === "error" ? "Save failed" : "Saved ✓"}
-          </span>
-          <CostEstimate workflowId={workflowId} nodes={nodes} getToken={getToken} />
-
-          {!isViewer && (
-            <>
-              {prefs.show_test_trigger && playbookSlug && (
-                <button
-                  onClick={() => setTestTriggerModal(true)}
-                  disabled={running !== "idle" || testRunning}
-                  className="rounded-lg border border-emerald-200 px-3 py-1.5 text-xs font-medium text-emerald-600 hover:bg-emerald-50 transition-colors disabled:opacity-50"
-                >
-                  {testRunning ? "Starting…" : "⚗ Dry Run"}
-                </button>
-              )}
-              {prefs.show_dry_run && (
-                <button
-                  onClick={() => startRun(true)}
-                  disabled={running !== "idle"}
-                  className="rounded-lg border border-stone-200 px-3 py-1.5 text-xs font-medium text-stone-500 hover:bg-stone-50 transition-colors disabled:opacity-50"
-                >
-                  {running === "dry" ? "Simulating…" : "Dry run"}
-                </button>
-              )}
-              {activeRunId && !drawerVisible && (
-                <button
-                  onClick={() => setDrawerVisible(true)}
-                  className="rounded-lg border border-violet-300 px-3 py-1.5 text-xs font-medium text-violet-700 hover:bg-violet-50 transition-colors"
-                >
-                  View output ↑
-                </button>
-              )}
-              <button
-                onClick={() => startRun(false)}
-                disabled={running === "live" || running === "dry"}
-                className="rounded-lg bg-violet-600 px-4 py-1.5 text-sm font-semibold text-white hover:bg-violet-700 transition-colors disabled:opacity-50"
-              >
-                {running === "live" ? "Starting…" : running === "dry" ? "Simulating…" : "▶ Run"}
-              </button>
-            </>
-          )}
-        </div>
-      </header>
-
+      <CanvasHeader
+        workflowId={workflowId} getToken={getToken} isViewer={isViewer} nodes={nodes}
+        workflowName={workflowName} setWorkflowName={setWorkflowName} projectName={projectName} playbookSlug={playbookSlug}
+        environments={environments} selectedEnvId={selectedEnvId} envCredentials={envCredentials} onEnvChange={handleEnvChange}
+        activeView={activeView} setActiveView={setActiveView} saveStatus={saveStatus} runs={runs}
+      />
 
       {/* Three-panel layout (or YAML view) */}
       <div className="flex flex-1 overflow-hidden">
@@ -1140,25 +210,13 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
           <>
             {/* Left panel — block palette (editors/admins only) */}
             {!isViewer && (
-              <div
-                style={{
-                  flexBasis: leftOpen ? 212 : 0,
-                  width: leftOpen ? 212 : 0,
-                  maxWidth: leftOpen ? 212 : 0,
-                  minWidth: 0,
-                  flexGrow: 0,
-                  flexShrink: 0,
-                  overflow: "hidden",
-                  position: "relative",
-                  borderRight: leftOpen ? "1px solid #e7e5e4" : "none",
-                  background: "white",
-                }}
-              >
+              <div style={panelStyle(leftOpen, 212, "borderRight")}>
                 {leftOpen && (
                   <button
                     onClick={() => setLeftOpen(false)}
                     className="absolute top-3 right-3 z-10 w-6 h-6 rounded-full bg-white border border-stone-200 shadow-sm flex items-center justify-center text-stone-400 hover:text-stone-700 transition-colors"
                     title="Collapse palette"
+                    aria-label="Collapse palette"
                   >
                     ‹
                   </button>
@@ -1179,65 +237,13 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
                   + Blocks
                 </button>
               )}
-              {runError && (
-                <div className="absolute top-3 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 bg-red-50 border border-red-200 text-red-800 text-xs font-medium px-4 py-2.5 rounded-xl shadow-md max-w-sm">
-                  <span className="shrink-0">✕</span>
-                  <span className="flex-1">{runError}</span>
-                  <button onClick={() => setRunError(null)} className="shrink-0 opacity-50 hover:opacity-100 transition-opacity ml-1">✕</button>
-                </div>
-              )}
-              {canvasLoading && (
-                <div className="absolute inset-0 z-10 bg-stone-50 flex items-center justify-center">
-                  <div className="flex flex-col items-center gap-2">
-                    {[1, 2, 3].map(i => (
-                      <div key={i} className="flex flex-col gap-1">
-                        <div className="rounded-xl bg-stone-200 animate-pulse h-14" style={{ width: 212 }} />
-                        {i < 3 && (
-                          <div className="w-0.5 h-4 bg-stone-200 animate-pulse mx-auto" />
-                        )}
-                      </div>
-                    ))}
-                    <p className="text-xs text-stone-400 mt-3">Loading canvas…</p>
-                  </div>
-                </div>
-              )}
-              {/* Declarative repo badges — one per allowlisted repo */}
-              {(() => {
-                const triggerNode = nodes.find(n => (n.data as BlockNodeData).type === "trigger")
-                const cfg = triggerNode ? (triggerNode.data as BlockNodeData).config as Record<string, unknown> : null
-                const allowlist = (cfg?.repo_allowlist as string) || githubHookRepo || ""
-                const repos = allowlist.split(",").map(s => s.trim()).filter(Boolean)
-                if (!repos.length) return null
-                return (
-                  <div className="absolute top-3 left-3 z-10 flex flex-col gap-1">
-                    {repos.map(repo => (
-                      <a
-                        key={repo}
-                        href={`https://github.com/${repo}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center gap-1.5 bg-white border border-stone-200 rounded-lg px-2.5 py-1.5 shadow-sm text-stone-600 hover:border-stone-400 hover:text-stone-900 transition-colors"
-                      >
-                        <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5 shrink-0">
-                          <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
-                        </svg>
-                        <span className="font-mono text-[11px] leading-none">{repo}</span>
-                      </a>
-                    ))}
-                  </div>
-                )
-              })()}
-              {!canvasLoading && nodes.length === 0 && (
-                <div className="absolute inset-0 z-10 pointer-events-none flex items-center justify-center">
-                  <div className="flex flex-col items-center gap-3 text-center">
-                    <div className="w-12 h-12 rounded-xl border-2 border-dashed border-stone-300 flex items-center justify-center">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="w-5 h-5 text-stone-400"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
-                    </div>
-                    <p className="text-sm font-medium text-stone-500">Drag a Trigger block to get started</p>
-                    <p className="text-xs text-stone-400 max-w-[200px]">Blocks are in the left panel — drag them onto the canvas to build your workflow.</p>
-                  </div>
-                </div>
-              )}
+              <CanvasOverlays
+                notice={runs.runError ?? layoutNotice}
+                onDismissNotice={() => (runs.runError ? runs.setRunError(null) : setLayoutNotice(null))}
+                canvasLoading={canvasLoading}
+                nodes={nodes}
+                githubHookRepo={githubHookRepo}
+              />
               <ReactFlow
                 nodes={nodes}
                 edges={edges}
@@ -1265,6 +271,9 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
                 connectionRadius={40}
                 snapGrid={[16, 16]}
                 snapToGrid
+                // Explicit z-order (bring to front / send to back) is the source of truth;
+                // React Flow's +1000 selection boost would hide it while a node is selected.
+                elevateNodesOnSelect={false}
                 defaultEdgeOptions={{
                   type: "smoothstep",
                   markerEnd: { type: MarkerType.ArrowClosed, width: 10, height: 10, color: "#d6d3d1" },
@@ -1272,90 +281,46 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
                 }}
               >
                 <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#E7E5E4" />
-                {/* Unified canvas toolbar — replaces ReactFlow Controls + custom buttons */}
-                <div className="absolute top-3 right-3 z-10 flex flex-col bg-white border border-stone-200 rounded-xl shadow-sm overflow-hidden">
-                  {[
-                    {
-                      title: "Zoom in",
-                      onClick: () => zoomIn({ duration: 200 }),
-                      icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" className="w-3.5 h-3.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>,
-                      active: false,
-                    },
-                    {
-                      title: "Zoom out",
-                      onClick: () => zoomOut({ duration: 200 }),
-                      icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" className="w-3.5 h-3.5"><line x1="5" y1="12" x2="19" y2="12"/></svg>,
-                      active: false,
-                    },
-                    {
-                      title: "Fit view",
-                      onClick: () => fitView({ padding: 0.2, duration: 400 }),
-                      icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5"><path d="M8 3H5a2 2 0 00-2 2v3"/><path d="M21 8V5a2 2 0 00-2-2h-3"/><path d="M3 16v3a2 2 0 002 2h3"/><path d="M16 21h3a2 2 0 002-2v-3"/></svg>,
-                      active: false,
-                    },
-                    {
-                      title: "Organize — auto-layout all blocks",
-                      onClick: () => { const laid = autoLayout(nodes, edges); setNodes(laid.nodes); setTimeout(() => fitView({ padding: 0.15, duration: 400 }), 50) },
-                      icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5"><polygon points="11 2 2 7 11 12 20 7 11 2"/><polyline points="2 17 11 22 20 17"/><polyline points="2 12 11 17 20 12"/></svg>,
-                      active: false,
-                    },
-                    {
-                      title: focusMode ? "Exit focus mode" : "Focus — hide panels, fit all blocks",
-                      onClick: () => {
-                        if (focusMode) { setFocusMode(false); setLeftOpen(true); setRightOpen(true) }
-                        else { setFocusMode(true); setLeftOpen(false); setRightOpen(false); const laid = autoLayout(nodes, edges); setNodes(laid.nodes); setTimeout(() => fitView({ padding: 0.2, minZoom: 0.5, duration: 400 }), 80) }
-                      },
-                      icon: focusMode
-                        ? <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5"><path d="M8 3H5a2 2 0 00-2 2v3"/><path d="M21 8V5a2 2 0 00-2-2h-3"/><path d="M3 16v3a2 2 0 002 2h3"/><path d="M16 21h3a2 2 0 002-2v-3"/><line x1="9" y1="9" x2="15" y2="15"/><line x1="15" y1="9" x2="9" y2="15"/></svg>
-                        : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>,
-                      active: focusMode,
-                    },
-                  ].map((btn, i, arr) => (
-                    <button
-                      key={i}
-                      onClick={btn.onClick}
-                      title={btn.title}
-                      className={cn(
-                        "flex items-center justify-center w-9 h-9 transition-colors",
-                        i < arr.length - 1 && "border-b border-stone-100",
-                        btn.active
-                          ? "bg-stone-900 text-white"
-                          : "text-stone-500 hover:text-stone-900 hover:bg-stone-50"
-                      )}
-                    >
-                      {btn.icon}
-                    </button>
-                  ))}
-                </div>
+                {minimapOpen && (
+                  <MiniMap
+                    pannable
+                    zoomable
+                    ariaLabel="Canvas minimap"
+                    position="bottom-right"
+                    bgColor="var(--surface)"
+                    maskColor="rgba(120, 113, 108, 0.12)"
+                    nodeColor={n => (n.selected ? "var(--accent)" : "var(--border-2)")}
+                    nodeBorderRadius={6}
+                    className="!rounded-xl !border !border-stone-200 !shadow-sm overflow-hidden"
+                  />
+                )}
+                <CanvasToolbar
+                  focusMode={focusMode}
+                  onOrganize={() => applyLayout({ padding: 0.15 }, 50)}
+                  onToggleFocus={toggleFocus}
+                  minimapOpen={minimapOpen}
+                  onToggleMinimap={toggleMinimap}
+                  onSearch={() => setSearchOpen(true)}
+                  canReorder={!isViewer && nodes.some(n => n.selected)}
+                  onZOrder={applyZOrder}
+                />
               </ReactFlow>
-              {activeRunId && drawerVisible && (
+              {runs.activeRunId && runs.drawerVisible && (
                 <RunDrawer
                   workflowId={workflowId}
-                  runId={activeRunId}
+                  runId={runs.activeRunId}
                   getToken={getToken}
-                  onBlockStatus={handleBlockStatus}
-                  onBlockTurns={handleBlockTurns}
-                  onClose={handleDrawerHide}
-                  onRunDone={() => { localStorage.removeItem(STORAGE_KEY); setRunning("idle"); setActiveRunId(null); if (canvasMode === "liverun") { setCanvasMode("engineer"); setLeftOpen(true) } }}
+                  onBlockStatus={runs.handleBlockStatus}
+                  onBlockTurns={runs.handleBlockTurns}
+                  onClose={runs.hideDrawer}
+                  onRunDone={runs.onRunDone}
                 />
               )}
             </div>
 
             {/* Right panel — block config only */}
-            <div
-              style={{
-                flexBasis: (rightOpen && selectedNode) ? 344 : 0,
-                width: (rightOpen && selectedNode) ? 344 : 0,
-                maxWidth: (rightOpen && selectedNode) ? 344 : 0,
-                minWidth: 0,
-                flexGrow: 0,
-                flexShrink: 0,
-                overflow: "hidden",
-                borderLeft: (rightOpen && selectedNode) ? "1px solid #e7e5e4" : "none",
-                background: "white",
-              }}
-            >
-              {rightOpen && selectedNode && selectedData && (
+            <div style={panelStyle(rightVisible, 344, "borderLeft")}>
+              {rightVisible && selectedNode && selectedData && (
                 <div className="flex-1 overflow-y-auto min-w-0 w-[344px] h-full">
                   <BlockEditor
                     workflowId={workflowId}
@@ -1389,297 +354,17 @@ function CanvasEditorInner({ workflowId, getToken, isViewer = false, isAdmin = f
             </div>
           </>
         ) : activeView === "definition" ? (
-          <DefinitionPanel nodes={nodes} edges={edges} workflowName={workflowName} getToken={getToken} workflowId={workflowId} runState={lastRunState} runSummary={lastRunSummary} />
+          <DefinitionPanel nodes={nodes} edges={edges} workflowName={workflowName} getToken={getToken} workflowId={workflowId} runState={runs.lastRunState} runSummary={runs.lastRunSummary} />
         ) : activeView === "runs" ? (
-          <div className="flex-1 overflow-auto px-6 py-8">
-            <div className="mx-auto max-w-3xl flex items-center justify-between mb-4">
-              <p className="text-sm font-semibold text-stone-700">{workflowName}</p>
-              <button
-                onClick={fetchRuns}
-                className="text-xs text-stone-400 hover:text-stone-700 border border-stone-200 hover:border-stone-300 rounded-lg px-2.5 py-1 transition-colors"
-              >
-                Refresh
-              </button>
-            </div>
-            {runsLoading ? (
-              <p className="text-sm text-stone-400">Loading…</p>
-            ) : runs.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-stone-300 p-16 text-center">
-                <p className="text-stone-500 text-sm">No runs yet.</p>
-              </div>
-            ) : (
-              <div className="mx-auto max-w-3xl grid gap-2">
-                {runs.map(run => {
-                  return (
-                    <button
-                      key={run.id}
-                      onClick={() => router.push(`/workflows/${workflowId}/runs/${run.id}`)}
-                      className="flex items-center justify-between rounded-xl border border-stone-200 bg-white px-5 py-4 hover:border-stone-300 hover:shadow-sm transition-all text-left w-full"
-                    >
-                      <div className="flex items-center gap-3">
-                        <StatusBadge status={effectiveStatus(run)} />
-                        <span className="text-sm text-stone-700 font-mono">{run.id.slice(0, 8)}…</span>
-                        {run.triggered_by && (
-                          <span className="text-xs text-stone-400">{run.triggered_by}</span>
-                        )}
-                      </div>
-                      <span className="text-xs text-stone-400">
-                        {new Date(run.created_at).toLocaleString()}
-                      </span>
-                    </button>
-                  )
-                })}
-              </div>
-            )}
-          </div>
+          <RunsListView workflowId={workflowId} workflowName={workflowName} runs={runs} />
         ) : activeView === "settings" ? (
           <WorkflowSettingsPanel workflowId={workflowId} getToken={getToken} isViewer={isViewer} onDelete={() => router.push("/workflows")} />
         ) : null}
       </div>
 
-      {/* No-environment warning banner — only shown when no higher-priority banner is active */}
-      {!selectedEnvId && validationErrors.length === 0 && !preflight && (
-        <div className="shrink-0 border-t border-amber-200 bg-amber-50 px-5 py-2.5 flex items-center gap-2">
-          <span className="text-amber-600 text-sm">⚠</span>
-          <p className="text-xs text-amber-800 flex-1">
-            <span className="font-semibold">No vault assigned</span> — credentials won&apos;t be available when this workflow runs.{" "}
-            Select one from the dropdown above, or{" "}
-            <a href="/settings" className="underline font-medium hover:text-amber-900">add a vault in Settings</a> first.
-          </p>
-        </div>
-      )}
-
-      {/* Preflight turn-budget banner — only shown when no validation errors override it */}
-      {preflight && validationErrors.length === 0 && (
-        <div className="shrink-0 border-t border-amber-200 bg-amber-50 px-5 py-3">
-          <div className="flex items-start justify-between gap-4">
-            <div className="flex-1 min-w-0">
-              <p className="text-xs font-semibold text-amber-800 mb-1">
-                ⚠ Estimated {preflight.suggestedTurns} turns needed — default is 25
-              </p>
-              {preflight.files.length > 0 && (
-                <p className="text-xs text-amber-700 mb-2 font-mono truncate">
-                  Files likely to be modified: {preflight.files.join(", ")}
-                </p>
-              )}
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={async () => {
-                    const headers = await authHeaders(getToken, wsId)
-                    setPreflight(null)
-                    setRunning(preflight.pendingDryRun ? "dry" : "live")
-                    try {
-                      await _fireRun(headers, preflight.pendingDryRun, preflight.initialState ?? { __manual: true }, preflight.suggestedTurns)
-                    } catch (e) {
-                      setRunning("idle")
-                      const msg = e instanceof Error ? e.message : "Failed to start run — check your connection."
-                      setRunError(msg)
-                      setTimeout(() => setRunError(null), 6000)
-                    }
-                  }}
-                  className="text-xs font-semibold bg-amber-600 text-white px-3 py-1.5 rounded-lg hover:bg-amber-700 transition-colors"
-                >
-                  Run with {preflight.suggestedTurns} turns
-                </button>
-                <button
-                  onClick={async () => {
-                    const headers = await authHeaders(getToken, wsId)
-                    setPreflight(null)
-                    setRunning(preflight.pendingDryRun ? "dry" : "live")
-                    try {
-                      await _fireRun(headers, preflight.pendingDryRun, preflight.initialState ?? { __manual: true }, undefined)
-                    } catch (e) {
-                      setRunning("idle")
-                      const msg = e instanceof Error ? e.message : "Failed to start run — check your connection."
-                      setRunError(msg)
-                      setTimeout(() => setRunError(null), 6000)
-                    }
-                  }}
-                  className="text-xs text-amber-700 hover:text-amber-900 px-2 py-1.5"
-                >
-                  Run anyway (25 turns)
-                </button>
-                <button onClick={() => { setPreflight(null); setRunning("idle") }} className="text-xs text-amber-400 hover:text-amber-600 ml-auto">Cancel</button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Webhook test modal */}
-      {webhookModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm mx-4 p-6 flex flex-col gap-4">
-            <div>
-              <h2 className="text-sm font-semibold text-stone-900">Test with a pull request</h2>
-              <p className="text-xs text-stone-400 mt-1">
-                {webhookRepo ? <>Repo: <span className="font-mono text-stone-600">{webhookRepo}</span></> : "Provide a PR to review."}
-              </p>
-            </div>
-            {!webhookRepo && (
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-medium text-stone-500">GitHub repo</label>
-                <input
-                  placeholder="owner/repo"
-                  value={webhookRepo}
-                  onChange={e => setWebhookRepo(e.target.value)}
-                  className="w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs text-stone-900 focus:outline-none focus:ring-2 focus:ring-stone-400"
-                />
-              </div>
-            )}
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-medium text-stone-500">PR number <span className="font-normal text-stone-400">(from the PR URL — e.g. /pull/42)</span></label>
-              <input
-                autoFocus
-                placeholder="42"
-                value={webhookPrNumber}
-                onChange={e => setWebhookPrNumber(e.target.value)}
-                onKeyDown={e => e.key === "Enter" && webhookRepo && webhookPrNumber && startWebhookRun(webhookModal.dryRun, webhookRepo, webhookPrNumber)}
-                className="w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs text-stone-900 focus:outline-none focus:ring-2 focus:ring-stone-400"
-              />
-            </div>
-            <div className="flex gap-2 justify-end">
-              <button
-                onClick={() => setWebhookModal(null)}
-                className="px-4 py-2 text-xs text-stone-500 hover:text-stone-700 rounded-lg hover:bg-stone-100 transition-colors"
-              >Cancel</button>
-              <button
-                onClick={() => startWebhookRun(webhookModal.dryRun, webhookRepo, webhookPrNumber)}
-                disabled={!webhookRepo.includes("/") || !webhookPrNumber}
-                className="px-4 py-2 text-xs font-medium bg-stone-900 text-white rounded-lg hover:bg-stone-700 disabled:opacity-40 transition-colors"
-              >Run review</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {testRunId && (() => {
-        const failed = testRunStatus === "failed" || testRunStatus === "cancelled"
-        const done = testRunStatus === "succeeded"
-        const active = testRunStatus === "pending" || testRunStatus === "running"
-        const color = failed ? "red" : done ? "emerald" : "indigo"
-        const statusLabel = testRunStatus === "pending" ? "Queued…"
-          : testRunStatus === "running" ? "Running…"
-          : testRunStatus === "succeeded" ? "Succeeded"
-          : testRunStatus === "failed" ? "Failed"
-          : testRunStatus ?? "Starting…"
-        return (
-          <div className={`fixed bottom-6 right-6 z-50 flex items-center gap-3 bg-${color}-50 border border-${color}-200 rounded-xl px-4 py-3 shadow-lg max-w-sm`}>
-            <span className="text-base shrink-0">
-              {active ? <span className="inline-block animate-spin">⚙</span> : done ? "✓" : "✕"}
-            </span>
-            <div className="flex-1 min-w-0">
-              <p className={`text-xs font-semibold text-${color}-800`}>⚗ Test run · {statusLabel}</p>
-              <p className={`text-xs text-${color}-600 truncate font-mono`}>{testRunId.slice(0, 8)}…</p>
-            </div>
-            <a
-              href={`/workflows/${workflowId}/runs/${testRunId}`}
-              className={`shrink-0 text-xs font-medium text-${color}-700 hover:text-${color}-900 underline underline-offset-2`}
-            >
-              View →
-            </a>
-            <button
-              onClick={() => { localStorage.removeItem(TEST_RUN_KEY); setTestRunId(null); setTestRunStatus(null) }}
-              className={`shrink-0 text-${color}-400 hover:text-${color}-700 text-sm`}
-            >✕</button>
-          </div>
-        )
-      })()}
-
-      {testTriggerModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm mx-4 p-6 flex flex-col gap-4">
-            <div>
-              <h2 className="text-sm font-semibold text-stone-900">⚗ Dry Run</h2>
-              <p className="text-xs text-stone-500 mt-1">
-                This fires a real run using a built-in dummy payload. All artifacts (branches, PRs, files) are prefixed with <span className="font-mono font-medium text-stone-700">[TEST]</span> — safe to close without merging.
-              </p>
-            </div>
-            <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5 text-xs text-amber-800">
-              The agent will execute against your connected repo using your vault credentials.
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-medium text-stone-700">PR number <span className="text-stone-400 font-normal">(optional — overrides test payload)</span></label>
-              <input
-                type="number"
-                min="1"
-                placeholder="e.g. 246"
-                value={testPrNumber}
-                onChange={e => setTestPrNumber(e.target.value)}
-                className="w-full border border-stone-200 rounded-lg px-3 py-2 text-xs text-stone-800 placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-violet-400"
-              />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-medium text-stone-700">
-                Turn budget <span className="text-stone-400 font-normal">(optional — overrides default)</span>
-              </label>
-              <div className="flex items-center gap-2">
-                <input
-                  type="number"
-                  min="1"
-                  max="200"
-                  placeholder={`default${preflight ? ` · est. ${preflight.suggestedTurns}` : ""}`}
-                  value={testMaxTurns}
-                  onChange={e => setTestMaxTurns(e.target.value)}
-                  className="w-full border border-stone-200 rounded-lg px-3 py-2 text-xs text-stone-800 placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-violet-400"
-                />
-              </div>
-              {preflight && (
-                <p className="text-xs text-stone-400">Estimated {preflight.suggestedTurns} turns based on payload complexity.</p>
-              )}
-            </div>
-            <div className="flex gap-2 justify-end">
-              <button
-                onClick={() => setTestTriggerModal(false)}
-                className="px-4 py-2 text-xs text-stone-500 hover:text-stone-700 rounded-lg hover:bg-stone-100 transition-colors"
-              >Cancel</button>
-              <button
-                onClick={startTestTrigger}
-                className="px-4 py-2 text-xs font-medium bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors"
-              >Fire test run</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Validation errors */}
-      {validationErrors.length > 0 && (
-        <div className="shrink-0 border-t border-red-200 bg-red-50 px-5 py-3">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <p className="text-xs font-semibold text-red-700 mb-1.5">
-                Fix {validationErrors.length} issue{validationErrors.length > 1 ? "s" : ""} before running
-              </p>
-              <div className="flex flex-wrap gap-x-5 gap-y-1">
-                {validationErrors.map((e) => (
-                  <button
-                    key={e.blockId}
-                    onClick={() => {
-                      if (e.blockId === "__env__") {
-                        router.push(`/workflows/${workflowId}/settings`)
-                        return
-                      }
-                      const node = nodes.find(n => n.id === e.blockId)
-                      if (node) {
-                        setSelectedNode(node)
-                        setRightOpen(true)
-                        const x = (node.position.x ?? 0) + (node.width ?? 200) / 2
-                        const y = (node.position.y ?? 0) + (node.height ?? 80) / 2
-                        setCenter(x, y, { zoom: 1, duration: 400 })
-                      }
-                    }}
-                    className="text-xs text-red-600 hover:text-red-800 hover:underline text-left"
-                  >
-                    <span className="font-medium">{e.label}</span>
-                    <span className="text-red-400"> — {e.message}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-            <button onClick={() => setValidationErrors([])} aria-label="Close" className="text-red-300 hover:text-red-500 text-lg leading-none shrink-0 mt-0.5">×</button>
-          </div>
-        </div>
-      )}
+      <RunBanners workflowId={workflowId} selectedEnvId={selectedEnvId} runs={runs} onFocusNode={focusNode} />
+      <RunModals workflowId={workflowId} getToken={getToken} wsId={wsId} runs={runs} />
+      {searchOpen && <NodeSearch nodes={nodes} onSelect={focusNode} onClose={() => setSearchOpen(false)} />}
     </div>
   )
 }
@@ -1713,211 +398,6 @@ function CanvasEditorWithClerk({ workflowId }: { workflowId: string }) {
     <ReactFlowProvider>
       <CanvasEditorInner workflowId={workflowId} getToken={getToken} isViewer={isViewer} isAdmin={isAdmin} />
     </ReactFlowProvider>
-  )
-}
-
-function EnvDropdown({
-  environments, selectedEnvId, credentials, nodes, disabled, onChange,
-}: {
-  environments: Array<{ id: string; name: string }>
-  selectedEnvId: string
-  credentials: Array<{ handle: string; service: string }>
-  nodes: Node[]
-  disabled: boolean
-  onChange: (id: string) => void
-}) {
-  const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
-
-  // Close on outside click
-  useEffect(() => {
-    if (!open) return
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as HTMLElement)) setOpen(false)
-    }
-    document.addEventListener("mousedown", handler)
-    return () => document.removeEventListener("mousedown", handler)
-  }, [open])
-
-  const connectedServices = new Set(credentials.map(c => c.service.toLowerCase()))
-  if (connectedServices.has("git")) connectedServices.add("github")
-
-  const usedServices = Array.from(new Set(
-    nodes.map(n => (n.data as BlockNodeData).integration as string | undefined)
-      .filter((s): s is string => !!s && s in SERVICE_META)
-  ))
-
-  const selectedEnv = environments.find(e => e.id === selectedEnvId)
-
-  // Summary dots shown in the trigger button
-  const summaryDots = usedServices.slice(0, 4).map(svc => ({
-    svc,
-    ok: connectedServices.has(svc),
-    meta: SERVICE_META[svc],
-  }))
-
-  return (
-    <div ref={ref} className="relative ml-2">
-      <button
-        onClick={() => !disabled && setOpen(o => !o)}
-        disabled={disabled}
-        className="flex items-center gap-1.5 text-xs border border-stone-200 rounded-lg px-2.5 py-1 text-stone-600 bg-white hover:border-stone-300 disabled:opacity-60 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-violet-200"
-      >
-        <span>{selectedEnv ? selectedEnv.name : "— select environment —"}</span>
-        {selectedEnvId && summaryDots.length > 0 && (
-          <span className="flex items-center gap-0.5 ml-1">
-            {summaryDots.map(d => (
-              <span key={d.svc} title={`${d.meta.label}: ${d.ok ? "connected" : "not connected"}`}
-                className={`w-1.5 h-1.5 rounded-full ${d.ok ? "bg-emerald-400" : "bg-amber-400"}`} />
-            ))}
-          </span>
-        )}
-        <svg width={10} height={10} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} className="ml-0.5 opacity-40">
-          <polyline points="6 9 12 15 18 9" />
-        </svg>
-      </button>
-
-      {open && (
-        <div className="absolute top-full mt-1 left-0 z-50 w-64 bg-white border border-stone-200 rounded-xl shadow-lg overflow-hidden">
-          {/* No environment option */}
-          <button
-            onClick={() => { onChange(""); setOpen(false) }}
-            className={`w-full text-left px-3 py-2 text-xs text-stone-400 hover:bg-stone-50 ${!selectedEnvId ? "bg-stone-50 font-medium" : ""}`}
-          >
-            — no vault —
-          </button>
-
-          {environments.map(env => (
-            <button
-              key={env.id}
-              onClick={() => { onChange(env.id); setOpen(false) }}
-              className={`w-full text-left px-3 py-2.5 hover:bg-stone-50 border-t border-stone-100 ${env.id === selectedEnvId ? "bg-violet-50" : ""}`}
-            >
-              <div className="flex items-center justify-between mb-1.5">
-                <span className="text-xs font-semibold text-stone-800">{env.name}</span>
-                {env.id === selectedEnvId && (
-                  <span className="text-[9px] font-semibold text-violet-600 bg-violet-100 px-1.5 py-0.5 rounded-full">active</span>
-                )}
-              </div>
-              {usedServices.length > 0 ? (
-                <div className="flex flex-wrap gap-1.5">
-                  {usedServices.map(svc => {
-                    const ok = connectedServices.has(svc)
-                    const meta = SERVICE_META[svc]
-                    return (
-                      <span key={svc} className={`flex items-center gap-1 text-[9px] font-medium px-1.5 py-0.5 rounded-full border ${ok ? "bg-emerald-50 border-emerald-200 text-emerald-700" : "bg-amber-50 border-amber-200 text-amber-700"}`}>
-                        <span className={`w-1 h-1 rounded-full ${ok ? "bg-emerald-500" : "bg-amber-500"}`} />
-                        {meta.label}
-                      </span>
-                    )
-                  })}
-                </div>
-              ) : (
-                <span className="text-[10px] text-stone-400">No integrations used</span>
-              )}
-            </button>
-          ))}
-
-          <div className="border-t border-stone-100 px-3 py-2">
-            <a href="/settings" className="text-[10px] text-violet-600 hover:underline font-medium">
-              Manage Vault →
-            </a>
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
-
-const SERVICE_META: Record<string, { label: string; abbr: string; color: string }> = {
-  github:       { label: "GitHub",       abbr: "GH", color: "bg-stone-800 text-white" },
-  slack:        { label: "Slack",        abbr: "SL", color: "bg-purple-600 text-white" },
-  linear:       { label: "Linear",       abbr: "LN", color: "bg-indigo-600 text-white" },
-  digitalocean: { label: "DigitalOcean", abbr: "DO", color: "bg-blue-500 text-white" },
-  email:        { label: "Email",        abbr: "EM", color: "bg-emerald-600 text-white" },
-}
-
-const ALL_SERVICES = ["github", "slack", "linear", "digitalocean", "email"]
-
-function EnvironmentPanel({
-  environments,
-  selectedEnvId,
-  credentials,
-  nodes,
-}: {
-  environments: Array<{ id: string; name: string }>
-  selectedEnvId: string
-  credentials: Array<{ handle: string; service: string }>
-  nodes: Node[]
-}) {
-  const env = environments.find(e => e.id === selectedEnvId)
-  const connectedServices = new Set(credentials.map(c => c.service))
-  // "git" handle covers GitHub/GitLab/Bitbucket — treat as "github" for display
-  if (connectedServices.has("git")) connectedServices.add("github")
-
-  // Derive the services this workflow actually uses from block integrations
-  const usedServices = Array.from(
-    new Set(
-      nodes
-        .map(n => (n.data as BlockNodeData).integration as string | undefined)
-        .filter((s): s is string => !!s && s in SERVICE_META)
-    )
-  )
-
-  return (
-    <div className="flex-1 flex flex-col px-4 py-5 gap-5 min-w-0">
-      {/* Environment */}
-      <div>
-        <p className="text-[10px] font-semibold text-stone-400 uppercase tracking-wider mb-2">Environment</p>
-        {env ? (
-          <div className="flex items-center gap-2">
-            <span className="w-7 h-7 rounded-md text-[10px] font-bold flex items-center justify-center bg-violet-100 text-violet-700">
-              {env.name.slice(0, 2).toUpperCase()}
-            </span>
-            <span className="text-sm font-medium text-stone-900">{env.name}</span>
-          </div>
-        ) : (
-          <p className="text-xs text-stone-400">No vault assigned — use the dropdown above to set one.</p>
-        )}
-      </div>
-
-      {/* Only show services this workflow needs */}
-      {env && usedServices.length > 0 && (
-        <div>
-          <p className="text-[10px] font-semibold text-stone-400 uppercase tracking-wider mb-2">Integrations</p>
-          <div className="space-y-2">
-            {usedServices.map(svc => {
-              const meta = SERVICE_META[svc]
-              const connected = connectedServices.has(svc)
-              return (
-                <div key={svc} className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className={`w-5 h-5 rounded text-[9px] font-bold flex items-center justify-center ${meta.color}`}>
-                      {meta.abbr}
-                    </span>
-                    <span className="text-xs text-stone-700">{meta.label}</span>
-                  </div>
-                  {connected ? (
-                    <span className="flex items-center gap-1 text-[10px] font-medium text-emerald-600">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                      connected
-                    </span>
-                  ) : (
-                    <a href="/settings" className="text-[10px] text-amber-600 hover:underline font-medium">
-                      ⚠ not connected
-                    </a>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-        </div>
-      )}
-
-      <p className="text-[10px] text-stone-400 mt-auto leading-relaxed">
-        Click a block to configure it.
-      </p>
-    </div>
   )
 }
 
