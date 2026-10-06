@@ -447,6 +447,17 @@ def _node_to_block_payload(
     return payload
 
 
+def carry_annotations(graph: dict[str, Any], previous_graph: dict[str, Any] | None) -> dict[str, Any]:
+    """
+    Canvas annotations (sticky notes) are presentation-only and not part of the
+    YAML DSL, so a version rebuilt from YAML would silently drop them. Copy the
+    previous version's ``annotations`` onto the new graph. The runtime and
+    compiler only read ``nodes``/``edges``, so annotations never execute.
+    """
+    annotations = (previous_graph or {}).get("annotations")
+    return {**graph, "annotations": annotations} if annotations else graph
+
+
 def yaml_to_graph(workflow: Workflow) -> dict[str, Any]:
     """
     Convert a validated workflow into the {nodes, edges} graph the executor uses.

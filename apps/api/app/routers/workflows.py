@@ -21,6 +21,7 @@ from app.dsl import (
     workflow_to_yaml,
     yaml_filename_for,
     yaml_to_graph,
+    carry_annotations,
 )
 # Base directory for bundled playbooks — used when resolving `extends:` at
 # install time.  Community submissions pass base_dir=None to block extends.
@@ -1585,7 +1586,8 @@ def update_workflow_yaml(
     except WorkflowValidationError as e:
         raise HTTPException(status_code=400, detail=f"Invalid workflow YAML: {e}")
 
-    graph_dict = yaml_to_graph(dsl)
+    previous = db.query(WorkflowVersion).filter(WorkflowVersion.id == workflow.current_version_id).first()
+    graph_dict = carry_annotations(yaml_to_graph(dsl), previous.graph if previous else None)
     version = WorkflowVersion(
         workflow_id=workflow.id,
         yaml_source=yaml_text,

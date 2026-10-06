@@ -31,7 +31,10 @@ def _make_workflow(*, source_repo: str | None = "owner/repo",
                    current_yaml: str | None = None,
                    current_version_id="v1"):
     """Build a stand-in Workflow object with the few attrs sync needs."""
-    current = SimpleNamespace(id=current_version_id, yaml_source=current_yaml) if current_yaml else None
+    current = SimpleNamespace(
+        id=current_version_id, yaml_source=current_yaml,
+        graph={"nodes": [], "edges": [], "annotations": [{"id": "note-1", "type": "annotation"}]},
+    ) if current_yaml else None
     wf = SimpleNamespace(
         id="w1",
         workspace_id="ws1",
@@ -96,6 +99,8 @@ def test_creates_new_version_when_yaml_changes():
     assert result["changed"] is True
     assert result["sha"] == "sha-new"
     assert len(db._added) == 1
+    # Canvas notes survive a git sync even though the YAML DSL has no notion of them.
+    assert db._added[0].graph["annotations"] == [{"id": "note-1", "type": "annotation"}]
 
 
 def test_raises_when_remote_yaml_invalid():

@@ -26,6 +26,7 @@ from app.dsl.schema import (  # noqa: F401
     WorkflowValidationError,
 )
 from app.dsl.loader import (  # noqa: F401
+    carry_annotations,
     graph_to_workflow,
     load_workflow_yaml,
     workflow_to_yaml,
