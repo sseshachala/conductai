@@ -4,13 +4,13 @@ import type { Edge, Node } from "@xyflow/react"
 type Snapshot = { nodes: Node[]; edges: Edge[] }
 
 /**
- * Identity of an undoable state: structure, config, position and z-order.
- * Selection and measured size are excluded so clicking around never creates
+ * Identity of an undoable state: structure, config, position, explicit size
+ * (note resizing), z-order and lock state. Selection and measured size are excluded so clicking around never creates
  * history entries. Mid-drag positions are collapsed by the snapshot debounce.
  */
 export function historyKey(nodes: Node[], edges: Edge[]): string {
   const nodeKey = nodes.map(n =>
-    `${n.id}:${Math.round(n.position.x)},${Math.round(n.position.y)}:${n.zIndex ?? 0}:${JSON.stringify(n.data)}`,
+    `${n.id}:${Math.round(n.position.x)},${Math.round(n.position.y)}:${n.width ?? ""}x${n.height ?? ""}:${n.zIndex ?? 0}:${n.draggable ?? ""}:${JSON.stringify(n.data)}`,
   ).join("|")
   const edgeKey = edges.map(e => `${e.id}:${e.source}:${e.target}`).join("|")
   return nodeKey + "||" + edgeKey

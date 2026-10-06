@@ -1,12 +1,10 @@
 "use client"
 
-import { apiUrl } from "@/lib/auth/runtime"
-
-
 import { useEffect, useRef, useState } from "react"
 import { cn } from "@/lib/utils"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 import { workflows } from "@/lib/api"
+import { useRunEventStream } from "@/hooks/useRunEventStream"
 import type { AuthFetch } from "@/lib/api"
 
 type BlockStatus = "running" | "completed" | "failed" | "skipped"
@@ -86,124 +84,99 @@ export default function RunDrawer({ workflowId, runId, getToken, onBlockStatus, 
   const bottomRef = useRef<HTMLDivElement>(null)
   const rowMapRef = useRef<Record<string, BlockRow>>({})
 
-  useEffect(() => {
-    let es: EventSource | null = null
-    let cancelled = false
+  useRunEventStream({
+    workflowId,
+    runId,
+    getToken,
+    workspaceId: activeWorkspace?.id,
+    // A dropped connection reconnects (with replay de-duplicated); only [DONE] ends the stream.
+    onDone: () => setDone(true),
+    onEvent: (event) => {
+      const { kind, block_id } = event
+      const payload = event.payload ?? {}
 
-    async function connect() {
-      const wsId = activeWorkspace?.id ?? null
-      const params = new URLSearchParams()
-      if (wsId) params.set("workspace_id", wsId)
-
-      if (getToken) {
-        const token = await getToken()
-        if (token) params.set("token", token)
+      if (kind === "block_started" && block_id) {
+        const row: BlockRow = {
+          blockId: block_id,
+          label: (payload.label as string) || block_id,
+          type: (payload.type as string) || "tool",
+          status: "running",
+        }
+        rowMapRef.current[block_id] = row
+        setRows(prev => [...prev, row])
+        onBlockStatus(block_id, "running")
       }
 
-      if (cancelled) return
-      const qs = params.toString() ? `?${params.toString()}` : ""
-      es = new EventSource(
-        `${apiUrl()}/workflows/${workflowId}/runs/${runId}/stream${qs}`
-      )
-
-      es.onmessage = (e) => {
-        if (cancelled) return
-        if (e.data === "[DONE]") { setDone(true); es?.close(); return }
-
-        let event: { kind: string; block_id?: string; payload: Record<string, unknown> }
-        try { event = JSON.parse(e.data) } catch { return }
-
-        const { kind, block_id, payload } = event
-
-        if (kind === "block_started" && block_id) {
-          const row: BlockRow = {
-            blockId: block_id,
-            label: (payload.label as string) || block_id,
-            type: (payload.type as string) || "tool",
-            status: "running",
-          }
-          rowMapRef.current[block_id] = row
-          setRows(prev => [...prev, row])
-          onBlockStatus(block_id, "running")
+      if (kind === "block_completed" && block_id && rowMapRef.current[block_id]) {
+        const out = payload.output as Record<string, unknown> | undefined
+        let outputSnippet = ""
+        if (out?.output && typeof out.output === "string") {
+          outputSnippet = out.output.slice(0, 120).replace(/\n/g, " ")
         }
-
-        if (kind === "block_completed" && block_id && rowMapRef.current[block_id]) {
-          const out = payload.output as Record<string, unknown> | undefined
-          let outputSnippet = ""
-          if (out?.output && typeof out.output === "string") {
-            outputSnippet = out.output.slice(0, 120).replace(/\n/g, " ")
-          }
-          rowMapRef.current[block_id] = {
-            ...rowMapRef.current[block_id],
-            status: "completed",
-            output: outputSnippet,
-            costUsd: typeof out?.cost_usd === "number" ? out.cost_usd : undefined,
-            upstreamUrl: typeof out?.upstream_url === "string" ? out.upstream_url : undefined,
-          }
-          setRows(Object.values(rowMapRef.current))
-          onBlockStatus(block_id, "completed")
+        rowMapRef.current[block_id] = {
+          ...rowMapRef.current[block_id],
+          status: "completed",
+          output: outputSnippet,
+          costUsd: typeof out?.cost_usd === "number" ? out.cost_usd : undefined,
+          upstreamUrl: typeof out?.upstream_url === "string" ? out.upstream_url : undefined,
         }
-
-        if (kind === "block_failed" && block_id && rowMapRef.current[block_id]) {
-          rowMapRef.current[block_id] = {
-            ...rowMapRef.current[block_id],
-            status: "failed",
-            error: (payload.error as string) || "Unknown error",
-          }
-          setRows(Object.values(rowMapRef.current))
-          onBlockStatus(block_id, "failed")
-        }
-
-        if (kind === "block_skipped" && block_id) {
-          const row: BlockRow = {
-            blockId: block_id,
-            label: (payload.label as string) || block_id,
-            type: (payload.type as string) || "tool",
-            status: "skipped",
-          }
-          rowMapRef.current[block_id] = row
-          setRows(Object.values(rowMapRef.current))
-          onBlockStatus(block_id, "skipped")
-        }
-
-        if (kind === "brain_budget_exhausted" && block_id && rowMapRef.current[block_id]) {
-          rowMapRef.current[block_id] = {
-            ...rowMapRef.current[block_id],
-            budgetExhausted: {
-              turns: payload.turns as number,
-              costUsd: payload.cost_usd as number,
-            },
-          }
-          setRows(Object.values(rowMapRef.current))
-        }
-
-        if (kind === "brain_tool_call" && block_id && rowMapRef.current[block_id]) {
-          const call: ToolCallRow = {
-            id: `${block_id}-${payload.turn}-${payload.tool}`,
-            tool: payload.tool as string,
-            summary: payload.summary as string,
-            turn: payload.turn as number,
-          }
-          rowMapRef.current[block_id] = {
-            ...rowMapRef.current[block_id],
-            toolCalls: [...(rowMapRef.current[block_id].toolCalls ?? []), call],
-          }
-          setRows(Object.values(rowMapRef.current))
-          onBlockTurns?.(block_id, payload.turn as number)
-        }
-
-        if (kind === "run_completed")  { setRunStatus("succeeded");  onRunDone?.() }
-        if (kind === "run_failed")     { setRunStatus("failed");     onRunDone?.() }
-        if (kind === "run_cancelled")  { setRunStatus("cancelled");  onRunDone?.() }
+        setRows(Object.values(rowMapRef.current))
+        onBlockStatus(block_id, "completed")
       }
 
-      es.onerror = () => { es?.close(); setDone(true) }
-    }
+      if (kind === "block_failed" && block_id && rowMapRef.current[block_id]) {
+        rowMapRef.current[block_id] = {
+          ...rowMapRef.current[block_id],
+          status: "failed",
+          error: (payload.error as string) || "Unknown error",
+        }
+        setRows(Object.values(rowMapRef.current))
+        onBlockStatus(block_id, "failed")
+      }
 
-    connect()
-    return () => { cancelled = true; es?.close() }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workflowId, runId])
+      if (kind === "block_skipped" && block_id) {
+        const row: BlockRow = {
+          blockId: block_id,
+          label: (payload.label as string) || block_id,
+          type: (payload.type as string) || "tool",
+          status: "skipped",
+        }
+        rowMapRef.current[block_id] = row
+        setRows(Object.values(rowMapRef.current))
+        onBlockStatus(block_id, "skipped")
+      }
+
+      if (kind === "brain_budget_exhausted" && block_id && rowMapRef.current[block_id]) {
+        rowMapRef.current[block_id] = {
+          ...rowMapRef.current[block_id],
+          budgetExhausted: {
+            turns: payload.turns as number,
+            costUsd: payload.cost_usd as number,
+          },
+        }
+        setRows(Object.values(rowMapRef.current))
+      }
+
+      if (kind === "brain_tool_call" && block_id && rowMapRef.current[block_id]) {
+        const call: ToolCallRow = {
+          id: `${block_id}-${payload.turn}-${payload.tool}`,
+          tool: payload.tool as string,
+          summary: payload.summary as string,
+          turn: payload.turn as number,
+        }
+        rowMapRef.current[block_id] = {
+          ...rowMapRef.current[block_id],
+          toolCalls: [...(rowMapRef.current[block_id].toolCalls ?? []), call],
+        }
+        setRows(Object.values(rowMapRef.current))
+        onBlockTurns?.(block_id, payload.turn as number)
+      }
+
+      if (kind === "run_completed")  { setRunStatus("succeeded");  onRunDone?.() }
+      if (kind === "run_failed")     { setRunStatus("failed");     onRunDone?.() }
+      if (kind === "run_cancelled")  { setRunStatus("cancelled");  onRunDone?.() }
+    },
+  })
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" })

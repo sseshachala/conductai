@@ -2,6 +2,16 @@ import { API, AuthFetch, del, json, patch, post, put } from "./client"
 
 const base = () => `${API}/workflows`
 
+export interface WorkflowVersionSummary {
+  id: string
+  created_at: string
+  is_current: boolean
+  from_yaml: boolean
+  node_count: number
+  edge_count: number
+  annotation_count: number
+}
+
 export const workflows = {
   list: (f: AuthFetch, params?: { project_id?: string }) => {
     const q = params?.project_id ? `?project_id=${params.project_id}` : ""
@@ -63,6 +73,18 @@ export const workflows = {
   blocks: {
     compileStreamUrl: (workflowId: string, blockId: string) =>
       `${base()}/${workflowId}/blocks/${blockId}/compile/stream`,
+  },
+
+  versions: {
+    list: (f: AuthFetch, workflowId: string, params?: { limit?: number; before?: string }) => {
+      const q = new URLSearchParams()
+      if (params?.limit != null) q.set("limit", String(params.limit))
+      if (params?.before) q.set("before", params.before)
+      const qs = q.toString() ? `?${q}` : ""
+      return json<WorkflowVersionSummary[]>(f, `${base()}/${workflowId}/versions${qs}`)
+    },
+    get: (f: AuthFetch, workflowId: string, versionId: string) =>
+      json<{ id: string; created_at: string; graph: Record<string, unknown> }>(f, `${base()}/${workflowId}/versions/${versionId}`),
   },
 
   runs: {

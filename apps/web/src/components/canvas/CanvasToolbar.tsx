@@ -15,13 +15,15 @@ interface Props {
   minimapOpen: boolean
   onToggleMinimap: () => void
   onSearch: () => void
+  /** Omitted for viewers. */
+  onAddNote?: () => void
   /** Z-order buttons appear only while editable nodes are selected. */
   canReorder: boolean
   onZOrder: (direction: "front" | "back") => void
 }
 
 /** Unified canvas toolbar — replaces ReactFlow Controls + custom buttons. */
-export default function CanvasToolbar({ focusMode, onOrganize, onToggleFocus, minimapOpen, onToggleMinimap, onSearch, canReorder, onZOrder }: Props) {
+export default function CanvasToolbar({ focusMode, onOrganize, onToggleFocus, minimapOpen, onToggleMinimap, onSearch, onAddNote, canReorder, onZOrder }: Props) {
   const { zoomIn, zoomOut, fitView } = useReactFlow()
   const buttons: Array<{ title: string; onClick: () => void; icon: ReactNode; active?: boolean }> = [
     { title: "Find block (⌘P / Ctrl+P)", onClick: onSearch, icon: svg(<><circle cx="11" cy="11" r="7" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></>) },
@@ -37,6 +39,7 @@ export default function CanvasToolbar({ focusMode, onOrganize, onToggleFocus, mi
         ? svg(<><path d="M8 3H5a2 2 0 00-2 2v3" /><path d="M21 8V5a2 2 0 00-2-2h-3" /><path d="M3 16v3a2 2 0 002 2h3" /><path d="M16 21h3a2 2 0 002-2v-3" /><line x1="9" y1="9" x2="15" y2="15" /><line x1="15" y1="9" x2="9" y2="15" /></>)
         : svg(<path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />),
     },
+    ...(onAddNote ? [{ title: "Add note", onClick: onAddNote, icon: svg(<><path d="M15 3H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2V9z" /><polyline points="15 3 15 9 21 9" /></>) }] : []),
     { title: minimapOpen ? "Hide minimap" : "Show minimap", onClick: onToggleMinimap, active: minimapOpen, icon: svg(<><rect x="3" y="3" width="18" height="18" rx="2" /><rect x="12" y="12" width="6" height="6" /></>) },
     ...(canReorder ? [
       { title: "Bring to front (Alt+Shift+])", onClick: () => onZOrder("front"), icon: svg(<><rect x="8" y="8" width="13" height="13" rx="2" fill="currentColor" /><path d="M16 4H5a2 2 0 00-2 2v10" /></>) },

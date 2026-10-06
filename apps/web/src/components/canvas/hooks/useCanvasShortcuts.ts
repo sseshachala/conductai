@@ -3,6 +3,7 @@ import { useEffect, useRef } from "react"
 interface Shortcuts {
   undo: () => void
   redo: () => void
+  duplicate: () => void
   openSearch: () => void
   zOrder: (direction: "front" | "back") => void
   /** Viewers get search only; editing shortcuts are disabled. */
@@ -13,6 +14,7 @@ interface Shortcuts {
  * Canvas keyboard shortcuts:
  *   Cmd/Ctrl+Z / Shift+Z / Y   undo / redo / redo
  *   Cmd/Ctrl+P                 node search
+ *   Cmd/Ctrl+D                 duplicate selection (copy/cut/paste use native clipboard events)
  *   Alt+Shift+] / Alt+Shift+[  bring to front / send to back
  * (Cmd+Shift+[ ] switch tabs and Cmd+[ is Back on macOS browsers, so z-order uses Alt.)
  */
@@ -22,7 +24,7 @@ export function useCanvasShortcuts(shortcuts: Shortcuts) {
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
-      const { undo, redo, openSearch, zOrder, editable } = ref.current
+      const { undo, redo, duplicate, openSearch, zOrder, editable } = ref.current
       const meta = e.metaKey || e.ctrlKey
       const key = e.key.toLowerCase()
       if (meta && key === "p" && !e.shiftKey) { e.preventDefault(); openSearch(); return }
@@ -35,6 +37,7 @@ export function useCanvasShortcuts(shortcuts: Shortcuts) {
       if (!meta) return
       if (key === "z" && !e.shiftKey) { e.preventDefault(); undo() }
       else if ((key === "z" && e.shiftKey) || key === "y") { e.preventDefault(); redo() }
+      else if (key === "d" && !e.shiftKey) { e.preventDefault(); duplicate() }
     }
     document.addEventListener("keydown", onKeyDown)
     return () => document.removeEventListener("keydown", onKeyDown)

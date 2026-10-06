@@ -24,7 +24,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
-from app.dsl.loader import load_workflow_yaml, yaml_to_graph
+from app.dsl.loader import carry_annotations, load_workflow_yaml, yaml_to_graph
 from app.dsl.schema import WorkflowValidationError
 from app.models.workflow import Workflow, WorkflowVersion
 from app.runtime.integrations import github
@@ -151,7 +151,7 @@ def sync_workflow_from_repo(
 
     # Parse + project + persist.
     dsl = load_workflow_yaml(new_yaml)
-    graph = yaml_to_graph(dsl)
+    graph = carry_annotations(yaml_to_graph(dsl), current.graph if current else None)
 
     version = WorkflowVersion(
         workflow_id=workflow.id,

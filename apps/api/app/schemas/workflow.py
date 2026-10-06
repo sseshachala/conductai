@@ -2,12 +2,26 @@ from __future__ import annotations
 from typing import Any, Optional
 from uuid import UUID
 from datetime import datetime
-from pydantic import BaseModel, Field
+import json
+
+from pydantic import BaseModel, Field, field_validator
 
 
 class WorkflowGraph(BaseModel):
     nodes: list[dict[str, Any]] = []
     edges: list[dict[str, Any]] = []
+    # Canvas sticky notes. Presentation-only: the compiler and runtime read
+    # nodes/edges exclusively, so annotations can never be dispatched as blocks.
+    annotations: list[dict[str, Any]] = Field(default_factory=list, max_length=500)
+
+    @field_validator("annotations")
+    @classmethod
+    def _cap_annotation_size(cls, v: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        # ponytail: one size cap on the whole list instead of per-field schemas;
+        # bounds JSONB growth from a hostile client. 256 KiB ≈ 500 long notes.
+        if len(json.dumps(v)) > 256 * 1024:
+            raise ValueError("annotations exceed 256 KiB")
+        return v
 
 
 class WorkflowCreate(BaseModel):

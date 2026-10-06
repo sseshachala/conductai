@@ -3,6 +3,7 @@ import { MarkerType, useReactFlow, type Edge, type Node } from "@xyflow/react"
 import type { BlockNodeData } from "../BlockNode"
 import type { SaveStatus } from "../CanvasHeader"
 import { autoLayout } from "@/lib/auto-layout"
+import { splitAnnotations, withLockState } from "@/lib/canvas/annotations"
 import { workflows, credentials, environments as environmentsApi } from "@/lib/api"
 import { authHeaders, makeAuthFetch, type GetToken } from "./useCanvasRuns"
 
@@ -12,6 +13,16 @@ const styleEdges = (es: Edge[]) => es.map(e => ({
   markerEnd: e.markerEnd ?? { type: MarkerType.ArrowClosed, width: 12, height: 12, color: "#a8a29e" },
   style: e.style ?? { stroke: "#a8a29e", strokeWidth: 2 },
 }))
+
+/** React Flow state → persisted graph: blocks in `nodes`, sticky notes in `annotations`. */
+export function toStoredGraph(nodes: Node[], edges: Edge[]) {
+  const { blocks, annotations } = splitAnnotations(nodes)
+  return {
+    nodes: blocks,
+    edges,
+    annotations: annotations.map(({ id, type, position, width, height, zIndex, data }) => ({ id, type, position, width, height, zIndex, data })),
+  }
+}
 
 /** Warning text for blocks the runtime's topological sort would reject. */
 export function cycleNotice(cycleNodeIds: string[], nodes: Node[]): string | null {
@@ -100,6 +111,8 @@ export function useWorkflowDocument({ workflowId, getToken, wsId, isViewer, node
         setProjectSlug(data.project_slug ?? null)
         setProjectName(data.project_name ?? null)
         const graph = data.current_version?.graph
+        // Notes persist outside graph.nodes (see lib/canvas/annotations); merge them back for React Flow.
+        const notes: Node[] = (graph?.annotations ?? []).map(withLockState)
         if (graph?.nodes && graph?.edges) {
           // Run auto-layout when:
           // (a) all nodes are at (0,0) — no positions assigned yet
@@ -112,11 +125,11 @@ export function useWorkflowDocument({ workflowId, getToken, wsId, isViewer, node
           const allSameY = graph.nodes.length > 1 &&
             graph.nodes.every((n: Node) => n.position?.y === graph.nodes[0].position?.y)
           const laid = autoLayout(graph.nodes, graph.edges)
-          setNodes(allAtOrigin || allSameY ? laid.nodes : graph.nodes)
+          setNodes([...(allAtOrigin || allSameY ? laid.nodes : graph.nodes), ...notes])
           setEdges(styleEdges(graph.edges))
           setLayoutNotice(cycleNotice(laid.cycleNodeIds, graph.nodes))
         } else {
-          if (graph?.nodes) setNodes(graph.nodes)
+          if (graph?.nodes || notes.length) setNodes([...(graph?.nodes ?? []), ...notes])
           if (graph?.edges) setEdges(styleEdges(graph.edges))
         }
         setTimeout(() => { isFirstLoad.current = false }, 100)
@@ -142,7 +155,7 @@ export function useWorkflowDocument({ workflowId, getToken, wsId, isViewer, node
     savingInFlightRef.current = true
     setSaveStatus("saving")
     try {
-      const res = await workflows.update(makeAuthFetch(await authHeaders(getToken, wsId)), workflowId, { name, graph: { nodes: currentNodes, edges: currentEdges } })
+      const res = await workflows.update(makeAuthFetch(await authHeaders(getToken, wsId)), workflowId, { name, graph: toStoredGraph(currentNodes, currentEdges) })
       setSaveStatus(res.ok ? "saved" : "error")
       setTimeout(() => setSaveStatus("idle"), res.ok ? 2000 : 3000)
     } catch {
@@ -164,7 +177,23 @@ export function useWorkflowDocument({ workflowId, getToken, wsId, isViewer, node
     return () => { if (autosaveTimer.current) clearTimeout(autosaveTimer.current) }
   }, [nodes, edges, workflowName, save, isViewer, isFirstLoad])
 
+  /** Version restore: re-save an old graph through the normal PUT path, then reload. */
+  const restoreGraph = async (graph: Record<string, unknown>) => {
+    // A pending autosave of the current canvas must not land after (and undo) the restore.
+    if (autosaveTimer.current) clearTimeout(autosaveTimer.current)
+    isFirstLoad.current = true // blocks autosave until the reload
+    try {
+      const res = await workflows.update(makeAuthFetch(await authHeaders(getToken, wsId)), workflowId, { name: workflowName, graph })
+      if (!res.ok) throw new Error(`Restore failed (${res.status})`)
+    } catch (e) {
+      isFirstLoad.current = false
+      throw e
+    }
+    window.location.reload()
+  }
+
   return {
+    restoreGraph,
     workflowName, setWorkflowName, githubHookRepo, setGithubHookRepo, githubHookId, setGithubHookId, githubWebhook,
     saveStatus, canvasLoading, environments, selectedEnvId, envCredentials, handleEnvChange, playbookSlug, projectSlug, projectName,
   }
