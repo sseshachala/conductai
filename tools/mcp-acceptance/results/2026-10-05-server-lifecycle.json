@@ -1,0 +1,86 @@
+{
+  "date": "2026-10-05",
+  "evidence_kind": "server_integration_and_regression_tests",
+  "scope": "Server tests only; no native client run or production mutation",
+  "runtime": "Python 3.11.15",
+  "database": "Dedicated local PostgreSQL with isolated schemas",
+  "result": {
+    "passed": 235,
+    "failed": 0,
+    "skipped": 0,
+    "warnings": 1,
+    "duration_seconds": 14.03,
+    "persisted_credential_and_mcp_cases": 46
+  },
+  "checks": {
+    "refresh": {
+      "status": "Passed",
+      "assertions": [
+        "Expired access tokens renew through OAuth refresh without a new login",
+        "Rotated access tokens and replayed refresh tokens are rejected",
+        "Concurrent refresh accepts exactly one use",
+        "Attribution and canonical audit session survive token rotation"
+      ]
+    },
+    "revocation": {
+      "status": "Passed",
+      "assertions": [
+        "Credential revocation rejects subsequent calls on an initialized MCP session",
+        "Removed membership and deactivated identity reject MCP calls and refresh",
+        "Revoking one credential session does not revoke another login"
+      ]
+    },
+    "workspace_switch": {
+      "status": "Passed",
+      "assertions": [
+        "A new authorized grant uses the selected workspace and actor",
+        "Forged workspace and identity headers cannot change token authority",
+        "An unmapped workspace cannot issue a grant"
+      ]
+    },
+    "approval": {
+      "status": "Passed",
+      "assertions": [
+        "Pending approval prevents mutation and retry does not create duplicate requests",
+        "A peer's HTTP approval permits the same protected fixture action on retry",
+        "Rejection and timeout leave fixture state unchanged",
+        "Requester self-approval is rejected",
+        "Cross-workspace reads and decisions are rejected",
+        "Late or repeated decisions are rejected"
+      ],
+      "fixtures": [
+        "Disposable mutation tool",
+        "Policy input and external IdP verifier",
+        "Explicit approver identity and role dependency overrides",
+        "Notification delivery and audit hash helpers"
+      ],
+      "application_code": [
+        "Rule matching and approval gate",
+        "Persisted approval request and timeout sweep",
+        "HTTP decision endpoint and peer self-approval checks",
+        "OAuth credential validation and MCP transport"
+      ]
+    }
+  },
+  "test_files": [
+    "apps/api/tests/test_mcp_audit_attribution.py",
+    "apps/api/tests/test_mcp_client_surface.py",
+    "apps/api/tests/test_mcp_http_streamable.py",
+    "apps/api/tests/test_mcp_oauth_acceptance_postgres.py",
+    "apps/api/tests/test_credential_sessions_postgres.py",
+    "apps/api/tests/mcp/test_server.py",
+    "apps/api/tests/tools/test_guard_registrations.py",
+    "apps/api/tests/tools/test_registry.py",
+    "apps/api/tests/tools/test_lens_registrations.py",
+    "apps/api/tests/core/test_admission.py",
+    "apps/api/tests/test_federation_surfaces.py",
+    "apps/api/tests/test_guard_approval.py",
+    "apps/api/tests/test_guard_approval_resume.py",
+    "apps/api/tests/test_guard_runtime_approval_resume.py",
+    "apps/api/tests/test_guard_approval_requester_ident.py",
+    "apps/api/tests/guard/test_gateway_v2_policy_approval.py"
+  ],
+  "production_mutated": false,
+  "saved_client_configuration_changed": false,
+  "native_client_lifecycle_run": false
+}

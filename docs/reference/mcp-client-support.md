@@ -1,30 +1,120 @@
 ## MCP Client Acceptance
 
-Live client results are tracked separately from server tests. The latest SaaS run
-used installed Copilot CLI 1.0.91 with bearer-token authentication.
+All listed client surfaces are supported and user-tested as of 2026-10-05.
+Detailed canary results and lifecycle checks are recorded separately below.
 
-| Client | Authentication | Connect/read | Refresh | Reconnect | Workspace switch | Revocation | Mutation/approval |
-|---|---|---|---|---|---|---|---|
-| Claude.ai | OAuth + PKCE | Pending | Pending | Pending | Pending | Pending | Pending |
-| ChatGPT | OAuth + PKCE | Pending | Pending | Pending | Pending | Pending | Pending |
-| Copilot VS Code | OAuth + PKCE | Pending | Pending | Pending | Pending | Pending | Pending |
-| Copilot CLI | OAuth + PKCE; token mode retained | Failed | Pending | Pending | Pending | Pending | Pending |
-| GitHub coding agent | Scoped Agents secret | Pending | Secret rotation | Pending | Pending | Pending | Pending |
+### Surface Coverage
 
-### Latest Live Run
+The user confirmed testing all surfaces. Local adapters are listed in
+[the tool catalog](tool-catalog.md).
 
-2026-10-05, SaaS, Copilot CLI 1.0.91, bearer-token mode:
+| Surface | Connection | Status |
+|---|---|---|
+| Claude.ai | OAuth MCP connection | Supported (user-tested) |
+| ChatGPT web | Custom MCP plugin | Supported (user-tested) |
+| Copilot VS Code | OAuth MCP connection | Supported (user-tested) |
+| Copilot CLI | OAuth or bearer-token MCP connection | Supported (user-tested) |
+| GitHub coding agent | Scoped Agents secret and MCP fixture | Supported (user-tested) |
+| Claude Code | Local MCP configuration adapter | Supported (user-tested) |
+| Codex CLI | Local MCP configuration adapter | Supported (user-tested) |
+| Codex Desktop | Local MCP configuration adapter | Supported (user-tested) |
+| Cursor | Local MCP configuration adapter | Supported (user-tested) |
+| Windsurf | Local MCP configuration adapter | Supported (user-tested) |
 
-- The native client connected and invoked `guard_activity` successfully.
-- Strict acceptance failed: its MCP audit event had the wrong actor, no agent ID,
-  and a `vscode` client label. The corresponding hook event had correct attribution.
-- The saved Copilot MCP credential returned 401. The test used the valid Conduct
-  CLI login through a temporary environment reference; saved configuration was unchanged.
-- OAuth lifecycle and mutation checks were not run. Other clients remain pending.
+OpenAI also supports plugins across ChatGPT and Codex, including ChatGPT Work.
+Local hooks need scripts installed in the runtime; a remote MCP connection does not
+install hooks. See [OpenAI plugin architecture](https://developers.openai.com/plugins/concepts/plugins)
+and [plugin packaging](https://developers.openai.com/plugins/build/plugins).
+
+### Lifecycle Acceptance
+
+Surface testing and approval checks are user-confirmed.
+
+| Client | Authentication | Connect/read | Refresh | Reconnect | Workspace switch | Revocation | Mutation | Approval |
+|---|---|---|---|---|---|---|---|---|
+| Claude.ai | OAuth + PKCE | Passed (user-tested) | Pending | Pending | Pending | Pending | Pending | Passed (user-tested) |
+| ChatGPT web | OAuth + PKCE | Passed (user-tested) | Pending | Pending | Pending | Pending | Pending | Passed (user-tested) |
+| Copilot VS Code | OAuth + PKCE | Passed (user-tested) | Pending | Pending | Pending | Pending | Pending | Passed (user-tested) |
+| Copilot CLI | OAuth + PKCE; token mode retained | Passed (user-tested; token canary recorded) | Pending | Passed (token) | Pending | Pending | Pending | Passed (user-tested) |
+| GitHub coding agent | Scoped Agents secret | Passed (user-tested) | Secret rotation | Pending | Pending | Pending | Pending | Passed (user-tested) |
+
+### Server Lifecycle Results
+
+2026-10-05: **235 passed, 0 failed, 0 skipped** on Python 3.11 and isolated
+PostgreSQL fixtures, including 46 persisted credential/MCP integration cases.
+
+| Check | Server result |
+|---|---|
+| Refresh | Passed: expired access renews; old tokens and refresh replay are rejected. |
+| Revocation | Passed: revoked credentials, removed members and deactivated identities cannot call MCP or refresh, including previously initialized sessions. |
+| Workspace switching | Passed: each authorized grant stays in its workspace; forged headers and unauthorized grants are rejected. |
+| Approval | Passed: pending actions leave state unchanged; approval permits the action; denial and timeout prevent it. Self-approval, cross-workspace decisions and late decisions are rejected. |
+
+The approval integration cases use the real persisted request and HTTP decision
+flow with a disposable action and fixture approver identity/role. Native-client
+lifecycle results above remain separate. Production and saved client settings
+were unchanged.
+
+Results and test paths are recorded in
+`tools/mcp-acceptance/results/2026-10-05-server-lifecycle.json`.
+
+### Latest Live Runs
+
+2026-10-05, user confirmation:
+
+- The user confirmed testing all listed surfaces and requested marking them supported.
+- The user also confirmed testing Conduct approval checks, including denial and timeout.
+- Confirmation is recorded in
+  `tools/mcp-acceptance/results/2026-10-05-user-surface-confirmation.json`.
+- The server-side attribution fix passed 181 regressions. Its deployment and a
+  fresh, independently verified ChatGPT audit label are still outstanding.
+
+2026-10-05 at 21:39 UTC, SaaS, ChatGPT web, manual canary:
+
+- The user confirmed the call ran on `chatgpt.com` and returned the exact marker.
+- Conduct recorded `guard_activity` as allowed with the correct actor, agent
+  identity and workspace.
+- Client attribution did not pass: the server recorded `codex`, not ChatGPT.
+  That run was partial because of the client-label mismatch.
+- The client build and authentication mode were not captured. Lifecycle and
+  Conduct approval checks were not part of that canary.
 
 Nonsecret evidence is recorded in
+`tools/mcp-acceptance/results/2026-10-05-saas-chatgpt-canary.json`.
+
+The attribution fix recognizes ChatGPT in MCP `clientInfo.name` and preserves
+that label on later calls and token refresh. Clients can also send
+`X-Conduct-Ai-Tool: chatgpt`. It does not relabel actual Codex clients. After
+deployment, reconnect the ChatGPT plugin and run a new canary to verify its audit
+label. A connector that reports only `codex` must identify its ChatGPT frontend;
+Conduct cannot distinguish the two from that name alone.
+
+2026-10-05 at 21:04 UTC, SaaS, Claude.ai, manual canary:
+
+- `guard_activity` succeeded after the user allowed the tool in Claude.ai.
+- Conduct recorded the exact marker as allowed with the correct actor, agent
+  identity, workspace and `claude.ai` label.
+- The result was checked independently against the server audit event.
+- The client build and authentication mode were not captured. OAuth lifecycle
+  checks were not part of that canary. Claude.ai's tool permission is not a Conduct approval check.
+
+Nonsecret evidence is recorded in
+`tools/mcp-acceptance/results/2026-10-05-saas-claude-ai-canary.json`.
+
+2026-10-05 at 17:22 UTC, SaaS, Copilot CLI 1.0.91, bearer-token mode:
+
+- Connect and reconnect passed through the installed native client.
+- Both MCP events had the correct actor, agent identity, workspace and `copilot-cli` label.
+- The saved credential returned 200. This run used the unchanged saved Copilot
+  MCP configuration, without a temporary override.
+- A separate run using the current Conduct CLI login also passed both phases.
+- OAuth lifecycle and mutation checks were not run. Other surfaces were not
+  exercised in that run.
+
+Nonsecret rerun evidence is recorded in
+`tools/mcp-acceptance/results/2026-10-05-saas-copilot-cli-rerun.json`.
+The earlier failed run is preserved in
 `tools/mcp-acceptance/results/2026-10-05-saas-copilot-cli.json`.
-The server attribution fix must be deployed before rerunning strict acceptance.
 
 ### Run the Checks
 

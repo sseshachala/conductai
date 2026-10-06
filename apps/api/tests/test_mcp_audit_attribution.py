@@ -43,3 +43,18 @@ def test_registration_passes_only_authenticated_context_to_audit(monkeypatch):
 def test_copilot_cli_is_not_reported_as_vscode(name):
     assert _detect_surface({"name": name}) == "copilot-cli"
     assert _detect_surface({"name": "vscode"}) == "vscode"
+
+
+@pytest.mark.parametrize("name", ["ChatGPT", "chatgpt.com", "OpenAI ChatGPT", "ChatGPT (Codex runtime)"])
+def test_chatgpt_is_not_reported_as_codex(name):
+    assert _detect_surface({"name": name}) == "chatgpt"
+
+
+@pytest.mark.parametrize("name", ["ChatGPT Work", "chatgpt-work", "ChatGPT Work Desktop (Codex runtime)"])
+def test_chatgpt_work_is_a_distinct_surface(name):
+    assert _detect_surface({"name": name}) == "chatgpt-work"
+
+
+@pytest.mark.parametrize("name", ["codex", "Codex CLI", "Codex Desktop", "codex_mcp_client"])
+def test_actual_codex_clients_remain_codex(name):
+    assert _detect_surface({"name": name}) == "codex"

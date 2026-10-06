@@ -1,7 +1,8 @@
 """OAuth-to-canonical-MCP journeys against an isolated PostgreSQL schema.
 
-Only the external IdP verifier and policy decision are substituted. Credentials,
-membership, PKCE, rotation and the HTTP transport use the application code.
+Identity/policy inputs and notification delivery use fixtures. Credentials,
+membership, PKCE, rotation, HTTP and approval persistence use application code.
+The approval endpoint receives an explicit fixture approver identity and role.
 These tests are server integration evidence, not native-client acceptance.
 """
 import base64
@@ -11,6 +12,7 @@ import os
 from datetime import datetime, timedelta, timezone
 from urllib.parse import parse_qs, urlsplit
 from pathlib import Path
+from uuid import UUID
 
 import pytest
 from fastapi import FastAPI
@@ -268,6 +270,168 @@ def audited_journey(journey, monkeypatch):
                               input_schema={"type": "object"}, impl=_wrap(guard_activity_impl)))
     monkeypatch.setattr(http, "default_registry", registry)
     return client, engine
+
+
+@pytest.fixture
+def approval_journey(audited_journey, monkeypatch):
+    from app.core import auth
+    from app.modules.guard import approval, mcp_impls
+    from app.modules.guard.models import GuardApprovalRequest, GuardConfig
+    from app.modules.guard.routers import approvals
+    from app.tools.registrations.guard import _wrap
+
+    client, engine = audited_journey
+    with engine.begin() as db:
+        db.execute(text("CREATE TABLE runs (id uuid PRIMARY KEY)"))
+        GuardConfig.__table__.create(db)
+        GuardApprovalRequest.__table__.create(db)
+        db.execute(text("CREATE TABLE acceptance_mutations ("
+                        "workspace_id uuid PRIMARY KEY REFERENCES workspaces(id), value integer NOT NULL)"))
+        db.execute(text("INSERT INTO acceptance_mutations VALUES (:ws, 0)"), {"ws": WS})
+        db.execute(text("INSERT INTO workspace_users VALUES (:ws, 'acceptance-peer')"), {"ws": WS})
+    with Session(engine) as db:
+        db.add(GuardConfig(workspace_id=UUID(WS), invite_code="approval-fixture", enforcement_mode="block"))
+        db.commit()
+    rule = {"rule_id": "acceptance-peer-approval", "match_tool": "acceptance_mutation",
+            "gates": ["action"], "action": "approval", "approval_type": "peer",
+            "approval_timeout_sec": 60, "message": "Disposable test action needs peer approval"}
+    monkeypatch.setattr(mcp_impls, "_get_rules", lambda *args, **kwargs: [rule])
+    monkeypatch.setattr(approval, "dispatch_approval_notifications", lambda *args: None)
+    monkeypatch.setattr(approval, "chain_hash_for_insert", lambda *args: (None, "fixture-chain"))
+    monkeypatch.setattr(approval, "get_policy_hash", lambda *args: "fixture-policy")
+
+    def protected_mutation(ctx, value):
+        verdict = mcp_impls.guard_check_impl(ctx, tool_name="acceptance_mutation", tool_input={"value": value})
+        if verdict != "ok":
+            return {"executed": False, "gate": verdict}
+        ctx.db.execute(text("UPDATE acceptance_mutations SET value = :value WHERE workspace_id = :ws"),
+                       {"value": value, "ws": ctx.workspace_id})
+        ctx.db.commit()
+        return {"executed": True, "gate": verdict}
+
+    registry = ToolRegistry()
+    registry.register(ToolDef(name="acceptance_mutation", description="Isolated approval-gated action",
+                              input_schema={"type": "object", "properties": {"value": {"type": "integer"}},
+                                            "required": ["value"]}, impl=_wrap(protected_mutation)))
+    monkeypatch.setattr(http, "default_registry", registry)
+    monkeypatch.setattr(approvals, "get_clerk_user_email", lambda _: None)
+    client.app.include_router(approvals.router)
+    client.app.dependency_overrides[auth.get_workspace_id] = lambda: WS
+    client.app.dependency_overrides[auth.get_user_id] = lambda: "acceptance-peer"
+    client.app.dependency_overrides[auth.get_user_workspace_role] = lambda: "admin"
+    return client, engine
+
+
+@pytest.mark.parametrize("outcome", ["approved", "rejected", "timed_out"])
+def test_mcp_persisted_approval_controls_actual_fixture_mutation(approval_journey, outcome):
+    from app.core import auth
+    from app.modules.guard.models import GuardApprovalRequest
+
+    client, engine = approval_journey
+    tokens = login(client)
+    connected = rpc(client, tokens["access_token"], "initialize", params={
+        "protocolVersion": "2025-03-26", "capabilities": {},
+        "clientInfo": {"name": "ChatGPT", "version": "1"}})
+    session = connected.headers["Mcp-Session-Id"]
+    params = {"name": "acceptance_mutation", "arguments": {"value": 7}}
+    headers = {"Mcp-Session-Id": session}
+    first = result(rpc(client, tokens["access_token"], params=params, headers=headers))["structuredContent"]
+    assert not first["executed"] and "PENDING approval" in first["gate"]
+    with Session(engine) as db:
+        request = db.query(GuardApprovalRequest).one()
+        request_id = str(request.id)
+        assert request.status == "pending" and request.requester_user_id == USER
+        assert request.tool_input == {"value": 7} and request.surface == "chatgpt"
+        assert str(UUID(request.session_id)) == request.session_id
+        assert db.execute(text("SELECT value FROM acceptance_mutations")).scalar_one() == 0
+    second = result(rpc(client, tokens["access_token"], params=params, headers=headers))["structuredContent"]
+    assert not second["executed"] and second["gate"] == first["gate"]
+    with Session(engine) as db:
+        assert db.query(GuardApprovalRequest).count() == 1
+
+    client.app.dependency_overrides[auth.get_user_id] = lambda: USER
+    assert client.post("/guard/approvals/" + request_id + "/decide", json={"decision": "approved"}).status_code == 403
+    client.app.dependency_overrides[auth.get_user_id] = lambda: "acceptance-peer"
+    client.app.dependency_overrides[auth.get_workspace_id] = lambda: OTHER_WS
+    assert client.get("/guard/approvals/" + request_id).status_code == 404
+    assert client.post("/guard/approvals/" + request_id + "/decide", json={"decision": "approved"}).status_code == 404
+    client.app.dependency_overrides[auth.get_workspace_id] = lambda: WS
+
+    if outcome == "timed_out":
+        with Session(engine) as db:
+            request = db.get(GuardApprovalRequest, UUID(request_id))
+            request.timeout_at = datetime.now(timezone.utc) - timedelta(seconds=1)
+            db.commit()
+    else:
+        decided = client.post("/guard/approvals/" + request_id + "/decide", json={
+            "decision": outcome, "reason": "Disposable lifecycle test"})
+        assert decided.status_code == 200
+        assert decided.json()["request"]["status"] == outcome
+
+    retried = result(rpc(client, tokens["access_token"], params=params, headers=headers))["structuredContent"]
+    assert retried["executed"] is (outcome == "approved")
+    if outcome != "approved":
+        assert retried["gate"].startswith("BLOCKED")
+    with Session(engine) as db:
+        assert db.query(GuardApprovalRequest).count() == 1
+        assert db.get(GuardApprovalRequest, UUID(request_id)).status == outcome
+        assert db.execute(text("SELECT value FROM acceptance_mutations")).scalar_one() == (
+            7 if outcome == "approved" else 0)
+    assert client.post("/guard/approvals/" + request_id + "/decide", json={"decision": "approved"}).status_code == 409
+
+
+@pytest.mark.parametrize("name,surface", [
+    ("ChatGPT", "chatgpt"), ("ChatGPT Work", "chatgpt-work"),
+    ("codex", "codex"), ("Claude.ai", "claude.ai"),
+    ("GitHub Copilot CLI", "copilot-cli"),
+])
+def test_initialized_client_attribution_reaches_audit_and_survives_refresh(audited_journey, name, surface):
+    from app.modules.guard.models import GuardAuditEvent
+
+    client, engine = audited_journey
+    tokens = login(client)
+    connected = rpc(client, tokens["access_token"], "initialize", params={
+        "protocolVersion": "2025-03-26", "capabilities": {},
+        "clientInfo": {"name": name, "version": "1"}},
+        headers={"X-Claude-Surface": "codex", "User-Agent": "codex"})
+    assert result(connected)["_surface"] == surface
+    session = connected.headers["Mcp-Session-Id"]
+    headers = {"Mcp-Session-Id": session, "X-Claude-Surface": "codex", "User-Agent": "codex"}
+    with Session(engine) as db:
+        credential = db.query(AgentCredentialSession).filter(
+            AgentCredentialSession.access_token_hash == token_hash(tokens["access_token"])).one()
+        credential_id, identity_id = credential.id, credential.agent_identity_id
+
+    audit_session = None
+    for phase in ("connect", "refresh"):
+        marker = "synthetic-surface-" + phase
+        result(rpc(client, tokens["access_token"], params={
+            "name": "guard_activity", "arguments": {"summary": marker}}, headers=headers))
+        with Session(engine) as db:
+            event = db.query(GuardAuditEvent).filter(GuardAuditEvent.input_summary.contains(marker)).one()
+            assert event.ai_tool == surface
+            assert str(event.workspace_id) == WS
+            assert event.clerk_user_id == USER and event.agent_identity_id == identity_id
+            assert event.routing_meta["credential_session_id"] == credential_id
+            assert str(UUID(event.hook_session_id)) == event.hook_session_id
+            assert event.hook_session_id != session
+            if audit_session is None:
+                audit_session = event.hook_session_id
+            assert event.hook_session_id == audit_session
+
+        if phase == "connect":
+            refreshed = client.post("/oauth/token", data={
+                "grant_type": "refresh_token", "refresh_token": tokens["refresh_token"]})
+            assert refreshed.status_code == 200
+            assert rpc(client, tokens["access_token"], headers=headers).status_code == 401
+            tokens = refreshed.json()
+
+    with engine.begin() as db:
+        db.execute(text("UPDATE agent_credential_sessions SET revoked_at = now() WHERE id = :id"),
+                   {"id": credential_id})
+    assert rpc(client, tokens["access_token"], headers=headers).status_code == 401
+    with Session(engine) as db:
+        assert db.query(GuardAuditEvent).count() == 2
 
 
 @pytest.mark.parametrize("action", ["expire", "revoke"])

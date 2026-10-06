@@ -1,0 +1,33 @@
+{
+  "recorded_date": "2026-10-05",
+  "evidence_kind": "user_confirmation",
+  "reported_by": "user",
+  "confirmation": "I tetsted all surfaces. we can go ahead and mark all surfaces.",
+  "scope": "Client surface support and connection/tool use",
+  "status": "Supported (user-tested)",
+  "surfaces": [
+    "Claude.ai",
+    "ChatGPT web",
+    "Copilot VS Code",
+    "Copilot CLI",
+    "GitHub coding agent",
+    "Claude Code",
+    "Codex CLI",
+    "Codex Desktop",
+    "Cursor",
+    "Windsurf"
+  ],
+  "client_versions": null,
+  "authentication_modes": null,
+  "deployment": null,
+  "confirmed_lifecycle_checks": {
+    "approval": {
+      "status": "Passed (user-tested)",
+      "scope": "Protected action waits for Conduct approval; denial or timeout prevents execution",
+      "confirmation": "- **Approval:** A protected action waits for Conduct approval. Denial or timeout prevents execution.we tested."
+    }
+  },
+  "per_client_lifecycle_results": null,
+  "independent_audit_checks": null,
+  "preserves_prior_canary_evidence": true
+}

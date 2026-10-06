@@ -1,0 +1,38 @@
+{
+  "deployment": "saas",
+  "client": "chatgpt",
+  "surface": "ChatGPT web (chatgpt.com), confirmed by the user",
+  "version": null,
+  "authentication": "Not independently verified",
+  "execution": "User-operated native client",
+  "evidence": "User-reported ChatGPT web output and independent server audit verification",
+  "recorded_at": "2026-10-05T21:39:34.009246+00:00",
+  "marker": "mcp-acceptance-chatgpt-20261005-2116",
+  "phases": {
+    "connect": {
+      "status": "Failed",
+      "tool_invocation_status": "Passed",
+      "scope": "Existing connector tool invocation and attribution",
+      "reason": "Client attribution mismatch: ChatGPT web recorded as codex",
+      "event_id": "22164ccd-58c1-4194-9220-5064394b724a",
+      "tool": "guard_activity",
+      "decision": "allowed",
+      "source": "mcp",
+      "recorded_client": "codex",
+      "workspace_matches": true,
+      "actor_matches": true,
+      "agent_in_expected_workspace": true,
+      "client_matches": false
+    }
+  },
+  "not_run": [
+    "connector-creation",
+    "oauth-authentication",
+    "refresh",
+    "reconnect",
+    "workspace-switch",
+    "revocation",
+    "mutation",
+    "approval"
+  ]
+}

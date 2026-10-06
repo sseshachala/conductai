@@ -300,7 +300,12 @@ def _accepts_ctx(impl) -> bool:
 
 def _detect_surface(client_info: dict[str, Any]) -> str:
     """Best-effort surface detection from clientInfo.name / version."""
-    name = (client_info.get("name") or "").lower()
+    name = client_info.get("name") or ""
+    if not isinstance(name, str):
+        return "unknown"
+    name = name.lower()
+    if "chatgpt" in name:
+        return "chatgpt-work" if "work" in name else "chatgpt"
     if "claude" in name and "desktop" not in name and "code" not in name:
         return "claude.ai"
     if "claude-code" in name or "claude_code" in name:
