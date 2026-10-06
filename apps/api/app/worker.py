@@ -666,11 +666,32 @@ def _loop(thread_id: int) -> None:
             time.sleep(1)
 
 
+def _accounting_gate_loop() -> None:
+    """Run the read-only coverage gate nightly at 04:15 UTC on SaaS and on-prem."""
+    from app.core.database import SessionLocal
+    from app.runtime.accounting.audit_fallback_gate import run_startup_gate
+
+    while True:
+        now = datetime.now(timezone.utc)
+        next_check = now.replace(hour=4, minute=15, second=0, microsecond=0)
+        if next_check <= now:
+            next_check += timedelta(days=1)
+        time.sleep((next_check - now).total_seconds())
+        try:
+            result = run_startup_gate(SessionLocal)
+            log.info("accounting.audit_fallback_gate_nightly_result", **result)
+        except Exception as exc:
+            log.critical("accounting.audit_fallback_gate_nightly_failed", error_type=type(exc).__name__)
+
+
 def main() -> None:
     log.info("worker.starting", concurrency=CONCURRENCY, queue=QUEUE_KEY)
     _start_projection_workers()
     _start_projection_retention()
     _start_audit_retention()
+    threading.Thread(
+        target=_accounting_gate_loop, daemon=True, name="accounting-coverage-gate"
+    ).start()
 
     # The reaper, watchdog, and online eval scorer run regardless of concurrency.
     reaper = threading.Thread(target=_reaper_loop, daemon=True, name="reaper")

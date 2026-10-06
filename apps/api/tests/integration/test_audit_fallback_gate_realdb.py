@@ -27,8 +27,7 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-@pytest.fixture(scope="module")
-def workspace_id() -> str:
+def _workspace():
     from app.core.database import SessionLocal
     from sqlalchemy import text
 
@@ -59,13 +58,26 @@ def workspace_id() -> str:
         db.commit()
 
 
-def _insert_audit_only(workspace_id: str, *, ai_tool: str) -> str:
+@pytest.fixture
+def workspace_id():
+    yield from _workspace()
+
+
+@pytest.fixture
+def second_workspace_id():
+    yield from _workspace()
+
+
+def _insert_audit_only(
+    workspace_id: str, *, ai_tool: str, request_id: str | None = None,
+    ts: datetime | None = None,
+) -> str:
     """Audit row with no matching receipt — the exact scenario the
     audit-fallback branches were built to catch."""
     from app.core.database import SessionLocal
     from sqlalchemy import text
 
-    req_id = str(uuid.uuid4())
+    req_id = request_id or str(uuid.uuid4())
     with SessionLocal() as db:
         db.execute(
             text(
@@ -73,10 +85,11 @@ def _insert_audit_only(workspace_id: str, *, ai_tool: str) -> str:
                 "(id, workspace_id, request_id, ts, source, provider, model, "
                 " decision, cost_usd_after, ai_tool) "
                 "VALUES (gen_random_uuid(), CAST(:ws AS uuid), CAST(:req AS uuid), "
-                "        now(), 'gateway', 'anthropic', 'claude-sonnet-4-6', "
+                "        :ts, 'gateway', 'anthropic', 'claude-sonnet-4-6', "
                 "        'allowed', 0.001, :ai_tool)"
             ),
-            {"ws": workspace_id, "req": req_id, "ai_tool": ai_tool},
+            {"ws": workspace_id, "req": req_id, "ai_tool": ai_tool,
+             "ts": ts or datetime.now(timezone.utc)},
         )
         db.commit()
     return req_id
@@ -133,18 +146,10 @@ def test_count_zero_when_every_audit_has_a_receipt(workspace_id):
 
     since = datetime.now(timezone.utc) - timedelta(hours=1)
     with SessionLocal() as db:
-        # Filter to this test's requests via ai_tool by using a fresh
-        # workspace check window that only contains ours.
-        # We can't filter by ai_tool at the count level (it doesn't
-        # take a filter), so use a unique workspace to isolate.
         count = count_audit_only_requests(
             db, workspace_id=workspace_id, since=since
         )
-    # Depending on other test rows in the same fixture-scoped workspace,
-    # count may be >= 0 from THIS test's writes. The invariant: THIS
-    # test wrote only audit-with-receipt rows, so it contributes 0 to
-    # the count. Absolute count depends on prior tests.
-    assert count >= 0  # not a bug either way
+    assert count == 0
 
 
 def test_count_nonzero_when_audit_has_no_receipt(workspace_id):
@@ -163,7 +168,7 @@ def test_count_nonzero_when_audit_has_no_receipt(workspace_id):
         count = count_audit_only_requests(
             db, workspace_id=workspace_id, since=since
         )
-    assert count >= 1
+    assert count == 1
 
 
 # ─── audit_only_by_workspace ──────────────────────────────────────────
@@ -185,7 +190,9 @@ def test_audit_only_by_workspace_returns_only_dirty_workspaces(workspace_id):
         )
     assert len(entries) == 1
     assert entries[0].workspace_id == workspace_id
-    assert entries[0].audit_only_count >= 1
+    assert entries[0].audit_only_count == 1
+    assert entries[0].positive_cost_rows == 1
+    assert entries[0].request_linked_rows == 1
 
 
 # ─── run_startup_gate ─────────────────────────────────────────────────
@@ -219,8 +226,79 @@ def test_run_startup_gate_posts_single_platform_alert_for_dirty_fleet(workspace_
 
     assert result["workspaces_with_audit_only"] >= 1
     assert result["slack_alert_sent"] is True
+    assert result["ready_for_removal"] is False
     assert len(calls) == 1
     assert calls[0]["surface"] == "audit_fallback_gate"
     assert "audit-fallback still load-bearing" in calls[0]["text"]
     assert "#2229" in calls[0]["text"]
     assert workspace_id in calls[0]["text"]
+
+
+def test_receipt_in_another_workspace_does_not_clear_gate(workspace_id, second_workspace_id):
+    from app.core.database import SessionLocal
+    from app.runtime.accounting.audit_fallback_gate import audit_only_by_workspace, count_audit_only_requests
+    from app.runtime.accounting.shadow_writer import shadow_write
+
+    req_id = uuid.uuid4()
+    assert shadow_write(
+        workspace_id=second_workspace_id, request_id=req_id, provider="anthropic",
+        model="claude-sonnet-4-6", operation="messages.create", dispatched=True,
+        response_bytes=b'{"usage":{"input_tokens":100,"output_tokens":50}}',
+        source="gateway", client_tool="gate-other-workspace",
+    ) is not None
+    _insert_audit_only(workspace_id, ai_tool="gate-cross-workspace", request_id=str(req_id))
+    since = datetime.now(timezone.utc) - timedelta(hours=1)
+    with SessionLocal() as db:
+        assert count_audit_only_requests(db, workspace_id=workspace_id, since=since) == 1
+        entries = audit_only_by_workspace(db, since=since, workspace_ids=[workspace_id, second_workspace_id])
+    assert [(e.workspace_id, e.audit_only_count) for e in entries] == [(workspace_id, 1)]
+
+
+def test_prior_month_rows_inside_seven_days_block_removal(workspace_id):
+    from app.core.database import SessionLocal
+    from app.runtime.accounting.audit_fallback_gate import count_audit_only_requests, reporting_window_start
+
+    now = datetime(2026, 10, 2, 12, tzinfo=timezone.utc)
+    _insert_audit_only(workspace_id, ai_tool="gate-month-boundary", ts=now - timedelta(days=3))
+    with SessionLocal() as db:
+        assert count_audit_only_requests(db, workspace_id=workspace_id, since=reporting_window_start(now)) == 1
+
+
+def test_null_request_hook_estimates_are_not_hidden(workspace_id):
+    from app.core.database import SessionLocal
+    from app.runtime.accounting.audit_fallback_gate import audit_only_by_workspace
+    from sqlalchemy import text
+
+    with SessionLocal() as db:
+        db.execute(text("""
+            INSERT INTO guard_audit_events (id, workspace_id, ts, source, ai_tool, decision, cost_usd_after)
+            VALUES (gen_random_uuid(), CAST(:ws AS uuid), now(), 'hook', 'codex', 'allowed', 0.001)
+        """), {"ws": workspace_id})
+        db.commit()
+        entries = audit_only_by_workspace(
+            db, since=datetime.now(timezone.utc) - timedelta(hours=1), workspace_ids=[workspace_id],
+        )
+    assert len(entries) == 1
+    assert entries[0].audit_only_count == entries[0].positive_cost_rows == 1
+    assert entries[0].request_linked_rows == 0
+
+
+def test_gate_transaction_rejects_writes(workspace_id):
+    from app.core.database import SessionLocal
+    from app.runtime.accounting import audit_fallback_gate as gate
+    from sqlalchemy import text
+
+    def attempt_write(db, **kwargs):
+        db.execute(text("UPDATE workspaces SET name = 'must-not-change' WHERE id = CAST(:ws AS uuid)"),
+                   {"ws": workspace_id})
+        db.commit()
+        return []
+
+    with patch.object(gate, "audit_only_by_workspace", side_effect=attempt_write):
+        result = gate.run_startup_gate(SessionLocal, notify=False)
+    assert result["errors"] == 1
+    assert result["ready_for_removal"] is False
+    with SessionLocal() as db:
+        name = db.execute(text("SELECT name FROM workspaces WHERE id = CAST(:ws AS uuid)"),
+                          {"ws": workspace_id}).scalar_one()
+    assert name != "must-not-change"

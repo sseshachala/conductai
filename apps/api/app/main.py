@@ -384,9 +384,9 @@ def _startup() -> None:
     threading.Thread(target=_reconcile_budget, daemon=True, name="budget-reconciler-startup").start()
 
     # #2229 — Tier 2 deletion completion gate. On boot, count
-    # audit-only requests in the current period per workspace. If any
-    # workspace has > 0, post a Slack alert on that workspace's Guard
-    # channel so ops sees the tail. Zero across every workspace ⇒
+    # audit-only requests over every supported reporting window. If any
+    # workspace has > 0, post one platform-operator Slack alert.
+    # Zero across every workspace in staging AND production =>
     # ``NOT EXISTS`` audit-fallback branches in
     # ``AccountingReader.spend_micros_by_workspace`` and
     # ``BudgetLedger.reconcile`` are safe to delete.
@@ -403,10 +403,11 @@ def _startup() -> None:
                 total_audit_only_rows=r["total_audit_only_rows"],
                 slack_alert_sent=r["slack_alert_sent"],
                 errors=r["errors"],
+                ready_for_removal=r["ready_for_removal"],
             )
         except Exception as exc:  # noqa: BLE001
-            log.warning(
-                "accounting.audit_fallback_gate_startup_failed", error=str(exc)
+            log.critical(
+                "accounting.audit_fallback_gate_startup_failed", error_type=type(exc).__name__
             )
 
     threading.Thread(
