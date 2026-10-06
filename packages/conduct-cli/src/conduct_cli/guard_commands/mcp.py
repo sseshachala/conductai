@@ -4,7 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 import json
 from conduct_cli.deployment import api_url as configured_api, is_hosted_mcp_move, resolve
-from conduct_cli.tool_adapters import ADAPTERS
+from conduct_cli.tool_adapters import ADAPTERS, CONDUCT_MCP_KEY, LEGACY_MCP_KEYS
 
 from . import instructions as _guard_instructions
 from . import shared as _guard_shared
@@ -210,13 +210,13 @@ def _patch_copilot_mcp(agent_token: str, api_url: str) -> None:
             except (OSError, ValueError):
                 print(f"  {_guard_shared.YELLOW}Copilot MCP config is unreadable or invalid; left unchanged.{_guard_shared.RESET}")
                 return
-        _write_mcp_file(global_path, "conduct-guard", sse_entry, booster_entry, "GitHub Copilot (global)")
+        _write_mcp_file(global_path, CONDUCT_MCP_KEY, sse_entry, booster_entry, "GitHub Copilot (global)")
         global_path.chmod(0o600)
 
     # .mcp.json in cwd (project-level, picked up by VS Code Copilot)
     local_path = Path.cwd() / ".mcp.json"
     if local_path.exists():
-        _write_mcp_file(local_path, "conduct-guard", sse_entry, booster_entry, "GitHub Copilot (.mcp.json)")
+        _write_mcp_file(local_path, CONDUCT_MCP_KEY, sse_entry, booster_entry, "GitHub Copilot (.mcp.json)")
 
 
 def _write_mcp_file(
@@ -238,6 +238,11 @@ def _write_mcp_file(
         return
     mcp = cfg.setdefault("mcpServers", {})
     changed = False
+    for legacy in LEGACY_MCP_KEYS:
+        if legacy in mcp and legacy != guard_key:
+            # Rename, keeping any native-OAuth registration; a current entry wins.
+            mcp.setdefault(guard_key, mcp.pop(legacy))
+            changed = True
     current = mcp.get(guard_key)
     # Headerless remote entries use native OAuth discovery, including DCR.
     preserve_oauth = isinstance(current, dict) and (
@@ -250,22 +255,24 @@ def _write_mcp_file(
         )
     )
     if preserve_oauth and is_hosted_mcp_move(current.get("url"), sse_entry.get("url")):
-        # Same deployment, new hosted default. The OAuth resource metadata still names
-        # api.conductai.ai/mcp, so keep native-OAuth entries (and their sign-in) where they are.
-        print(f"  {_guard_shared.GRAY}conduct-guard native OAuth configuration preserved in {label}{_guard_shared.RESET}")
+        # Same issuer, new hosted MCP host: the gateway advertises its own resource
+        # metadata and tokens are not host-bound, so the OAuth registration carries over.
+        mcp[guard_key] = {**current, "url": sse_entry["url"]}
+        changed = True
+        print(f"  {_guard_shared.GREEN}Conduct MCP moved to {sse_entry['url']} in {label}; existing sign-in kept{_guard_shared.RESET}")
     elif preserve_oauth and current.get("url") != sse_entry.get("url"):
         # OAuth registrations belong to the old issuer; never carry them across.
         mcp[guard_key] = {"type": current.get("type", "http"), "url": sse_entry["url"]}
         changed = True
         print(f"  Conduct MCP endpoint updated in {label}; sign in again for this deployment.")
     elif preserve_oauth:
-        print(f"  {_guard_shared.GRAY}conduct-guard native OAuth configuration preserved in {label}{_guard_shared.RESET}")
+        print(f"  {_guard_shared.GRAY}Conduct MCP native OAuth configuration preserved in {label}{_guard_shared.RESET}")
     elif current != sse_entry:
         mcp[guard_key] = sse_entry
         changed = True
-        print(f"  {_guard_shared.GREEN}conduct-guard MCP registered in {label}{_guard_shared.RESET}")
+        print(f"  {_guard_shared.GREEN}Conduct MCP registered in {label}{_guard_shared.RESET}")
     else:
-        print(f"  {_guard_shared.GRAY}conduct-guard MCP already registered in {label}{_guard_shared.RESET}")
+        print(f"  {_guard_shared.GRAY}Conduct MCP already registered in {label}{_guard_shared.RESET}")
     if booster_entry and mcp.get("agent-booster") != booster_entry:
         mcp["agent-booster"] = booster_entry
         changed = True

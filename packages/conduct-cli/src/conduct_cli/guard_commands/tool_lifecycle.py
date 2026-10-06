@@ -7,8 +7,8 @@ from pathlib import Path
 import shlex
 import subprocess
 
-from conduct_cli.deployment import resolve
-from conduct_cli.tool_adapters import ADAPTERS
+from conduct_cli.deployment import is_hosted_mcp_move, resolve
+from conduct_cli.tool_adapters import ADAPTERS, CONDUCT_MCP_KEY, LEGACY_MCP_KEYS
 from conduct_cli.tool_config import edit_document
 from . import shared
 
@@ -156,6 +156,16 @@ def owned_mcp(entry, endpoint):
         for key, value in headers.items())
 
 
+def _endpoint(entry):
+    args = entry.get("args") if isinstance(entry, dict) else None
+    return args[2] if isinstance(args, list) and len(args) == 5 else (entry or {}).get("url")
+
+
+def ours_mcp(entry, endpoint):
+    """Owned for this endpoint, or a managed entry left on the pre-#2360 hosted MCP host."""
+    return owned_mcp(entry, endpoint) or (managed_mcp(entry) and is_hosted_mcp_move(_endpoint(entry), endpoint))
+
+
 def managed_mcp(entry):
     """Recognize managed credentials when switching the selected deployment."""
     if not isinstance(entry, dict):
@@ -182,13 +192,16 @@ def configure_mcp(tool, config, remove=False, project=None):
             servers = document.setdefault(source.key, {})
             if not isinstance(servers, dict):
                 raise ValueError("Invalid MCP server map")
-            for key in ("conduct", "conduct-guard", "conductguard"):
+            for key in (CONDUCT_MCP_KEY, *LEGACY_MCP_KEYS):
                 prior = servers.get(key)
-                if prior is not None and owned_mcp(prior, selected.mcp) and (remove or key == "conductguard"):
+                if prior is not None and ours_mcp(prior, selected.mcp) and (remove or key in LEGACY_MCP_KEYS):
                     del servers[key]
                     changed = True
+                elif prior is not None and key in LEGACY_MCP_KEYS and not remove and CONDUCT_MCP_KEY not in servers:
+                    servers[CONDUCT_MCP_KEY] = servers.pop(key)  # rename; ownership checks below still apply
+                    changed = True
             if not remove and source.scope == "user":
-                key = "conduct-guard" if tool == "copilot-cli" else "conduct"
+                key = CONDUCT_MCP_KEY
                 entry = {"type": "http", "url": selected.mcp, "headers": {"Authorization": f"Bearer {token}"}} if tool == "copilot-cli" else {
                     "command": "npx", "args": ["-y", "mcp-remote", selected.mcp, "--header", f"Authorization: Bearer {token}"]}
                 prior = servers.get(key)

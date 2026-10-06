@@ -11,14 +11,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 ### Changed
 - Hosted MCP now defaults to `https://gateway.conductai.ai/mcp`, the gateway
   service with admission control, instead of `https://api.conductai.ai/mcp`
-  (#2360). `conduct guard sync` moves existing Bearer-token MCP entries for
-  Claude Code, Cursor, Windsurf, Claude Desktop and Copilot to the new host.
-  A saved `mcp_url` of `https://api.conductai.ai/mcp` is treated as the old
-  default.
+  (#2360). `conduct guard sync` moves existing entries for Claude Code, Cursor,
+  Windsurf, Claude Desktop and Copilot to the new host. A saved `mcp_url` of
+  `https://api.conductai.ai/mcp` is treated as the old default.
+- Native-OAuth MCP entries move too and keep their OAuth registration. The
+  issuer is unchanged, and the gateway now advertises its own resource
+  metadata.
+- Copilot's MCP server key is now `conduct`, the same as in other tools. The
+  legacy `conduct-guard` key is renamed in place, keeping any native-OAuth
+  configuration.
+- `conduct tools remove` also cleans up Conduct-managed entries left on the
+  previous hosted MCP host.
 
 ### Notes
-- Native-OAuth MCP entries stay on `api.conductai.ai/mcp` and keep their
-  sign-in until the server's OAuth resource metadata is host-aware.
+- Requires the backend change that makes
+  `/.well-known/oauth-protected-resource/mcp` report the host it is served
+  from. Deploy the backend before publishing this release.
 - Custom and self-hosted deployments are unchanged.
 - Run `conduct guard sync` after upgrading.
 

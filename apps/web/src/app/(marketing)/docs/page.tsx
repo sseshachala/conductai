@@ -2171,7 +2171,7 @@ function TabMcpTools() {
           The URL is the same for everyone — no workspace ID in the path. Your Bearer token scopes
           the connection to your org automatically.
         </p>
-        <Pre>https://api.conductai.ai/guard/mcp
+        <Pre>https://gateway.conductai.ai/mcp
 Authorization: Bearer &lt;your-token&gt;</Pre>
         <p className="text-sm text-stone-500 mt-3">
           The token is scoped to the member who copies it. Treat it like a personal access token —
@@ -2194,16 +2194,16 @@ Authorization: Bearer &lt;your-token&gt;</Pre>
           Fastest path — <Code>conduct guard sync</Code> writes to <Code>~/.claude/settings.json</Code>{" "}
           automatically. Or add the server yourself with the built-in command:
         </p>
-        <Pre>{`claude mcp add conduct-guard \\
+        <Pre>{`claude mcp add conduct \\
   --transport http \\
-  --url https://api.conductai.ai/guard/mcp \\
+  --url https://gateway.conductai.ai/mcp \\
   --header "Authorization: Bearer <your-token>"`}</Pre>
         <p className="text-stone-600 mt-4 mb-2">Or edit <Code>~/.claude/settings.json</Code> directly:</p>
         <Pre>{`{
   "mcpServers": {
-    "conduct-guard": {
+    "conduct": {
       "type": "http",
-      "url": "https://api.conductai.ai/guard/mcp",
+      "url": "https://gateway.conductai.ai/mcp",
       "headers": { "Authorization": "Bearer <your-token>" }
     }
   }
@@ -2218,8 +2218,8 @@ Authorization: Bearer &lt;your-token&gt;</Pre>
         <p className="text-stone-600 mt-4 mb-2">Or edit <Code>claude_desktop_config.json</Code> directly:</p>
         <Pre>{`{
   "mcpServers": {
-    "conduct-guard": {
-      "url": "https://api.conductai.ai/guard/mcp",
+    "conduct": {
+      "url": "https://gateway.conductai.ai/mcp",
       "headers": { "Authorization": "Bearer <your-token>" }
     }
   }
@@ -2252,8 +2252,8 @@ Authorization: Bearer &lt;your-token&gt;</Pre>
           <Step n={2}>Paste the workspace URL and select <strong>OAuth</strong> as the auth type — ChatGPT will discover the flow from the endpoint metadata.</Step>
           <Step n={3}>Approve the connector for the seats and workspaces that should use it. Users then enable it in any chat via the connector menu.</Step>
         </ol>
-        <Pre>{`URL:  https://api.conductai.ai/guard/mcp
-Auth: OAuth  (discovered from /.well-known/oauth-protected-resource/guard/mcp)`}</Pre>
+        <Pre>{`URL:  https://gateway.conductai.ai/mcp
+Auth: OAuth  (discovered from /.well-known/oauth-protected-resource/mcp)`}</Pre>
         <p className="text-sm text-stone-500 mt-3">
           The same connector serves both ChatGPT chat and Codex-in-ChatGPT — one registration, both
           surfaces enforced. For open-source Codex CLI (<Code>codex</Code> package), see the section below.
@@ -2269,9 +2269,9 @@ Auth: OAuth  (discovered from /.well-known/oauth-protected-resource/guard/mcp)`}
         <Pre>{`# ~/.codex/mcp.json
 {
   "mcpServers": {
-    "conduct-guard": {
+    "conduct": {
       "type": "http",
-      "url": "https://api.conductai.ai/guard/mcp",
+      "url": "https://gateway.conductai.ai/mcp",
       "headers": { "Authorization": "Bearer <your-token>" }
     }
   }
@@ -2298,8 +2298,8 @@ Auth: OAuth  (discovered from /.well-known/oauth-protected-resource/guard/mcp)`}
         <p className="text-stone-600 mb-3">Or add it manually in your VS Code <Code>settings.json</Code>:</p>
         <Pre>{`{
   "mcp.servers": {
-    "conduct-guard": {
-      "url": "https://api.conductai.ai/guard/mcp",
+    "conduct": {
+      "url": "https://gateway.conductai.ai/mcp",
       "headers": { "Authorization": "Bearer <your-token>" }
     }
   }
@@ -2316,9 +2316,9 @@ Auth: OAuth  (discovered from /.well-known/oauth-protected-resource/guard/mcp)`}
         <Pre>{`# ~/.copilot/mcp-config.json
 {
   "mcpServers": {
-    "conduct-guard": {
+    "conduct": {
       "type": "http",
-      "url": "https://api.conductai.ai/guard/mcp",
+      "url": "https://gateway.conductai.ai/mcp",
       "headers": { "Authorization": "Bearer <your-token>" }
     }
   }
@@ -2355,8 +2355,8 @@ Auth: OAuth  (discovered from /.well-known/oauth-protected-resource/guard/mcp)`}
         <Pre>{`# ~/.windsurf/mcp.json
 {
   "mcpServers": {
-    "conduct-guard": {
-      "url": "https://api.conductai.ai/guard/mcp",
+    "conduct": {
+      "url": "https://gateway.conductai.ai/mcp",
       "headers": { "Authorization": "Bearer <your-token>" }
     }
   }

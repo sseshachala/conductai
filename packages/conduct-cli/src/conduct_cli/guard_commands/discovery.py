@@ -9,6 +9,7 @@ import urllib.request
 from . import gateway as _guard_gateway
 from . import shared as _guard_shared
 from .copilot import configured as copilot_configured
+from conduct_cli.tool_adapters import CONDUCT_MCP_KEY, LEGACY_MCP_KEYS
 
 
 def _detect_ai_tools() -> list[dict]:
@@ -79,7 +80,7 @@ def _detect_ai_tools() -> list[dict]:
     if _guard_shared._copilot_cli_installed() and not any(t["name"] == "copilot-cli" for t in tools):
         try:
             copilot_mcp = json.loads((_guard_shared._copilot_home() / "mcp-config.json").read_text())
-            mcp_registered = "conduct-guard" in copilot_mcp.get("mcpServers", {})
+            mcp_registered = any(k in copilot_mcp.get("mcpServers", {}) for k in (CONDUCT_MCP_KEY, *LEGACY_MCP_KEYS))
         except (OSError, ValueError, AttributeError, TypeError):
             mcp_registered = False
         tools.append({
@@ -108,7 +109,7 @@ def _detect_ai_tools() -> list[dict]:
         if not mcp_reg:
             try:
                 copilot_cfg = home / ".copilot" / "mcp-config.json"
-                mcp_reg = "conduct-guard" in json.loads(copilot_cfg.read_text()).get("mcpServers", {})
+                mcp_reg = any(k in json.loads(copilot_cfg.read_text()).get("mcpServers", {}) for k in (CONDUCT_MCP_KEY, *LEGACY_MCP_KEYS))
             except Exception:
                 pass
         tools.append({

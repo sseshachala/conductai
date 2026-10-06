@@ -143,3 +143,21 @@ def test_codex_gateway_roundtrip_restores_provider_and_preserves_comments(local,
     assert document["model"] == "explicit-model"
     assert "# keep this comment" in path.read_text()
     assert "conduct" not in document.get("model_providers", {})
+
+
+def test_copilot_legacy_conduct_guard_key_is_renamed(local):
+    adapter = ADAPTERS["copilot-cli"]
+    adapter.root().mkdir(parents=True)
+    user = next(source for source in adapter.mcp_sources() if source.scope == "user")
+    from conduct_cli.tool_config import edit_document
+    with edit_document(user.path) as document:
+        document[user.key] = {
+            "conduct-guard": {"type": "http", "url": local["mcp_url"],
+                              "headers": {"Authorization": "Bearer cond_agt_old_fixture"}},
+            "third-party": {"command": "never-run"},
+        }
+    assert lifecycle.configure_mcp("copilot-cli", local)
+    with edit_document(user.path) as document:
+        servers = document[user.key]
+        assert set(servers) == {"conduct", "third-party"}
+        assert servers["conduct"]["headers"]["Authorization"] == "Bearer " + local["agent_token"]

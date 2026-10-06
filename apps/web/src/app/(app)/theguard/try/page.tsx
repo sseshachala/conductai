@@ -176,7 +176,10 @@ function VerbCard({ verb, session, onRun, verdict, running, revealed }: {
 
 function UseAnywherePanel({ token, gatewayUrl }: { token: string; gatewayUrl: string }) {
   const [tab, setTab] = useState<"cli" | "mcp" | "http">("cli")
-  const mcpUrl = API.replace(/\/$/, "") + "/guard/mcp"
+  // Hosted MCP is served by the gateway host (#2360); fall back to the API host.
+  const mcpUrl = (() => {
+    try { return new URL(gatewayUrl).origin + "/mcp" } catch { return API.replace(/\/$/, "") + "/mcp" }
+  })()
   return (
     <div className="rounded-lg border border-stone-200 p-4 space-y-3 bg-white">
       <p className="font-semibold text-stone-900">Use this token anywhere</p>
@@ -202,7 +205,7 @@ conduct guard sync`}
         <pre className="text-xs font-mono bg-stone-900 text-stone-100 p-3 rounded overflow-x-auto">
 {`# Claude Desktop / Cursor / Windsurf — add to mcpServers config
 {
-  "conduct-guard": {
+  "conduct": {
     "url": "${mcpUrl}",
     "headers": { "Authorization": "Bearer ${token}" }
   }
