@@ -9,6 +9,15 @@ from .login_config import origin
 SAAS_API = "https://api.conductai.ai"
 SAAS_WEB = "https://app.conductai.ai"
 SAAS_GATEWAY = "https://gateway.conductai.ai/gateway/v1"
+# Hosted MCP is served by the gateway service (admission control enabled).
+# Older CLIs persisted the API host as `mcp_url`; it is treated as the old default.
+SAAS_MCP = "https://gateway.conductai.ai/mcp"
+LEGACY_SAAS_MCP = SAAS_API + "/mcp"
+
+
+def is_hosted_mcp_move(old_url: str | None, new_url: str | None) -> bool:
+    """True for the hosted api.conductai.ai/mcp → gateway.conductai.ai/mcp default change."""
+    return (old_url or "").rstrip("/") == LEGACY_SAAS_MCP and (new_url or "").rstrip("/") == SAAS_MCP
 
 
 def api_url(config: dict) -> str:
@@ -44,6 +53,8 @@ def resolve(config: dict) -> Deployment:
         gateway = SAAS_GATEWAY
     # /mcp is a supported API route; a separate MCP origin is optional.
     mcp = config.get("mcp_url") or api + "/mcp"
+    if api == SAAS_API and mcp.rstrip("/") == LEGACY_SAAS_MCP:
+        mcp = SAAS_MCP
     return Deployment(api, service_url(web, api) if web else None,
                       service_url(gateway, api) if gateway else None, service_url(mcp, api))
 

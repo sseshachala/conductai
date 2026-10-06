@@ -28,7 +28,8 @@ def test_fresh_cli_install_gets_mcp_and_hooks_without_vscode(home):
     guard._install_copilot_hooks(hook)
     root = guard._copilot_home()
     mcp = json.loads((root / "mcp-config.json").read_text())
-    assert mcp["mcpServers"]["conduct-guard"]["headers"]["Authorization"] == "Bearer test-token"
+    assert mcp["mcpServers"]["conduct"]["headers"]["Authorization"] == "Bearer test-token"
+    assert "conduct-guard" not in mcp["mcpServers"]
     cfg = json.loads((root / "hooks" / "conduct-guard.json").read_text())
     assert set(cfg["hooks"]) == {"preToolUse", "postToolUse", "postToolUseFailure", "sessionStart", "sessionEnd"}
     assert "test-token" not in json.dumps(cfg)
@@ -148,11 +149,12 @@ def test_sync_preserves_native_oauth(home, entry, location):
     root = guard._copilot_home()
     root.mkdir()
     config = root / "mcp-config.json" if location == "global" else home / ".mcp.json"
-    original = {"mcpServers": {"conduct-guard": entry, "other": {"command": "other"}}, "custom": True}
-    config.write_text(json.dumps(original))
+    config.write_text(json.dumps({"mcpServers": {"conduct-guard": entry, "other": {"command": "other"}}, "custom": True}))
+    # Legacy "conduct-guard" key is renamed to "conduct"; the OAuth entry itself is untouched.
+    expected = {"mcpServers": {"other": {"command": "other"}, "conduct": entry}, "custom": True}
     for token in ("first-token", "rotated-token"):
         guard._patch_copilot_mcp(token, "https://api.example")
-        assert json.loads(config.read_text()) == original
+        assert json.loads(config.read_text()) == expected
 
 
 @pytest.mark.parametrize("content", ["invalid", "[]", '{"mcpServers": []}'])

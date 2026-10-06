@@ -9,6 +9,12 @@ import re
 from .tool_catalog import TOOLS
 
 
+# Conduct's MCP server key in every tool config. Older CLIs wrote "conduct-guard"
+# (Copilot) and "conductguard" (retired binary); guard sync renames them.
+CONDUCT_MCP_KEY = "conduct"
+LEGACY_MCP_KEYS = ("conduct-guard", "conductguard")
+
+
 @dataclass(frozen=True)
 class ConfigSource:
     path: Path

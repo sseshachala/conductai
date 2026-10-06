@@ -19,6 +19,20 @@ def test_saas_defaults():
     assert selected.api == deployment.SAAS_API
     assert selected.web == deployment.SAAS_WEB
     assert selected.gateway == deployment.SAAS_GATEWAY
+    assert selected.mcp == deployment.SAAS_MCP == "https://gateway.conductai.ai/mcp"
+
+
+@pytest.mark.parametrize("saved", [deployment.LEGACY_SAAS_MCP, deployment.LEGACY_SAAS_MCP + "/"])
+def test_saved_legacy_hosted_mcp_moves_to_gateway(saved):
+    # Pre-#2360 CLIs persisted api.conductai.ai/mcp as mcp_url on every guard sync.
+    assert deployment.resolve({"mcp_url": saved}).mcp == deployment.SAAS_MCP
+
+
+def test_hosted_mcp_default_applies_to_generated_bridge(monkeypatch):
+    from conduct_cli import main
+    monkeypatch.setattr(main, "_load_config", lambda: {})
+    args = main._mcp_remote_args(deployment.SAAS_API, "cond_agt_synthetic")
+    assert deployment.SAAS_MCP in args and deployment.LEGACY_SAAS_MCP not in args
 
 
 def test_custom_defaults_never_guess_hosted_services():
@@ -159,3 +173,28 @@ def test_server_override_cannot_reuse_saved_credentials(monkeypatch):
         **CUSTOM, "workspace_id": "test", "agent_token": "synthetic"})
     with pytest.raises(SystemExit):
         main._require_auth(SimpleNamespace(server=deployment.SAAS_API, token=None))
+
+
+def test_hosted_mcp_move_updates_bearer_and_native_oauth_entries(isolated):
+    new = {"type": "http", "url": deployment.SAAS_MCP, "headers": {"Authorization": "Bearer cond_agt_synthetic"}}
+    bearer = isolated / "bearer.json"
+    bearer.write_text(json.dumps({"mcpServers": {"conduct": {**new, "url": deployment.LEGACY_SAAS_MCP}}}))
+    mcp._write_mcp_file(bearer, "conduct", new, None, "test")
+    assert json.loads(bearer.read_text())["mcpServers"]["conduct"]["url"] == deployment.SAAS_MCP
+
+    # Same issuer and host-aware resource metadata: the OAuth registration carries over.
+    oauth = isolated / "oauth.json"
+    oauth.write_text(json.dumps({"mcpServers": {"conduct-guard": {
+        "type": "http", "url": deployment.LEGACY_SAAS_MCP, "oauth": {"clientId": "kept"}}}}))
+    mcp._write_mcp_file(oauth, "conduct", new, None, "test")
+    assert json.loads(oauth.read_text())["mcpServers"] == {
+        "conduct": {"type": "http", "url": deployment.SAAS_MCP, "oauth": {"clientId": "kept"}}}
+
+
+def test_tool_removal_cleans_entries_left_on_the_old_hosted_mcp_host():
+    from conduct_cli.guard_commands.tool_lifecycle import ours_mcp
+    legacy = {"command": "npx", "args": ["-y", "mcp-remote", deployment.LEGACY_SAAS_MCP,
+                                         "--header", "Authorization: Bearer cond_agt_synthetic"]}
+    assert ours_mcp(legacy, deployment.SAAS_MCP)
+    other = {**legacy, "args": ["-y", "mcp-remote", CUSTOM["mcp_url"], "--header", "Authorization: Bearer cond_agt_synthetic"]}
+    assert not ours_mcp(other, deployment.SAAS_MCP)  # never another deployment's entry
