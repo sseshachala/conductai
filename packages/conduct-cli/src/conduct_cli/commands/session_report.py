@@ -6,6 +6,7 @@ from pathlib import Path
 
 from conduct_cli import api
 from conduct_cli.commands.shared import _require_auth
+from conduct_cli.paxel_runner import run_paxel
 
 
 def cmd_session_report(args):
@@ -18,18 +19,12 @@ def cmd_session_report(args):
     import getpass
 
     # ── 1. Use bundled paxel ─────────────────────────────────────────────────
-    bundled = Path(__file__).parent.parent / "paxel.py"
     tmpdir = tempfile.mkdtemp(prefix="conduct-paxel-")
-    paxel_script = Path(tmpdir) / "paxel.py"
-    shutil.copy(bundled, paxel_script)
 
     # ── 2. Run paxel ─────────────────────────────────────────────────────────
     print("Analysing sessions…")
     try:
-        result = subprocess.run(
-            [sys.executable, str(paxel_script), "--no-open"],
-            cwd=tmpdir, capture_output=True, text=True, timeout=120,
-        )
+        result = run_paxel(tmpdir, timeout=120)
     except subprocess.TimeoutExpired:
         print("ERROR: analysis timed out after 120 s.")
         shutil.rmtree(tmpdir, ignore_errors=True)
