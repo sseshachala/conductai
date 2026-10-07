@@ -81,20 +81,21 @@ export default function ComparePage() {
   return (
     <div className="min-h-screen bg-white">
       <main className="max-w-5xl mx-auto px-6">
-        <section className="pt-20 pb-14 text-left max-w-3xl">
-          <p className="text-xs font-mono font-bold uppercase tracking-widest text-stone-400 mb-4">Compare</p>
-          <h1 className="text-4xl sm:text-5xl font-black tracking-tight text-stone-900 leading-[1.05] mb-6">
+        {/* Hero: dark full-width band, matches /guard */}
+        <section className="-mx-6 sm:-mx-10 lg:-mx-20 px-6 sm:px-10 lg:px-20 py-20 sm:py-24 bg-stone-950 mb-16">
+          <p className="text-xs font-mono font-bold uppercase tracking-widest text-indigo-400 mb-4">Compare</p>
+          <h1 className="text-4xl sm:text-5xl lg:text-6xl font-black tracking-tight text-white leading-[1.05] mb-6 max-w-3xl">
             One policy. Every agent.
           </h1>
-          <p className="text-lg text-stone-500 leading-relaxed">
+          <p className="text-lg text-stone-400 leading-relaxed max-w-2xl">
             Many AI governance tools cover one or two surfaces: the prompt, the gateway, the MCP server, or one framework.
             Conduct enforces a single policy wherever an agent acts, and runs alongside the tools you already use.
           </p>
         </section>
 
-        <section className="mb-16">
+        <section className="mb-20">
           <h2 className="text-2xl font-bold text-stone-900 mb-3">Coverage by approach</h2>
-          <p className="text-stone-500 text-sm leading-relaxed mb-6 max-w-2xl">
+          <p className="text-stone-500 text-sm leading-relaxed mb-8 max-w-2xl">
             Typical coverage for each category. Individual products vary.
           </p>
           <div className="overflow-x-auto border border-stone-200 rounded-2xl">
@@ -131,9 +132,9 @@ export default function ComparePage() {
           <p className="text-xs text-stone-400 mt-3">● Yes · ◐ Partial · ○ No</p>
         </section>
 
-        <section className="mb-16">
+        <section className="mb-20">
           <h2 className="text-2xl font-bold text-stone-900 mb-3">Named tools</h2>
-          <p className="text-stone-500 text-sm leading-relaxed mb-6 max-w-2xl">
+          <p className="text-stone-500 text-sm leading-relaxed mb-8 max-w-2xl">
             From each vendor&apos;s public documentation as of October 2026. A dash means we found no documentation
             either way, not that the feature is missing. Spot an error? Email{" "}
             <a href="mailto:hello@conductai.ai" className="underline">hello@conductai.ai</a> and we&apos;ll correct it.
@@ -183,12 +184,15 @@ export default function ComparePage() {
           </details>
         </section>
 
-        <section className="mb-16">
-          <h2 className="text-2xl font-bold text-stone-900 mb-6">Where each approach stops</h2>
+        <section className="mb-20">
+          <h2 className="text-2xl font-bold text-stone-900 mb-3">Where each approach stops</h2>
+          <p className="text-stone-500 text-sm leading-relaxed mb-8 max-w-2xl">
+            What each category is built for, and what it can&apos;t see.
+          </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {CATEGORIES.map((c) => (
-              <div key={c.name} className="rounded-2xl border border-stone-200 p-5">
-                <h3 className="font-bold text-stone-900 mb-2">{c.name}</h3>
+              <div key={c.name} className="border border-stone-200 rounded-xl bg-white p-5 shadow-sm">
+                <p className="font-semibold text-stone-900 mb-2 text-[15px]">{c.name}</p>
                 <p className="text-sm text-stone-700 leading-relaxed mb-2">{c.covers}</p>
                 <p className="text-sm text-stone-500 leading-relaxed">{c.gap}</p>
               </div>
@@ -196,9 +200,9 @@ export default function ComparePage() {
           </div>
         </section>
 
-        <section className="mb-16">
+        <section className="mb-20">
           <h2 className="text-2xl font-bold text-stone-900 mb-3">Works with what you run</h2>
-          <p className="text-stone-500 text-sm leading-relaxed mb-6 max-w-2xl">
+          <p className="text-stone-500 text-sm leading-relaxed mb-8 max-w-2xl">
             Conduct is the policy layer underneath, not a replacement. Keep your gateway, guardrails, and frameworks.
           </p>
           <ul className="space-y-3 text-sm text-stone-700">
@@ -209,17 +213,23 @@ export default function ComparePage() {
           </ul>
         </section>
 
-        <section className="mb-24 rounded-2xl bg-stone-900 text-white p-8">
-          <h2 className="text-2xl font-bold mb-3">See one policy across your agents</h2>
-          <p className="text-stone-300 text-sm leading-relaxed mb-6 max-w-2xl">
-            Connect one agent, set one rule, and watch it apply to model calls, MCP tools, and the CLI.
-          </p>
-          <div className="flex flex-wrap gap-3">
-            <Link href="/sign-up" className="inline-block rounded-xl bg-white text-stone-900 px-6 py-3 text-sm font-semibold hover:bg-stone-200 transition-colors">
+        {/* CTA: indigo full-width band, matches /guard */}
+        <section className="-mx-6 sm:-mx-10 lg:-mx-20 px-6 sm:px-10 lg:px-20 py-16 sm:py-24 bg-indigo-600 mb-0 text-center">
+          <h2 className="text-2xl sm:text-3xl font-bold text-white tracking-tight mb-6 max-w-2xl mx-auto">
+            See one policy across your agents.
+          </h2>
+          <div className="flex flex-wrap justify-center gap-3">
+            <Link
+              href="/sign-up"
+              className="inline-block rounded-xl bg-white text-indigo-700 px-6 py-3 text-sm font-semibold hover:bg-indigo-50 transition-colors"
+            >
               Get started
             </Link>
-            <Link href="/what-is-conduct-ai" className="inline-block rounded-xl border border-stone-600 px-6 py-3 text-sm font-semibold hover:bg-stone-800 transition-colors">
-              What is Conduct?
+            <Link
+              href="/book-demo"
+              className="inline-block rounded-xl border border-indigo-300 bg-transparent text-white px-6 py-3 text-sm font-semibold hover:bg-indigo-700 transition-colors"
+            >
+              Book a Demo
             </Link>
           </div>
         </section>
