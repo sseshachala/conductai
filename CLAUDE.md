@@ -2,7 +2,7 @@
 
 ## About
 **Owner:** Sudhi
-**Purpose:** Building Conduct — a YAML playbook platform that turns AI agents into reusable team automations, with a FastAPI backend, Next.js canvas UI, Redis worker, and 39 playbooks covering GitHub, Slack, CI/CD, and incident response workflows.
+**Purpose:** Building Conduct — runtime governance for AI agents (Guard: one policy across LLM gateway, MCP, CLI). Workflows are a Guard feature: governed-response playbooks (incident response, approved prod changes, autopilot fixes). FastAPI backend, Next.js UI, Redis worker, 20 playbooks.
 
 ## Agent Work — Always-On Watchdog
 When working on playbooks (`apps/api/playbooks/`), brain block prompts, turn budgets, or block chaining: activate `/agent-builder` skill. It enforces the review checklist for every agent capability change:

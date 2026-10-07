@@ -192,9 +192,9 @@ function TabOverview() {
       <section id="how-it-works">
         <h1 className="text-3xl font-bold text-stone-900 mb-3">How Conduct works</h1>
         <p className="text-stone-600 leading-relaxed text-base mb-10">
-          Conduct is a governed automation layer for AI agents. You install a playbook, configure it once,
-          and it turns tickets, PRs, alerts, and incidents into repeatable workflows, triggered by a webhook,
-          on a schedule, or on demand. Every run is traced, every outcome is recorded.
+          Workflows are Conduct&apos;s governed response layer. When Guard or an alert detects something, a
+          playbook responds: it investigates, proposes a specific action, waits for a human to approve that
+          action, and records the evidence. Runs start from a webhook, on a schedule, or on demand. Every run is traced, every outcome is recorded.
         </p>
         <div className="space-y-0">
           {[

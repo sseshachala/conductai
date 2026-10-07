@@ -1,6 +1,6 @@
 # Conduct Documentation
 
-Conduct is a YAML playbook platform that turns AI agents into reusable team automations — with a FastAPI backend, Next.js canvas UI, Redis worker, cross-provider LLM proxy (Guard), and 22+ pre-built playbooks covering GitHub, Slack, CI/CD, and incident response.
+Conduct governs AI agents at runtime. Guard enforces one policy across every agent (LLM gateway, MCP, CLI hooks); workflows are the governed response layer: playbooks that respond to Guard events and alerts with human-approved actions and an audit trail. Stack: FastAPI backend, Next.js UI, Redis worker, 20 playbooks.
 
 Docs are organized **by goal, not by file shape**. Pick your path below.
 

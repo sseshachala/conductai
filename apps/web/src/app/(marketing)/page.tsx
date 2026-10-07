@@ -291,7 +291,7 @@ function OnePolicySection() {
               </li>
               <li className="flex items-start gap-2">
                 <span className="text-emerald-600 font-bold mt-0.5 shrink-0">→</span>
-                <span>35 pre-built playbooks with Guard enforcement built in</span>
+                <span>20 governed-response playbooks: Guard detects, a playbook responds</span>
               </li>
             </ul>
           </div>
