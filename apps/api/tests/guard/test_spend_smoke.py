@@ -58,7 +58,7 @@ def test_inner_does_not_nameError():
     from app.modules.guard.routers.spend import _get_spend_summary_inner
 
     db = _make_mock_db()
-    with patch("app.modules.guard.routers.spend._org_ws_subquery", _mock_org_ws):
+    with patch("app.modules.guard.routers.spend_summary._org_ws_subquery", _mock_org_ws):
         result = _get_spend_summary_inner(db, "ef0a7e36-42a7-4968-9e6f-ee30d8e45383", None)
 
     assert result.events_today == 0
@@ -70,7 +70,7 @@ def test_inner_returns_spend_summary_type():
     from app.modules.guard.routers.spend import _get_spend_summary_inner, SpendSummary
 
     db = _make_mock_db()
-    with patch("app.modules.guard.routers.spend._org_ws_subquery", _mock_org_ws):
+    with patch("app.modules.guard.routers.spend_summary._org_ws_subquery", _mock_org_ws):
         result = _get_spend_summary_inner(db, "ef0a7e36-42a7-4968-9e6f-ee30d8e45383", None)
 
     assert isinstance(result, SpendSummary)
@@ -91,7 +91,7 @@ def test_outer_reraises_programming_errors():
 
     # Should propagate, not silently return zeros
     with pytest.raises(RuntimeError, match="column does not exist"):
-        with patch("app.modules.guard.routers.spend._org_ws_subquery", _mock_org_ws):
+        with patch("app.modules.guard.routers.spend_summary._org_ws_subquery", _mock_org_ws):
             get_spend_summary(db=db, workspace_id="ef0a7e36-42a7-4968-9e6f-ee30d8e45383", month=None)
 
 
@@ -103,7 +103,7 @@ def test_outer_catches_operational_error():
     db = MagicMock()
     db.query.side_effect = OperationalError("connection refused", None, None)
 
-    with patch("app.modules.guard.routers.spend._org_ws_subquery", _mock_org_ws):
+    with patch("app.modules.guard.routers.spend_summary._org_ws_subquery", _mock_org_ws):
         result = get_spend_summary(db=db, workspace_id="ef0a7e36-42a7-4968-9e6f-ee30d8e45383", month=None)
 
     assert result.events_today == 0  # graceful fallback

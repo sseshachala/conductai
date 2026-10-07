@@ -17,8 +17,8 @@ import inspect
 from app.modules.guard.routers.spend import (
     ReservationScopeOut,
     list_reservations_for_request,
-    router,
 )
+from app.modules.guard.routers.spend_budget_check import router
 
 
 def test_route_is_registered():
