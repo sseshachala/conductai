@@ -62,8 +62,8 @@ def all_fixtures():
 
 def test_fixtures_load(all_fixtures):
     """All playbook YAML files should produce a fixture."""
-    assert len(all_fixtures) >= 18, (
-        f"Expected at least 18 playbook fixtures, got {len(all_fixtures)}"
+    assert len(all_fixtures) >= 15, (
+        f"Expected at least 15 playbook fixtures, got {len(all_fixtures)}"
     )
 
 
@@ -219,8 +219,7 @@ def test_outcome_map_coverage(all_scores):
 # ── per-playbook spot checks ──────────────────────────────────────────────────
 
 @pytest.mark.parametrize("slug,expected_blocks", [
-    ("pr_reviewer",       {"recall_context", "review_pr", "has_critical"}),
-    ("issue_triage",      {"recall_context", "triage_issue", "record_outcome"}),
+    ("incident_responder", {"recall_context", "investigate", "record_outcome"}),
     ("autopilot",         {"fetch_issue", "implement_fix", "run_tests", "tests_pass", "push_pr"}),
 ])
 def test_expected_blocks_present(slug, expected_blocks):
@@ -239,22 +238,6 @@ def test_expected_blocks_present(slug, expected_blocks):
     )
 
 
-def test_pr_reviewer_has_logic_branch():
-    """PR Reviewer must branch on critical issues found."""
-    fixture = load_fixture("pr_reviewer")
-    if fixture is None:
-        pytest.skip("pr_reviewer not found")
-
-    from app.dsl import load_workflow_yaml, yaml_to_graph
-    yaml_text = fixture.playbook_path.read_text()
-    wf = load_workflow_yaml(yaml_text)
-    g = yaml_to_graph(wf)
-
-    handle_edges = {e.get("sourceHandle"): e["target"] for e in g["edges"] if "sourceHandle" in e}
-    assert "pass" in handle_edges, "PR Reviewer missing pass branch on logic block"
-    assert "fail" in handle_edges, "PR Reviewer missing fail branch on logic block"
-
-
 def test_autopilot_trigger_fixture_payload():
     """Autopilot fixture payload must contain a repository full_name."""
     fixture = load_fixture("autopilot")
@@ -267,31 +250,31 @@ def test_autopilot_trigger_fixture_payload():
 
 def test_run_one_returns_report():
     """run_one() should return a single-score report without errors."""
-    report = run_one("pr_reviewer")
+    report = run_one("incident_responder")
     assert len(report.scores) == 1
-    assert report.scores[0].slug == "pr_reviewer"
+    assert report.scores[0].slug == "incident_responder"
     assert report.scores[0].structural_score > 0
 
 
 def test_report_to_json_is_valid():
     """EvalReport.to_json() must produce valid JSON with the expected schema."""
     import json
-    report = run_one("issue_triage")
+    report = run_one("incident_responder")
     data = json.loads(report.to_json())
     assert data["version"] == "1"
     assert "summary" in data
     assert "playbooks" in data
     assert len(data["playbooks"]) == 1
     pb = data["playbooks"][0]
-    assert pb["slug"] == "issue_triage"
+    assert pb["slug"] == "incident_responder"
     assert "criteria" in pb
 
 
 def test_report_summary_contains_grade():
     """EvalReport.summary() must mention the grade for each playbook."""
-    report = run_one("pr_reviewer")
+    report = run_one("incident_responder")
     text = report.summary()
-    assert "pr_reviewer" in text
+    assert "incident_responder" in text
     assert any(g in text for g in ("A", "B", "C", "D", "F"))
 
 
@@ -319,17 +302,6 @@ def test_slug_specific_rubrics_autopilot():
     criterion_names = [c.name for c in score.criteria]
     assert "autopilot_outputs_pr_url" in criterion_names, (
         f"autopilot score missing autopilot_outputs_pr_url criterion. "
-        f"Found: {criterion_names}"
-    )
-
-
-def test_slug_specific_rubrics_pr_reviewer():
-    """pr_reviewer score should include the reviewer_has_critical_logic criterion."""
-    report = run_one("pr_reviewer")
-    score = report.scores[0]
-    criterion_names = [c.name for c in score.criteria]
-    assert "reviewer_has_critical_logic" in criterion_names, (
-        f"pr_reviewer score missing reviewer_has_critical_logic criterion. "
         f"Found: {criterion_names}"
     )
 

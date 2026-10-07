@@ -3,7 +3,7 @@ Integration tests for the eval harness live-mode wiring.
 
 These tests verify:
   - _execute_dag is importable from executor (Gap 1 wiring)
-  - Structural scoring of smoke_test scores >= 90
+  - Structural scoring of incident_responder scores >= 80
   - _execute_with_mocks returns a dict with expected keys WITHOUT making real LLM calls
   - promote() writes one DB row per playbook score
 """
@@ -35,18 +35,18 @@ def test_execute_dag_exists():
     assert callable(_execute_dag), "_execute_dag should be callable"
 
 
-# ── test 2: smoke_test structural score >= 90 ─────────────────────────────────
+# ── test 2: incident_responder structural score >= 90 ─────────────────────────────────
 
 def test_live_mode_smoke_structural():
-    """smoke_test playbook structural score must be >= 80 (grade B or better)."""
+    """incident_responder playbook structural score must be >= 80 (grade B or better)."""
     from eval.runner import run_one
 
-    report = run_one("smoke_test", live=False)
+    report = run_one("incident_responder", live=False)
     assert report.scores, "Expected at least one score"
     score = report.scores[0]
-    assert score.slug == "smoke_test"
+    assert score.slug == "incident_responder"
     assert score.structural_score >= 80, (
-        f"smoke_test structural score {score.structural_score} < 80 "
+        f"incident_responder structural score {score.structural_score} < 80 "
         f"(grade {score.grade})"
     )
 
@@ -66,9 +66,9 @@ def test_live_mode_mock_wiring():
     from eval.fixtures import load_fixture
     from eval.runner import _execute_with_mocks
 
-    fixture = load_fixture("smoke_test")
+    fixture = load_fixture("incident_responder")
     if fixture is None:
-        pytest.skip("smoke_test fixture not found")
+        pytest.skip("incident_responder fixture not found")
 
     playbook_yaml = fixture.playbook_path.read_text()
 
