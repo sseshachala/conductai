@@ -422,7 +422,7 @@ def test_insights_router_reads_from_accounting_reader():
     """Source-string pin: ``insights.dashboard`` uses AccountingReader
     for the developer-spend query, not a direct audit sum."""
     import inspect
-    from app.routers import insights
+    from app.routers import insights_dashboard as insights
 
     src = inspect.getsource(insights)
     assert "spend_micros_by_workspace" in src, (
