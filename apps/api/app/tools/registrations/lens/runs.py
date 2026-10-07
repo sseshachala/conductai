@@ -48,10 +48,15 @@ _RUN_ROW_SCHEMA: dict = {
 }
 
 # Tools return either a list of rows, or an {"error": "..."} envelope on
-# missing-context failure — describe both.
+# missing-context failure — describe both. MCP output schemas must be
+# objects: the server sends lists as structuredContent {"items": [...]}.
 _RUN_LIST_OUTPUT_SCHEMA: dict = {
     "oneOf": [
-        {"type": "array", "items": _RUN_ROW_SCHEMA},
+        {
+            "type": "object",
+            "properties": {"items": {"type": "array", "items": _RUN_ROW_SCHEMA}},
+            "required": ["items"],
+        },
         {
             "type": "object",
             "properties": {"error": {"type": "string"}},

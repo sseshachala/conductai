@@ -83,6 +83,10 @@ def _text_result(text: str) -> dict[str, Any]:
 def _structured_result(text: str, structured: Any) -> dict[str, Any]:
     """MCP 2026-07-28 structuredContent — pair a text summary with a
     machine-readable payload."""
+    # MCP requires structuredContent to be a JSON object; strict clients
+    # (claude.ai) reject a bare list. Lists go out as {"items": [...]}.
+    if not isinstance(structured, dict):
+        structured = {"items": structured}
     return {
         "content": [{"type": "text", "text": text}],
         "structuredContent": structured,
