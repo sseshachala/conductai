@@ -86,7 +86,14 @@ export default function BlogPost() {
         <figure className="rounded-xl overflow-hidden border border-stone-200 shadow-sm">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/blog/agent-guard-activity.png" alt="Guard Activity showing memory_save calls from openai-agents, crewai, google-adk, langchain and claude-agent-sdk, each blocked by the asi06 rule." className="w-full h-auto" loading="lazy" />
-          <figcaption className="text-sm text-stone-500 px-4 py-2 border-t border-stone-200">Guard Activity across the test runs: every <code>memory_save</code> blocked, labelled by framework.</figcaption>
+          <figcaption className="text-sm text-stone-500 px-4 py-2 border-t border-stone-200">Guard Activity across the test runs: every <code>memory_save</code> blocked, labelled by framework. Includes the earlier runs with injection payloads.</figcaption>
+        </figure>
+        <figure className="rounded-xl overflow-hidden border border-stone-200 shadow-sm">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/blog/agent-guard-detail-adk.png" alt="Expanded Guard Activity row for google-adk: memory_save input marked source untrusted web page, blocked by asi06_untrusted_promotion_to_durable, with policy and chain hashes." className="w-full h-auto" loading="lazy" />
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/blog/agent-guard-detail-openai.png" alt="Expanded Guard Activity row for openai-agents: same rule, same policy hash, its own chain hash." className="w-full h-auto border-t border-stone-200" loading="lazy" />
+          <figcaption className="text-sm text-stone-500 px-4 py-2 border-t border-stone-200">Each decision records the full input, the rule that fired, the policy version and its place in the tamper-evident audit chain. Google ADK and OpenAI Agents, same policy <code>sha:030a2f9a</code>.</figcaption>
         </figure>
         <p>One rule, written once. Five frameworks. One place to see it. Each agent also told its user why: &quot;untrusted content cannot be saved to durable memory without explicit trust-promotion review.&quot;</p>
 
