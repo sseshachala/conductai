@@ -1,127 +1,73 @@
 # Examples
 
-35 pre-built playbooks. Every one is a working YAML file under [`apps/api/playbooks/`](../apps/api/playbooks/) — copy, tweak, install. Grouped by what they *do*, not by which tool they call. (Demo playbooks — `-demo` / `-e2e` files and `kind: base` snippets — are excluded from this count.)
+Workflows are Conduct's governed response layer. Guard or an alert detects something, a playbook responds, a human approves each consequential action, and the evidence lands in the audit trail.
+
+20 playbooks ship today. Every one is a working YAML file under [`apps/api/playbooks/`](../apps/api/playbooks/): copy, tweak, install.
 
 Install one directly:
 
 ```bash
-conduct install pr-reviewer --project MyProject --repo owner/repo
-```
-
-Install all 37:
-
-```bash
-conduct install-all --project MyProject --repo owner/repo
+conduct install incident-responder --project MyProject --repo owner/repo
 ```
 
 ---
 
-## Code review
+## Incident response
 
-Every PR gets a first-pass AI review before a human looks at it.
+Alert fires → investigation, hypothesis, and a proposed next step in Slack.
 
-- **[PR Reviewer](../apps/api/playbooks/pr-reviewer.yaml)** — Every PR reviewed for bugs, security issues, and style. Review comment posted automatically.
-- **[Bulk PR Reviewer](../apps/api/playbooks/bulk-pr-reviewer.yaml)** — Review all open PRs in a repo in one run. Posts a fleet summary to Slack.
-- **[Copilot / AI PR Reviewer](../apps/api/playbooks/copilot-reviewer.yaml)** — AI-authored PRs get a second AI review — catches what Copilot and Cursor miss before humans touch it.
-- **[Terraform Plan Reviewer](../apps/api/playbooks/terraform-reviewer.yaml)** — Terraform PRs reviewed for security misconfigs, cost anomalies, and drift.
-
----
-
-## Security scanning
-
-Catch known-bad patterns before they land.
-
-- **[Security Scanner](../apps/api/playbooks/security-scanner.yaml)** — Every PR scanned for OWASP Top 10, hardcoded secrets, vulnerable dependencies.
-- **[Multi-Repo Scanner](../apps/api/playbooks/multi-repo-scanner.yaml)** — Fleet-wide security scan across many repos in parallel; ranked findings.
-- **[BugHunter Active Scan](../apps/api/playbooks/bughunter-active-scan.yaml)** — Dynamically loads skills from a configurable GitHub repo (default: `elementalsouls/Claude-BugHunter`).
-- **[Threat Modeler](../apps/api/playbooks/threat-modeler.yaml)** — Auto-drafts a STRIDE threat model on every PR that changes architecture, services, endpoints, or trust boundaries.
-- **[Codebase Guard Monitor](../apps/api/playbooks/codebase-guard-monitor.yaml)** — Every PR scanned for security violations before merge.
+- **[Incident Responder](../apps/api/playbooks/incident-responder.yaml)**: reads the alert, correlates recent commits and deploys, posts a structured hypothesis to `#incidents`.
+- **[Postmortem Drafter](../apps/api/playbooks/postmortem-drafter.yaml)**: drafts a structured postmortem when an incident closes.
+- **[AI Incident Drill](../apps/api/playbooks/ai-incident-drill.yaml)**: quarterly simulation of an AI governance incident.
+- **[Network Diagnosis Agent](../apps/api/playbooks/network-diagnosis-agent.yaml)**: diagnoses a branch incident, correlates telemetry and config changes, proposes remediation, executes only the reversible parts.
+- **[Multi-Env Smoke Test](../apps/api/playbooks/multi-env-smoke-test.yaml)**: verifies health across environments in one run.
 
 ---
 
-## Security auto-fix
+## Governed production changes
 
-Turn a finding into a merged PR.
+An agent proposes a specific action. A human approves that action with its arguments. It executes, and the evidence is recorded.
 
-- **[Security Autopilot Fix](../apps/api/playbooks/security-autopilot-fix.yaml)** — Reads the affected file, writes a targeted patch, opens a PR.
-- **[Security Patch Updater](../apps/api/playbooks/security-patch-updater.yaml)** — Dependabot alerts patched, tested, and PR'd with a clear CVE reference.
-- **[Security Loop](../apps/api/playbooks/security_loop.yaml)** — Auto-triage security findings from any AI tool or scanner that posts to the findings endpoint.
-- **[Third-Party Autopilot Fix](../apps/api/playbooks/thirdparty-autopilot-fix.yaml)** — Fork any third-party repo, apply the fix, open a PR back to upstream.
-
----
-
-## Dependencies
-
-- **[Dependency Audit](../apps/api/playbooks/dependency-audit.yaml)** — Iterate outdated deps, assess risk per package, open GitHub issues for major upgrades. Supports npm, pip, cargo, go modules.
-- **[Dependency Updater](../apps/api/playbooks/dependency-updater.yaml)** — Outdated deps bumped and PR'd automatically every week.
+- **[Release Gating](../apps/api/playbooks/release-gating.yaml)**: readiness checks, human approval, then tag and release.
+- **[Terraform Plan Reviewer](../apps/api/playbooks/terraform-reviewer.yaml)**: Terraform plans reviewed for security misconfigs, cost anomalies, and drift before apply.
+- **[Self-Driving Network: Prod Config Push](../apps/api/playbooks/self-driving-network-approval-demo.yaml)**: multi-fabric config push (Juniper Mist + Aruba Central) behind a human approval gate.
 
 ---
 
-## Incidents & alerts
+## AI risk and Guard monitoring
 
-Alert fires → root cause hypothesis is in Slack in under 60 seconds.
+Recurring evidence for security, compliance, and AI governance owners.
 
-- **[Incident Responder](../apps/api/playbooks/incident-responder.yaml)** — Reads the alert, correlates recent commits + deploys, posts a structured hypothesis to `#incidents`.
-- **[CI Failure Alert](../apps/api/playbooks/ci-notify.yaml)** — Failed builds diagnosed and explained in Slack before anyone opens a terminal.
-- **[Postmortem Drafter](../apps/api/playbooks/postmortem-drafter.yaml)** — Structured postmortem drafted automatically when an incident closes.
-- **[Flaky Test Detective](../apps/api/playbooks/flaky-test-detective.yaml)** — Flaky tests identified, traced to the offending commit, fix recommendation lands in Slack + GitHub.
-
----
-
-## Releases
-
-- **[Release Gating](../apps/api/playbooks/release-gating.yaml)** — Readiness checks + HITL approval + auto-tag + release notes on approval.
-- **[Release Readiness Reviewer](../apps/api/playbooks/release-readiness.yaml)** — Go/no-go in Slack — open blockers, failed CI, pending reviews, unresolved incidents.
-- **[Release Notes Drafter](../apps/api/playbooks/release-notes.yaml)** — Tag a release → notes drafted automatically.
+- **[Codebase Guard Monitor](../apps/api/playbooks/codebase-guard-monitor.yaml)**: surfaces policy violations and coverage gaps across your repos.
+- **[AI Risk Assessment](../apps/api/playbooks/ai-risk-assessment.yaml)**: pre-deploy checklist for a new AI tool. Surfaces risks, sets data boundaries, defines human controls.
+- **[AI Output Auditor](../apps/api/playbooks/ai-output-auditor.yaml)**: weekly sample of the Guard audit log, checked for accuracy, bias, and quality. Scorecard to Slack.
+- **[AI Drift Detector](../apps/api/playbooks/ai-drift-detector.yaml)**: daily check for AI governance drift.
 
 ---
 
-## AI governance
+## Autopilot fixes
 
-Governance for the AI tools your team uses.
+Fixes that open a PR, with approval before anything ships.
 
-- **[AI Drift Detector](../apps/api/playbooks/ai-drift-detector.yaml)** — Daily check for AI governance drift.
-- **[AI Output Auditor](../apps/api/playbooks/ai-output-auditor.yaml)** — Weekly audit of AI tool outputs. Samples the Guard audit log, checks accuracy/bias/quality, posts a scorecard to Slack.
-- **[AI Risk Assessment](../apps/api/playbooks/ai-risk-assessment.yaml)** — Pre-deploy checklist for any new AI tool. Surfaces risks, sets data boundaries, defines human controls, generates a one-page incident response plan.
-- **[AI Incident Drill](../apps/api/playbooks/ai-incident-drill.yaml)** — Quarterly simulation of an AI governance incident.
-- **[Compromised Support Agent](../apps/api/playbooks/compromised-support-agent.yaml)** — Autonomous support agent picks up a ticket containing a prompt injection — Guard blocks, audit trail captures.
-
----
-
-## Autopilot & issue automation
-
-Label an issue, walk away, come back to a merged PR.
-
-- **[Autopilot — GitHub Issues](../apps/api/playbooks/autopilot.yaml)** — Label an issue `autopilot ready`. Claude implements the fix, runs tests with inline retry, opens the PR.
-- **[Autopilot Approved](../apps/api/playbooks/autopilot-approved.yaml)** — Same, but waits for your approval before opening the PR.
-- **[OSS Issue Sweep](../apps/api/playbooks/oss-issue-sweep.yaml)** — Every open issue mapped for cross-issue deps, ordered by blast radius, then fixed and PR'd in order.
-- **[Issue Triage](../apps/api/playbooks/issue-triage.yaml)** — New issues labeled, prioritized, clarified automatically.
+- **[Autopilot](../apps/api/playbooks/autopilot.yaml)**: label an issue `autopilot ready`. The agent implements the fix, runs tests with retry, opens the PR.
+- **[Autopilot + Approval](../apps/api/playbooks/autopilot-approved.yaml)**: same, but waits for human approval before opening the PR.
+- **[Security Patch Updater](../apps/api/playbooks/security-patch-updater.yaml)**: Dependabot alerts patched, tested, and PR'd with the CVE reference.
+- **[Dependency Updater](../apps/api/playbooks/dependency-updater.yaml)**: outdated dependencies bumped and PR'd.
+- **[Third-Party Autopilot Fix](../apps/api/playbooks/thirdparty-autopilot-fix.yaml)**: fork a third-party repo, apply the fix, open a PR upstream.
 
 ---
 
-## Testing
+## Guard demos
 
-- **[Smoke Test — Pipeline Ping](../apps/api/playbooks/smoke-test.yaml)** — Prove the full pipeline is healthy in under 30 seconds.
-- **[Multi-Env Smoke Test](../apps/api/playbooks/multi-env-smoke-test.yaml)** — Smoke tests across multiple environments in one run.
-- **[Acme Onboarding E2E](../apps/api/playbooks/acme-onboarding-e2e.yaml)** — Full role-coverage E2E test using Peekaboo (macOS GUI automation via MCP).
+Each shows policy, approval, and audit end to end in a few minutes.
 
----
-
-## Docs
-
-- **[Docs Drift Detector](../apps/api/playbooks/docs-drift-detector.yaml)** — Merged PRs that break the docs get a follow-up PR automatically.
-
----
-
-## NetOps
-
-- **[Network Diagnosis Agent](../apps/api/playbooks/network-diagnosis-agent.yaml)** — Autonomous NetOps agent diagnoses a branch incident, correlates telemetry + config changes, proposes remediation, executes only the reversible parts.
-- **[Self-Driving Network — Prod Config Push (HITL)](../apps/api/playbooks/self-driving-network-approval-demo.yaml)** — Multi-fabric NetOps (Juniper Mist + Aruba Central) — synchronized config push with human approval gate.
+- **[NeMo Guardrails Demo](../apps/api/playbooks/nemo-guardrails-demo.yaml)**: a NeMo-style input rail calls Guard, which blocks a prompt-injection payload and writes a hash-chained audit row.
+- **[Compromised Support Agent](../apps/api/playbooks/compromised-support-agent.yaml)**: a support agent hit by prompt injection tries credential harvest and exfil. Guard blocks each attempt.
 
 ---
 
 ## Writing your own
 
-Every playbook above is a self-contained YAML file — 100 to 500 lines each — and they compose from the same block types (`brain`, `http_call`, `slack_post`, `github_*`, `run_shell`, `for_each`, `plan_fix`, `clarify`, `record_outcome`, ...). Pick the closest existing playbook, copy it, edit inputs and blocks.
+Every playbook is a self-contained YAML file built from the same block types (`brain`, `http_call`, `slack_post`, `github_*`, `run_shell`, `for_each`, `plan_fix`, `approval`, `record_outcome`, ...). Pick the closest playbook, copy it, edit inputs and blocks.
 
 See [Concepts → Playbooks](mental-models/08-playbooks.md) for the block-type reference and [ADR-0004](adr/ADR-0004-playbook-dsl-versus-external-orchestration-frameworks.md) for the design rationale.

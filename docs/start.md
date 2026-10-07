@@ -46,7 +46,7 @@ conduct login --server https://api.conductai.ai --token cond_agt_xxx --workspace
 conduct playbooks
 ```
 
-Lists the 30+ pre-built playbooks (PR review, incident response, security scanning, dependency updates, etc.). See the full catalog in [Examples](examples.md).
+Lists the pre-built playbooks (incident response, governed production changes, AI-risk monitoring, autopilot fixes). See the full catalog in [Examples](examples.md).
 
 ### 3. Install all playbooks into a project
 
@@ -65,7 +65,7 @@ conduct agents
 ### 5. Fire a test run
 
 ```bash
-conduct test "PR Reviewer"
+conduct test "Incident Responder"
 ```
 
 Streams the agent's execution live. Use `conduct test --all` to fire every agent in sequence.

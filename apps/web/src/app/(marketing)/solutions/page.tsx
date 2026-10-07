@@ -14,12 +14,6 @@ const SOLUTIONS = [
     featured: false,
   },
   {
-    href: "/solutions/security-loop",
-    title: "Security Loop",
-    desc: "Closed loop from scan to defect to autopilot fix to PR. Guard enforces scope at every step — the loop does not escape its boundaries.",
-    featured: false,
-  },
-  {
     href: "/solutions/action-governance",
     title: "Action governance",
     desc: "Approval gates as first-class workflow blocks. Human sovereignty enforced before destructive or irreversible actions — not logged after.",

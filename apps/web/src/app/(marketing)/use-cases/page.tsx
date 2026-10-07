@@ -69,28 +69,6 @@ const CASES: UseCase[] = [
   },
   {
     n: "03",
-    slug: "security-loop",
-    title: "Scan to fix, closed",
-    oneLiner: "The loop is the deliverable, not the report.",
-    persona: "Application security, security engineering, GRC.",
-    situation:
-      "A scanner produces a finding. The finding lands in a Jira ticket. The ticket ages. Six weeks later it is fixed by a stressed engineer, silently downgraded, or lost. The scanner report was the deliverable. The fix was somebody else’s problem.",
-    mechanics: [
-      "Findings from scanners feed one table. Above a configurable threshold, an autopilot playbook drafts the mitigation PR.",
-      "A human reviews and approves. The approval, the PR, the CI check, and the merged commit sign into one hash-chained record.",
-      "Scan-to-fix distance becomes a number you can graph and move.",
-    ],
-    scenario:
-      "Semgrep flags a hardcoded API key in a repo. The autopilot playbook opens a PR that moves the key to the secret manager, updates the reference, and adds a test that no known key patterns are present in the diff. The code owner approves. The PR merges. The finding closes with the merge SHA and the reviewer identity attached to the audit chain.",
-    metrics:
-      "Mean time to remediation. Findings closed per week. Autopilot success rate. Human approvals per week.",
-    integrations:
-      "Semgrep, Trivy, Snyk, Gitleaks, GitHub Advanced Security. Any scanner that produces SARIF or JSON.",
-    ctaLabel: "Install Security Loop",
-    ctaHref: "/solutions/security-loop",
-  },
-  {
-    n: "04",
     slug: "compliance-evidence",
     title: "Compliance evidence from what the AI actually did",
     oneLiner: "One hash-chained table, mapped to every framework you care about.",
@@ -111,7 +89,7 @@ const CASES: UseCase[] = [
     ctaHref: "/registry?tab=compliance",
   },
   {
-    n: "05",
+    n: "04",
     slug: "spend-guardrails",
     title: "Cost guardrails that stop the call",
     oneLiner: "Limits enforced at the proxy, not discovered on the invoice.",
@@ -131,7 +109,7 @@ const CASES: UseCase[] = [
     ctaHref: "/theguard/spend",
   },
   {
-    n: "06",
+    n: "05",
     slug: "shadow-ai-discovery",
     title: "Shadow AI, found",
     oneLiner: "Discovery first. Then policy. Then evidence.",
@@ -151,7 +129,7 @@ const CASES: UseCase[] = [
     ctaHref: "/theguard/discovery",
   },
   {
-    n: "07",
+    n: "06",
     slug: "agent-identity",
     title: "Know Your Agent (KYA). Every agent gets an attested identity, not a shared API key.",
     oneLiner: "Every run is a bounded session. Every credential expires with the run.",
@@ -172,7 +150,7 @@ const CASES: UseCase[] = [
     ctaHref: "/agent-identity",
   },
   {
-    n: "08",
+    n: "07",
     slug: "content-inspection",
     title: "Prompt injection and PII, caught at the wire",
     oneLiner: "Inspect content before the model sees it.",
@@ -193,7 +171,7 @@ const CASES: UseCase[] = [
     note: "The rule library covers common patterns. Domain-specific rules are shipping on a rolling basis.",
   },
   {
-    n: "09",
+    n: "08",
     slug: "action-governance",
     title: "Business agents that take real actions",
     oneLiner: "What your agent does. Not just what it can.",
@@ -251,7 +229,6 @@ const VERBS: {
       { slug: "mcp-governance", title: "MCP that behaves like a permitted action, not a shell" },
       { slug: "spend-guardrails", title: "Cost guardrails that stop the call" },
       { slug: "content-inspection", title: "Prompt injection and PII, caught at the wire" },
-      { slug: "security-loop", title: "Scan to fix, closed" },
     ],
   },
   {

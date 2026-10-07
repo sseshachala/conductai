@@ -29,7 +29,7 @@ const OSS_COMPONENTS = [
     repo: "github.com/sseshachala/conductai",
     path: "apps/api/app/compiler/",
     pypi: null,
-    purpose: "Compiles YAML playbook definitions into executable DAG runs. Shared by all 39 shipped playbooks.",
+    purpose: "Compiles YAML playbook definitions into executable DAG runs. Shared by every shipped playbook.",
   },
   {
     name: "Agent Booster MCP",

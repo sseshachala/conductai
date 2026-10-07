@@ -332,7 +332,7 @@ review-each:
   item_var: pr           # default: `item`
 ```
 
-The block executes serially per item. Outputs are collected as `<block-id>.output = [<per-item>, ...]`. Full pattern in [`bulk-pr-reviewer.yaml`](../../apps/api/playbooks/bulk-pr-reviewer.yaml).
+The block executes serially per item. Outputs are collected as `<block-id>.output = [<per-item>, ...]`. Full pattern in [`bulk-pr-reviewer.yaml`](../../apps/api/playbooks/_archive/bulk-pr-reviewer.yaml) (archived).
 
 ---
 

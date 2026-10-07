@@ -37,7 +37,7 @@ Docs are organized **by goal, not by file shape**. Pick your path below.
 
 New to Conduct. Get from zero to a working install.
 
-- [Start](start.md) — install `conduct-cli`, log in, install 30+ playbooks, first agent run, first `playbook.yaml`
+- [Start](start.md) — install `conduct-cli`, log in, install a playbook, first agent run, first `playbook.yaml`
 - [Developer setup](modules/conductguard/developer_setup.md) — local dev environment, dependencies, first run against the Conduct codebase
 - [ConductGuard Quickstart](modules/conductguard/QUICKSTART.md) — install Guard, sync policy, first governed AI tool call
 
@@ -136,7 +136,7 @@ Third-party systems Conduct plugs into.
 
 ## Examples
 
-- [Examples](examples.md) — 35 pre-built playbooks grouped by what they do: code review, security scan + auto-fix, dependencies, incidents, releases, AI governance, autopilot, testing, docs, NetOps.
+- [Examples](examples.md): 20 playbooks grouped by what they do: incident response, governed production changes, AI risk monitoring, autopilot fixes, Guard demos.
 
 ---
 
