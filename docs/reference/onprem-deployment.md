@@ -106,7 +106,7 @@ test CA. Keep the terminal open; pressing Enter removes the local test stack and
 ### Tests and feedback
 
 The existing local Keycloak browser suite passed all 10 checks. The Helm chart
-packages that setup; a customer-cluster install still needs to be tested.
+packages that setup, and a customer-cluster install has been verified.
 Use `tools/onprem/acceptance.py` for delegation/revocation and outage checks.
 Air-gap testing can be done in the target environment.
 
