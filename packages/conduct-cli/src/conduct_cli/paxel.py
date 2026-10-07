@@ -407,7 +407,7 @@ def iter_events(fp, fmt, cursor_twins=None):
     """Yield Claude-shaped event dicts for any supported source format."""
     if fmt == "claude":
         try:
-            fh = open(fp, "r", errors="replace")
+            fh = open(fp, "r", encoding="utf-8", errors="replace")
         except Exception:
             return
         with fh:
@@ -458,7 +458,7 @@ def _codex_tool(p):
 def _codex_events(fp):
     rows = []
     try:
-        for line in open(fp, "r", errors="replace"):
+        for line in open(fp, "r", encoding="utf-8", errors="replace"):
             line = line.strip()
             if line:
                 try:
@@ -520,7 +520,7 @@ def _codex_events(fp):
 
 def _gemini_events(fp):
     try:
-        d = json.load(open(fp, "r", errors="replace"))
+        d = json.load(open(fp, "r", encoding="utf-8", errors="replace"))
     except Exception:
         return
     if not isinstance(d, dict):
@@ -576,7 +576,7 @@ def _pi_blocks(content):
 def _pi_events(fp):
     sid, cwd = os.path.basename(fp).split(".")[0], None
     try:
-        rows = [json.loads(line) for line in open(fp, "r", errors="replace") if line.strip()]
+        rows = [json.loads(line) for line in open(fp, "r", encoding="utf-8", errors="replace") if line.strip()]
     except Exception:
         return
     for obj in rows:
@@ -608,7 +608,7 @@ def _pi_events(fp):
 
 def _opencode_events(fp):
     try:
-        sess = json.load(open(fp, "r", errors="replace"))
+        sess = json.load(open(fp, "r", encoding="utf-8", errors="replace"))
     except Exception:
         return
     if not isinstance(sess, dict):
@@ -620,7 +620,7 @@ def _opencode_events(fp):
     messages = []
     for mp in sorted(glob.glob(os.path.join(msg_dir, "*.json"))):
         try:
-            m = json.load(open(mp, "r", errors="replace"))
+            m = json.load(open(mp, "r", encoding="utf-8", errors="replace"))
         except Exception:
             continue
         if isinstance(m, dict):
@@ -633,7 +633,7 @@ def _opencode_events(fp):
         parts = []
         for pp in sorted(glob.glob(os.path.join(part_root, str(mid), "*.json"))):
             try:
-                p = json.load(open(pp, "r", errors="replace"))
+                p = json.load(open(pp, "r", encoding="utf-8", errors="replace"))
             except Exception:
                 continue
             if isinstance(p, dict):
@@ -853,7 +853,7 @@ def _cursor_jsonl_events(fp):
         pass
     first = True
     try:
-        fh = open(fp, "r", errors="replace")
+        fh = open(fp, "r", encoding="utf-8", errors="replace")
     except Exception:
         return
     with fh:
@@ -1657,7 +1657,7 @@ def main():
         },
     }
 
-    with open(os.path.join(OUT_DIR, "stats.json"), "w") as f:
+    with open(os.path.join(OUT_DIR, "stats.json"), "w", encoding="utf-8") as f:
         json.dump(stats, f, indent=2, default=str)
 
     write_report(stats)
@@ -1806,7 +1806,7 @@ def write_report(s):
     A("## Autonomy")
     A(f"- **Autonomy score: {au['autonomy_score_0_100']}/100**")
     A(f"- Components: {au['components']}")
-    with open(os.path.join(OUT_DIR, "report.md"), "w") as f:
+    with open(os.path.join(OUT_DIR, "report.md"), "w", encoding="utf-8") as f:
         f.write("\n".join(L))
 
 
@@ -1828,7 +1828,7 @@ def write_narrative_input(s, opening_prompts, longest_prompts):
     longest_prompts.sort(key=lambda x: -x[0])
     for ln, proj, text in longest_prompts[:20]:
         A(f"- [{ln} chars · {proj}] {text.replace(chr(10), ' ')[:280]}")
-    with open(os.path.join(OUT_DIR, "narrative_input.md"), "w") as f:
+    with open(os.path.join(OUT_DIR, "narrative_input.md"), "w", encoding="utf-8") as f:
         f.write("\n".join(L))
 
 
@@ -2694,7 +2694,7 @@ if(ib)ib.addEventListener("click",function(){
   }catch(e){alert("Image export failed — try a screenshot.");}
 });''')
     P("})();</script></body></html>")
-    with open(os.path.join(OUT_DIR, "profile.html"), "w") as f:
+    with open(os.path.join(OUT_DIR, "profile.html"), "w", encoding="utf-8") as f:
         f.write("\n".join(parts))
 
 

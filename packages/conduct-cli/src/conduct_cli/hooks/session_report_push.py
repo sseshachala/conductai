@@ -54,8 +54,8 @@ def run(session_id: str = "") -> None:
         if not stats_path.exists():
             return
 
-        stats = json.loads(stats_path.read_text())
-        report_md = report_path.read_text() if report_path.exists() else ""
+        stats = json.loads(stats_path.read_text(encoding="utf-8"))
+        report_md = report_path.read_text(encoding="utf-8") if report_path.exists() else ""
 
         volume   = stats.get("volume", {})
         behavior = stats.get("behavior", {})

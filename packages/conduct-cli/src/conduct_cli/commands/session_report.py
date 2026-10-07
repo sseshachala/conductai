@@ -40,9 +40,9 @@ def cmd_session_report(args):
         shutil.rmtree(tmpdir, ignore_errors=True)
         sys.exit(1)
 
-    with open(stats_path) as f:
+    with open(stats_path, encoding="utf-8") as f:
         stats = _json.load(f)
-    report_md = report_path.read_text() if report_path.exists() else ""
+    report_md = report_path.read_text(encoding="utf-8") if report_path.exists() else ""
 
     # ── 3. Extract stats ─────────────────────────────────────────────────────
     developer    = getattr(args, "developer", None) or getpass.getuser()

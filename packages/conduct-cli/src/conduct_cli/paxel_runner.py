@@ -5,6 +5,7 @@ copied into a scratch dir and run there; callers read the outputs from that dir.
 """
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import sys
@@ -22,7 +23,10 @@ def run_paxel(tmpdir: str | Path, timeout: int = 120) -> subprocess.CompletedPro
     tmpdir = Path(tmpdir)
     script = tmpdir / "paxel.py"
     shutil.copy(BUNDLED, script)
+    # paxel prints and writes non-ASCII (e.g. "→"); Windows defaults to cp1252.
+    env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
     return subprocess.run(
         [sys.executable, str(script), "--no-open"],
-        cwd=str(tmpdir), capture_output=True, text=True, timeout=timeout,
+        cwd=str(tmpdir), capture_output=True, text=True, encoding="utf-8",
+        errors="replace", timeout=timeout, env=env,
     )
