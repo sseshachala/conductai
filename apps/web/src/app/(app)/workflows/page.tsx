@@ -14,46 +14,9 @@ import AgentStatusPill from "@/components/workflows/AgentStatusPill"
 import Toggle from "@/components/workflows/Toggle"
 import WorkflowMenu from "@/components/workflows/WorkflowMenu"
 import { useWorkspace } from "@/lib/WorkspaceContext"
-
-interface Workflow {
-  id: string
-  name: string
-  workspace_id: string
-  updated_at: string
-  last_run_status: string | null
-  last_run_at: string | null
-  project_name: string | null
-  guard_enabled: boolean | null
-}
-
-function timeAgo(ts: string): string {
-  const diff = Date.now() - new Date(ts).getTime()
-  const mins = Math.floor(diff / 60000)
-  if (mins < 1) return "just now"
-  if (mins < 60) return `${mins}m ago`
-  const hrs = Math.floor(mins / 60)
-  if (hrs < 24) return `${hrs}h ago`
-  return `${Math.floor(hrs / 24)}d ago`
-}
-
-
-function mapStatus(s: string | null): string {
-  if (!s) return "idle"
-  const l = s.toLowerCase()
-  if (l === "running") return "run"
-  if (l === "waiting" || l === "pending" || l === "awaiting") return "wait"
-  if (l === "succeeded" || l === "success") return "ok"
-  if (l === "failed" || l === "error") return "err"
-  if (l === "warn" || l === "degraded") return "warn"
-  return "idle"
-}
-
-function statusKey(label: string): string {
-  return ({ Running: "run", Awaiting: "wait", Succeeded: "ok", Failed: "err", "Never run": "idle" } as Record<string, string>)[label] ?? "idle"
-}
-
-// Explicit status sort order (#20)
-const STATUS_SORT_ORDER = ["run", "wait", "err", "idle", "ok"]
+import { RunWorkflowModal } from "./_components/RunWorkflowModal"
+import { STATUS_SORT_ORDER, mapStatus, statusKey, timeAgo } from "./_components/helpers"
+import type { Workflow } from "./_components/helpers"
 
 export default function WorkflowsPage() {
   const clerkEnabled = authEnabled()
@@ -661,93 +624,7 @@ function WorkflowsContent({ getToken, currentUserId }: { getToken: (() => Promis
 
       {/* Run modal */}
       {runModal && (
-        <div
-          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center" }}
-          onClick={() => { setRunModal(null); setRunStep("configure") }}
-        >
-          {/* #23: wrapped in form with onSubmit; #7: ref for focus trap */}
-          <div
-            ref={runModalRef}
-            style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, boxShadow: "var(--shadow-lg)", padding: 24, width: 440, maxWidth: "90vw" }}
-            onClick={e => e.stopPropagation()}
-          >
-            <div style={{ fontWeight: 650, fontSize: 15, marginBottom: 16 }}>Run — {runModal.name}</div>
-
-            {runStep === "configure" ? (
-              <form onSubmit={e => { e.preventDefault(); setRunStep("review") }}>
-                <div style={{ marginBottom: 14 }}>
-                  <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 6 }}>Parameters (optional)</div>
-                  {/* #23: maxHeight to cap textarea resize */}
-                  <textarea
-                    rows={4}
-                    value={runParams}
-                    onChange={e => setRunParams(e.target.value)}
-                    placeholder={"MODEL=claude-sonnet-4-6\nBRANCH=main"}
-                    style={{ width: "100%", fontSize: 12.5, fontFamily: "var(--font-mono, monospace)", border: "1px solid var(--border)", borderRadius: 8, padding: "8px 12px", background: "var(--surface-2)", color: "var(--text)", resize: "vertical", maxHeight: 200, boxSizing: "border-box" }}
-                  />
-                  <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>One KEY=VALUE per line</div>
-                </div>
-
-                <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 20 }}>
-                  <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, cursor: "pointer" }}>
-                    <input type="checkbox" checked={runGuard} onChange={e => setRunGuard(e.target.checked)} />
-                    Enable Guard
-                  </label>
-                  <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, cursor: "pointer" }}>
-                    <input type="checkbox" checked={runDryRun} onChange={e => setRunDryRun(e.target.checked)} />
-                    Dry run (simulate without executing)
-                  </label>
-                </div>
-
-                <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-                  <button type="button" className="btn btn-ghost" onClick={() => { setRunModal(null); setRunStep("configure") }}>Cancel</button>
-                  <button type="submit" className="btn btn-primary">Review →</button>
-                </div>
-              </form>
-            ) : (
-              <div>
-                <div style={{ marginBottom: 16 }}>
-                  {(() => {
-                    const parsedInputs = runParams
-                      .split("\n")
-                      .map(l => l.trim())
-                      .filter(l => l.includes("="))
-                      .map(l => { const i = l.indexOf("="); return [l.slice(0, i).trim(), l.slice(i + 1).trim()] as [string, string] })
-                    return parsedInputs.length > 0 ? (
-                      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5, fontFamily: "var(--font-mono, monospace)" }}>
-                        <thead>
-                          <tr>
-                            <th style={{ textAlign: "left", padding: "4px 8px", fontSize: 11, color: "var(--text-muted)", fontFamily: "var(--font-sans, sans-serif)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>Key</th>
-                            <th style={{ textAlign: "left", padding: "4px 8px", fontSize: 11, color: "var(--text-muted)", fontFamily: "var(--font-sans, sans-serif)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>Value</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {parsedInputs.map(([k, v], i) => (
-                            <tr key={i} style={{ borderTop: "1px solid var(--border)" }}>
-                              <td style={{ padding: "6px 8px", color: "var(--text-2)" }}>{k}</td>
-                              <td style={{ padding: "6px 8px", color: "var(--text)" }}>{v}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    ) : (
-                      <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0 }}>No parameters — using workflow defaults.</p>
-                    )
-                  })()}
-                </div>
-
-                {runError && <div style={{ fontSize: 12, color: "var(--err)", marginBottom: 12 }}>{runError}</div>}
-
-                <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-                  <button type="button" className="btn btn-ghost" onClick={() => setRunStep("configure")}>← Back</button>
-                  <button type="button" className="btn btn-primary" disabled={runLoading} onClick={() => runWorkflow()}>
-                    {runLoading ? "Starting…" : "Run now"}
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
+        <RunWorkflowModal runModal={runModal} runModalRef={runModalRef} setRunModal={setRunModal} runStep={runStep} setRunStep={setRunStep} runParams={runParams} setRunParams={setRunParams} runGuard={runGuard} setRunGuard={setRunGuard} runDryRun={runDryRun} setRunDryRun={setRunDryRun} runError={runError} runLoading={runLoading} runWorkflow={runWorkflow} />
       )}
     </AppShell>
   )
