@@ -1,0 +1,5 @@
+# Doc placeholder tokens (cond_live_xxxx...) moved verbatim from docs/page.tsx; not real secrets.
+apps/web/src/app/(marketing)/docs/_sections/TabApi.tsx:conduct-live-token:30
+apps/web/src/app/(marketing)/docs/_sections/TabApi.tsx:curl-auth-header:53
+apps/web/src/app/(marketing)/docs/_sections/TabApi.tsx:conduct-live-token:120
+apps/web/src/app/(marketing)/docs/_sections/TabGettingStarted.tsx:conduct-live-token:106
