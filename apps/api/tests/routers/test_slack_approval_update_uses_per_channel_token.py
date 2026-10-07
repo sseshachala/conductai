@@ -28,7 +28,7 @@ def _fake_payload(channel: str = "C0PERCH", ts: str = "1.000") -> dict:
 
 
 def _prep_common(monkeypatch, ws_uuid, cred_blob):
-    from app.routers import webhooks as _wh
+    from app.routers import webhooks_slack as _wh
 
     row = SimpleNamespace(
         id=uuid.uuid4(), workspace_id=ws_uuid, status="pending", rule_id="approve-prod-deploy",
