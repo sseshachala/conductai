@@ -18,6 +18,7 @@ graceful termination releases the pool cleanly.
 from __future__ import annotations
 
 import asyncio
+import os
 from typing import TYPE_CHECKING
 
 import structlog
@@ -74,6 +75,25 @@ async def get_coordinator() -> "AttemptCoordinator":
         log.info("gateway.v2.transports.singleton_initialised")
 
     return _coordinator
+
+
+def preload_if_enabled() -> None:
+    """Import LiteLLM at boot when ``GATEWAY_PRELOAD_LITELLM=true`` (gateway service only).
+
+    The lazy import costs ~130 MB and ~5s per worker. Inside the first request it
+    stalled the event loop for every in-flight request (incl. /mcp guard checks)
+    and turned memory pressure into mid-traffic restarts. At boot, a too-small
+    instance fails the deploy health check instead. Off on delegator-api, which
+    never routes model traffic and would pay the memory for nothing.
+    """
+    if os.environ.get("GATEWAY_PRELOAD_LITELLM", "").lower() != "true":
+        return
+    try:
+        import litellm  # noqa: F401
+    except Exception as exc:  # stay up; the lazy path still works
+        log.warning("gateway.v2.litellm_preload_failed", error_type=type(exc).__name__)
+        return
+    log.info("gateway.v2.litellm_preloaded")
 
 
 async def shutdown() -> None:

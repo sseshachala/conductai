@@ -223,18 +223,21 @@ class LiteLLMTransport:
                 status_code=200, headers=dict(response.headers),
                 response=response, provider=target.provider,
             )
-        except BaseException:
+        except BaseException as exc:
             for response in owned_responses:
                 await response.aclose()
             # Do NOT log the api_key or the payload — either could leak
             # customer data. The caller records the failure into
             # ``routing_meta`` with the target id + version pinned; the
-            # log line here is just a breadcrumb.
+            # log line here is just a breadcrumb. Exception class + upstream
+            # status are safe to log and are what diagnose a 502.
             log.warning(
                 "gateway.v2.litellm.transport_error",
                 target_id=target.id,
                 provider=target.provider,
                 operation=operation,
+                error_type=type(exc).__name__,
+                upstream_status=getattr(exc, "status_code", None),
             )
             raise
 

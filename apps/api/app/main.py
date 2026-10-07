@@ -348,6 +348,9 @@ def _startup() -> None:
         except Exception as exc:
             log.error("guard.skill_packs_seed_failed", error=str(exc), exc_info=exc)
 
+    from app.runtime.gateway_transports import preload_if_enabled
+    preload_if_enabled()
+
     threading.Thread(target=_warm, daemon=True, name="eval-cache-warmer").start()
     threading.Thread(target=_seed, daemon=True, name="skill-pack-seeder").start()
 
