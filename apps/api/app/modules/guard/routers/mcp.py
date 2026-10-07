@@ -35,7 +35,7 @@ from app.modules.guard.models import DiscoveredAgent, GuardAuditEvent, GuardConf
 from app.modules.guard.models import GuardApprovalRequest
 from app.modules.guard import approval as _approval
 from app.modules.guard.policy_engine import compute_policy
-from app.modules.guard.tool_groups import expand_match_tool
+from app.modules.guard.tool_groups import tool_matches
 
 router = APIRouter(prefix="/guard/mcp", tags=["guard-mcp"])
 
@@ -408,11 +408,8 @@ def _match_policy(
         required_tier = rule.get("match_agent_risk_tier")
         if required_tier is not None and required_tier != agent_risk_tier:
             continue
-        match_tool = (rule.get("match_tool") or "*").lower()
-        if match_tool != "*":
-            allowed = expand_match_tool(match_tool)
-            if tool_name.lower() not in allowed:
-                continue
+        if not tool_matches(tool_name, rule.get("match_tool")):
+            continue
 
         # Proxy-native filters — apply only when the rule declares them.
         rp = rule.get("match_provider")

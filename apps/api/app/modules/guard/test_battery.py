@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 from app.modules.guard.enforcement import is_hook_applicable_rule
 from app.modules.guard.models import GuardConfig
 from app.modules.guard.policy_engine import compute_policy
-from app.modules.guard.tool_groups import expand_match_tool
+from app.modules.guard.tool_groups import tool_matches
 
 # ── Test battery ──────────────────────────────────────────────────────────────
 
@@ -129,11 +129,8 @@ def _match_hook_rule(
         if not is_hook_applicable_rule(rule):
             continue
 
-        match_tool = (rule.get("match_tool") or "*").lower()
-        if match_tool != "*":
-            allowed = expand_match_tool(match_tool)
-            if tool_name.lower() not in allowed:
-                continue
+        if not tool_matches(tool_name, rule.get("match_tool")):
+            continue
 
         match_ai_tool = rule.get("match_ai_tool")
         if match_ai_tool:
@@ -200,11 +197,8 @@ def _all_matching_hook_rules(
     for rule in rules:
         if not is_hook_applicable_rule(rule):
             continue
-        match_tool = (rule.get("match_tool") or "*").lower()
-        if match_tool != "*":
-            allowed = expand_match_tool(match_tool)
-            if tool_name.lower() not in allowed:
-                continue
+        if not tool_matches(tool_name, rule.get("match_tool")):
+            continue
         match_ai_tool = rule.get("match_ai_tool")
         if match_ai_tool:
             allowed_ai_tools = {

@@ -3,6 +3,8 @@ Canonical tool group mapping — single source of truth for semantic match_tool 
 Shared across CLI hook, MCP, and API (mirrored at apps/api/app/modules/guard/tool_groups.py).
 """
 
+from fnmatch import fnmatchcase
+
 TOOL_GROUPS: dict[str, set[str]] = {
     "shell":            {"bash", "run_command", "execute", "terminal", "shell"},
     "filesystem-write": {"write", "edit", "write_file", "edit_file", "str_replace_editor"},
@@ -38,6 +40,19 @@ def expand_match_tool(match_tool: str) -> set[str]:
         else:
             result.add(token)
     return result
+
+
+def tool_matches(tool_name: str, match_tool: str | None) -> bool:
+    """True if ``tool_name`` is covered by ``match_tool``.
+
+    ``match_tool`` is comma-separated semantic groups, raw names, or ``*``
+    globs (e.g. ``mcp__*memory*`` for MCP-prefixed tools). Case-insensitive.
+    """
+    allowed = expand_match_tool(match_tool or "*")
+    if "*" in allowed:
+        return True
+    name = tool_name.lower()
+    return name in allowed or any("*" in p and fnmatchcase(name, p) for p in allowed)
 
 
 def collapse_to_group(match_tool: str) -> str:

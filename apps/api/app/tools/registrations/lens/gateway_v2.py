@@ -29,19 +29,15 @@ def _profile_summary(profile: Any) -> dict[str, Any]:
         "name": profile.name,
         "model_alias": profile.model_alias,
         "revisions": len(profile.revisions),
-        "bindings": [
-            {
-                "environment_id": str(b.environment_id),
-                "model_alias": b.model_alias,
-                "revision_id": str(b.revision_id),
-            }
-            for b in profile.bindings
-        ],
+        # v3 (#2019): no bindings. Clients route by cond_code (model
+        # "cond-<code>-<alias>") to the active revision; None = unpublished.
+        "cond_code": profile.cond_code,
+        "active_revision_id": str(profile.active_revision_id) if profile.active_revision_id else None,
     }
 
 
 def list_gateway_v2_profiles(ctx) -> dict[str, Any]:
-    """Every v2 profile in the workspace, one row each with binding count."""
+    """Every v2 profile in the workspace, one row each with its cond_code and active revision."""
     from app.core.database import SessionLocal
     from app.routers.gateway_profiles_v2 import list_profiles as _http_list
 
@@ -57,7 +53,7 @@ def list_gateway_v2_profiles(ctx) -> dict[str, Any]:
 
 
 def get_gateway_v2_profile(ctx, profile_id: str) -> dict[str, Any]:
-    """Full shape of one v2 profile — working_copy + bindings + revisions."""
+    """Full shape of one v2 profile — working_copy + cond_code + revisions."""
     from app.core.database import SessionLocal
     from app.routers.gateway_profiles_v2 import get_profile as _http_get
 
@@ -133,8 +129,8 @@ TOOLS: list[ToolDef] = [
     ToolDef(
         name="list_gateway_v2_profiles",
         description=(
-            "List every Gateway Profile v2 in the workspace with binding "
-            "and revision counts. Read-only; safe to call any time."
+            "List every Gateway Profile v2 in the workspace with its cond_code, "
+            "active revision and revision count. Read-only; safe to call any time."
         ),
         input_schema={"type": "object", "properties": {}, "required": []},
         impl=list_gateway_v2_profiles,
@@ -146,7 +142,7 @@ TOOLS: list[ToolDef] = [
         name="get_gateway_v2_profile",
         description=(
             "Fetch one Gateway Profile v2 by ID — full working_copy, "
-            "current bindings, and revision history."
+            "cond_code, active revision, and revision history."
         ),
         input_schema={
             "type": "object",

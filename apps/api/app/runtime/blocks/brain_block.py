@@ -1084,6 +1084,7 @@ def _execute_brain(
                         if state.get("__guard_enabled") and db and workspace_id:
                             try:
                                 from app.modules.guard.routers.mcp import _match_policy, _get_rules
+                                from app.modules.guard.tool_groups import tool_matches
                                 import uuid as _uuid
                                 _guard_rules = _get_rules(db, _uuid.UUID(workspace_id))
 
@@ -1103,7 +1104,7 @@ def _execute_brain(
                                     _mt = (_rule.get("match_tool") or "").strip()
                                     if _mt and _mt != "*":
                                         _mt_allowed = [t.strip() for t in _mt.split(",")]
-                                        if _mcp_tool_name.lower() not in _mt_allowed:
+                                        if not tool_matches(_mcp_tool_name, _mt):
                                             # Also try regex for patterns like delete_.*
                                             try:
                                                 if not any(_re.fullmatch(p, _mcp_tool_name, _re.IGNORECASE) for p in _mt_allowed):
