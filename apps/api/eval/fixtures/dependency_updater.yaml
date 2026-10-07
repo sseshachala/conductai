@@ -1,0 +1,385 @@
+slug: dependency_updater
+description: >
+  Dependency Updater scenarios. Covers repos with outdated npm/pip/go packages,
+  scheduled scans, and security-flagged packages (positive) as well as
+  already-up-to-date repos, archived repos, and non-push triggers (negative).
+scenarios:
+  - id: npm_outdated_packages
+    label: Node.js repo with 6 outdated packages — patch/minor only
+    tags: [positive]
+    expected_outcome_type: dependency_updated
+    trigger_payload:
+      action: schedule
+      ref: "refs/heads/main"
+      repository:
+        full_name: eval-org/node-app
+        name: node-app
+        default_branch: main
+        clone_url: "https://github.com/eval-org/node-app.git"
+        language: JavaScript
+      schedule: "0 9 * * 1"
+    extra_assertions:
+      should_open_pr: true
+
+  - id: pip_outdated_packages
+    label: Python repo with 4 outdated pip packages
+    tags: [positive]
+    expected_outcome_type: dependency_updated
+    trigger_payload:
+      action: schedule
+      ref: "refs/heads/main"
+      repository:
+        full_name: eval-org/python-api
+        name: python-api
+        default_branch: main
+        clone_url: "https://github.com/eval-org/python-api.git"
+        language: Python
+      schedule: "0 9 * * 1"
+    extra_assertions:
+      should_open_pr: true
+
+  - id: go_modules_outdated
+    label: Go module with 3 outdated indirect dependencies
+    tags: [positive]
+    expected_outcome_type: dependency_updated
+    trigger_payload:
+      action: schedule
+      ref: "refs/heads/main"
+      repository:
+        full_name: eval-org/go-service
+        name: go-service
+        default_branch: main
+        clone_url: "https://github.com/eval-org/go-service.git"
+        language: Go
+      schedule: "0 9 * * 1"
+    extra_assertions:
+      should_open_pr: true
+
+  - id: security_vulnerable_package
+    label: Vulnerability alert for lodash < 4.17.21
+    tags: [positive, security]
+    expected_outcome_type: dependency_updated
+    trigger_payload:
+      action: created
+      alert:
+        id: 1001
+        affected_package_name: lodash
+        affected_range: "< 4.17.21"
+        fixed_in: "4.17.21"
+        severity: high
+        summary: "Prototype Pollution in lodash"
+        ghsa_id: "GHSA-jf85-cpcp-j695"
+      repository:
+        full_name: eval-org/node-app
+        name: node-app
+        default_branch: main
+        clone_url: "https://github.com/eval-org/node-app.git"
+    extra_assertions:
+      should_open_pr: true
+
+  - id: push_trigger_package_json_changed
+    label: Push that changes package.json — check for updates
+    tags: [positive]
+    expected_outcome_type: dependency_updated
+    trigger_payload:
+      ref: "refs/heads/main"
+      after: "abc123def456"
+      commits:
+        - id: "abc123"
+          message: "chore: add new dependency"
+          modified: ["package.json", "package-lock.json"]
+          author: {name: "Dev", email: "dev@example.com"}
+      repository:
+        full_name: eval-org/node-app
+        name: node-app
+        default_branch: main
+        clone_url: "https://github.com/eval-org/node-app.git"
+    extra_assertions:
+      should_open_pr: true
+
+  - id: monthly_dependency_scan
+    label: Monthly scheduled scan — all package managers
+    tags: [positive]
+    expected_outcome_type: dependency_updated
+    trigger_payload:
+      action: schedule
+      ref: "refs/heads/main"
+      repository:
+        full_name: eval-org/monorepo
+        name: monorepo
+        default_branch: main
+        clone_url: "https://github.com/eval-org/monorepo.git"
+        language: TypeScript
+      schedule: "0 9 1 * *"
+    extra_assertions:
+      should_open_pr: true
+
+  - id: critical_cve_patch
+    label: Critical CVE requires immediate patch — openssl
+    tags: [positive, security]
+    expected_outcome_type: dependency_updated
+    trigger_payload:
+      action: created
+      alert:
+        id: 1002
+        affected_package_name: openssl
+        affected_range: "< 3.1.2"
+        fixed_in: "3.1.2"
+        severity: critical
+        summary: "OpenSSL buffer overflow vulnerability"
+        ghsa_id: "GHSA-xxxx-yyyy-zzzz"
+      repository:
+        full_name: eval-org/python-api
+        name: python-api
+        default_branch: main
+        clone_url: "https://github.com/eval-org/python-api.git"
+    extra_assertions:
+      should_open_pr: true
+
+  - id: requirements_txt_scan
+    label: requirements.txt scan finds 8 updatable packages
+    tags: [positive]
+    expected_outcome_type: dependency_updated
+    trigger_payload:
+      action: schedule
+      ref: "refs/heads/main"
+      repository:
+        full_name: eval-org/ml-pipeline
+        name: ml-pipeline
+        default_branch: main
+        clone_url: "https://github.com/eval-org/ml-pipeline.git"
+        language: Python
+      schedule: "0 9 * * 1"
+    extra_assertions:
+      should_open_pr: true
+
+  - id: minor_version_bumps
+    label: Minor version bumps available for 3 packages
+    tags: [positive]
+    expected_outcome_type: dependency_updated
+    trigger_payload:
+      action: schedule
+      ref: "refs/heads/main"
+      repository:
+        full_name: eval-org/react-app
+        name: react-app
+        default_branch: main
+        clone_url: "https://github.com/eval-org/react-app.git"
+        language: JavaScript
+      schedule: "0 9 * * 1"
+    extra_assertions:
+      should_open_pr: true
+
+  - id: go_mod_tidy_needed
+    label: Go modules need tidy — indirect deps drift
+    tags: [positive]
+    expected_outcome_type: dependency_updated
+    trigger_payload:
+      action: schedule
+      ref: "refs/heads/main"
+      repository:
+        full_name: eval-org/go-api
+        name: go-api
+        default_branch: main
+        clone_url: "https://github.com/eval-org/go-api.git"
+        language: Go
+      schedule: "0 9 * * 1"
+    extra_assertions:
+      should_open_pr: true
+
+  - id: flask_security_update
+    label: Flask security release available
+    tags: [positive, security]
+    expected_outcome_type: dependency_updated
+    trigger_payload:
+      action: created
+      alert:
+        id: 1003
+        affected_package_name: flask
+        affected_range: "< 2.3.3"
+        fixed_in: "2.3.3"
+        severity: moderate
+        summary: "Flask open redirect vulnerability"
+        ghsa_id: "GHSA-aaaa-bbbb-cccc"
+      repository:
+        full_name: eval-org/python-api
+        name: python-api
+        default_branch: main
+        clone_url: "https://github.com/eval-org/python-api.git"
+    extra_assertions:
+      should_open_pr: true
+
+  - id: dependabot_weekly_batch
+    label: Weekly batch of 5 dependabot-style updates
+    tags: [positive]
+    expected_outcome_type: dependency_updated
+    trigger_payload:
+      action: schedule
+      ref: "refs/heads/main"
+      repository:
+        full_name: eval-org/backend-service
+        name: backend-service
+        default_branch: main
+        clone_url: "https://github.com/eval-org/backend-service.git"
+        language: TypeScript
+      schedule: "0 9 * * 1"
+    extra_assertions:
+      should_open_pr: true
+
+  - id: patch_only_updates
+    label: Only patch-level updates available — safe to auto-apply
+    tags: [positive]
+    expected_outcome_type: dependency_updated
+    trigger_payload:
+      action: schedule
+      ref: "refs/heads/main"
+      repository:
+        full_name: eval-org/stable-service
+        name: stable-service
+        default_branch: main
+        clone_url: "https://github.com/eval-org/stable-service.git"
+        language: Python
+      schedule: "0 9 * * 1"
+    extra_assertions:
+      should_open_pr: true
+
+  - id: npm_audit_vulnerabilities
+    label: npm audit reports 3 high-severity vulnerabilities
+    tags: [positive, security]
+    expected_outcome_type: dependency_updated
+    trigger_payload:
+      action: created
+      alert:
+        id: 1004
+        affected_package_name: axios
+        affected_range: "< 1.6.0"
+        fixed_in: "1.6.0"
+        severity: high
+        summary: "Axios SSRF vulnerability"
+        ghsa_id: "GHSA-dddd-eeee-ffff"
+      repository:
+        full_name: eval-org/frontend-app
+        name: frontend-app
+        default_branch: main
+        clone_url: "https://github.com/eval-org/frontend-app.git"
+    extra_assertions:
+      should_open_pr: true
+
+  - id: lockfile_desync
+    label: Lock file out of sync with manifest — update needed
+    tags: [positive]
+    expected_outcome_type: dependency_updated
+    trigger_payload:
+      ref: "refs/heads/main"
+      after: "lockdesync123"
+      commits:
+        - id: "lockdesync123"
+          message: "chore: update package.json version constraints"
+          modified: ["package.json"]
+          author: {name: "Dev", email: "dev@example.com"}
+      repository:
+        full_name: eval-org/node-app
+        name: node-app
+        default_branch: main
+        clone_url: "https://github.com/eval-org/node-app.git"
+    extra_assertions:
+      should_open_pr: true
+
+  # ── Negative scenarios ────────────────────────────────────────────────────────
+
+  - id: all_deps_up_to_date
+    label: "(negative) All dependencies are current — no PR needed"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      action: schedule
+      ref: "refs/heads/main"
+      repository:
+        full_name: eval-org/up-to-date-app
+        name: up-to-date-app
+        default_branch: main
+        clone_url: "https://github.com/eval-org/up-to-date-app.git"
+        language: Python
+      schedule: "0 9 * * 1"
+
+  - id: archived_repo
+    label: "(negative) Archived repository — should not update"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      action: schedule
+      ref: "refs/heads/main"
+      repository:
+        full_name: eval-org/archived-project
+        name: archived-project
+        default_branch: main
+        clone_url: "https://github.com/eval-org/archived-project.git"
+        archived: true
+      schedule: "0 9 * * 1"
+
+  - id: major_version_only
+    label: "(negative) Only major version bumps available — skip, too risky"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      action: schedule
+      ref: "refs/heads/main"
+      repository:
+        full_name: eval-org/legacy-app
+        name: legacy-app
+        default_branch: main
+        clone_url: "https://github.com/eval-org/legacy-app.git"
+        language: JavaScript
+      schedule: "0 9 * * 1"
+
+  - id: pr_already_open
+    label: "(negative) Dependency update PR already open — no duplicate"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      action: schedule
+      ref: "refs/heads/main"
+      repository:
+        full_name: eval-org/already-updated
+        name: already-updated
+        default_branch: main
+        clone_url: "https://github.com/eval-org/already-updated.git"
+        language: Node
+      schedule: "0 9 * * 1"
+
+  - id: issue_event_wrong_type
+    label: "(negative) Issue opened event — not a dependency trigger"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      action: opened
+      issue:
+        number: 999
+        title: "Update our dependencies"
+        body: "Please update all packages."
+        state: open
+        labels: []
+      repository:
+        full_name: eval-org/node-app
+        name: node-app
+        default_branch: main
+        clone_url: "https://github.com/eval-org/node-app.git"
+
+  - id: informational_advisory
+    label: "(negative) Low-severity informational advisory — no action"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      action: created
+      alert:
+        id: 2000
+        affected_package_name: some-package
+        affected_range: "< 1.0.1"
+        fixed_in: "1.0.1"
+        severity: low
+        summary: "Minor informational advisory with no exploitable path"
+      repository:
+        full_name: eval-org/node-app
+        name: node-app
+        default_branch: main
+        clone_url: "https://github.com/eval-org/node-app.git"

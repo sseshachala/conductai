@@ -54,6 +54,7 @@ const TEMPLATES = [
   { id: "autopilot_full",     label: "Autopilot",               description: "Issue labeled → implement fix → open PR.", tags: ["GitHub", "Slack"] },
   { id: "autopilot_approved", label: "Autopilot + Approval",    description: "Fix → tests → human approves in Slack → open PR.", tags: ["GitHub", "Slack"] },
   { id: "incident_responder", label: "Incident Responder",      description: "Alert fires → AI correlates commits → posts to #incidents.", tags: ["Slack"] },
+  { id: "dependency_updater", label: "Dependency Updater",      description: "Weekly cron → bump patch/minor deps → open PR.", tags: ["GitHub", "Slack"] },
   { id: "security_scanner",   label: "Security Scanner",        description: "PR opened → OWASP scan → structured security report.", tags: ["GitHub"] },
 ]
 

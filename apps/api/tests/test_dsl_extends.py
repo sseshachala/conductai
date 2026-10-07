@@ -279,14 +279,16 @@ def test_extends_rejected_without_base_dir():
 
 
 # ---------------------------------------------------------------------------
-# 8. All autopilot-family playbooks expand without error
+# 8. All five autopilot-family playbooks expand without error
 # ---------------------------------------------------------------------------
 
-def test_all_autopilot_playbooks_expand():
+def test_all_five_playbooks_expand():
     base_dir = pathlib.Path(__file__).parent.parent / "playbooks"
     playbooks = [
         "autopilot.yaml",
         "autopilot-approved.yaml",
+        "dependency-updater.yaml",
+        "security-patch-updater.yaml",
         "thirdparty-autopilot-fix.yaml",
     ]
     for name in playbooks:

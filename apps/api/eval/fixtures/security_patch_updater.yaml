@@ -1,0 +1,531 @@
+slug: security_patch_updater
+description: >
+  Security Patch Updater scenarios. Covers high/critical CVEs with available fixes,
+  vulnerability alerts across languages, and dependency audit failures (positive) as
+  well as low-severity advisories, already-patched packages, archived repos, and
+  wrong event types (negative).
+scenarios:
+  - id: critical_cve_python
+    label: Critical CVE in cryptography package — immediate patch needed
+    tags: [positive, critical]
+    expected_outcome_type: security_patch_applied
+    trigger_payload:
+      action: created
+      alert:
+        id: 3001
+        affected_package_name: cryptography
+        affected_range: "< 41.0.7"
+        fixed_in: "41.0.7"
+        severity: critical
+        cvss_score: 9.1
+        summary: "NULL pointer dereference in PKCS#12 key parsing"
+        ghsa_id: "GHSA-jm77-qphf-c4w8"
+        cve_id: "CVE-2023-49083"
+      repository:
+        full_name: eval-org/python-api
+        name: python-api
+        default_branch: main
+        clone_url: "https://github.com/eval-org/python-api.git"
+    extra_assertions:
+      should_open_pr: true
+
+  - id: high_cve_lodash
+    label: High severity CVE in lodash — prototype pollution
+    tags: [positive]
+    expected_outcome_type: security_patch_applied
+    trigger_payload:
+      action: created
+      alert:
+        id: 3002
+        affected_package_name: lodash
+        affected_range: "< 4.17.21"
+        fixed_in: "4.17.21"
+        severity: high
+        cvss_score: 7.4
+        summary: "Prototype Pollution in lodash"
+        ghsa_id: "GHSA-jf85-cpcp-j695"
+        cve_id: "CVE-2021-23337"
+      repository:
+        full_name: eval-org/node-app
+        name: node-app
+        default_branch: main
+        clone_url: "https://github.com/eval-org/node-app.git"
+    extra_assertions:
+      should_open_pr: true
+
+  - id: critical_cve_openssl
+    label: Critical OpenSSL buffer overflow — patch to 3.1.2
+    tags: [positive, critical]
+    expected_outcome_type: security_patch_applied
+    trigger_payload:
+      action: created
+      alert:
+        id: 3003
+        affected_package_name: openssl
+        affected_range: "< 3.1.2"
+        fixed_in: "3.1.2"
+        severity: critical
+        cvss_score: 9.8
+        summary: "OpenSSL buffer overflow in X.509 GeneralName processing"
+        ghsa_id: "GHSA-xxxx-yyyy-zzzz"
+        cve_id: "CVE-2023-0286"
+      repository:
+        full_name: eval-org/python-api
+        name: python-api
+        default_branch: main
+        clone_url: "https://github.com/eval-org/python-api.git"
+    extra_assertions:
+      should_open_pr: true
+
+  - id: high_cve_requests
+    label: High CVE in requests library — SSRF vulnerability
+    tags: [positive]
+    expected_outcome_type: security_patch_applied
+    trigger_payload:
+      action: created
+      alert:
+        id: 3004
+        affected_package_name: requests
+        affected_range: "< 2.31.0"
+        fixed_in: "2.31.0"
+        severity: high
+        cvss_score: 7.5
+        summary: "Requests vulnerable to unintended proxy credential exposure"
+        ghsa_id: "GHSA-652x-xj99-gmcc"
+        cve_id: "CVE-2023-32681"
+      repository:
+        full_name: eval-org/python-api
+        name: python-api
+        default_branch: main
+        clone_url: "https://github.com/eval-org/python-api.git"
+    extra_assertions:
+      should_open_pr: true
+
+  - id: critical_cve_axios
+    label: Critical SSRF in axios — update to 1.6.0
+    tags: [positive, critical]
+    expected_outcome_type: security_patch_applied
+    trigger_payload:
+      action: created
+      alert:
+        id: 3005
+        affected_package_name: axios
+        affected_range: "< 1.6.0"
+        fixed_in: "1.6.0"
+        severity: critical
+        cvss_score: 9.1
+        summary: "Axios SSRF vulnerability via request URL manipulation"
+        ghsa_id: "GHSA-wf5p-g6vw-rhxx"
+        cve_id: "CVE-2023-45857"
+      repository:
+        full_name: eval-org/node-app
+        name: node-app
+        default_branch: main
+        clone_url: "https://github.com/eval-org/node-app.git"
+    extra_assertions:
+      should_open_pr: true
+
+  - id: high_cve_flask
+    label: High CVE in Flask — open redirect vulnerability
+    tags: [positive]
+    expected_outcome_type: security_patch_applied
+    trigger_payload:
+      action: created
+      alert:
+        id: 3006
+        affected_package_name: flask
+        affected_range: "< 2.3.3"
+        fixed_in: "2.3.3"
+        severity: high
+        cvss_score: 7.3
+        summary: "Flask open redirect vulnerability via Host header manipulation"
+        ghsa_id: "GHSA-m2qf-hxjv-5gpq"
+        cve_id: "CVE-2023-30861"
+      repository:
+        full_name: eval-org/python-api
+        name: python-api
+        default_branch: main
+        clone_url: "https://github.com/eval-org/python-api.git"
+    extra_assertions:
+      should_open_pr: true
+
+  - id: critical_cve_go_stdlib
+    label: Critical CVE in Go net/http — request smuggling
+    tags: [positive, critical]
+    expected_outcome_type: security_patch_applied
+    trigger_payload:
+      action: created
+      alert:
+        id: 3007
+        affected_package_name: "golang.org/x/net"
+        affected_range: "< 0.17.0"
+        fixed_in: "0.17.0"
+        severity: critical
+        cvss_score: 9.1
+        summary: "HTTP/2 rapid reset attack (CVE-2023-44487)"
+        ghsa_id: "GHSA-qppj-fm56-g2xy"
+        cve_id: "CVE-2023-44487"
+      repository:
+        full_name: eval-org/go-service
+        name: go-service
+        default_branch: main
+        clone_url: "https://github.com/eval-org/go-service.git"
+    extra_assertions:
+      should_open_pr: true
+
+  - id: high_cve_sqlalchemy
+    label: High CVE in SQLAlchemy — SQL injection via column name
+    tags: [positive]
+    expected_outcome_type: security_patch_applied
+    trigger_payload:
+      action: created
+      alert:
+        id: 3008
+        affected_package_name: sqlalchemy
+        affected_range: "< 2.0.21"
+        fixed_in: "2.0.21"
+        severity: high
+        cvss_score: 8.1
+        summary: "SQL injection via crafted column names in ORM queries"
+        ghsa_id: "GHSA-r9mq-m72x-257g"
+        cve_id: "CVE-2023-44697"
+      repository:
+        full_name: eval-org/python-api
+        name: python-api
+        default_branch: main
+        clone_url: "https://github.com/eval-org/python-api.git"
+    extra_assertions:
+      should_open_pr: true
+
+  - id: multiple_vulnerabilities_batch
+    label: npm audit reports 4 high/critical vulnerabilities — batch patch
+    tags: [positive]
+    expected_outcome_type: security_patch_applied
+    trigger_payload:
+      action: completed
+      workflow_run:
+        id: 12001
+        name: "CI / Dependency Audit"
+        conclusion: failure
+        head_branch: main
+      audit_results:
+        critical:
+          - package: "semver"
+            range: "< 6.3.1"
+            fixed_in: "6.3.1"
+            ghsa_id: "GHSA-c2qf-rxjj-qqgw"
+          - package: "word-wrap"
+            range: "< 1.2.4"
+            fixed_in: "1.2.4"
+            ghsa_id: "GHSA-j8xg-fqg3-53r7"
+        high:
+          - package: "tough-cookie"
+            range: "< 4.1.3"
+            fixed_in: "4.1.3"
+            ghsa_id: "GHSA-72xf-g2v4-qvf3"
+          - package: "xml2js"
+            range: "< 0.5.0"
+            fixed_in: "0.5.0"
+            ghsa_id: "GHSA-776f-qx25-q3cc"
+      repository:
+        full_name: eval-org/node-app
+        name: node-app
+        default_branch: main
+        clone_url: "https://github.com/eval-org/node-app.git"
+    extra_assertions:
+      should_open_pr: true
+
+  - id: scheduled_security_scan_finds_cves
+    label: Scheduled weekly security scan finds 3 high CVEs
+    tags: [positive]
+    expected_outcome_type: security_patch_applied
+    trigger_payload:
+      action: schedule
+      ref: "refs/heads/main"
+      repository:
+        full_name: eval-org/python-api
+        name: python-api
+        default_branch: main
+        clone_url: "https://github.com/eval-org/python-api.git"
+      schedule: "0 9 * * 1"
+      scan_results:
+        high:
+          - package: "pillow"
+            range: "< 10.0.1"
+            fixed_in: "10.0.1"
+            ghsa_id: "GHSA-56pw-mpj4-fxww"
+          - package: "werkzeug"
+            range: "< 3.0.1"
+            fixed_in: "3.0.1"
+            ghsa_id: "GHSA-hrfv-mqp8-q5rw"
+          - package: "pyjwt"
+            range: "< 2.8.0"
+            fixed_in: "2.8.0"
+            ghsa_id: "GHSA-75c5-xw7c-p5pm"
+    extra_assertions:
+      should_open_pr: true
+
+  - id: transitive_dependency_vuln
+    label: Transitive dep has critical CVE — direct dep update needed
+    tags: [positive, critical]
+    expected_outcome_type: security_patch_applied
+    trigger_payload:
+      action: created
+      alert:
+        id: 3009
+        affected_package_name: "vm2"
+        affected_range: "< 3.9.19"
+        fixed_in: "3.9.19"
+        severity: critical
+        cvss_score: 10.0
+        summary: "Sandbox escape in vm2 — remote code execution"
+        ghsa_id: "GHSA-cchq-frgv-rjh5"
+        cve_id: "CVE-2023-37466"
+        is_transitive: true
+        transitive_path: ["jest", "jest-runtime", "vm2"]
+      repository:
+        full_name: eval-org/node-app
+        name: node-app
+        default_branch: main
+        clone_url: "https://github.com/eval-org/node-app.git"
+    extra_assertions:
+      should_open_pr: true
+
+  - id: push_updates_requirements_txt
+    label: Push modifies requirements.txt — trigger security rescan
+    tags: [positive]
+    expected_outcome_type: security_patch_applied
+    trigger_payload:
+      ref: "refs/heads/main"
+      after: "pushsec001abc"
+      commits:
+        - id: "pushsec001"
+          message: "chore: add boto3 for S3 integration"
+          modified: ["requirements.txt"]
+          added: []
+          author: {name: "Dev", email: "dev@example.com"}
+      scan_results:
+        high:
+          - package: "boto3"
+            range: "< 1.28.85"
+            fixed_in: "1.28.85"
+            ghsa_id: "GHSA-xxxxs3-high"
+      repository:
+        full_name: eval-org/python-api
+        name: python-api
+        default_branch: main
+        clone_url: "https://github.com/eval-org/python-api.git"
+    extra_assertions:
+      should_open_pr: true
+
+  - id: container_base_image_vuln
+    label: Container base image has critical CVE — update Dockerfile
+    tags: [positive, critical]
+    expected_outcome_type: security_patch_applied
+    trigger_payload:
+      action: created
+      alert:
+        id: 3010
+        affected_package_name: "python"
+        affected_range: "3.11 < 3.11.7"
+        fixed_in: "3.11.7"
+        severity: critical
+        cvss_score: 9.8
+        summary: "Python base image contains critical CVE in bundled OpenSSL"
+        ghsa_id: "GHSA-base-image-cve"
+        source: "container_scan"
+      repository:
+        full_name: eval-org/python-api
+        name: python-api
+        default_branch: main
+        clone_url: "https://github.com/eval-org/python-api.git"
+    extra_assertions:
+      should_open_pr: true
+
+  - id: license_compliance_and_security
+    label: Package has security issue AND license violation — dual alert
+    tags: [positive]
+    expected_outcome_type: security_patch_applied
+    trigger_payload:
+      action: created
+      alert:
+        id: 3011
+        affected_package_name: "colors"
+        affected_range: "< 1.4.0"
+        fixed_in: "1.4.0"
+        severity: high
+        cvss_score: 7.5
+        summary: "Malicious code injection in colors.js (supply chain attack)"
+        ghsa_id: "GHSA-8j8v-v6rf-6x4h"
+      repository:
+        full_name: eval-org/node-app
+        name: node-app
+        default_branch: main
+        clone_url: "https://github.com/eval-org/node-app.git"
+    extra_assertions:
+      should_open_pr: true
+
+  - id: go_module_cve_indirect
+    label: Indirect Go module has high CVE — go.sum needs update
+    tags: [positive]
+    expected_outcome_type: security_patch_applied
+    trigger_payload:
+      action: created
+      alert:
+        id: 3012
+        affected_package_name: "github.com/gorilla/websocket"
+        affected_range: "< 1.5.1"
+        fixed_in: "1.5.1"
+        severity: high
+        cvss_score: 7.5
+        summary: "Gorilla WebSocket insufficient message size validation"
+        ghsa_id: "GHSA-3xh2-74w9-5vxm"
+      repository:
+        full_name: eval-org/go-service
+        name: go-service
+        default_branch: main
+        clone_url: "https://github.com/eval-org/go-service.git"
+    extra_assertions:
+      should_open_pr: true
+
+  # ── Negative scenarios ────────────────────────────────────────────────────────
+
+  - id: low_severity_advisory
+    label: "(negative) Low severity advisory — no action required"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      action: created
+      alert:
+        id: 4001
+        affected_package_name: some-util
+        affected_range: "< 1.0.1"
+        fixed_in: "1.0.1"
+        severity: low
+        cvss_score: 2.3
+        summary: "Minor timing side-channel with no known exploit path"
+        ghsa_id: "GHSA-low-sev-low"
+      repository:
+        full_name: eval-org/node-app
+        name: node-app
+        default_branch: main
+        clone_url: "https://github.com/eval-org/node-app.git"
+
+  - id: package_already_patched
+    label: "(negative) Package already at patched version — no PR needed"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      action: created
+      alert:
+        id: 4002
+        affected_package_name: requests
+        affected_range: "< 2.31.0"
+        fixed_in: "2.31.0"
+        severity: high
+        current_installed_version: "2.31.0"
+        already_fixed: true
+      repository:
+        full_name: eval-org/python-api
+        name: python-api
+        default_branch: main
+        clone_url: "https://github.com/eval-org/python-api.git"
+
+  - id: archived_repository
+    label: "(negative) Archived repository — no patches applied"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      action: created
+      alert:
+        id: 4003
+        affected_package_name: lodash
+        affected_range: "< 4.17.21"
+        fixed_in: "4.17.21"
+        severity: high
+      repository:
+        full_name: eval-org/legacy-archived-app
+        name: legacy-archived-app
+        archived: true
+        default_branch: main
+        clone_url: "https://github.com/eval-org/legacy-archived-app.git"
+
+  - id: pr_already_open
+    label: "(negative) Security patch PR already open — no duplicate"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      action: created
+      alert:
+        id: 4004
+        affected_package_name: cryptography
+        affected_range: "< 41.0.7"
+        fixed_in: "41.0.7"
+        severity: critical
+      existing_prs:
+        - title: "fix: bump cryptography to 41.0.7 (CVE-2023-49083)"
+          state: open
+      repository:
+        full_name: eval-org/python-api
+        name: python-api
+        default_branch: main
+        clone_url: "https://github.com/eval-org/python-api.git"
+
+  - id: issue_event_wrong_trigger
+    label: "(negative) Issue opened event — not a vulnerability alert"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      action: opened
+      issue:
+        number: 999
+        title: "We should update our dependencies"
+        body: "Probably some CVEs lurking in our packages."
+        state: open
+        labels: []
+      repository:
+        full_name: eval-org/node-app
+        name: node-app
+        default_branch: main
+        clone_url: "https://github.com/eval-org/node-app.git"
+
+  - id: informational_only_alert
+    label: "(negative) Informational severity alert — observe, no patch"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      action: created
+      alert:
+        id: 4005
+        affected_package_name: moment
+        affected_range: "< 2.29.4"
+        fixed_in: "2.29.4"
+        severity: informational
+        cvss_score: 0.0
+        summary: "Path traversal in moment.js locale loading — no known exploit"
+        ghsa_id: "GHSA-info-only"
+      repository:
+        full_name: eval-org/node-app
+        name: node-app
+        default_branch: main
+        clone_url: "https://github.com/eval-org/node-app.git"
+
+  - id: no_fix_available
+    label: "(negative) CVE with no fix available yet — cannot patch"
+    tags: [negative]
+    expected_outcome_type: null
+    trigger_payload:
+      action: created
+      alert:
+        id: 4006
+        affected_package_name: some-zero-day-package
+        affected_range: ">= 0.0.1"
+        fixed_in: null
+        severity: critical
+        summary: "Zero-day with no upstream fix available"
+        ghsa_id: "GHSA-no-fix-yet"
+      repository:
+        full_name: eval-org/python-api
+        name: python-api
+        default_branch: main
+        clone_url: "https://github.com/eval-org/python-api.git"
