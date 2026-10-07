@@ -10,11 +10,9 @@ Usage in routes:
     # role-gated:
     _: str = Depends(require_workspace_role("admin"))
 """
-import contextvars
 import structlog
 import sys
 import threading
-from functools import lru_cache
 from typing import Annotated
 
 import httpx
@@ -26,6 +24,25 @@ from app.core.config import settings
 from app.core.auth_deployment import development_auth_enabled
 from app.core.console_identity import console_identity
 from app.core.database import get_db
+from app.core.auth_clerk import (  # noqa: F401  (re-exported)
+    _clerk_http,
+    find_clerk_user_id_by_email,
+    get_clerk_user_email,
+    get_clerk_user_info,
+)
+from app.core.auth_okta import _okta_audit_emitted, _resolve_okta_jwt  # noqa: F401  (re-exported)
+from app.core.auth_tokens import (  # noqa: F401  (re-exported)
+    _AGENT_PREFIX,
+    _API_PREFIX,
+    _MEMBER_PREFIX,
+    _PREFIX_LOOKUP_LEN,
+    _has_workspace_membership,
+    _resolve_agent_token,
+    _trial_member,
+    resolve_agent_identity_row,
+    resolve_agent_token,
+    token_is_expired,
+)
 
 log = structlog.get_logger(__name__)
 
@@ -36,17 +53,6 @@ _bearer = HTTPBearer(auto_error=False)
 
 _jwks_cache: dict | None = None
 _jwks_lock = threading.Lock()
-
-# Per-request dedupe for Okta audit emissions. FastAPI runs each request in a
-# fresh async context, so this ContextVar naturally resets between requests.
-# Same token resolved twice in one request → one audit row, not two (fixes
-# the /auth/whoami double-emit).
-_okta_audit_emitted: contextvars.ContextVar[set[str] | None] = contextvars.ContextVar(
-    "okta_audit_emitted", default=None,
-)
-
-# ponytail: shared client — connection pooling, avoids per-call TLS handshake
-_clerk_http = httpx.Client(timeout=5)
 
 
 def _fetch_jwks() -> dict:
@@ -146,310 +152,6 @@ def _clerk_enabled_dispatch() -> bool:
     if mod is None:
         return _clerk_enabled()
     return mod._clerk_enabled()
-
-
-@lru_cache(maxsize=512)
-def get_clerk_user_email(user_id: str) -> str | None:
-    """Fetch the primary email address for a Clerk user via the Clerk REST API.
-
-    Result is cached in-process (LRU, 512 entries) — email addresses rarely
-    change and the cache is only invalidated by process restart.
-    """
-    if not settings.clerk_secret_key or not user_id:
-        return None
-    try:
-        r = _clerk_http.get(
-            f"https://api.clerk.com/v1/users/{user_id}",
-            headers={"Authorization": f"Bearer {settings.clerk_secret_key}"},
-        )
-        if not r.is_success:
-            return None
-        data = r.json()
-        primary_id = data.get("primary_email_address_id")
-        for e in data.get("email_addresses", []):
-            if e.get("id") == primary_id:
-                return e.get("email_address")
-        emails = data.get("email_addresses", [])
-        return emails[0].get("email_address") if emails else None
-    except Exception as e:
-        log.warning("clerk.user_email_fetch_failed", user_id=user_id, error=str(e))
-        return None
-
-
-@lru_cache(maxsize=512)
-def find_clerk_user_id_by_email(email: str) -> str | None:
-    """Return the Clerk user_id for the given email, or None if not found."""
-    if not settings.clerk_secret_key or not email:
-        return None
-    try:
-        r = _clerk_http.get(
-            "https://api.clerk.com/v1/users",
-            params={"email_address": email, "limit": 1},
-            headers={"Authorization": f"Bearer {settings.clerk_secret_key}"},
-        )
-        if not r.is_success:
-            return None
-        users = r.json()
-        return users[0]["id"] if users else None
-    except Exception as e:
-        log.warning("clerk.user_search_by_email_failed", email=email, error=str(e))
-        return None
-
-
-@lru_cache(maxsize=512)
-def get_clerk_user_info(user_id: str) -> dict:
-    """Return {email, name} for a Clerk user. Falls back to empty strings on failure."""
-    if not settings.clerk_secret_key or not user_id:
-        return {"email": None, "name": None}
-    try:
-        r = _clerk_http.get(
-            f"https://api.clerk.com/v1/users/{user_id}",
-            headers={"Authorization": f"Bearer {settings.clerk_secret_key}"},
-        )
-        if not r.is_success:
-            return {"email": None, "name": None}
-        data = r.json()
-        primary_id = data.get("primary_email_address_id")
-        email = None
-        for e in data.get("email_addresses", []):
-            if e.get("id") == primary_id:
-                email = e.get("email_address")
-                break
-        if not email:
-            emails = data.get("email_addresses", [])
-            email = emails[0].get("email_address") if emails else None
-        first = data.get("first_name") or ""
-        last = data.get("last_name") or ""
-        name = f"{first} {last}".strip() or None
-        return {"email": email, "name": name}
-    except Exception as e:
-        log.warning("clerk.user_info_fetch_failed", user_id=user_id, error=str(e))
-        return {"email": None, "name": None}
-
-
-def _trial_member(db: Session, identity):
-    """Trial identities have a separate owner binding, never a CLI-link takeover."""
-    if getattr(identity, "source", None) != "conduct_trial":
-        return None
-    owner = getattr(identity, "owner_user_id", None)
-    if not isinstance(owner, str) or not owner:
-        return None
-    from sqlalchemy import text
-    row = db.execute(text("""
-        SELECT member.clerk_user_id
-        FROM guard_member_config member
-        JOIN workspace_users membership
-          ON membership.workspace_id = member.workspace_id
-         AND membership.clerk_user_id = member.clerk_user_id
-        JOIN workspaces workspace ON workspace.id = member.workspace_id
-        WHERE member.workspace_id = :ws AND member.clerk_user_id = :uid
-          AND member.active = true AND workspace.owner_id = :uid
-        LIMIT 1
-    """), {"ws": str(identity.workspace_id), "uid": owner}).fetchone()
-    return row.clerk_user_id if row else None
-
-
-def _resolve_agent_token(token: str, db: Session):
-    """Validate a cond_agt_* or cond_api_* token and return (AgentIdentity, clerk_user_id).
-    Raises HTTPException on invalid/expired token or missing GMC link.
-    For api tokens (token_type='api') there is no GMC link by design — returns (ai, None).
-    Shared by get_workspace_id, get_user_id, get_guard_hook_auth to avoid double-decrypt.
-    """
-    from app.modules.agent_identity.models import AgentIdentity
-    from app.core.crypto import decrypt
-    from sqlalchemy import text as _t
-    from datetime import datetime, timezone as _tz
-    from app.modules.agent_identity.credentials import SESSION_ACCESS_PREFIX, find_session_credential
-    if token.startswith(SESSION_ACCESS_PREFIX):
-        matched = find_session_credential(token, db)
-        if matched is None:
-            raise HTTPException(status_code=401, detail="Invalid agent token")
-        ai, expires_at = matched
-        # #2162 — a NULL expiry column (or a mocked expiry in tests) would
-        # otherwise trip TypeError on the comparison. Treat missing
-        # ``expires_at`` as "no explicit expiry"; the credential is still
-        # subject to ``lifecycle_state`` below.
-        if expires_at is not None and expires_at <= datetime.now(_tz.utc):
-            raise HTTPException(status_code=401, detail="Agent token expired")
-        if ai.token_type != "cli" or ai.lifecycle_state in ("deactivated", "expired"):
-            raise HTTPException(status_code=401, detail="Agent identity is inactive")
-        row = db.execute(
-            _t("SELECT clerk_user_id FROM guard_member_config "
-               "WHERE agent_identity_id = :aid AND workspace_id = :ws AND active = true LIMIT 1"),
-            {"aid": ai.id, "ws": str(ai.workspace_id)},
-        ).fetchone()
-        if not row or not _has_workspace_membership(db, ai.workspace_id, row.clerk_user_id):
-            raise HTTPException(status_code=401, detail="Agent token membership revoked")
-        return ai, row.clerk_user_id
-    for ai in db.query(AgentIdentity).filter(AgentIdentity.token_prefix == token[:13]).all():
-        try:
-            if decrypt(ai.token_encrypted).get("token") == token:
-                if ai.expires_at and ai.expires_at < datetime.now(_tz.utc):
-                    raise HTTPException(status_code=401, detail="Agent token expired — run `conduct login`")
-                # Fail-secure lifecycle guard (#1037). Deactivated/expired
-                # identities cannot authenticate even if their token has not
-                # expired. Applies to cond_agt_*, cond_api_*, and legacy paths.
-                _lifecycle = getattr(ai, "lifecycle_state", None)
-                if _lifecycle in ("deactivated", "expired"):
-                    raise HTTPException(status_code=401, detail=f"Agent identity is {_lifecycle}")
-                # External identities (Okta-imported, etc.) authenticate via
-                # their source system, never through Conduct's token path.
-                # #1036 defense-in-depth against auth confusion.
-                if getattr(ai, "token_type", "cli") == "external":
-                    raise HTTPException(status_code=401, detail="External agent identity cannot authenticate via Conduct token path")
-                token_type = getattr(ai, 'token_type', 'cli')
-                # API tokens have no guard_member_config row by design and are
-                # workspace credentials rather than a user's login session.
-                if token_type == 'api':
-                    return ai, None
-                if getattr(ai, "source", None) == "conduct_trial":
-                    owner = _trial_member(db, ai)
-                    if not owner:
-                        raise HTTPException(status_code=401, detail="Agent token membership revoked")
-                    return ai, owner
-                row = db.execute(
-                    _t("SELECT clerk_user_id FROM guard_member_config WHERE agent_identity_id = :aid LIMIT 1"),
-                    {"aid": ai.id},
-                ).fetchone()
-                clerk_user_id = row.clerk_user_id if row else None
-                if not clerk_user_id or not _has_workspace_membership(db, ai.workspace_id, clerk_user_id):
-                    raise HTTPException(status_code=401, detail="Agent token membership revoked")
-                return ai, clerk_user_id
-        except HTTPException:
-            raise
-        except Exception:
-            continue
-    raise HTTPException(status_code=401, detail="Invalid agent token")
-
-
-def _resolve_okta_jwt(token: str, db: Session):
-    """Try to resolve `token` as an Okta-signed JWT (#1056).
-
-    Returns (AgentIdentity, None) on success, matching the shape of
-    `_resolve_agent_token(cond_api_*, ...)`. Returns None if the token is not
-    a JWT or its `iss` is not configured for any workspace with
-    Okta agent trust — the caller falls through to the next auth path
-    (Clerk). Any real verification failure raises HTTPException(401).
-    """
-    if token.count(".") != 2:
-        return None
-
-    from app.core.okta_jwt import OktaJWTError, verify_okta_jwt
-    from app.modules.auth.federation.okta_agent import candidates, valid_config, workspace_scope
-    from app.modules.agent_identity.models import AgentIdentity
-    import jwt as _pyjwt
-
-    try:
-        unverified = _pyjwt.decode(
-            token,
-            options={
-                "verify_signature": False,
-                "verify_exp": False,
-                "verify_aud": False,
-                "verify_iss": False,
-            },
-        )
-    except Exception:
-        return None
-    iss = unverified.get("iss")
-    if not iss:
-        return None
-
-    rows = candidates(db, iss)
-    if not rows:
-        return None  # unconfigured issuer — fall through to Clerk
-
-    # #1057 — hash-chained audit event for every verify attempt. Wrapped in
-    # try/except so audit failures never break auth.
-    import time as _time
-    _t0 = _time.perf_counter()
-    unverified_sub = unverified.get("sub", "")
-
-    def _emit_audit(*, workspace_id, decision: str, sub: str, reason: str | None = None):
-        # Per-request dedupe: if the same (workspace, decision, sub) was already
-        # audited in this request, skip. See _okta_audit_emitted.
-        _seen = _okta_audit_emitted.get()
-        if _seen is None:
-            _seen = set()
-            _okta_audit_emitted.set(_seen)
-        _key = f"{workspace_id}|{decision}|{sub}"
-        if _key in _seen:
-            return
-        _seen.add(_key)
-        try:
-            from app.modules.guard.models import GuardAuditEvent, chain_hash_for_insert
-            from datetime import datetime, timezone as _tz
-            _now = datetime.now(_tz.utc)
-            _tool = "auth.okta_jwt.verify"
-            prev_hash, entry_hash = chain_hash_for_insert(db, workspace_id, _now, _tool, decision)
-            db.add(GuardAuditEvent(
-                workspace_id=workspace_id,
-                user_email=sub or "unknown",
-                ai_tool="okta_jwt",
-                tool_call=_tool,
-                source="okta_jwt",
-                input_summary=f"iss={iss}",
-                decision=decision,
-                rule_id="okta_jwt",
-                rule_message=reason,
-                ts=_now,
-                duration_ms=int((_time.perf_counter() - _t0) * 1000),
-                previous_hash=prev_hash,
-                entry_hash=entry_hash,
-            ))
-            db.commit()
-        except Exception as _e:  # never let audit break auth
-            log.warning("okta.audit.emit_failed", error=str(_e))
-            try:
-                db.rollback()
-            except Exception:
-                pass
-
-    last_error: Exception | None = OktaJWTError("trust is disabled or requires review")
-    matches = []
-    for row in rows:
-        if row.config.get("status") != "active" or not valid_config(row.config):
-            continue
-        aud = row.config["audience"]
-        try:
-            claims = verify_okta_jwt(token, issuer=iss, audience=aud)
-        except OktaJWTError as e:
-            last_error = e
-            continue
-        sub = claims.get("sub")
-        if not sub:
-            _emit_audit(workspace_id=row.workspace_id, decision="blocked", sub=unverified_sub, reason="missing sub claim")
-            raise HTTPException(status_code=401, detail="Okta JWT missing sub claim")
-        with workspace_scope(db, row.workspace_id):
-            ai = (
-                db.query(AgentIdentity)
-                .filter(
-                    AgentIdentity.workspace_id == row.workspace_id,
-                    AgentIdentity.source == "okta",
-                    AgentIdentity.source_id == sub,
-                )
-                .first()
-            )
-        if not ai:
-            _emit_audit(workspace_id=row.workspace_id, decision="blocked", sub=sub, reason="identity not synced")
-            raise HTTPException(status_code=401, detail="Okta identity not synced — run Okta sync in Conduct")
-        lifecycle = getattr(ai, "lifecycle_state", None)
-        if lifecycle in ("deactivated", "expired"):
-            _emit_audit(workspace_id=row.workspace_id, decision="blocked", sub=sub, reason=f"lifecycle={lifecycle}")
-            raise HTTPException(status_code=401, detail=f"Agent identity is {lifecycle}")
-        matches.append((ai, row.workspace_id, sub))
-
-    if len(matches) > 1:
-        _emit_audit(workspace_id=matches[0][1], decision="blocked", sub=matches[0][2], reason="ambiguous workspace trust")
-        raise HTTPException(status_code=401, detail="Okta identity matches multiple workspaces")
-    if matches:
-        ai, workspace, sub = matches[0]
-        _emit_audit(workspace_id=workspace, decision="allowed", sub=sub)
-        return ai, None
-
-    # All configured workspaces rejected the token
-    _emit_audit(workspace_id=rows[0].workspace_id, decision="blocked", sub=unverified_sub, reason=str(last_error))
-    raise HTTPException(status_code=401, detail=f"Okta JWT verification failed: {last_error}")
 
 
 def get_user_id(
@@ -959,165 +661,6 @@ def require_permission(permission: str):
     return _check
 
 
-# ─── Shared agent token resolver ──────────────────────────────────────────────
-
-_AGENT_PREFIX  = "cond_agt_"
-_API_PREFIX    = "cond_api_"
-_MEMBER_PREFIX = "guard-mt-"
-_PREFIX_LOOKUP_LEN = len(_AGENT_PREFIX) + 4  # same length for all conduct token types
-
-
-def _has_workspace_membership(db: Session, workspace_id, clerk_user_id: str) -> bool:
-    from sqlalchemy import text as _text
-
-    return db.execute(
-        _text("""
-            SELECT 1 FROM workspace_users
-            WHERE workspace_id = :ws AND clerk_user_id = :uid
-            LIMIT 1
-        """),
-        {"ws": str(workspace_id), "uid": clerk_user_id},
-    ).fetchone() is not None
-
-
-def resolve_agent_token(token: str, db: Session) -> tuple[str, str] | None:
-    """Resolve any Conduct agent token → (workspace_id, clerk_user_id) or None.
-
-    Accepts: cond_agt_*, cond_api_*, guard-mt-* (legacy member tokens).
-    Used by proxy, MCP, WebSocket, and any other auth surface.
-
-    Fail-secure: expired tokens return None. Callers that need to distinguish
-    "expired" from "unknown" (e.g. proxy UX copy) can call token_is_expired()
-    on the same token to disambiguate before rendering the error message.
-    """
-    from sqlalchemy import text as _text
-    from datetime import datetime, timezone as _tz
-    from app.modules.agent_identity.credentials import SESSION_ACCESS_PREFIX
-
-    if token.startswith(SESSION_ACCESS_PREFIX):
-        try:
-            identity, user_id = _resolve_agent_token(token, db)
-            return str(identity.workspace_id), user_id
-        except HTTPException:
-            return None
-
-    if token.startswith((_AGENT_PREFIX, _API_PREFIX)):
-        from app.core.crypto import decrypt as _decrypt
-        from app.modules.agent_identity.models import AgentIdentity
-
-        prefix = token[:_PREFIX_LOOKUP_LEN]
-        for ai_row in db.query(AgentIdentity).filter(AgentIdentity.token_prefix == prefix).all():
-            try:
-                if _decrypt(ai_row.token_encrypted).get("token") != token:
-                    continue
-            except Exception:
-                continue
-
-            # Reject expired session tokens (cond_agt_ has 8h TTL). API tokens
-            # (cond_api_) leave expires_at=NULL by design, so this only bites
-            # session tokens.
-            if ai_row.expires_at and ai_row.expires_at < datetime.now(_tz.utc):
-                return None
-
-            # Fail-secure on identity lifecycle state (#1037).
-            # deactivated or expired identities cannot authenticate regardless
-            # of token freshness. pending_review is a signal, not a stop.
-            _lifecycle = getattr(ai_row, "lifecycle_state", None)
-            if _lifecycle in ("deactivated", "expired"):
-                return None
-
-            if getattr(ai_row, "source", None) == "conduct_trial":
-                owner = _trial_member(db, ai_row)
-                return (str(ai_row.workspace_id), owner) if owner else None
-
-            # Try guard_member_config link first (session tokens always have this)
-            member = db.execute(
-                _text("""
-                    SELECT workspace_id::text, clerk_user_id
-                    FROM guard_member_config
-                    WHERE agent_identity_id = :aid AND active = true
-                    LIMIT 1
-                """),
-                {"aid": ai_row.id},
-            ).fetchone()
-            if member:
-                if not _has_workspace_membership(db, member[0], member[1]):
-                    return None
-                return (member[0], member[1])
-
-            # A session token must always remain linked to a live member. Do
-            # not reinterpret an unlinked/revoked session token as an API key.
-            if token.startswith(_AGENT_PREFIX):
-                return None
-
-            # API tokens: fall back to creator or synthetic label.
-            creator = getattr(ai_row, "created_by_clerk_user_id", None)
-            if creator:
-                return (str(ai_row.workspace_id), creator)
-
-            label = getattr(ai_row, "token_name", None) or getattr(ai_row, "name", "api-token")
-            return (str(ai_row.workspace_id), f"api:{label}")
-
-        return None
-
-    # Legacy guard-mt-* member token
-    bare = token[len(_MEMBER_PREFIX):] if token.startswith(_MEMBER_PREFIX) else token
-    row = db.execute(
-        _text("""
-            SELECT gmc.workspace_id::text, gmc.clerk_user_id
-            FROM guard_member_config gmc
-            JOIN workspace_users wu
-              ON wu.workspace_id = gmc.workspace_id
-             AND wu.clerk_user_id = gmc.clerk_user_id
-            WHERE gmc.member_token = :tok AND gmc.active = true
-            LIMIT 1
-        """),
-        {"tok": bare},
-    ).fetchone()
-    return (row[0], row[1]) if row else None
-
-
-def resolve_agent_identity_row(token: str, db: Session):
-    """Same lookup semantics as ``resolve_agent_token`` but returns the
-    AgentIdentity row instead of the (ws, user) tuple.
-
-    Returns None for unknown / expired / deactivated tokens and for legacy
-    ``guard-mt-*`` member tokens (which don't have a 1:1 AgentIdentity row).
-
-    Used by PEPs that need identity fields beyond auth — e.g. ``risk_tier``
-    to populate PolicyContext for tier-gated policies.
-    """
-    from datetime import datetime, timezone as _tz
-    from app.modules.agent_identity.credentials import SESSION_ACCESS_PREFIX
-
-    if token.startswith(SESSION_ACCESS_PREFIX):
-        try:
-            return _resolve_agent_token(token, db)[0]
-        except HTTPException:
-            return None
-
-    if not token.startswith((_AGENT_PREFIX, _API_PREFIX)):
-        return None
-
-    from app.core.crypto import decrypt as _decrypt
-    from app.modules.agent_identity.models import AgentIdentity
-
-    prefix = token[:_PREFIX_LOOKUP_LEN]
-    for ai_row in db.query(AgentIdentity).filter(AgentIdentity.token_prefix == prefix).all():
-        try:
-            if _decrypt(ai_row.token_encrypted).get("token") != token:
-                continue
-        except Exception:
-            continue
-        if ai_row.expires_at and ai_row.expires_at < datetime.now(_tz.utc):
-            return None
-        _lifecycle = getattr(ai_row, "lifecycle_state", None)
-        if _lifecycle in ("deactivated", "expired"):
-            return None
-        return ai_row
-    return None
-
-
 def require_platform_operator():
     """FastAPI dep — 403s unless the caller's Clerk user_id is in
     settings.platform_operator_clerk_ids. Used to gate cross-tenant ops
@@ -1136,32 +679,3 @@ def require_platform_operator():
         raise HTTPException(status_code=403, detail="platform_operator_only")
 
     return _dep
-
-
-def token_is_expired(token: str, db: Session) -> bool:
-    """True iff token matches a real AgentIdentity row whose expires_at has passed.
-
-    Used by proxy 401 handler to render "session expired — run conduct login"
-    instead of the generic "not recognized" message. Cheap: one indexed lookup
-    on token_prefix, decrypt only the prefix-collision matches.
-    """
-    if not token.startswith((_AGENT_PREFIX, _API_PREFIX)):
-        return False
-    from datetime import datetime, timezone as _tz
-    from app.core.crypto import decrypt as _decrypt
-    from app.modules.agent_identity.models import AgentIdentity
-    from app.modules.agent_identity.credentials import SESSION_ACCESS_PREFIX, find_session_credential
-
-    if token.startswith(SESSION_ACCESS_PREFIX):
-        matched = find_session_credential(token, db)
-        return bool(matched and matched[1] <= datetime.now(_tz.utc))
-
-    prefix = token[:_PREFIX_LOOKUP_LEN]
-    for ai_row in db.query(AgentIdentity).filter(AgentIdentity.token_prefix == prefix).all():
-        try:
-            if _decrypt(ai_row.token_encrypted).get("token") != token:
-                continue
-        except Exception:
-            continue
-        return bool(ai_row.expires_at and ai_row.expires_at < datetime.now(_tz.utc))
-    return False
