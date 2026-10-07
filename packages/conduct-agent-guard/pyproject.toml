@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "conduct-agent-guard"
+version = "0.1.0"
+description = "Runtime governance for AI agents. Conduct Guard on every tool call in Claude Agent SDK, OpenAI Agents SDK, LangChain, Google ADK and CrewAI agents."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+authors = [{ name = "Conduct AI", email = "hello@conductai.ai" }]
+keywords = ["agents", "ai-governance", "policy", "claude-agent-sdk", "openai-agents", "langchain", "google-adk", "crewai"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Security",
+]
+dependencies = [
+    "httpx>=0.24,<1.0",
+    # Shared JSON-RPC client + verdict parser. One implementation across plugins.
+    "conduct-litellm-guard>=0.2.7",
+]
+
+[project.optional-dependencies]
+claude = ["claude-agent-sdk>=0.2"]
+openai = ["openai-agents>=0.23"]
+langchain = ["langchain>=1.0"]
+adk = ["google-adk>=2.0"]
+crewai = ["crewai>=1.15"]
+dev = ["pytest>=7", "pytest-asyncio>=0.21"]
+
+[project.urls]
+Homepage = "https://conductai.ai"
+Repository = "https://github.com/sseshachala/conductai"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

@@ -137,6 +137,11 @@ jobs:
           python -m venv "$RUNNER_TEMP/federation-litellm"
           "$RUNNER_TEMP/federation-litellm/bin/pip" install "litellm[proxy]==${LITELLM_VERSION}" -e './packages/conduct-litellm-guard[dev]'
           "$RUNNER_TEMP/federation-litellm/bin/python" -m pytest packages/conduct-litellm-guard/tests -q
+      - name: conduct-agent-guard (core; adapter tests skip without their SDKs)
+        run: |
+          python -m venv "$RUNNER_TEMP/agent-guard"
+          "$RUNNER_TEMP/agent-guard/bin/pip" install -e ./packages/conduct-litellm-guard -e './packages/conduct-agent-guard[dev]'
+          "$RUNNER_TEMP/agent-guard/bin/python" -m pytest packages/conduct-agent-guard/tests -q
       - name: Federation LiteLLM, Gateway and workflow HTTP journeys
         env:
           DATABASE_URL: postgresql://marshal:marshal@localhost:5432/conduct_federation_test
