@@ -8,7 +8,7 @@ export default function TermsPage() {
       <div className="max-w-2xl mx-auto px-6 py-16">
         <Link href="/" className="text-xs text-stone-400 hover:text-stone-700 transition-colors mb-8 inline-block">← Back to Conduct</Link>
         <h1 className="text-2xl font-bold text-stone-900 mb-2">Terms of Service</h1>
-        <p className="text-xs text-stone-400 mb-10">Last updated: May 2025</p>
+        <p className="text-xs text-stone-400 mb-10">Last updated: October 2026</p>
         <div className="prose prose-stone prose-sm max-w-none space-y-6 text-stone-600 leading-relaxed">
           <section>
             <h2 className="text-base font-semibold text-stone-800 mb-2">Acceptance</h2>
@@ -16,7 +16,7 @@ export default function TermsPage() {
           </section>
           <section>
             <h2 className="text-base font-semibold text-stone-800 mb-2">Use of the service</h2>
-            <p>You may use Conduct to automate engineering workflows within your organization. You are responsible for the agents and workflows you create, including any actions they take on external systems (GitHub, Slack, etc.) using credentials you provide.</p>
+            <p>You may use Conduct to govern, monitor, and run AI agents and workflows within your organization. You are responsible for the agents and workflows you create or connect, and for the policies you configure, including any actions they take on external systems (GitHub, Slack, cloud providers, etc.) using credentials you provide.</p>
           </section>
           <section>
             <h2 className="text-base font-semibold text-stone-800 mb-2">Acceptable use</h2>
