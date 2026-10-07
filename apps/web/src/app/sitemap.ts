@@ -10,6 +10,7 @@ const staticRoutes: Array<{ path: string; priority: number; changeFrequency: "da
   { path: "/solutions/security-compliance", priority: 0.8, changeFrequency: "monthly" },
   { path: "/registry", priority: 0.8, changeFrequency: "weekly" },
   { path: "/use-cases", priority: 0.8, changeFrequency: "monthly" },
+  { path: "/compare", priority: 0.7, changeFrequency: "monthly" },
   { path: "/solutions/action-governance", priority: 0.7, changeFrequency: "monthly" },
   { path: "/solutions/memory-hardening", priority: 0.7, changeFrequency: "monthly" },
   { path: "/solutions/okta-plus-conduct", priority: 0.7, changeFrequency: "monthly" },
