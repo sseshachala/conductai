@@ -7,48 +7,21 @@ import { LifecyclePill } from "./LifecyclePill"
 import { ALL_COLUMNS, type ColumnKey } from "./common/GuardToolbar"
 import { formatTokensUsed } from "./common/formatTokens"
 import { AskLensLink } from "@/components/glens/AskLensLink"
-import { AttributionDetails, type FederationAttribution } from "@/components/federation/AttributionDetails"
-import { SessionUsageDetails, type SessionUsageEvidence } from "./SessionUsageDetails"
+import { AttributionDetails } from "@/components/federation/AttributionDetails"
+import { SessionUsageDetails } from "./SessionUsageDetails"
 import { SessionSpend } from "./SessionSpend"
-
-// Per-column grid weights — kept in one place so ActivityHeader and
-// ActivityRow can't drift. Mirrors the historical 8-column template.
-// Action cell inherits Input's former budget (1.2fr + 1.8fr = 3fr) so the
-// merged cell shows both tool-call name and input_summary comfortably.
-const COL_WEIGHTS: Record<ColumnKey, string> = {
-  time: "0.8fr",
-  actor: "1.4fr",
-  tool: "1fr",
-  call: "3fr",
-  decision: "0.9fr",
-  rule: "0.8fr",
-  blast: "0.9fr",
-  lifecycle: "0.9fr",
-  tokens: "1fr",
-}
-
-function buildGridTemplate(visible: readonly ColumnKey[]): string {
-  return visible.map(k => COL_WEIGHTS[k]).join(" ")
-}
-
-function resolveVisible(
-  visible: readonly ColumnKey[] | undefined,
-  compact: boolean,
-): { list: ColumnKey[]; set: Set<ColumnKey> } {
-  let list: ColumnKey[]
-  if (visible && visible.length > 0) {
-    // Preserve canonical column order regardless of the incoming array.
-    const inSet = new Set(visible)
-    list = ALL_COLUMNS.map(c => c.key).filter(k => inSet.has(k))
-    if (list.length === 0) list = ALL_COLUMNS.map(c => c.key)
-  } else if (compact) {
-    // Legacy compact mode: hide the Tool and Blast columns.
-    list = ALL_COLUMNS.map(c => c.key).filter(k => k !== "tool" && k !== "blast")
-  } else {
-    list = ALL_COLUMNS.map(c => c.key)
-  }
-  return { list, set: new Set(list) }
-}
+import { buildGridTemplate, resolveVisible } from "./activity-row/layout"
+import type { AuditEvent } from "./activity-row/types"
+import {
+  BlastRadiusBadge,
+  LocalRiskPill,
+  ProxyPill,
+  ToolBadge,
+  formatToolCall,
+  formatTs,
+  isProxyEvent,
+} from "./activity-row/badges"
+import { SignatureTamperRow } from "./activity-row/SignatureTamperRow"
 
 import { AgentAvatar } from "./AgentAvatar"
 
@@ -63,291 +36,19 @@ import { AgentAvatar } from "./AgentAvatar"
  */
 import Link from "next/link"
 
-export interface AuditEvent {
-  federation?: FederationAttribution | null
-  id: string
-  ts: string
-  user_email: string | null
-  ai_tool: string
-  tool_call: string | null
-  input_summary: string | null
-  decision: string                // "allowed" | "blocked" | "warned" | "approval" | "audited"
-  rule_id: string | null
-  source?: "hook" | "proxy" | "gateway" | "mcp" | "local_audit" | "brain_block" | null
-  provider?: string | null         // 'anthropic' | 'openai' | 'perplexity' (proxy only)
-  model?: string | null            // vendor model id (proxy only)
-  conductai_run_id?: string | null
-  conductai_workflow?: string | null
-  conductai_workflow_id?: string | null
-  goal_id?: string | null
-  goal_name?: string | null
-  blast_radius?: { files: number; symbols?: number; tier: string } | null
-  hostname?: string | null
-  hook_session_id?: string | null
-  session_id?: string | null
-  agent_identity_id?: string | null
-  entry_hash?: string | null
-  policy_hash?: string | null
-  // #1150 phase 2 — layered verdict envelope
-  evaluated_rules?: Array<{ rule_id: string | null; severity?: string; action?: string }> | null
-  defense_score?: number | null
-  routing_meta?: {
-    gateway_profile_id?: string | null
-    gateway_profile?: string | null
-    session_usage?: SessionUsageEvidence
-    tier_form?: string | null
-    resolved_model?: string | null
-    endpoint_provider?: string | null
-    reason?: string | null
-    resolution_source?: string | null
-  } | null
-  execution_status?: "success" | "error" | "timeout" | null
-  result_summary?: string | null
-  // Added by #1959 Phase 3 — durable-audit lifecycle fields projected by
-  // GET /guard/events. All optional so legacy single-phase rows stay
-  // valid; nullish values render as em dash in the Lifecycle column.
-  lifecycle_state?: "accepted" | "finalized" | "orphaned" | "expired" | null
-  accepted_at?: string | null
-  finalized_at?: string | null
-  lease_expires_at?: string | null
-  request_id?: string | null
-  // Server names them tokens_before / tokens_after (input / output).
-  // See _event_to_dict in apps/api/app/modules/guard/routers/events.py.
-  tokens_before?: number | null
-  tokens_after?: number | null
-}
-
-const TOOL_COLORS: Record<string, string> = {
-  "claude-code":     "var(--chart-claude)",
-  "claude_code":     "var(--chart-claude)",
-  "claude_chat":     "var(--chart-claude)",
-  "claude-chat":     "var(--chart-claude)",
-  "claude_desktop":  "var(--chart-claude)",
-  "claude-desktop":  "var(--chart-claude)",
-  "claude_work":     "var(--chart-claude)",
-  "claude-work":     "var(--chart-claude)",
-  "codex":           "var(--chart-codex)",
-  "codex_cli":       "var(--chart-codex)",
-  "codex_chat":      "var(--chart-codex)",
-  "cursor":          "#7c3aed",
-  "windsurf":        "#0284c7",
-  "copilot":         "#24292f",
-  "gemini":          "#ea580c",
-}
-
-const TOOL_LABELS: Record<string, string> = {
-  claude_code: "Claude Code", claude: "Claude",
-  claude_chat: "Claude.ai", claude_desktop: "Claude Desktop", claude_work: "Claude Work",
-  codex: "Codex", codex_cli: "Codex CLI", codex_chat: "Codex Chat",
-  cursor: "Cursor", windsurf: "Windsurf", copilot: "Copilot", gemini: "Gemini",
-}
-
-export function isProxyEvent(toolCall: string | null | undefined): boolean {
-  if (!toolCall) return false
-  return /^(anthropic|openai|perplexity)\//.test(toolCall)
-}
-
-export function ProxyPill() {
-  return (
-    <span
-      title="Routed through Conduct Guard Gateway"
-      style={{
-        fontSize: 9.5,
-        fontWeight: 700,
-        letterSpacing: 0.4,
-        padding: "1px 5px",
-        borderRadius: 3,
-        background: "var(--accent-weak)",
-        color: "var(--accent-text)",
-        textTransform: "uppercase",
-        whiteSpace: "nowrap",
-      }}
-    >
-      via gateway
-    </span>
-  )
-}
-
-export function LocalRiskPill() {
-  return (
-    <span
-      title="Pre-existing real API key detected on a dev's machine"
-      style={{
-        fontSize: 9.5,
-        fontWeight: 700,
-        letterSpacing: 0.4,
-        padding: "1px 5px",
-        borderRadius: 3,
-        background: "color-mix(in srgb, var(--err) 16%, transparent)",
-        color: "var(--err)",
-        textTransform: "uppercase",
-        whiteSpace: "nowrap",
-      }}
-    >
-      local risk
-    </span>
-  )
-}
-
-
-export function ToolBadge({ tool }: { tool: string }) {
-  const norm = tool.replace(/-/g, "_")
-  const color = TOOL_COLORS[tool] ?? TOOL_COLORS[norm] ?? "var(--text-3)"
-  const label = TOOL_LABELS[norm] ?? tool
-  return (
-    <span style={{
-      fontSize: 11,
-      fontWeight: 600,
-      color,
-      background: "var(--surface-3)",
-      borderRadius: 5,
-      padding: "2px 7px",
-    }}>
-      {label}
-    </span>
-  )
-}
-
+export type { AuditEvent } from "./activity-row/types"
+export {
+  BlastRadiusBadge,
+  LocalRiskPill,
+  ProxyPill,
+  ToolBadge,
+  formatToolCall,
+  formatTs,
+  isProxyEvent,
+} from "./activity-row/badges"
+export { SignatureTamperRow } from "./activity-row/SignatureTamperRow"
 export { DecisionBadge } from "./DecisionBadge"
 
-export function BlastRadiusBadge({ br }: { br: { tier: string; files: number } }) {
-  const colors: Record<string, { bg: string; text: string }> = {
-    LOW:      { bg: "var(--ok-bg)",   text: "var(--ok)"   },
-    MEDIUM:   { bg: "var(--warn-bg)", text: "var(--warn)"  },
-    HIGH:     { bg: "#fff3e0",        text: "#e65100"      },
-    CRITICAL: { bg: "var(--err-bg)",  text: "var(--err)"   },
-  }
-  const c = colors[br.tier] ?? colors.LOW
-  return (
-    <span style={{
-      fontSize: 10, fontWeight: 600, padding: "1px 7px", borderRadius: 20,
-      background: c.bg, color: c.text, whiteSpace: "nowrap",
-    }}>
-      {br.tier} · {br.files}f
-    </span>
-  )
-}
-
-export function formatTs(ts: string): string {
-  try {
-    const d = new Date(ts)
-    const pad = (n: number) => String(n).padStart(2, "0")
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
-  } catch {
-    return ts
-  }
-}
-
-const MCP_SERVER_LABELS: Record<string, string> = {
-  claude_ai_conduct_ai: "Conduct",
-  "agent-booster": "Booster",
-  plugin_vercel_vercel: "Vercel",
-}
-
-export function formatToolCall(call: string | null | undefined): string {
-  if (!call) return "—"
-  // Workflow auto-guard: __guard_<block_id> → block name
-  const guardM = call.match(/^__guard_(.+)$/)
-  if (guardM) return guardM[1]
-  // MCP tool: mcp__server__tool → Server · tool
-  const mcpM = call.match(/^mcp__([^_].+?)__(.+)$/)
-  if (!mcpM) return call
-  const [, server, tool] = mcpM
-  const label = MCP_SERVER_LABELS[server] ?? "MCP"
-  return `${label} · ${tool}`
-}
-
-/** Row + inline drill-down for policy_signature_invalid events. */
-export function SignatureTamperRow({ ev, isLast = false }: { ev: AuditEvent; isLast?: boolean }) {
-  const [open, setOpen] = useState(false)
-
-  let expected_signature = ""
-  let computed_signature = ""
-  let policy_version     = ""
-  let hostname           = ev.hostname ?? ""
-  try {
-    const payload = JSON.parse(ev.input_summary ?? "{}")
-    expected_signature = payload.expected_signature ?? ""
-    computed_signature = payload.computed_signature ?? ""
-    policy_version     = payload.policy_version ?? ""
-    if (!hostname) hostname = payload.hostname ?? ""
-  } catch { /* non-fatal */ }
-
-  const cols = "0.8fr 1.4fr 1fr 1.2fr 1.8fr 0.9fr 0.8fr 0.9fr"
-
-  return (
-    <>
-      <div
-        onClick={() => setOpen(o => !o)}
-        style={{
-          display: "grid",
-          gridTemplateColumns: cols,
-          gap: 12,
-          padding: "11px 18px",
-          borderBottom: isLast && !open ? "none" : "1px solid var(--border)",
-          alignItems: "center",
-          background: "var(--err-bg)",
-          cursor: "pointer",
-        }}
-        title="Click to see signature details"
-      >
-        <div className="mono" style={{ fontSize: 11.5, color: "var(--text-muted)" }} title={formatTs(ev.ts)}>{timeAgo(ev.ts)}</div>
-        <div className="mono" style={{ fontSize: 11.5, color: "var(--text-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          {ev.user_email ?? "—"}
-        </div>
-        <div><ToolBadge tool={ev.ai_tool} /></div>
-        <div className="mono" style={{ fontSize: 12, fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--err)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-            <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>
-          </svg>
-          tampered
-        </div>
-        <div className="mono" style={{ fontSize: 11.5, color: "var(--text-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          Policy file tampered on {hostname || "unknown"} ({ev.user_email ?? "—"})
-        </div>
-        <div><span className="sbadge err" style={{ textTransform: "capitalize" }}>blocked</span></div>
-        <div className="mono" style={{ fontSize: 11.5, color: "var(--err)" }}>policy_signature_invalid</div>
-        <div><span style={{ fontSize: 11.5, color: "var(--text-muted)" }}>—</span></div>
-      </div>
-
-      {open && (
-        <div style={{
-          padding: "14px 24px 18px",
-          borderBottom: isLast ? "none" : "1px solid var(--border)",
-          background: "color-mix(in srgb, var(--err-bg) 60%, var(--surface))",
-          fontSize: 12,
-        }}>
-          <div style={{ fontWeight: 700, color: "var(--err)", marginBottom: 10 }}>Signature mismatch detail</div>
-          <table style={{ borderCollapse: "collapse", width: "100%", fontFamily: "var(--font-mono, ui-monospace, monospace)", fontSize: 11.5 }}>
-            <tbody>
-              <tr>
-                <td style={{ color: "var(--text-muted)", paddingRight: 16, paddingBottom: 6, whiteSpace: "nowrap" }}>Expected signature</td>
-                <td style={{ color: "var(--text-2)", wordBreak: "break-all" }}>{expected_signature || "—"}</td>
-              </tr>
-              <tr>
-                <td style={{ color: "var(--text-muted)", paddingRight: 16, paddingBottom: 6, whiteSpace: "nowrap" }}>Computed signature</td>
-                <td style={{ color: "var(--text-2)", wordBreak: "break-all" }}>{computed_signature || "—"}</td>
-              </tr>
-              <tr>
-                <td style={{ color: "var(--text-muted)", paddingRight: 16, paddingBottom: 6, whiteSpace: "nowrap" }}>Policy version</td>
-                <td style={{ color: "var(--text-2)" }}>{policy_version || "—"}</td>
-              </tr>
-              <tr>
-                <td style={{ color: "var(--text-muted)", paddingRight: 16, whiteSpace: "nowrap" }}>Hostname</td>
-                <td style={{ color: "var(--text-2)" }}>{hostname || "—"}</td>
-              </tr>
-              <tr>
-                <td style={{ color: "var(--text-muted)", paddingRight: 16, whiteSpace: "nowrap" }}>Timestamp</td>
-                <td style={{ color: "var(--text-2)" }}>{formatTs(ev.ts)}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      )}
-    </>
-  )
-}
 
 
 export function ActivityRow({ ev, compact = false, isLast = false, visibleColumns, nowOffsetMs }: {
