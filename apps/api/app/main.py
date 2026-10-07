@@ -58,7 +58,7 @@ from app.routers.gateways import router as gateway_profiles_router
 from app.routers.gateway_profiles_v2 import router as gateway_profiles_v2_router
 from app.routers.report_layouts import router as report_layouts_router
 from app.routers.workspace_projects import router as workspace_projects_router, audit_router as audit_log_router, preferences_router as workspace_preferences_router, notifications_router
-from app.routers.runs import workspace_runs_router
+from app.routers.runs_workspace import workspace_runs_router
 from app.routers.rbac import router as rbac_router, me_router as me_rbac_router
 from app.routers.mcp import router as mcp_router
 from app.routers.mcp_servers import router as mcp_servers_router
