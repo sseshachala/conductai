@@ -30,6 +30,7 @@ const staticRoutes: Array<{ path: string; priority: number; changeFrequency: "da
   { path: "/tools/agent-booster", priority: 0.6, changeFrequency: "monthly" },
   { path: "/token-guardrails", priority: 0.5, changeFrequency: "monthly" },
   { path: "/blog", priority: 0.8, changeFrequency: "weekly" },
+  { path: "/blog/one-policy-five-agent-frameworks", priority: 0.6, changeFrequency: "monthly" },
   { path: "/blog/conduct-guard-discover", priority: 0.6, changeFrequency: "monthly" },
   { path: "/blog/rtk-how-we-cut-93-percent-of-cli-tokens", priority: 0.6, changeFrequency: "monthly" },
   { path: "/blog/stop-paying-opus-prices-for-haiku-work", priority: 0.6, changeFrequency: "monthly" },
