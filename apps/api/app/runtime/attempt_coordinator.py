@@ -570,6 +570,30 @@ def _is_retryable(exc: BaseException) -> bool:
     return bool(mro_names & _TRANSIENT_ERROR_CLASSES)
 
 
+def provider_error_message(response_bytes_b64: str | None, limit: int = 500) -> str | None:
+    """Human-readable provider error from a failed attempt's captured body.
+
+    Anthropic: ``{"type":"error","error":{"message":...}}``; OpenAI-shape:
+    ``{"error":{"message":...}}``. Falls back to the raw text, truncated.
+    """
+    if not response_bytes_b64:
+        return None
+    import base64
+    import json
+    try:
+        raw = base64.b64decode(response_bytes_b64).decode("utf-8", "replace").strip()
+    except ValueError:
+        return None
+    try:
+        err = json.loads(raw).get("error")
+        message = err.get("message") if isinstance(err, dict) else err
+        if isinstance(message, str) and message:
+            return message[:limit]
+    except (ValueError, AttributeError):
+        pass
+    return raw[:limit] or None
+
+
 def _upstream_status(exc: BaseException) -> int | None:
     """Provider HTTP status carried by the exception, if any (LiteLLM sets
     ``status_code``; httpx.HTTPStatusError carries ``response``)."""
@@ -588,4 +612,5 @@ __all__ = [
     "CoordinatorResult",
     "PolicyBlock",
     "UnsupportedTransport",
+    "provider_error_message",
 ]
