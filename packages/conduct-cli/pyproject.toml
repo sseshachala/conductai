@@ -47,4 +47,4 @@ where = ["src"]
 include = ["conduct_cli*"]
 
 [tool.setuptools.package-data]
-conduct_cli = ["paxel.py", "guard_policy.md", "tool_catalog.json"]
+conduct_cli = ["paxel/*.py", "guard_policy.md", "tool_catalog.json"]
