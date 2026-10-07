@@ -19,7 +19,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from conduct_cli import main as cli
+from conduct_cli.commands import config_io as cli
 
 
 UUID = "22222222-2222-2222-2222-222222222222"

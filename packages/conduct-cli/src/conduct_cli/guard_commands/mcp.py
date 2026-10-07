@@ -139,7 +139,7 @@ def _register_mcp(workspace_id: str, agent_token: str, api_url: str, dry_run: bo
     # Copilot CLI supports HTTP and stdio; use the authenticated central HTTP server.
     _patch_copilot_mcp(agent_token, api_url)
     if ADAPTERS["codex"].root().is_dir() and not disabled("codex"):
-        from conduct_cli.main import _write_codex_mcp_config
+        from conduct_cli.commands.mcp_setup import _write_codex_mcp_config
         if not _write_codex_mcp_config(api_url, agent_token):
             print("  Codex MCP config could not be updated; left unchanged")
 

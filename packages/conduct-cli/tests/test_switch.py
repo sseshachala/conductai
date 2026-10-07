@@ -40,7 +40,7 @@ def _fake_workspaces():
 
 def test_switch_list_prints_workspaces(tmp_path, capsys):
     """conduct switch with no arg exits 0 and prints workspace list."""
-    from conduct_cli import main as m
+    from conduct_cli.commands import workspace_switch as m
 
     config = {
         "server":    "https://api.conductai.ai",
@@ -54,6 +54,7 @@ def test_switch_list_prints_workspaces(tmp_path, capsys):
 
     with (
         patch.object(m, "CONFIG_PATH", cfg_path),
+        patch("conduct_cli.commands.shared.CONFIG_PATH", cfg_path),
         patch.object(m.api, "req", return_value=_fake_workspaces()),
     ):
         m.cmd_switch(args)
@@ -70,7 +71,7 @@ def test_switch_list_prints_workspaces(tmp_path, capsys):
 
 def test_switch_exact_name_updates_configs(tmp_path, capsys):
     """conduct switch 'Marketing' updates unified ~/.conduct/config.json and re-syncs guard policy."""
-    from conduct_cli import main as m
+    from conduct_cli.commands import workspace_switch as m
     from conduct_cli import guard as g
 
     cfg_path = tmp_path / "conduct" / "config.json"
@@ -93,6 +94,7 @@ def test_switch_exact_name_updates_configs(tmp_path, capsys):
 
     with (
         patch.object(m, "CONFIG_PATH", cfg_path),
+        patch("conduct_cli.commands.shared.CONFIG_PATH", cfg_path),
         patch("pathlib.Path.home", return_value=tmp_path),
         patch.object(m.api, "req", side_effect=_api_req),
         patch.object(m._guard, "cmd_guard_sync") as mock_guard_sync,
@@ -119,7 +121,7 @@ def test_switch_exact_name_updates_configs(tmp_path, capsys):
 
 def test_switch_ambiguous_exits_1(tmp_path, capsys):
     """Partial match that hits multiple workspaces prints error and exits 1."""
-    from conduct_cli import main as m
+    from conduct_cli.commands import workspace_switch as m
 
     cfg_path = tmp_path / "config.json"
     cfg_path.write_text(json.dumps({
@@ -133,6 +135,7 @@ def test_switch_ambiguous_exits_1(tmp_path, capsys):
 
     with (
         patch.object(m, "CONFIG_PATH", cfg_path),
+        patch("conduct_cli.commands.shared.CONFIG_PATH", cfg_path),
         patch.object(m.api, "req", return_value=_fake_workspaces()),
         pytest.raises(SystemExit) as exc,
     ):
@@ -149,7 +152,7 @@ def test_switch_ambiguous_exits_1(tmp_path, capsys):
 
 def test_switch_no_match_exits_1(tmp_path, capsys):
     """conduct switch 'Nonexistent' exits 1 and lists available workspaces."""
-    from conduct_cli import main as m
+    from conduct_cli.commands import workspace_switch as m
 
     cfg_path = tmp_path / "config.json"
     cfg_path.write_text(json.dumps({
@@ -162,6 +165,7 @@ def test_switch_no_match_exits_1(tmp_path, capsys):
 
     with (
         patch.object(m, "CONFIG_PATH", cfg_path),
+        patch("conduct_cli.commands.shared.CONFIG_PATH", cfg_path),
         patch.object(m.api, "req", return_value=_fake_workspaces()),
         pytest.raises(SystemExit) as exc,
     ):
@@ -178,7 +182,7 @@ def test_switch_no_match_exits_1(tmp_path, capsys):
 
 def test_whoami_prints_all_sections(tmp_path, capsys):
     """conduct whoami prints workspace, server, api_key, Guard, and Booster lines."""
-    from conduct_cli import main as m
+    from conduct_cli.commands import workspace_switch as m
 
     cfg_path = tmp_path / "conduct" / "config.json"
     cfg_path.parent.mkdir(parents=True)
@@ -201,6 +205,7 @@ def test_whoami_prints_all_sections(tmp_path, capsys):
 
     with (
         patch.object(m, "CONFIG_PATH", cfg_path),
+        patch("conduct_cli.commands.shared.CONFIG_PATH", cfg_path),
         patch("pathlib.Path.home", return_value=tmp_path),
         patch.object(m.api, "req", return_value=_fake_workspaces()),
         patch("conduct_cli.identity.current_identity", return_value={"id": "agent-identity-test", "name": "CLI Agent"}),
@@ -225,7 +230,7 @@ def test_whoami_prints_all_sections(tmp_path, capsys):
 
 def test_switch_accepts_api_url_key(tmp_path, capsys):
     """conduct switch works when config was written by `conduct login` (api_url only)."""
-    from conduct_cli import main as m
+    from conduct_cli.commands import workspace_switch as m
 
     cfg_path = tmp_path / "config.json"
     cfg_path.write_text(json.dumps({
@@ -238,6 +243,7 @@ def test_switch_accepts_api_url_key(tmp_path, capsys):
 
     with (
         patch.object(m, "CONFIG_PATH", cfg_path),
+        patch("conduct_cli.commands.shared.CONFIG_PATH", cfg_path),
         patch.object(m.api, "req", return_value=_fake_workspaces()),
     ):
         m.cmd_switch(args)
@@ -254,7 +260,7 @@ def test_switch_accepts_api_url_key(tmp_path, capsys):
 # ---------------------------------------------------------------------------
 
 def test_login_shows_name_and_nudges_when_multiple_workspaces(tmp_path, capsys):
-    from conduct_cli import main as m
+    from conduct_cli.commands import auth as m
 
     cfg_path = tmp_path / "config.json"
     cfg_path.write_text(json.dumps({}))
@@ -267,6 +273,7 @@ def test_login_shows_name_and_nudges_when_multiple_workspaces(tmp_path, capsys):
 
     with (
         patch.object(m, "CONFIG_PATH", cfg_path),
+        patch("conduct_cli.commands.shared.CONFIG_PATH", cfg_path),
         patch.object(m, "_web_login_flow", return_value=fake_result),
         patch.object(m.api, "req", return_value=_fake_workspaces()),
         patch("conduct_cli.guard.cmd_guard_sync", return_value=None),
@@ -283,7 +290,7 @@ def test_login_shows_name_and_nudges_when_multiple_workspaces(tmp_path, capsys):
 
 
 def test_login_omits_nudge_when_single_workspace(tmp_path, capsys):
-    from conduct_cli import main as m
+    from conduct_cli.commands import auth as m
 
     cfg_path = tmp_path / "config.json"
     cfg_path.write_text(json.dumps({}))
@@ -297,6 +304,7 @@ def test_login_omits_nudge_when_single_workspace(tmp_path, capsys):
 
     with (
         patch.object(m, "CONFIG_PATH", cfg_path),
+        patch("conduct_cli.commands.shared.CONFIG_PATH", cfg_path),
         patch.object(m, "_web_login_flow", return_value=fake_result),
         patch.object(m.api, "req", return_value=single_ws),
         patch("conduct_cli.guard.cmd_guard_sync", return_value=None),
@@ -316,7 +324,7 @@ def test_login_omits_nudge_when_single_workspace(tmp_path, capsys):
 # ---------------------------------------------------------------------------
 
 def test_switch_remints_agent_token_via_endpoint(tmp_path, monkeypatch, capsys):
-    from conduct_cli import main as m
+    from conduct_cli.commands import workspace_switch as m
     from conduct_cli import guard as g
 
     cfg_path = tmp_path / "conduct" / "config.json"
@@ -346,6 +354,7 @@ def test_switch_remints_agent_token_via_endpoint(tmp_path, monkeypatch, capsys):
 
     with (
         patch.object(m, "CONFIG_PATH", cfg_path),
+        patch("conduct_cli.commands.shared.CONFIG_PATH", cfg_path),
         patch("pathlib.Path.home", return_value=tmp_path),
         patch.object(m.api, "req", side_effect=_api_req),
         patch.object(_guard_shared, "_req", return_value={"version": "1", "rules": []}),
@@ -363,7 +372,7 @@ def test_switch_remints_agent_token_via_endpoint(tmp_path, monkeypatch, capsys):
 def test_switch_hard_exits_when_remint_fails(tmp_path, monkeypatch, capsys):
     """If the switch-workspace endpoint fails, hard-exit — a stale token pointing at the
     wrong workspace is worse than making the user re-login."""
-    from conduct_cli import main as m
+    from conduct_cli.commands import workspace_switch as m
     from conduct_cli import guard as g
 
     cfg_path = tmp_path / "conduct" / "config.json"
@@ -383,6 +392,7 @@ def test_switch_hard_exits_when_remint_fails(tmp_path, monkeypatch, capsys):
 
     with (
         patch.object(m, "CONFIG_PATH", cfg_path),
+        patch("conduct_cli.commands.shared.CONFIG_PATH", cfg_path),
         patch("pathlib.Path.home", return_value=tmp_path),
         patch.object(m.api, "req", side_effect=_api_req),
         patch.object(_guard_shared, "_req", return_value={"version": "1", "rules": []}),
@@ -406,7 +416,7 @@ def test_switch_hard_exits_when_remint_fails(tmp_path, monkeypatch, capsys):
 # ---------------------------------------------------------------------------
 
 def test_switch_fires_tool_coverage(tmp_path, monkeypatch, capsys):
-    from conduct_cli import main as m
+    from conduct_cli.commands import workspace_switch as m
     from conduct_cli import guard as g
 
     cfg_path = tmp_path / "conduct" / "config.json"
@@ -427,6 +437,7 @@ def test_switch_fires_tool_coverage(tmp_path, monkeypatch, capsys):
 
     with (
         patch.object(m, "CONFIG_PATH", cfg_path),
+        patch("conduct_cli.commands.shared.CONFIG_PATH", cfg_path),
         patch("pathlib.Path.home", return_value=tmp_path),
         patch.object(m.api, "req", side_effect=_api_req),
         patch.object(g, "cmd_guard_sync") as sync,
@@ -445,7 +456,7 @@ def test_switch_fires_tool_coverage(tmp_path, monkeypatch, capsys):
 # ---------------------------------------------------------------------------
 
 def test_login_preserves_prior_workspace(tmp_path, capsys):
-    from conduct_cli import main as m
+    from conduct_cli.commands import auth as m
 
     cfg_path = tmp_path / "config.json"
     # Prior state: user was on Marketing (via a previous switch)
@@ -481,6 +492,7 @@ def test_login_preserves_prior_workspace(tmp_path, capsys):
 
     with (
         patch.object(m, "CONFIG_PATH", cfg_path),
+        patch("conduct_cli.commands.shared.CONFIG_PATH", cfg_path),
         patch.object(m, "_web_login_flow", return_value=fake_login_result),
         patch.object(m.api, "req", side_effect=_api_req),
         patch("conduct_cli.guard.cmd_guard_sync", return_value=None),

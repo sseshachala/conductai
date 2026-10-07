@@ -117,7 +117,7 @@ def test_sync_targets_match_discovery_and_preserve_unowned_entries(isolated, mon
 
 
 def test_codex_mcp_uses_custom_home_without_overwriting_invalid_config(isolated, monkeypatch):
-    from conduct_cli.main import _write_codex_mcp_config
+    from conduct_cli.commands.mcp_setup import _write_codex_mcp_config
     root = isolated / "custom-codex"
     root.mkdir()
     monkeypatch.setenv("CODEX_HOME", str(root))

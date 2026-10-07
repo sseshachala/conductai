@@ -69,8 +69,8 @@ def _load_cli_main():
     cli_src = _pl.Path(__file__).parents[3] / "packages/conduct-cli/src"
     if str(cli_src) not in _sys.path:
         _sys.path.insert(0, str(cli_src))
-    src = cli_src / "conduct_cli/main.py"
-    spec = _ilu.spec_from_file_location("conduct_cli.main", src)
+    src = cli_src / "conduct_cli/commands/run.py"
+    spec = _ilu.spec_from_file_location("conduct_cli.commands.run", src)
     mod = _ilu.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod

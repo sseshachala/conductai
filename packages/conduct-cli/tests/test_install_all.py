@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-from conduct_cli import main as cli
+from conduct_cli.commands import playbooks as cli
 
 
 def test_install_all_forwards_authenticated_token_to_every_install(monkeypatch):

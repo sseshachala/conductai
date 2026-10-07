@@ -9,12 +9,13 @@ from unittest.mock import MagicMock, call, patch
 
 import pytest
 
-from conduct_cli.main import _exchange_clerk_token, _refresh_agent_token
+from conduct_cli.commands.auth import _exchange_clerk_token, _refresh_agent_token
 
 
 @pytest.fixture(autouse=True)
 def isolated_credential_lock(tmp_path, monkeypatch):
-    monkeypatch.setattr("conduct_cli.main.CONFIG_PATH", tmp_path / "config.json")
+    monkeypatch.setattr("conduct_cli.commands.shared.CONFIG_PATH", tmp_path / "config.json")
+    monkeypatch.setattr("conduct_cli.commands.auth.CONFIG_PATH", tmp_path / "config.json")
 
 
 # ---------------------------------------------------------------------------
@@ -124,12 +125,12 @@ def test_exchange_form_body_fields():
 # ---------------------------------------------------------------------------
 
 def test_refresh_returns_false_when_no_refresh_token():
-    with patch("conduct_cli.main._load_config", return_value={}):
+    with patch("conduct_cli.commands.auth._load_config", return_value={}):
         assert _refresh_agent_token() is False
 
 
 def test_refresh_returns_false_when_refresh_token_empty_string():
-    with patch("conduct_cli.main._load_config", return_value={"refresh_token": ""}):
+    with patch("conduct_cli.commands.auth._load_config", return_value={"refresh_token": ""}):
         assert _refresh_agent_token() is False
 
 
@@ -140,8 +141,8 @@ def test_refresh_returns_true_on_success():
         "refresh_token": "ref_new",
         "workspace_id": "ws_1",
     }
-    with patch("conduct_cli.main._load_config", return_value=cfg), \
-         patch("conduct_cli.main._atomic_write") as mock_write, \
+    with patch("conduct_cli.commands.auth._load_config", return_value=cfg), \
+         patch("conduct_cli.commands.auth._atomic_write") as mock_write, \
          patch("urllib.request.urlopen", return_value=_make_urlopen_response(response_payload)):
         result = _refresh_agent_token()
 
@@ -160,8 +161,8 @@ def test_refresh_updates_config_fields():
     def capture_write(path, data):
         written_data.update(data)
 
-    with patch("conduct_cli.main._load_config", return_value=cfg), \
-         patch("conduct_cli.main._atomic_write", side_effect=capture_write), \
+    with patch("conduct_cli.commands.auth._load_config", return_value=cfg), \
+         patch("conduct_cli.commands.auth._atomic_write", side_effect=capture_write), \
          patch("urllib.request.urlopen", return_value=_make_urlopen_response(response_payload)):
         _refresh_agent_token()
 
@@ -174,7 +175,7 @@ def test_refresh_updates_config_fields():
 
 def test_refresh_returns_false_on_network_error():
     cfg = {"refresh_token": "ref_old", "api_url": "https://api.example.com"}
-    with patch("conduct_cli.main._load_config", return_value=cfg), \
+    with patch("conduct_cli.commands.auth._load_config", return_value=cfg), \
          patch("urllib.request.urlopen", side_effect=OSError("connection refused")):
         assert _refresh_agent_token() is False
 
@@ -185,7 +186,7 @@ def test_refresh_returns_false_on_bad_json_response():
     bad_resp.read.return_value = b"not json {"
     bad_resp.__enter__ = lambda s: s
     bad_resp.__exit__ = MagicMock(return_value=False)
-    with patch("conduct_cli.main._load_config", return_value=cfg), \
+    with patch("conduct_cli.commands.auth._load_config", return_value=cfg), \
          patch("urllib.request.urlopen", return_value=bad_resp):
         assert _refresh_agent_token() is False
 
@@ -206,8 +207,8 @@ def test_refresh_posts_to_correct_url():
         captured_req["headers"] = dict(req.headers)
         return _make_urlopen_response(response_payload)
 
-    with patch("conduct_cli.main._load_config", return_value=cfg), \
-         patch("conduct_cli.main._atomic_write"), \
+    with patch("conduct_cli.commands.auth._load_config", return_value=cfg), \
+         patch("conduct_cli.commands.auth._atomic_write"), \
          patch("urllib.request.urlopen", side_effect=fake_urlopen):
         _refresh_agent_token()
 
@@ -231,8 +232,8 @@ def test_refresh_uses_default_api_url_when_not_in_config():
         captured_req["url"] = req.full_url
         return _make_urlopen_response(response_payload)
 
-    with patch("conduct_cli.main._load_config", return_value=cfg), \
-         patch("conduct_cli.main._atomic_write"), \
+    with patch("conduct_cli.commands.auth._load_config", return_value=cfg), \
+         patch("conduct_cli.commands.auth._atomic_write"), \
          patch("urllib.request.urlopen", side_effect=fake_urlopen):
         _refresh_agent_token()
 
