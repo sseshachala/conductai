@@ -303,6 +303,7 @@ function MarketingFooter() {
         ["Evidence", "/evidence"],
         ["MCP", "/mcp-gateway"],
         ["Security", "/security"],
+        ["Compare", "/compare"],
         ["Pricing", "/pricing"],
       ] as [string, string][],
     },

@@ -32,7 +32,7 @@ conduct install-all --project DevOps --repo owner/repo
 conduct agents
 
 # Run a test trigger on any agent
-conduct test "PR Reviewer"
+conduct test "Incident Responder"
 conduct test --all
 ```
 
@@ -48,7 +48,7 @@ conduct test --all
 | `conduct playbooks` | Browse available playbooks |
 | `conduct playbooks <slug>` | Show required inputs for a playbook |
 | `conduct install <slug>` | Install one agent from a playbook |
-| `conduct install-all` | Install all 12 playbooks into a project |
+| `conduct install-all` | Install all marketplace playbooks into a project |
 | `conduct agents` | List all installed agents |
 | `conduct test <name>` | Fire test trigger on an agent and stream results |
 | `conduct test --all` | Test every playbook-based agent |
@@ -64,7 +64,7 @@ conduct login --server https://api.conductai.ai --token cond_agt_xxx --workspace
 ## Install all agents
 
 ```bash
-# Installs all 12 playbooks into a project, pointed at your GitHub repo
+# Installs all marketplace playbooks into a project, pointed at your GitHub repo
 conduct install-all --project DevOps --repo myorg/myrepo
 ```
 

@@ -1,6 +1,6 @@
 # Conduct Documentation
 
-Conduct is a YAML playbook platform that turns AI agents into reusable team automations — with a FastAPI backend, Next.js canvas UI, Redis worker, cross-provider LLM proxy (Guard), and 22+ pre-built playbooks covering GitHub, Slack, CI/CD, and incident response.
+Conduct governs AI agents at runtime. Guard enforces one policy across every agent (LLM gateway, MCP, CLI hooks); workflows are the governed response layer: playbooks that respond to Guard events and alerts with human-approved actions and an audit trail. Stack: FastAPI backend, Next.js UI, Redis worker, 20 playbooks.
 
 Docs are organized **by goal, not by file shape**. Pick your path below.
 
@@ -37,7 +37,7 @@ Docs are organized **by goal, not by file shape**. Pick your path below.
 
 New to Conduct. Get from zero to a working install.
 
-- [Start](start.md) — install `conduct-cli`, log in, install 30+ playbooks, first agent run, first `playbook.yaml`
+- [Start](start.md) — install `conduct-cli`, log in, install a playbook, first agent run, first `playbook.yaml`
 - [Developer setup](modules/conductguard/developer_setup.md) — local dev environment, dependencies, first run against the Conduct codebase
 - [ConductGuard Quickstart](modules/conductguard/QUICKSTART.md) — install Guard, sync policy, first governed AI tool call
 
@@ -136,7 +136,7 @@ Third-party systems Conduct plugs into.
 
 ## Examples
 
-- [Examples](examples.md) — 35 pre-built playbooks grouped by what they do: code review, security scan + auto-fix, dependencies, incidents, releases, AI governance, autopilot, testing, docs, NetOps.
+- [Examples](examples.md): 20 playbooks grouped by what they do: incident response, governed production changes, AI risk monitoring, autopilot fixes, Guard demos.
 
 ---
 

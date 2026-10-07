@@ -126,7 +126,7 @@ Every request runs through Guard (policy, budget, audit) before it reaches the u
 
 **15 compliance packs out of the box:** OWASP, SOC 2 CC7.3, HIPAA §164.312, PCI DSS 4.0, EU AI Act Art. 15/16, NIST AI RMF, ISO 42001, plus Python, Node, and Terraform.
 
-**35 pre-built playbooks:** issue-to-PR, code review, incident response, prod deploy gate, CI/CD triage, security scanner triage, Slack digest. One YAML file each. Edit and run.
+**20 governed-response playbooks:** incident response, approved production changes (release gating, Terraform, network config), AI-risk monitoring, autopilot fixes, and Guard demos. One YAML file each. Edit and run.
 
 ---
 
@@ -171,7 +171,7 @@ Full docs live under [`docs/`](./docs/README.md) — organized by goal (Start ·
 Quick paths:
 
 - **New to Conduct** → [Start](./docs/start.md)
-- **See what's possible** → [Examples — 35 playbooks](./docs/examples.md)
+- **See what's possible** → [Examples: 20 playbooks](./docs/examples.md)
 - **Write a playbook** → [Block reference](./docs/reference/blocks.md)
 - **Wire into CI, MCP, tools** → [Automate](./docs/automate.md)
 - **Governance & compliance** → [Guard rule packs — 183 rules](./docs/reference/guard-rule-packs.md)

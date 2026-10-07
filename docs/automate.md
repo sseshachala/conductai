@@ -59,23 +59,12 @@ Writes MCP server registration into your AI client's config files (`~/.claude/`,
 - name: Install Conduct CLI
   run: pip install conduct-cli
 
-- name: Trigger release-readiness agent
+- name: Trigger release-gating agent
   env:
     CONDUCT_TOKEN: ${{ secrets.CONDUCT_TOKEN }}
     CONDUCT_WORKSPACE: ${{ secrets.CONDUCT_WORKSPACE }}
-  run: conduct test "Release Readiness Reviewer" --json
+  run: conduct test "Release Gating" --json
 ```
-
-**Emit findings from any scanner into Conduct's security loop:**
-
-```bash
-conduct emit finding \
-  --severity critical \
-  --type hardcoded_secret \
-  --description "AWS key at src/config.py:42"
-```
-
-Findings flow into the [Security Loop](../apps/api/playbooks/security_loop.yaml) playbook for auto-triage.
 
 ---
 

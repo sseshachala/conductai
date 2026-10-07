@@ -113,7 +113,7 @@ function LayerDiagramSection() {
               </div>
               <div className="flex items-center gap-2 text-stone-300">
                 <Shield className="w-4 h-4 text-indigo-400 shrink-0" />
-                <span>Security Loop <span className="text-stone-500">— scans every PR</span></span>
+                <span>Approvals <span className="text-stone-500">— a human signs off on risky actions</span></span>
               </div>
               <div className="flex items-center gap-2 text-stone-300">
                 <Shield className="w-4 h-4 text-indigo-400 shrink-0" />
@@ -574,7 +574,7 @@ function Layer2BridgeSection() {
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-10 text-left">
           {[
             { label: "Guard", desc: "Intercepts every AI tool call. Checks it against your standards before it runs. Blocks, warns, or allows — with a timestamped log." },
-            { label: "Security Loop", desc: "Scans every PR for OWASP Top 10, secrets, and your custom rules. Critical findings trigger Autopilot to fix them." },
+            { label: "Approvals", desc: "Consequential actions pause for a named human to approve that exact action. The approval is part of the audit record." },
             { label: "Audit trail", desc: "Every AI action, every policy decision, every block. Attributable to agent, user, and workflow. Exportable for compliance." },
           ].map((item) => (
             <div key={item.label} className="rounded-xl border border-stone-800 bg-stone-900 p-5">

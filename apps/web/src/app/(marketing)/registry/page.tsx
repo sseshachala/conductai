@@ -6,7 +6,7 @@ import { CompliancePackCard } from "@/components/marketing/facelift/CompliancePa
 export const metadata = {
   title: "Registry — Conduct",
   description:
-    "39 shipped playbooks for AI agent teams. Code review, security, incident response, CI/CD, and more — each one combining brain, guard, approval, and evidence blocks.",
+    "20 governed-response playbooks: incident response, approved production changes, AI-risk monitoring, and autopilot fixes. Each one combines brain, guard, approval, and evidence blocks.",
 }
 
 interface PlaybookEntry {
@@ -17,64 +17,38 @@ interface PlaybookEntry {
 }
 
 const PLAYBOOKS: PlaybookEntry[] = [
-  // Code Review
-  { name: "pr-reviewer", category: "code-review", description: "Reviews every pull request with an AI brain block; Guard checks before posting comments.", blocks: ["trigger", "brain", "guard", "output"] },
-  { name: "copilot-reviewer", category: "code-review", description: "Runs a structured review pass on Copilot-suggested changes before merge.", blocks: ["trigger", "brain", "guard", "output"] },
-  { name: "bulk-pr-reviewer", category: "code-review", description: "Batch-reviews open PRs in a repository overnight.", blocks: ["trigger", "brain", "guard", "output"] },
   { name: "terraform-reviewer", category: "code-review", description: "Static analysis plus Guard policy check on every Terraform plan before apply.", blocks: ["trigger", "brain", "guard", "approval", "output"] },
-  // CI/CD
   { name: "release-gating", category: "ci-cd", description: "Holds a release until Guard clears all policy checks and a human approves.", blocks: ["trigger", "brain", "guard", "approval", "output"] },
-  { name: "release-readiness", category: "ci-cd", description: "Evaluates tests, coverage, and Guard signal before promoting to production.", blocks: ["trigger", "brain", "guard", "output"] },
   { name: "dependency-updater", category: "ci-cd", description: "Opens PRs for outdated dependencies; Guard blocks known-vulnerable versions.", blocks: ["trigger", "tool", "guard", "output"] },
-  { name: "smoke-test", category: "ci-cd", description: "Runs a post-deploy smoke suite; Guard enforces test-pass policy before marking green.", blocks: ["trigger", "tool", "guard", "output"] },
   { name: "multi-env-smoke-test", category: "ci-cd", description: "Fans smoke tests across staging and production in parallel.", blocks: ["trigger", "tool", "guard", "output"] },
   { name: "security-patch-updater", category: "ci-cd", description: "Automatically applies security patches and routes high-severity changes to human approval.", blocks: ["trigger", "tool", "guard", "approval", "output"] },
-  // Security
-  { name: "security-scanner", category: "security", description: "Scans codebase for secrets, misconfigurations, and known CVEs. Guard blocks on critical findings.", blocks: ["trigger", "tool", "guard", "output"] },
-  { name: "security-loop", category: "security", description: "Continuous security loop that re-scans on every commit and opens issues for new findings.", blocks: ["trigger", "tool", "guard", "output"] },
-  { name: "security-autopilot-fix", category: "security", description: "Generates and opens fix PRs for security findings; Guard gates the push step.", blocks: ["trigger", "brain", "guard", "approval", "output"] },
-  { name: "threat-modeler", category: "security", description: "Runs a threat-modelling pass against architecture docs; produces a findings report.", blocks: ["trigger", "brain", "guard", "output"] },
   { name: "ai-risk-assessment", category: "security", description: "Assesses AI-generated code for risk patterns mapped to the OWASP Agentic Top 10.", blocks: ["trigger", "brain", "guard", "output"] },
-  { name: "dependency-audit", category: "security", description: "Audits transitive dependencies for licence conflicts and known vulnerabilities.", blocks: ["trigger", "tool", "guard", "output"] },
-  // Incident
   { name: "incident-responder", category: "incident", description: "Triages on-call alerts, collects context, and pages the right owner. Guard checks before any action.", blocks: ["trigger", "brain", "guard", "approval", "output"] },
   { name: "postmortem-drafter", category: "incident", description: "Drafts a structured postmortem from incident timeline and Slack threads.", blocks: ["trigger", "brain", "guard", "output"] },
   { name: "ai-incident-drill", category: "incident", description: "Runs a synthetic incident scenario to test your response runbook.", blocks: ["trigger", "brain", "guard", "output"] },
-  // Monitoring
   { name: "network-diagnosis-agent", category: "monitoring", description: "Diagnoses network degradation by correlating logs and metrics across infrastructure.", blocks: ["trigger", "tool", "brain", "guard", "output"] },
-  { name: "docs-drift-detector", category: "monitoring", description: "Detects when documentation drifts from code and opens issues for the delta.", blocks: ["trigger", "brain", "guard", "output"] },
   { name: "codebase-guard-monitor", category: "monitoring", description: "Monitors Guard activity across your codebase; surfaces policy-coverage gaps.", blocks: ["trigger", "tool", "guard", "output"] },
   { name: "ai-drift-detector", category: "monitoring", description: "Detects when AI-generated code diverges from established team patterns.", blocks: ["trigger", "brain", "guard", "output"] },
   { name: "ai-output-auditor", category: "monitoring", description: "Audits a sample of AI completions for quality, accuracy, and policy compliance.", blocks: ["trigger", "brain", "guard", "output"] },
-  { name: "multi-repo-scanner", category: "monitoring", description: "Scans across all repositories in an organisation for a given pattern or risk.", blocks: ["trigger", "tool", "guard", "output"] },
-  // Onboarding
-  { name: "acme-onboarding-e2e", category: "onboarding", description: "End-to-end onboarding flow for new workspace members, including Guard policy assignment.", blocks: ["trigger", "brain", "guard", "output"] },
   { name: "self-driving-network-approval-demo", category: "onboarding", description: "Demo playbook: network change requires human approval via Slack before Guard allows.", blocks: ["trigger", "brain", "guard", "approval", "output"] },
   { name: "base-autopilot", category: "onboarding", description: "Reference autopilot skeleton — extend with domain-specific brain and guard blocks.", blocks: ["trigger", "brain", "guard", "output"] },
-  { name: "release-notes", category: "onboarding", description: "Generates release notes from merged PRs and posts to Slack.", blocks: ["trigger", "brain", "output"] },
-  { name: "ci-notify", category: "onboarding", description: "Posts CI pass/fail status to Slack with Guard-sourced context.", blocks: ["trigger", "tool", "output"] },
-  // Issue management
-  { name: "issue-triage", category: "code-review", description: "Triages incoming GitHub issues: labels, assignee, and priority suggestions.", blocks: ["trigger", "brain", "guard", "output"] },
-  { name: "oss-issue-sweep", category: "code-review", description: "Sweeps open issues on public repos and surfaces stale, duplicate, or blocked ones.", blocks: ["trigger", "brain", "output"] },
-  // Testing
-  { name: "flaky-test-detective", category: "ci-cd", description: "Identifies and quarantines flaky tests; Guard blocks merges until they are resolved.", blocks: ["trigger", "tool", "brain", "guard", "output"] },
-  { name: "bughunter-active-scan", category: "security", description: "Active scan of a deployed service for common vulnerability classes.", blocks: ["trigger", "tool", "guard", "output"] },
-  // Autopilot reference
   { name: "autopilot", category: "onboarding", description: "Full autopilot reference — brain-guided loop with Guard on every action and approval gates.", blocks: ["trigger", "brain", "guard", "approval", "output"] },
   { name: "autopilot-approved", category: "onboarding", description: "Autopilot variant where every action requires explicit human approval.", blocks: ["trigger", "brain", "guard", "approval", "output"] },
   { name: "thirdparty-autopilot-fix", category: "security", description: "Autopilot that triages and fixes issues surfaced by third-party security scanners.", blocks: ["trigger", "brain", "guard", "approval", "output"] },
+  { name: "compromised-support-agent", category: "security", description: "Demo: a support agent hit by prompt injection tries credential harvest and exfil. Guard blocks each attempt; the agent falls back to a safe escalation.", blocks: ["trigger", "brain", "guard", "output"] },
+  { name: "nemo-guardrails-demo", category: "security", description: "Demo: a NeMo-style input rail calls Guard, which blocks a prompt-injection payload with a rule ID and writes a hash-chained audit row.", blocks: ["trigger", "guard", "output"] },
 ]
 
 const CATEGORY_LABELS: Record<PlaybookCategory, string> = {
-  "code-review": "Code Review & Issues",
-  "ci-cd": "CI / CD & Testing",
+  "code-review": "Change Review",
+  "ci-cd": "Governed Changes",
   security: "Security",
   incident: "Incident Response",
   monitoring: "Monitoring & Observability",
-  onboarding: "Onboarding & Reference",
+  onboarding: "Autopilot & Demos",
 }
 
-const CATEGORIES: PlaybookCategory[] = ["code-review", "ci-cd", "security", "incident", "monitoring", "onboarding"]
+const CATEGORIES: PlaybookCategory[] = ["incident", "security", "ci-cd", "monitoring", "code-review", "onboarding"]
 
 export default function RegistryPage() {
   return (
@@ -90,7 +64,7 @@ export default function RegistryPage() {
             Browse the Conduct Registry.
           </h1>
           <p className="text-lg text-stone-500 leading-relaxed mb-10">
-            Install a pack. It runs under Guard enforcement. Every playbook combines a brain block for
+            Playbooks are how Guard responds: incident response, approved production changes, and remediation. Every playbook combines a brain block for
             reasoning, a guard block for policy enforcement, approval gates for consequential actions, and
             hash-chained evidence for every decision.
           </p>
@@ -147,7 +121,7 @@ export default function RegistryPage() {
         {/* Stats strip */}
         <section className="mb-16 border border-stone-200 rounded-2xl bg-stone-50 grid grid-cols-2 sm:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x divide-stone-200">
           {[
-            { n: "39", label: "Shipped playbooks" },
+            { n: "20", label: "Shipped playbooks" },
             { n: "15", label: "Compliance packs" },
             { n: "6", label: "BYO gateway adapters" },
             { n: "3", label: "Enforcement surfaces" },
@@ -164,7 +138,7 @@ export default function RegistryPage() {
           <h2 className="text-2xl font-bold text-stone-900 mb-3">What every playbook is made of</h2>
           <p className="text-stone-500 text-sm leading-relaxed mb-8 max-w-2xl">
             Playbooks are not scripts. They are structured compositions of typed blocks. The same block types
-            appear across all 35 playbooks — which means policy, approval, and evidence are never bolt-ons.
+            appear across every playbook — which means policy, approval, and evidence are never bolt-ons.
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {[

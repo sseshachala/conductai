@@ -124,7 +124,6 @@ blocks:
 |---|---|---|
 | `autopilot` | autopilot.yaml | GitHub issue → PR fix |
 | `ai-risk-assessment` | ai-risk-assessment.yaml | Repo security scan |
-| `copilot-reviewer` | copilot-reviewer.yaml | PR code review |
 | `incident-responder` | incident-responder.yaml | PagerDuty → fix |
 | `thirdparty-autopilot-fix` | thirdparty-autopilot-fix.yaml | OSS upstream PRs |
 
