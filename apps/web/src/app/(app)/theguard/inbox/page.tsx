@@ -4,15 +4,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import AppShell from "@/components/AppShell"
 import { GuardShell } from "@/components/guard/GuardShell"
 import {
-  GuardBadge,
   GuardFilterBar,
   GuardPageHeader,
-  GuardSectionHeader,
-  timeAgo,
   type FilterPill,
 } from "@/components/guard/common"
 import { useAuthFetch } from "@/hooks/useAuthFetch"
-import { AgentAvatar } from "@/components/guard/AgentAvatar"
 import { guard, guardInbox } from "@/lib/api"
 import { API } from "@/lib/api/client"
 import type {
@@ -23,34 +19,8 @@ import type {
   InboxSource,
   ResolvedReason,
 } from "@/lib/api"
-
-// ── Awaiting Approval — pending HITL requests from guard_approval_requests
-// Reuses the existing /guard/approvals API (perm: platform.approvals.decide,
-// enforced server-side — inbox resolve perms are NOT reused). Each row is
-// individually actionable; no dedup / alert merge (per reviewer P2).
-interface PendingApproval {
-  id: string
-  rule_id: string
-  rule_pack: string | null
-  rule_message: string | null
-  tool_name: string | null
-  requester_email: string | null
-  source_run_id: string | null
-  created_at: string
-  timeout_at: string
-  approval_type: string
-}
-interface ApprovalListOut {
-  workspace_id: string
-  items: PendingApproval[]
-}
-
-const REASON_LABEL: Record<ResolvedReason, string> = {
-  expected:         "Expected — working as intended",
-  escalated:        "Escalated to security team",
-  exception_added:  "Exception added to policy",
-  false_positive:   "False positive — rule too broad",
-}
+import { AwaitingApprovals, type PendingApproval, type ApprovalListOut } from "./_components/AwaitingApprovals"
+import { InboxRowList } from "./_components/InboxRowList"
 
 // ─── Page ─────────────────────────────────────────────────────────────────
 
@@ -484,213 +454,18 @@ export default function GuardInboxPage() {
             Server-side auth via platform.approvals.decide — the inbox
             resolve permission is NOT reused. */}
         {(approvals.length > 0 || approvalsError) && (
-          <div style={{ marginBottom: 20 }}>
-            <GuardSectionHeader title="Awaiting approval" subtitle={`${approvals.length} pending`} />
-            {approvalsError && (
-              <div style={{
-                padding: "10px 12px",
-                marginTop: 8,
-                borderRadius: 6,
-                background: "var(--err-bg)",
-                color: "var(--err)",
-                fontSize: 12,
-              }}>
-                {approvalsError}
-              </div>
-            )}
-            <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8 }}>
-              {approvals.map(a => {
-                const busy = decidingId === a.id
-                const timeoutIn = (() => {
-                  const t = new Date(a.timeout_at).getTime() - Date.now()
-                  if (Number.isNaN(t)) return null
-                  const mins = Math.max(0, Math.round(t / 60000))
-                  return mins < 60
-                    ? `${mins}m left`
-                    : `${Math.round(mins / 60)}h left`
-                })()
-                const rejecting = rejectingId === a.id
-                return (
-                  <div
-                    key={a.id}
-                    style={{
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: 8,
-                      padding: "10px 12px",
-                      border: "1px solid var(--border)",
-                      borderRadius: 8,
-                      background: "var(--surface)",
-                    }}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-                      <div style={{ minWidth: 0, flex: 1 }}>
-                        <div style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 12 }}>
-                          <span style={{
-                            fontFamily: "var(--font-mono, monospace)",
-                            color: "var(--text)",
-                          }}>{a.rule_id}</span>
-                          {a.rule_pack && (
-                            <span style={{ color: "var(--text-muted)" }}>({a.rule_pack})</span>
-                          )}
-                          {a.approval_type === "peer" && (
-                            <span style={{
-                              fontSize: 10,
-                              padding: "1px 5px",
-                              background: "var(--info-bg)",
-                              color: "var(--info)",
-                              borderRadius: 3,
-                              fontWeight: 700,
-                            }}>PEER</span>
-                          )}
-                          {timeoutIn && (
-                            <span style={{ color: "var(--text-muted)", marginLeft: "auto" }}>
-                              {timeoutIn}
-                            </span>
-                          )}
-                        </div>
-                        <div style={{
-                          fontSize: 13,
-                          color: "var(--text)",
-                          marginTop: 3,
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
-                        }}>
-                          {a.rule_message || "Guard rule requires approval."}
-                        </div>
-                        <div style={{
-                          fontSize: 11,
-                          color: "var(--text-muted)",
-                          marginTop: 3,
-                        }}>
-                          {a.requester_email || "unknown"}
-                          {a.tool_name ? ` · ${a.tool_name}` : ""}
-                          {" · "}{timeAgo(new Date(a.created_at))}
-                        </div>
-                      </div>
-                      <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
-                        <button
-                          onClick={() => void submitDecision(a.id, "approved")}
-                          disabled={busy || rejecting}
-                          style={{
-                            padding: "6px 12px",
-                            fontSize: 12,
-                            fontWeight: 600,
-                            border: "1px solid var(--ok-bd, #16a34a)",
-                            borderRadius: 6,
-                            background: "var(--ok-bg, #dcfce7)",
-                            color: "var(--ok, #15803d)",
-                            cursor: busy ? "wait" : "pointer",
-                            opacity: (busy || rejecting) ? 0.5 : 1,
-                          }}
-                        >
-                          Approve
-                        </button>
-                        {!rejecting && (
-                          <button
-                            onClick={() => beginReject(a.id)}
-                            disabled={busy}
-                            style={{
-                              padding: "6px 12px",
-                              fontSize: 12,
-                              fontWeight: 600,
-                              border: "1px solid var(--err-bd, #dc2626)",
-                              borderRadius: 6,
-                              background: "var(--err-bg, #fee2e2)",
-                              color: "var(--err, #b91c1c)",
-                              cursor: busy ? "wait" : "pointer",
-                              opacity: busy ? 0.6 : 1,
-                            }}
-                          >
-                            Reject
-                          </button>
-                        )}
-                        {a.source_run_id && (
-                          <a
-                            href={`/runs/${a.source_run_id}`}
-                            style={{
-                              padding: "6px 10px",
-                              fontSize: 12,
-                              color: "var(--text-muted)",
-                              textDecoration: "none",
-                              alignSelf: "center",
-                            }}
-                          >
-                            Run ↗
-                          </a>
-                        )}
-                      </div>
-                    </div>
-                    {rejecting && (
-                      // Reviewer P1 (round 2): API requires a non-empty
-                      // reason on reject. Inline input; Submit hits the
-                      // server, Cancel dismisses without a request.
-                      <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                        <input
-                          type="text"
-                          autoFocus
-                          value={rejectReason}
-                          onChange={(e) => setRejectReason(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter" && rejectReason.trim()) {
-                              void confirmReject(a.id)
-                            } else if (e.key === "Escape") {
-                              cancelReject()
-                            }
-                          }}
-                          placeholder="Why are you rejecting? (required)"
-                          disabled={busy}
-                          style={{
-                            flex: 1,
-                            padding: "6px 10px",
-                            fontSize: 12,
-                            border: "1px solid var(--err-bd, #dc2626)",
-                            borderRadius: 6,
-                            background: "var(--surface)",
-                            color: "var(--text)",
-                            outline: "none",
-                          }}
-                        />
-                        <button
-                          onClick={() => void confirmReject(a.id)}
-                          disabled={busy || !rejectReason.trim()}
-                          style={{
-                            padding: "6px 12px",
-                            fontSize: 12,
-                            fontWeight: 600,
-                            border: "1px solid var(--err-bd, #dc2626)",
-                            borderRadius: 6,
-                            background: "var(--err, #dc2626)",
-                            color: "#fff",
-                            cursor: (busy || !rejectReason.trim()) ? "not-allowed" : "pointer",
-                            opacity: (busy || !rejectReason.trim()) ? 0.5 : 1,
-                          }}
-                        >
-                          Submit reject
-                        </button>
-                        <button
-                          onClick={cancelReject}
-                          disabled={busy}
-                          style={{
-                            padding: "6px 10px",
-                            fontSize: 12,
-                            color: "var(--text-muted)",
-                            background: "transparent",
-                            border: "1px solid var(--border)",
-                            borderRadius: 6,
-                            cursor: busy ? "wait" : "pointer",
-                          }}
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-          </div>
+          <AwaitingApprovals
+            approvals={approvals}
+            approvalsError={approvalsError}
+            decidingId={decidingId}
+            rejectingId={rejectingId}
+            rejectReason={rejectReason}
+            setRejectReason={setRejectReason}
+            submitDecision={submitDecision}
+            beginReject={beginReject}
+            confirmReject={confirmReject}
+            cancelReject={cancelReject}
+          />
         )}
 
         <GuardFilterBar<InboxStatus | "all">
@@ -760,181 +535,18 @@ export default function GuardInboxPage() {
         )}
 
         {rows.length > 0 && (
-          <div style={{ border: "1px solid var(--border)", borderRadius: 6, overflow: "hidden" }}>
-            {rows.map((row, idx) => {
-              const isExpanded = expandedId === row.id
-              const rowEvents = events[row.id] ?? []
-              return (
-                <div key={row.id} style={{
-                  borderTop: idx === 0 ? "none" : "1px solid var(--border)",
-                  background: isExpanded ? "var(--surface-alt, var(--surface))" : "transparent",
-                }}>
-                  <div
-                    onClick={() => toggleExpand(row)}
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "80px 1fr 80px 32px 100px 100px 40px",
-                      gap: 12,
-                      padding: "12px 16px",
-                      alignItems: "center",
-                      cursor: "pointer",
-                      fontSize: 13,
-                    }}
-                  >
-                    <GuardBadge kind="severity" value={row.severity} />
-                    <div style={{ overflow: "hidden" }}>
-                      <div style={{ color: "var(--text)", fontWeight: 500, marginBottom: 2 }}>
-                        {row.rule_id}
-                      </div>
-                      <div style={{
-                        color: "var(--text-muted)", fontSize: 12,
-                        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                      }}>
-                        {row.description ?? <em style={{ opacity: 0.6 }}>no description</em>}
-                      </div>
-                    </div>
-                    <span style={{ color: "var(--text-muted)", fontSize: 12 }}>
-                      {row.source}
-                    </span>
-                    <AgentAvatar agentId={row.agent_identity_id} size={22} />
-                    <span style={{ color: "var(--text-muted)", fontSize: 12 }}>
-                      {row.occurrences}× · {timeAgo(row.last_seen_at)}
-                    </span>
-                    <GuardBadge kind="status" value={row.status} />
-                    <span style={{ color: "var(--text-muted)", textAlign: "right" }}>
-                      {isExpanded ? "▾" : "▸"}
-                    </span>
-                  </div>
-
-                  {isExpanded && (
-                    <div style={{ padding: "0 16px 16px 16px", borderTop: "1px solid var(--border)" }}>
-                      {/* Recent events */}
-                      <div style={{ marginTop: 12, marginBottom: 16 }}>
-                        <GuardSectionHeader title="Recent events" subtitle={`${rowEvents.length}`} />
-                        {rowEvents.length === 0 && (
-                          <div style={{ fontSize: 12, color: "var(--text-muted)" }}>No events loaded yet.</div>
-                        )}
-                        {rowEvents.length > 0 && (
-                          <div style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12 }}>
-                            {rowEvents.map(e => (
-                              <div key={e.id} style={{
-                                display: "grid", gridTemplateColumns: "120px 80px 28px 1fr 1fr",
-                                gap: 8, padding: "4px 8px",
-                                background: "var(--surface)", borderRadius: 3, color: "var(--text-muted)",
-                              }}>
-                                <span>{timeAgo(e.ts)}</span>
-                                <GuardBadge kind="decision" value={e.decision} />
-                                <AgentAvatar agentId={e.agent_identity_id} size={20} />
-                                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                                  {e.ai_tool ?? "-"} {e.user_email ? `· ${e.user_email}` : ""}
-                                </span>
-                                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                                  {e.provider ? `${e.provider}/${e.model}` : (e.input_summary ?? "")}
-                                </span>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Resolve form */}
-                      {row.status !== "resolved" && (
-                        <div style={{
-                          padding: 12, background: "var(--surface)", borderRadius: 6,
-                          border: "1px solid var(--border)",
-                        }}>
-                          <GuardSectionHeader title="Resolve" />
-                          <div style={{ display: "flex", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
-                            {(Object.keys(REASON_LABEL) as ResolvedReason[]).map(r => (
-                              <label key={r} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text)" }}>
-                                <input
-                                  type="radio"
-                                  name={`reason-${row.id}`}
-                                  value={r}
-                                  checked={reasonMap[row.id] === r}
-                                  onChange={() => setReasonMap(m => ({ ...m, [row.id]: r }))}
-                                />
-                                {REASON_LABEL[r]}
-                              </label>
-                            ))}
-                          </div>
-                          <textarea
-                            placeholder="Optional note (500 char cap)"
-                            value={noteMap[row.id] ?? ""}
-                            onChange={e => setNoteMap(m => ({ ...m, [row.id]: e.target.value.slice(0, 500) }))}
-                            style={{
-                              width: "100%", minHeight: 60, padding: 8, fontSize: 12,
-                              background: "var(--bg)", color: "var(--text)",
-                              border: "1px solid var(--border)", borderRadius: 4, marginBottom: 8,
-                              fontFamily: "inherit",
-                            }}
-                          />
-                          <div style={{ display: "flex", gap: 8 }}>
-                            <button
-                              onClick={() => applyStatus(row, "resolved")}
-                              disabled={busyId === row.id || !reasonMap[row.id]}
-                              style={{
-                                padding: "6px 14px", fontSize: 12, borderRadius: 4,
-                                background: reasonMap[row.id] ? "var(--accent)" : "var(--surface)",
-                                color: reasonMap[row.id] ? "var(--accent-fg, white)" : "var(--text-muted)",
-                                border: "1px solid var(--border)",
-                                cursor: busyId === row.id || !reasonMap[row.id] ? "not-allowed" : "pointer",
-                                fontWeight: 500,
-                              }}
-                            >
-                              {busyId === row.id ? "Saving…" : "Mark resolved"}
-                            </button>
-                            <button
-                              onClick={() => applyStatus(row, "triaging")}
-                              disabled={busyId === row.id || row.status === "triaging"}
-                              style={{
-                                padding: "6px 14px", fontSize: 12, borderRadius: 4,
-                                background: "var(--surface)", color: "var(--text-muted)",
-                                border: "1px solid var(--border)", cursor: "pointer",
-                              }}
-                            >
-                              Move to triaging
-                            </button>
-                          </div>
-                        </div>
-                      )}
-
-                      {row.status === "resolved" && (
-                        <div style={{
-                          padding: 12, background: "var(--surface)", borderRadius: 6,
-                          border: "1px solid var(--border)", fontSize: 12, color: "var(--text-muted)",
-                        }}>
-                          <div style={{ marginBottom: 4 }}>
-                            Resolved by <strong>{row.resolved_by ?? "unknown"}</strong>
-                            {row.resolved_at && <> · {timeAgo(row.resolved_at)}</>}
-                          </div>
-                          {row.resolved_reason && (
-                            <div style={{ marginBottom: 4 }}>
-                              Reason: {REASON_LABEL[row.resolved_reason as ResolvedReason] ?? row.resolved_reason}
-                            </div>
-                          )}
-                          {row.resolved_note && (
-                            <div style={{ marginTop: 6, fontStyle: "italic" }}>&ldquo;{row.resolved_note}&rdquo;</div>
-                          )}
-                          <button
-                            onClick={() => applyStatus(row, "open")}
-                            disabled={busyId === row.id}
-                            style={{
-                              marginTop: 8, padding: "4px 10px", fontSize: 11, borderRadius: 4,
-                              background: "var(--surface)", color: "var(--text-muted)",
-                              border: "1px solid var(--border)", cursor: "pointer",
-                            }}
-                          >
-                            Reopen
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )
-            })}
-          </div>
+          <InboxRowList
+            rows={rows}
+            expandedId={expandedId}
+            events={events}
+            toggleExpand={toggleExpand}
+            reasonMap={reasonMap}
+            setReasonMap={setReasonMap}
+            noteMap={noteMap}
+            setNoteMap={setNoteMap}
+            busyId={busyId}
+            applyStatus={applyStatus}
+          />
         )}
       </GuardShell>
     </AppShell>

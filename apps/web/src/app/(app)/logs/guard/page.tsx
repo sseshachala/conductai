@@ -2,15 +2,7 @@
 
 import Link from "next/link"
 
-const displayEmail = (v: string | null | undefined): string => {
-  if (!v) return "—"
-  // Strip synthetic prefixes from legacy rows
-  if (v.startsWith("agt:")) v = v.slice(4).split("@")[0]
-  if (v.startsWith("api:")) v = v.slice(4).split("@")[0]
-  if (v.startsWith("user_")) return "unknown user"
-  return v
-}
-import { useEffect, useState, useCallback, useRef, type MouseEvent as ReactMouseEvent } from "react"
+import { useEffect, useState, useCallback, useRef } from "react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { useAuth, useUser } from "@/lib/auth/client"
 import AppShell from "@/components/AppShell"
@@ -21,7 +13,7 @@ import { useWorkspace } from "@/lib/WorkspaceContext"
 import { useAuthFetch } from "@/hooks/useAuthFetch"
 import { API } from "@/lib/api"
 import { GuardShell } from "@/components/guard/GuardShell"
-import { ActivityRow, ActivityHeader, ToolBadge, DecisionBadge, BlastRadiusBadge, formatTs, type AuditEvent } from "@/components/guard/ActivityRow"
+import { ActivityRow, ActivityHeader, DecisionBadge, BlastRadiusBadge, type AuditEvent } from "@/components/guard/ActivityRow"
 import {
   GuardFilterBar,
   GuardPageHeader,
@@ -33,64 +25,14 @@ import {
   type ColumnKey,
   type FilterPill,
 } from "@/components/guard/common"
+import { SessionsTable, type GuardSession } from "./_components/SessionsTable"
+import { SessionReportsView, type SessionReport } from "./_components/SessionReportsView"
+import { GroupedEvents } from "./_components/GroupedEvents"
+import { exportCsv } from "./_components/exportCsv"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 // AuditEvent shape lives in the shared component — keep one definition.
-
-interface SessionReport {
-  id: string
-  developer_email: string
-  archetype: string | null
-  autonomy_score: number | null
-  sessions: number
-  commits: number
-  lines_per_hour: number | null
-  created_at: string
-  report_md: string | null
-}
-
-function formatReportDate(ts: string) {
-  return new Date(ts).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })
-}
-
-interface GuardSession {
-  id: string
-  user_email: string | null
-  ai_tool: string
-  started_at: string | null
-  ended_at: string | null
-  event_count: number
-  violations_count: number
-  total_cost_usd: number
-  total_saved_usd: number
-  client_ip: string | null
-  os_info: string | null
-  hostname: string | null
-  intent: string | null
-  session_parse_status: string | null
-}
-
-
-function exportCsv(events: AuditEvent[]) {
-  const header = "timestamp,developer,ai_tool,tool_call,input_summary,decision,rule_id\n"
-  const rows = events.map(e => {
-    const cols = [
-      e.ts, e.user_email ?? "", e.ai_tool, e.tool_call,
-      `"${(e.input_summary ?? "").replace(/"/g, '""')}"`,
-      e.decision, e.rule_id ?? "",
-    ]
-    return cols.join(",")
-  })
-  const csv = header + rows.join("\n")
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement("a")
-  a.href = url
-  a.download = `conduct-guard-activity-${new Date().toISOString().slice(0, 10)}.csv`
-  document.body.appendChild(a); a.click(); document.body.removeChild(a)
-  URL.revokeObjectURL(url)
-}
 
 const PAGE_SIZE = 50
 
@@ -422,37 +364,6 @@ function ActivityContent() {
     }
   }
 
-  // ─── Grouping helpers ──────────────────────────────────────────────────────
-
-  type RunGroup = { runId: string | null; events: AuditEvent[] }
-  type WorkflowGroup = { workflowName: string; workflowId: string | null; runs: RunGroup[] }
-
-  function buildGoalGroups(evts: AuditEvent[]): { named: WorkflowGroup[]; adhoc: AuditEvent[] } {
-    const wfMap = new Map<string, WorkflowGroup>()
-    const adhoc: AuditEvent[] = []
-
-    for (const ev of evts) {
-      const wfName = ev.conductai_workflow ?? ev.goal_name ?? null
-      if (!wfName) {
-        adhoc.push(ev)
-        continue
-      }
-      if (!wfMap.has(wfName)) {
-        wfMap.set(wfName, { workflowName: wfName, workflowId: ev.conductai_workflow_id ?? null, runs: [] })
-      }
-      const wfGroup = wfMap.get(wfName)!
-      const runId = ev.conductai_run_id ?? null
-      let runGroup = wfGroup.runs.find(r => r.runId === runId)
-      if (!runGroup) {
-        runGroup = { runId, events: [] }
-        wfGroup.runs.push(runGroup)
-      }
-      runGroup.events.push(ev)
-    }
-
-    return { named: Array.from(wfMap.values()), adhoc }
-  }
-
   function toggleGroup(key: string) {
     setCollapsedGroups(prev => ({ ...prev, [key]: !prev[key] }))
   }
@@ -593,68 +504,7 @@ function ActivityContent() {
         </div>
       )}
       {activeView === "sessions" && (
-        <div className="card" style={{ overflow: "hidden" }}>
-          <div style={{
-            display: "grid",
-            gridTemplateColumns: "1.4fr 1fr 0.9fr 0.8fr 0.8fr 0.7fr 0.7fr 1.2fr 1.4fr",
-            gap: 12, padding: "10px 18px",
-            borderBottom: "1px solid var(--border)", background: "var(--surface-2)",
-          }}>
-            {["Actor", "Tool", "Started", "Events", "Violations", "Cost", "Saved", "Machine / IP", "OS"].map((h, i) => (
-              <div key={i} className="eyebrow" style={{ fontSize: 9.5 }}>{h}</div>
-            ))}
-          </div>
-          {sessionsLoading ? (
-            [...Array(4)].map((_, i) => (
-              <div key={i} style={{ height: 44, background: "var(--surface-2)", borderRadius: 0, opacity: 0.5, borderBottom: "1px solid var(--border)" }} />
-            ))
-          ) : sessions.length === 0 ? (
-            <div style={{ padding: "32px 18px", textAlign: "center", fontSize: 13, color: "var(--text-muted)" }}>
-              No sessions found.
-            </div>
-          ) : sessions.map((s, i) => (
-            <div key={s.id} style={{
-              display: "grid",
-              gridTemplateColumns: "1.4fr 1fr 0.9fr 0.8fr 0.8fr 0.7fr 0.7fr 1.2fr 1.4fr",
-              gap: 12, padding: "11px 18px", alignItems: "center",
-              borderBottom: i < sessions.length - 1 ? "1px solid var(--border)" : "none",
-            }}>
-              <div style={{ overflow: "hidden" }}>
-                <div className="mono" style={{ fontSize: 11.5, color: "var(--text-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{displayEmail(s.user_email)}</div>
-                {s.intent && s.session_parse_status !== "failed" && (
-                  <div style={{ fontSize: 11, color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 2 }}>{s.intent}</div>
-                )}
-              </div>
-              <div><ToolBadge tool={s.ai_tool} /></div>
-              <div className="mono" style={{ fontSize: 11, color: "var(--text-muted)" }}>
-                {s.started_at ? formatTs(s.started_at) : "—"}
-              </div>
-              <div style={{ fontSize: 12 }}>{s.event_count}</div>
-              <div style={{ fontSize: 12, color: s.violations_count > 0 ? "var(--err)" : "var(--text-muted)", fontWeight: s.violations_count > 0 ? 600 : 400 }}>
-                {s.violations_count}
-              </div>
-              <div className="mono" style={{ fontSize: 11.5 }}>${s.total_cost_usd.toFixed(4)}</div>
-              <div className="mono" style={{ fontSize: 11.5, color: "var(--ok)" }}>${s.total_saved_usd.toFixed(4)}</div>
-              <div style={{ fontSize: 11, color: "var(--text-3)" }}>
-                <div className="mono" style={{ fontWeight: 600, color: "var(--text-2)" }}>{s.hostname ?? "—"}</div>
-                <div style={{ marginTop: 2, color: "var(--text-muted)" }}>{s.client_ip ?? ""}</div>
-              </div>
-              <div className="mono" style={{ fontSize: 11, color: "var(--text-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {s.os_info ?? "—"}
-              </div>
-            </div>
-          ))}
-          {sessions.length > 0 && (
-            <div style={{ borderTop: "1px solid var(--border)", padding: "8px 18px", fontSize: 12, color: "var(--text-muted)", textAlign: "center" }}>
-              {sessions.length} session{sessions.length !== 1 ? "s" : ""}
-            </div>
-          )}
-          {sessions.length >= 100 && (
-            <div style={{ borderTop: "1px solid var(--border)", padding: "8px 18px", fontSize: 12, color: "var(--warn)", textAlign: "center" }}>
-              Showing 100 sessions — older sessions may not be visible.
-            </div>
-          )}
-        </div>
+        <SessionsTable sessions={sessions} sessionsLoading={sessionsLoading} />
       )}
 
       {activeView === "tools" && (
@@ -662,44 +512,7 @@ function ActivityContent() {
       )}
 
       {activeView === "session_reports" && (
-        reportsError ? (
-          <div style={{ borderRadius: 8, border: "1px solid var(--err-bd)", background: "var(--err-bg)", padding: "10px 16px", fontSize: 13, color: "var(--err)", marginBottom: 16 }}>
-            {reportsError}
-          </div>
-        ) : reportsLoading ? (
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {[...Array(4)].map((_, i) => <div key={i} style={{ height: 44, background: "var(--surface-2)", borderRadius: 8, opacity: 0.6 }} />)}
-          </div>
-        ) : reports.length === 0 ? (
-          <div className="card" style={{ padding: "40px 24px", textAlign: "center", fontSize: 13, color: "var(--text-muted)" }}>
-            No session reports yet. Developers run <code style={{ fontSize: 12 }}>conduct session-report</code> to push data here.
-          </div>
-        ) : (
-          <div className="card" style={{ overflow: "hidden" }}>
-            <div style={{ display: "grid", gridTemplateColumns: "1.8fr 1.2fr 0.6fr 0.6fr 0.7fr 0.6fr 0.9fr 0.5fr", gap: 12, padding: "10px 18px", borderBottom: "1px solid var(--border)", background: "var(--surface-2)" }}>
-              {["Actor", "Archetype", "Sessions", "Commits", "Autonomy", "Lines/hr", "Date", "Report"].map(h => (
-                <div key={h} className="eyebrow" style={{ fontSize: 9.5 }}>{h}</div>
-              ))}
-            </div>
-            {reports.map((r, i) => (
-              <div key={r.id} style={{ display: "grid", gridTemplateColumns: "1.8fr 1.2fr 0.6fr 0.6fr 0.7fr 0.6fr 0.9fr 0.5fr", gap: 12, padding: "11px 18px", borderBottom: i < reports.length - 1 ? "1px solid var(--border)" : "none", alignItems: "center" }}>
-                <div className="mono" style={{ fontSize: 11.5, color: "var(--text-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.developer_email}</div>
-                <div>{r.archetype ? <span style={{ fontSize: 11, fontWeight: 500, color: "var(--accent-text)", background: "var(--accent-weak)", borderRadius: 6, padding: "2px 8px" }}>{r.archetype}</span> : <span style={{ fontSize: 12, color: "var(--text-muted)" }}>—</span>}</div>
-                <div style={{ fontSize: 12.5 }}>{r.sessions}</div>
-                <div style={{ fontSize: 12.5 }}>{r.commits}</div>
-                <div style={{ fontSize: 12.5, fontWeight: 700, color: r.autonomy_score != null ? (r.autonomy_score >= 70 ? "var(--ok)" : r.autonomy_score >= 40 ? "var(--warn)" : "var(--text-2)") : "var(--text-muted)" }}>
-                  {r.autonomy_score != null ? r.autonomy_score.toFixed(1) : "—"}
-                </div>
-                <div style={{ fontSize: 12.5 }}>{r.lines_per_hour != null ? Math.round(r.lines_per_hour) : <span style={{ color: "var(--text-muted)" }}>—</span>}</div>
-                <div className="mono" style={{ fontSize: 11.5, color: "var(--text-muted)" }}>{formatReportDate(r.created_at)}</div>
-                <div><Link href={`/theguard/session-reports/${r.id}`} style={{ fontSize: 12, color: "var(--accent-text)", textDecoration: "none", fontWeight: 500 }}>View →</Link></div>
-              </div>
-            ))}
-            <div style={{ borderTop: "1px solid var(--border)", padding: "8px 18px", textAlign: "center", fontSize: 12, color: "var(--text-muted)" }}>
-              {reports.length} {reports.length === 1 ? "report" : "reports"}
-            </div>
-          </div>
-        )
+        <SessionReportsView reports={reports} reportsLoading={reportsLoading} reportsError={reportsError} />
       )}
 
       {activeView === "events" && error && (
@@ -739,201 +552,16 @@ function ActivityContent() {
         </div>
       ) : groupByGoal ? (
         /* ── Grouped view ─────────────────────────────────────────────────── */
-        (() => {
-          const { named, adhoc } = buildGoalGroups(events)
-          // Header driven by <ColumnsMenu> selection — #1982.
-          const tableHeader = <ActivityHeader visibleColumns={visibleColumns} />
-
-          return (
-            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              {/* Named workflow groups */}
-              {named.map(wfGroup => {
-                const wfKey = wfGroup.workflowName
-                const isCollapsed = collapsedGroups[wfKey] ?? false
-                const totalEvents = wfGroup.runs.reduce((s, r) => s + r.events.length, 0)
-                const blockedCount = wfGroup.runs.reduce((s, r) => s + r.events.filter(e => e.decision === "blocked").length, 0)
-                const warnedCount = wfGroup.runs.reduce((s, r) => s + r.events.filter(e => e.decision === "warned").length, 0)
-
-                return (
-                  <div key={wfKey} className="card" style={{ overflow: "hidden" }}>
-                    {/* Workflow group header */}
-                    <button
-                      onClick={() => toggleGroup(wfKey)}
-                      style={{
-                        display: "flex", alignItems: "center", gap: 10,
-                        width: "100%", textAlign: "left",
-                        padding: "12px 18px",
-                        background: "var(--surface-2)",
-                        border: "none",
-                        borderBottom: isCollapsed ? "none" : "1px solid var(--border)",
-                        cursor: "pointer",
-                      }}
-                    >
-                      <span style={{ fontSize: 11, color: "var(--text-muted)", lineHeight: 1 }}>
-                        {isCollapsed ? "▶" : "▼"}
-                      </span>
-                      <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: 0.8, textTransform: "uppercase", color: "var(--text-muted)" }}>
-                        Goal
-                      </span>
-                      <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-1)" }}>
-                        {wfGroup.workflowName}
-                      </span>
-                      <span style={{ fontSize: 11, color: "var(--text-muted)", marginLeft: 4 }}>
-                        {totalEvents} event{totalEvents !== 1 ? "s" : ""} · {wfGroup.runs.length} run{wfGroup.runs.length !== 1 ? "s" : ""}
-                      </span>
-                      {blockedCount > 0 && (
-                        <span style={{
-                          fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 10,
-                          background: "var(--block-bg)", color: "var(--block)", border: "1px solid var(--block-bd)",
-                        }}>
-                          {blockedCount} blocked
-                        </span>
-                      )}
-                      {warnedCount > 0 && (
-                        <span style={{
-                          fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 10,
-                          background: "var(--warn-bg)", color: "var(--warn)", border: "1px solid var(--warn-bd)",
-                        }}>
-                          {warnedCount} warned
-                        </span>
-                      )}
-                    </button>
-
-                    {!isCollapsed && wfGroup.runs.map((runGroup, ri) => {
-                      const runKey = `${wfKey}::${runGroup.runId ?? `adhoc-${ri}`}`
-                      const isRunCollapsed = collapsedGroups[runKey] ?? false
-
-                      return (
-                        <div key={runKey} style={{ borderBottom: ri < wfGroup.runs.length - 1 ? "1px solid var(--border)" : "none" }}>
-                          {/* Run sub-header */}
-                          <button
-                            onClick={() => toggleGroup(runKey)}
-                            style={{
-                              display: "flex", alignItems: "center", gap: 8,
-                              width: "100%", textAlign: "left",
-                              padding: "9px 18px 9px 36px",
-                              background: "transparent",
-                              border: "none",
-                              borderBottom: isRunCollapsed ? "none" : "1px solid var(--border)",
-                              cursor: "pointer",
-                            }}
-                          >
-                            <span style={{ fontSize: 10, color: "var(--text-muted)", lineHeight: 1 }}>
-                              {isRunCollapsed ? "▶" : "▼"}
-                            </span>
-                            <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: 0.6, textTransform: "uppercase", color: "var(--text-muted)" }}>
-                              Run
-                            </span>
-                            {runGroup.runId ? (
-                              <Link
-                                href={`/runs/${runGroup.runId}`}
-                                onClick={(e: ReactMouseEvent<HTMLElement>) => e.stopPropagation()}
-                                style={{ fontSize: 11.5, fontFamily: "var(--font-mono, ui-monospace, monospace)", color: "var(--accent-text)", textDecoration: "none", fontWeight: 600 }}
-                              >
-                                {runGroup.runId}
-                              </Link>
-                            ) : (
-                              <span style={{ fontSize: 11, color: "var(--text-muted)", fontStyle: "italic" }}>no run id</span>
-                            )}
-                            <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
-                              {runGroup.events.length} event{runGroup.events.length !== 1 ? "s" : ""}
-                            </span>
-                          </button>
-
-                          {!isRunCollapsed && (
-                            <div>
-                              {tableHeader}
-                              {runGroup.events.map((ev, i) => (
-                                <ActivityRow key={ev.id} ev={ev} isLast={i === runGroup.events.length - 1} visibleColumns={visibleColumns} nowOffsetMs={serverTimeDrift} />
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      )
-                    })}
-                  </div>
-                )
-              })}
-
-              {/* Ad-hoc events (no workflow) */}
-              {adhoc.length > 0 && (() => {
-                const adhocKey = "__adhoc__"
-                const isCollapsed = collapsedGroups[adhocKey] ?? false
-                const blockedCount = adhoc.filter(e => e.decision === "blocked").length
-                const warnedCount = adhoc.filter(e => e.decision === "warned").length
-                return (
-                  <div className="card" style={{ overflow: "hidden" }}>
-                    <button
-                      onClick={() => toggleGroup(adhocKey)}
-                      style={{
-                        display: "flex", alignItems: "center", gap: 10,
-                        width: "100%", textAlign: "left",
-                        padding: "12px 18px",
-                        background: "var(--surface-2)",
-                        border: "none",
-                        borderBottom: isCollapsed ? "none" : "1px solid var(--border)",
-                        cursor: "pointer",
-                      }}
-                    >
-                      <span style={{ fontSize: 11, color: "var(--text-muted)", lineHeight: 1 }}>
-                        {isCollapsed ? "▶" : "▼"}
-                      </span>
-                      <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-2)" }}>
-                        Ad-hoc sessions
-                      </span>
-                      <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
-                        {adhoc.length} event{adhoc.length !== 1 ? "s" : ""} · no workflow attached
-                      </span>
-                      {blockedCount > 0 && (
-                        <span style={{
-                          fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 10,
-                          background: "var(--block-bg)", color: "var(--block)", border: "1px solid var(--block-bd)",
-                        }}>
-                          {blockedCount} blocked
-                        </span>
-                      )}
-                      {warnedCount > 0 && (
-                        <span style={{
-                          fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 10,
-                          background: "var(--warn-bg)", color: "var(--warn)", border: "1px solid var(--warn-bd)",
-                        }}>
-                          {warnedCount} warned
-                        </span>
-                      )}
-                    </button>
-                    {!isCollapsed && (
-                      <div>
-                        {tableHeader}
-                        {adhoc.map((ev, i) => (
-                          <ActivityRow key={ev.id} ev={ev} isLast={i === adhoc.length - 1} visibleColumns={visibleColumns} nowOffsetMs={serverTimeDrift} />
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )
-              })()}
-
-              {/* Load more */}
-              {hasMore && (
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "4px 0" }}>
-                  <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Showing {events.length} events</span>
-                  <button
-                    onClick={loadMore}
-                    disabled={loadingMore}
-                    style={{ fontSize: 12, color: "var(--accent-text)", background: "none", border: "none", cursor: "pointer", fontWeight: 600 }}
-                  >
-                    {loadingMore ? "Loading…" : "Load more"}
-                  </button>
-                </div>
-              )}
-              {!hasMore && events.length > 0 && (
-                <div style={{ textAlign: "center", fontSize: 12, color: "var(--text-muted)", padding: "4px 0" }}>
-                  {events.length} event{events.length !== 1 ? "s" : ""} total
-                </div>
-              )}
-            </div>
-          )
-        })()
+        <GroupedEvents
+          events={events}
+          collapsedGroups={collapsedGroups}
+          toggleGroup={toggleGroup}
+          visibleColumns={visibleColumns}
+          serverTimeDrift={serverTimeDrift}
+          hasMore={hasMore}
+          loadingMore={loadingMore}
+          loadMore={loadMore}
+        />
       ) : (
         /* ── Flat view ────────────────────────────────────────────────────── */
         <div className="card" style={{ overflow: "hidden" }}>
