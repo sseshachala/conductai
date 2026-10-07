@@ -169,6 +169,10 @@ class AttemptRecord:
     # produced receipts with the wrong model on every non-primary
     # attempt, which mispriced or unpriced them.
     model: str | None = None
+    # Provider HTTP status for a failed attempt (e.g. 401 = credential
+    # rejected). Lets the handler tell "your provider key is dead" apart
+    # from "the Gateway is broken" instead of a blanket 502.
+    upstream_status: int | None = None
 
 
 @dataclass(frozen=True)
@@ -367,6 +371,7 @@ class AttemptCoordinator:
                     error_summary=str(exc)[:200],
                     response_bytes_b64=_failed_bytes_b64,
                     model=getattr(target, "model", None),
+                    upstream_status=_upstream_status(exc),
                 ))
                 # #2001 review fix — retry classification. Fall through
                 # to the next target ONLY on transient failure classes
@@ -555,18 +560,25 @@ def _is_retryable(exc: BaseException) -> bool:
     if mro_names & _PERMANENT_ERROR_CLASSES:
         return False
 
-    status = getattr(exc, "status_code", None)
-    if status is None:
-        response = getattr(exc, "response", None)
-        if response is not None:
-            status = getattr(response, "status_code", None)
-    if isinstance(status, int):
+    status = _upstream_status(exc)
+    if status is not None:
         if status in _PERMANENT_STATUS_CODES:
             return False
         if status == 408 or status == 429 or status >= 500:
             return True
 
     return bool(mro_names & _TRANSIENT_ERROR_CLASSES)
+
+
+def _upstream_status(exc: BaseException) -> int | None:
+    """Provider HTTP status carried by the exception, if any (LiteLLM sets
+    ``status_code``; httpx.HTTPStatusError carries ``response``)."""
+    status = getattr(exc, "status_code", None)
+    if status is None:
+        response = getattr(exc, "response", None)
+        if response is not None:
+            status = getattr(response, "status_code", None)
+    return status if isinstance(status, int) else None
 
 
 __all__ = [

@@ -1330,7 +1330,8 @@ def test_profile(
                 "anthropic-version": "2023-06-01",
             }
         else:  # openai
-            url = f"{base}/openai/chat/completions"
+            # Gateway serves the OpenAI surface at /openai/v1/... (gateway_proxy.py).
+            url = f"{base}/openai/v1/chat/completions"
             payload = {
                 "model": model,
                 "messages": [{"role": "user", "content": body.prompt}],
