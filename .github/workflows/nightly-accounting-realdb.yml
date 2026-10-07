@@ -103,7 +103,8 @@ jobs:
           pytest tests/runtime/accounting/test_audit_fallback_gate.py
           tests/integration/test_audit_fallback_gate_realdb.py
           tests/integration/test_spend_ui_reads_receipts_realdb.py
-          tests/integration/test_pr4_cutover_realdb.py -v
+          tests/integration/test_pr4_cutover_realdb.py
+          tests/integration/test_pr4_cutover_reconcile_realdb.py -v
         working-directory: apps/api
 
       # This checks the isolated CI database, not production. The worker
