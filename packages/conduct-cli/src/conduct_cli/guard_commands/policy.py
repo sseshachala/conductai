@@ -1,7 +1,7 @@
 """Guard CLI: policy."""
 from __future__ import annotations
 
-from conduct_cli.tool_groups import expand_match_tool
+from conduct_cli.tool_groups import tool_matches
 import json
 import json as _json
 import re as _re
@@ -57,10 +57,8 @@ def _check_policy(tool_name, tool_input, tokens_before=0, ai_tool=""):
     )
 
     for rule in rules:
-        match_tool = (rule.get("match_tool") or "*").lower()
-        if match_tool != "*":
-            if tool_name not in expand_match_tool(match_tool):
-                continue
+        if not tool_matches(tool_name, rule.get("match_tool")):
+            continue
         match_ai = rule.get("match_ai_tool")
         if match_ai:
             surfaces = [s.strip().lower() for s in match_ai.split(",")]

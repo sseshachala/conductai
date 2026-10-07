@@ -13,7 +13,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-from conduct_cli.tool_groups import expand_match_tool
+from conduct_cli.tool_groups import expand_match_tool, tool_matches
 from conduct_cli.hooks.base import (
     BUDGET_CACHE_PATH,
     BUDGET_CACHE_TTL,
@@ -588,10 +588,8 @@ def check_policy(tool_name: str, tool_input: dict, tokens_before: int = 0, *, fi
             if skip:
                 continue
 
-        match_tool = (rule.get("match_tool") or "*").lower()
-        if match_tool != "*":
-            if tool_name not in expand_match_tool(match_tool):
-                continue
+        if not tool_matches(tool_name, rule.get("match_tool")):
+            continue
         match_ai = rule.get("match_ai_tool")
         if match_ai:
             surfaces = [s.strip().lower() for s in match_ai.split(",")]
