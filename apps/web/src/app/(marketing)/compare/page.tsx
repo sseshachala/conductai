@@ -205,7 +205,7 @@ export default function ComparePage() {
             <li><strong className="text-stone-900">Guardrails:</strong> NVIDIA NeMo Guardrails via <code>conduct-nemo-guard</code>.</li>
             <li><strong className="text-stone-900">Gateways:</strong> LiteLLM via <code>conduct-litellm-guard</code>, plus bring-your-own Azure, OpenRouter, Portkey, and Helicone.</li>
             <li><strong className="text-stone-900">Agent frameworks:</strong> Claude Agent SDK, OpenAI Agents, LangChain, Google ADK, and CrewAI via <code>conduct-agent-guard</code>.</li>
-            <li><strong className="text-stone-900">Coding agents:</strong> Claude Code, Cursor, and Windsurf via CLI hooks and MCP.</li>
+            <li><strong className="text-stone-900">Coding agents:</strong> Claude Code, Codex, GitHub Copilot CLI, Cursor, and Windsurf via CLI hooks and MCP.</li>
           </ul>
         </section>
 
