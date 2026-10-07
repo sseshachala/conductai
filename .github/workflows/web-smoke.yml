@@ -14,6 +14,14 @@ on:
 # real FastAPI + Postgres stack and production web build. All four roles
 # authenticate with the Clerk sandbox; missing credentials fail setup.
 
+# One smoke run at a time across this workflow and nightly's web-smoke job:
+# they sign in as the same four Clerk sandbox users, and two runs started 13s
+# apart on 2026-10-07 both failed the same 38 tests. Queue instead of overlap.
+# GitHub keeps one pending run per group, so a burst of pushes skips the middle ones.
+concurrency:
+  group: clerk-sandbox-e2e
+  cancel-in-progress: false
+
 jobs:
   smoke:
     runs-on: ubuntu-latest
