@@ -36,11 +36,8 @@ underlying rows so historical answers remain interpretable.
 from __future__ import annotations
 
 import uuid
-from dataclasses import dataclass, field
 from datetime import datetime
-from decimal import Decimal
-from enum import Enum
-from typing import Any, Iterable, Mapping, Optional
+from typing import Any, Optional
 
 from sqlalchemy import case, func, select, or_, cast, String
 from sqlalchemy.orm import Session
@@ -48,148 +45,22 @@ from sqlalchemy.orm import Session
 from app.models.llm_attempt_receipt import LlmAttemptReceipt
 from app.runtime.accounting.contracts import (
     CONTRACT_VERSION,
-    MICRODOLLARS_PER_USD,
     PricingCompleteness,
     UsageCompleteness,
 )
-
-
-class AggregateScope(str, Enum):
-    """How to group the aggregate query."""
-
-    WORKSPACE = "workspace"
-    DEVELOPER = "developer_user_id"
-    AGENT_IDENTITY = "agent_identity_id"
-    MODEL = "model"
-    PROVIDER = "provider"
-    CLIENT_TOOL = "client_tool"
-    WORKFLOW_RUN = "workflow_run_id"
-    HOOK_SESSION = "hook_session_id"
-
-
-@dataclass(frozen=True)
-class SpendAggregate:
-    """One aggregated slice of accounting evidence.
-
-    Every field is a fact derived from ``llm_attempt_receipts`` rows.
-    Callers (Lens, dashboards, exports) MUST preserve the completeness
-    breakdown when displaying numbers so users can tell "$5.00 reported"
-    apart from "$5.00 partially reported, actual may be higher".
-    """
-
-    scope: Mapping[str, Optional[str]]
-    period_start: datetime
-    period_end: datetime
-
-    # Row counts
-    receipt_count: int
-    request_count: int  # distinct request_ids
-
-    # Money (integer microdollars, per contract)
-    total_cost_microdollars: int
-    total_reserved_microdollars: int
-
-    # Legacy comparison (Session 6 metrics)
-    legacy_cost_microdollars: int
-
-    # Token totals — nullable? No, aggregate treats NULL as 0 for sums.
-    # The distinction lives in `completeness_breakdown` below.
-    total_input_tokens: int
-    total_output_tokens: int
-    total_uncached_input_tokens: int
-    total_cache_read_tokens: int
-    total_reasoning_output_tokens: int
-
-    # Provenance breakdowns
-    completeness_breakdown: Mapping[str, int] = field(default_factory=dict)
-    pricing_completeness_breakdown: Mapping[str, int] = field(default_factory=dict)
-    execution_outcome_breakdown: Mapping[str, int] = field(default_factory=dict)
-
-    @property
-    def total_cost_usd(self) -> Decimal:
-        """Convenience for display. Ledger arithmetic stays in microdollars."""
-        return Decimal(self.total_cost_microdollars) / Decimal(MICRODOLLARS_PER_USD)
-
-    @property
-    def has_partial_or_missing(self) -> bool:
-        """True if any receipts in this aggregate have incomplete usage.
-
-        Lens should surface a caveat next to any number derived from an
-        aggregate where this is True.
-        """
-        return any(
-            key != UsageCompleteness.COMPLETE.value and count > 0
-            for key, count in self.completeness_breakdown.items()
-        )
-
-    @property
-    def has_unpriced_attempts(self) -> bool:
-        """True if any attempts could not be priced (unknown model, strict
-        rejection). Lens must NOT report ``total_cost_microdollars`` as the
-        exact spend when this is True; the true cost is at least the
-        reported figure."""
-        unpriced = self.pricing_completeness_breakdown.get(
-            PricingCompleteness.UNPRICED.value, 0
-        )
-        return unpriced > 0
-
-
-@dataclass(frozen=True)
-class SessionSpend:
-    """Per-session accounting rollup for the Lens Sessions list.
-
-    Post-#2221 PR 1 (consumer wiring): AccountingReader
-    ``spend_by_hook_session_ids()`` returns one of these per session so
-    Lens's UI can render both the number AND the caveats (partial /
-    unpriced) — invariants #4 and #9 preserved end-to-end.
-    """
-
-    hook_session_id: uuid.UUID
-    receipt_count: int
-    request_count: int
-    total_cost_microdollars: int
-    has_partial_or_missing: bool
-    has_unpriced_attempts: bool
-
-    @property
-    def total_cost_usd(self) -> Decimal:
-        return Decimal(self.total_cost_microdollars) / Decimal(1_000_000)
-
-
-@dataclass(frozen=True)
-class CacheReadSavings:
-    """Gross cache-READ savings for one (model, pricing_version) slice.
-
-    Reviewer #6 (#2221 review at 1219d734) narrowed the scope: the
-    previous ``CacheSavings`` dataclass mixed one rate pair against an
-    aggregate that could span multiple models. It also hardcoded
-    ``cache_write_tokens=0`` and ignored its ``cache_write_rate``
-    argument, producing an answer that looked authoritative but wasn't.
-
-    What this IS:
-      Gross cache-read savings — how much less the cache_read tokens
-      cost vs. if the same bytes had been billed at the uncached input
-      rate. Only meaningful for one (model, pricing_version) slice.
-
-    What this is NOT:
-      - A net "cache saved you $X" figure. Cache writes usually cost
-        MORE than uncached input to pay for later reads; that premium
-        is a separate arithmetic and lives in
-        ``compute_cache_write_premium_for_receipt``.
-      - A workspace-wide savings summary. Aggregating across models
-        with different rate cards requires per-receipt calculation;
-        use ``sum_cache_read_savings_over_receipts``.
-    """
-
-    cache_read_tokens: int
-    uncached_input_tokens: int
-    savings_microdollars: int
-    counterfactual_read_cost_microdollars: int
-
-
-# Kept as an alias for one release so external importers do not break.
-# Session 7 removal deletes it.
-CacheSavings = CacheReadSavings
+from app.runtime.accounting.reader_types import (  # noqa: F401  (re-exported)
+    AggregateScope,
+    CacheReadSavings,
+    CacheSavings,
+    SessionSpend,
+    SpendAggregate,
+)
+from app.runtime.accounting.reader_aggregates import (  # noqa: F401  (re-exported)
+    aggregate_from_rows,
+    compute_cache_read_savings,
+    compute_cache_read_savings_for_receipt,
+    compute_cache_savings,
+)
 
 
 class AccountingReader:
@@ -709,158 +580,6 @@ class AccountingReader:
         )
 
 
-def compute_cache_read_savings_for_receipt(
-    receipt: LlmAttemptReceipt,
-    *,
-    uncached_rate_per_1m_usd: Decimal,
-    cache_read_rate_per_1m_usd: Decimal,
-) -> CacheReadSavings:
-    """Gross cache-read savings for ONE receipt.
-
-    Preferred entry point — callers should look up the rate card that
-    matches ``receipt.pricing_version`` and ``receipt.model`` via
-    ``PricingService.get_rate_card()``. That keeps the answer honest
-    when a workspace's rate card changes mid-period or spans models.
-
-    Formula: ``savings = (uncached_rate - cache_read_rate) × cache_read_tokens``.
-    """
-    read_tokens = int(receipt.cache_read_tokens or 0)
-    uncached_tokens = int(receipt.uncached_input_tokens or 0)
-    if read_tokens <= 0:
-        return CacheReadSavings(
-            cache_read_tokens=0,
-            uncached_input_tokens=uncached_tokens,
-            savings_microdollars=0,
-            counterfactual_read_cost_microdollars=0,
-        )
-    delta_per_1m = uncached_rate_per_1m_usd - cache_read_rate_per_1m_usd
-    savings_usd = Decimal(read_tokens) * delta_per_1m / Decimal(1_000_000)
-    counterfactual_usd = (
-        Decimal(read_tokens) * uncached_rate_per_1m_usd / Decimal(1_000_000)
-    )
-    return CacheReadSavings(
-        cache_read_tokens=read_tokens,
-        uncached_input_tokens=uncached_tokens,
-        savings_microdollars=int((savings_usd * Decimal(1_000_000)).to_integral_value()),
-        counterfactual_read_cost_microdollars=int(
-            (counterfactual_usd * Decimal(1_000_000)).to_integral_value()
-        ),
-    )
-
-
-def compute_cache_read_savings(
-    total_cache_read_tokens: int,
-    total_uncached_input_tokens: int,
-    *,
-    uncached_rate_per_1m_usd: Decimal,
-    cache_read_rate_per_1m_usd: Decimal,
-) -> CacheReadSavings:
-    """Single-rate-pair helper for callers that already hold a
-    single-model aggregate.
-
-    Reviewer #6: caller MUST guarantee the token counts belong to one
-    (model, pricing_version) slice. Aggregating across rate cards makes
-    the answer nonsense. For multi-model queries, iterate receipts and
-    sum ``compute_cache_read_savings_for_receipt`` results instead.
-    """
-    if total_cache_read_tokens <= 0:
-        return CacheReadSavings(
-            cache_read_tokens=0,
-            uncached_input_tokens=int(total_uncached_input_tokens),
-            savings_microdollars=0,
-            counterfactual_read_cost_microdollars=0,
-        )
-    delta_per_1m = uncached_rate_per_1m_usd - cache_read_rate_per_1m_usd
-    savings_usd = (
-        Decimal(total_cache_read_tokens) * delta_per_1m / Decimal(1_000_000)
-    )
-    counterfactual_usd = (
-        Decimal(total_cache_read_tokens) * uncached_rate_per_1m_usd / Decimal(1_000_000)
-    )
-    return CacheReadSavings(
-        cache_read_tokens=int(total_cache_read_tokens),
-        uncached_input_tokens=int(total_uncached_input_tokens),
-        savings_microdollars=int(
-            (savings_usd * Decimal(1_000_000)).to_integral_value()
-        ),
-        counterfactual_read_cost_microdollars=int(
-            (counterfactual_usd * Decimal(1_000_000)).to_integral_value()
-        ),
-    )
-
-
-# Back-compat alias. Session 6E docs pointed at this name.
-compute_cache_savings = compute_cache_read_savings
-
-
-def aggregate_from_rows(
-    rows: Iterable[Any],
-    *,
-    scope: AggregateScope,
-    period_start: datetime,
-    period_end: datetime,
-    scope_value: Optional[str] = None,
-) -> SpendAggregate:
-    """Aggregate a Python-side collection of receipt-like objects into one
-    ``SpendAggregate``. Useful for tests + reconciliation harnesses without
-    needing a live database round-trip.
-
-    Any object exposing the receipt column names as attributes works
-    (SQLAlchemy models, dataclasses, namedtuples).
-    """
-    receipt_count = 0
-    request_ids: set[str] = set()
-    total_cost = 0
-    total_reserved = 0
-    legacy_cost = 0
-    input_tokens = 0
-    output_tokens = 0
-    uncached_input = 0
-    cache_read = 0
-    reasoning = 0
-    completeness: dict[str, int] = {}
-    pricing: dict[str, int] = {}
-    outcome: dict[str, int] = {}
-
-    for r in rows:
-        receipt_count += 1
-        request_ids.add(str(getattr(r, "request_id", "")))
-        total_cost += int(getattr(r, "calculated_cost_microdollars", 0) or 0)
-        total_reserved += int(getattr(r, "reserved_microdollars", 0) or 0)
-        legacy_cost += int(getattr(r, "legacy_cost_microdollars", 0) or 0)
-        input_tokens += int(getattr(r, "total_input_tokens", 0) or 0)
-        output_tokens += int(getattr(r, "total_output_tokens", 0) or 0)
-        uncached_input += int(getattr(r, "uncached_input_tokens", 0) or 0)
-        cache_read += int(getattr(r, "cache_read_tokens", 0) or 0)
-        reasoning += int(getattr(r, "reasoning_output_tokens", 0) or 0)
-        completeness[str(getattr(r, "usage_completeness", ""))] = (
-            completeness.get(str(getattr(r, "usage_completeness", "")), 0) + 1
-        )
-        pricing[str(getattr(r, "pricing_completeness", ""))] = (
-            pricing.get(str(getattr(r, "pricing_completeness", "")), 0) + 1
-        )
-        outcome[str(getattr(r, "execution_outcome", ""))] = (
-            outcome.get(str(getattr(r, "execution_outcome", "")), 0) + 1
-        )
-
-    return SpendAggregate(
-        scope={scope.value: scope_value},
-        period_start=period_start,
-        period_end=period_end,
-        receipt_count=receipt_count,
-        request_count=len(request_ids - {""}),
-        total_cost_microdollars=total_cost,
-        total_reserved_microdollars=total_reserved,
-        legacy_cost_microdollars=legacy_cost,
-        total_input_tokens=input_tokens,
-        total_output_tokens=output_tokens,
-        total_uncached_input_tokens=uncached_input,
-        total_cache_read_tokens=cache_read,
-        total_reasoning_output_tokens=reasoning,
-        completeness_breakdown=completeness,
-        pricing_completeness_breakdown=pricing,
-        execution_outcome_breakdown=outcome,
-    )
 
 
 # ─── internal helpers ─────────────────────────────────────────────────────────
