@@ -170,7 +170,7 @@ def test_list_events_empty(mock_rls):
     db, _, _ = _db_for_list([])
     client = _make_client(db)
     try:
-        with patch("app.modules.guard.routers.events._event_to_dict", side_effect=[]):
+        with patch("app.modules.guard.routers.events_query._event_to_dict", side_effect=[]):
             resp = client.get("/guard/events")
         assert resp.status_code == 200
         assert resp.json() == []
@@ -184,7 +184,7 @@ def test_list_events_returns_events(mock_rls):
     db, _, dicts = _db_for_list([d])
     client = _make_client(db)
     try:
-        with patch("app.modules.guard.routers.events._event_to_dict", side_effect=dicts):
+        with patch("app.modules.guard.routers.events_query._event_to_dict", side_effect=dicts):
             resp = client.get("/guard/events")
         assert resp.status_code == 200
         body = resp.json()
@@ -213,7 +213,7 @@ def test_list_events_filter_by_decision(mock_rls):
 
     client = _make_client(db)
     try:
-        with patch("app.modules.guard.routers.events._event_to_dict", return_value=d):
+        with patch("app.modules.guard.routers.events_query._event_to_dict", return_value=d):
             resp = client.get("/guard/events?decision=blocked")
         assert resp.status_code == 200
         data = resp.json()
@@ -228,7 +228,7 @@ def test_list_events_pagination_defaults(mock_rls):
     db, _, _ = _db_for_list([])
     client = _make_client(db)
     try:
-        with patch("app.modules.guard.routers.events._event_to_dict", side_effect=[]):
+        with patch("app.modules.guard.routers.events_query._event_to_dict", side_effect=[]):
             resp = client.get("/guard/events?limit=50&offset=0")
         assert resp.status_code == 200
     finally:
@@ -347,10 +347,10 @@ def test_ingest_event_happy_path_returns_event_out():
     request.client = None
     background = MagicMock()
 
-    with patch("app.modules.guard.routers.events.chain_hash_for_insert", return_value=(None, "h1")), \
-         patch("app.modules.guard.routers.events.get_policy_hash", return_value=None), \
-         patch("app.modules.guard.routers.events.GuardAuditEvent", return_value=saved_event), \
-         patch("app.modules.guard.routers.events._event_to_dict",
+    with patch("app.modules.guard.routers.events_ingest.chain_hash_for_insert", return_value=(None, "h1")), \
+         patch("app.modules.guard.routers.events_ingest.get_policy_hash", return_value=None), \
+         patch("app.modules.guard.routers.events_ingest.GuardAuditEvent", return_value=saved_event), \
+         patch("app.modules.guard.routers.events_ingest._event_to_dict",
                return_value=_event_dict("allowed", event_id=str(saved_event.id))):
         result = ingest_event(body, request, background, db, (WS_ID, "user_abc"))
 
@@ -378,10 +378,10 @@ def test_ingest_event_blocked_decision_persisted():
     request.client = None
     background = MagicMock()
 
-    with patch("app.modules.guard.routers.events.chain_hash_for_insert", return_value=(None, "h2")), \
-         patch("app.modules.guard.routers.events.get_policy_hash", return_value=None), \
-         patch("app.modules.guard.routers.events.GuardAuditEvent", return_value=saved_event), \
-         patch("app.modules.guard.routers.events._event_to_dict",
+    with patch("app.modules.guard.routers.events_ingest.chain_hash_for_insert", return_value=(None, "h2")), \
+         patch("app.modules.guard.routers.events_ingest.get_policy_hash", return_value=None), \
+         patch("app.modules.guard.routers.events_ingest.GuardAuditEvent", return_value=saved_event), \
+         patch("app.modules.guard.routers.events_ingest._event_to_dict",
                return_value=_event_dict("blocked", event_id=str(saved_event.id))):
         result = ingest_event(body, request, background, db, (WS_ID, "user_abc"))
 
@@ -434,17 +434,17 @@ def test_ingest_event_decodes_waf_safe_summary():
     db.query.return_value.filter.return_value.first.return_value = config
     saved_event = _make_event("allowed")
 
-    with patch("app.modules.guard.routers.events.chain_hash_for_insert", return_value=(None, "h1")), \
-         patch("app.modules.guard.routers.events.get_policy_hash", return_value=None), \
-         patch("app.modules.guard.routers.events.GuardAuditEvent", return_value=saved_event) as event_cls, \
-         patch("app.modules.guard.routers.events._event_to_dict", return_value=_event_dict("allowed")):
+    with patch("app.modules.guard.routers.events_ingest.chain_hash_for_insert", return_value=(None, "h1")), \
+         patch("app.modules.guard.routers.events_ingest.get_policy_hash", return_value=None), \
+         patch("app.modules.guard.routers.events_ingest.GuardAuditEvent", return_value=saved_event) as event_cls, \
+         patch("app.modules.guard.routers.events_ingest._event_to_dict", return_value=_event_dict("allowed")):
         ingest_event(body, MagicMock(headers={}, client=None), MagicMock(), db, (WS_ID, "user_abc"))
 
     assert event_cls.call_args.kwargs["input_summary"] == summary
 
 
 def test_ingest_event_requires_auth_when_rollout_flag_enabled():
-    from app.modules.guard.routers import events
+    from app.modules.guard.routers import events_ingest as events
 
     db = MagicMock()
     client = _make_client(db)
@@ -458,7 +458,7 @@ def test_ingest_event_requires_auth_when_rollout_flag_enabled():
 
 @pytest.mark.parametrize("token", ["cond_agt_valid", "cond_agt_s1_valid", "cond_api_valid"])
 def test_hook_auth_resolves_agent_workspace(token):
-    from app.modules.guard.routers import events
+    from app.modules.guard.routers import events_ingest as events
 
     request = MagicMock()
     request.headers = {"authorization": f"Bearer {token}"}
@@ -473,7 +473,7 @@ def test_hook_auth_resolves_agent_workspace(token):
 @pytest.mark.parametrize("authenticated", [True, False])
 def test_ingest_attributes_only_verified_agent(authenticated):
     from starlette.requests import Request
-    from app.modules.guard.routers import events
+    from app.modules.guard.routers import events_ingest as events
 
     identity_id = str(uuid.uuid4())
     request = Request({"type": "http", "headers": []})
@@ -500,7 +500,7 @@ def test_ingest_attributes_only_verified_agent(authenticated):
 def test_ingest_rejects_verified_identity_from_other_workspace():
     from fastapi import HTTPException
     from starlette.requests import Request
-    from app.modules.guard.routers import events
+    from app.modules.guard.routers import events_ingest as events
 
     request = Request({"type": "http", "headers": []})
     request.state.guard_hook_identity = (str(uuid.uuid4()), str(uuid.uuid4()))
@@ -513,7 +513,7 @@ def test_ingest_rejects_verified_identity_from_other_workspace():
 
 def test_hook_auth_rejects_non_agent_bearer():
     from fastapi import HTTPException
-    from app.modules.guard.routers import events
+    from app.modules.guard.routers import events_ingest as events
 
     request = MagicMock()
     request.headers = {"authorization": "Bearer clerk_or_other_token"}

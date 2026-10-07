@@ -15,7 +15,7 @@ from unittest.mock import MagicMock, patch
 
 
 def test_bg_slack_notify_resolves_clerk_id_to_email(monkeypatch):
-    from app.modules.guard.routers import events as _events
+    from app.modules.guard.routers import events_ingest as _events
 
     captured = {}
 
@@ -49,7 +49,7 @@ def test_bg_slack_notify_resolves_clerk_id_to_email(monkeypatch):
 def test_bg_slack_notify_falls_back_to_clerk_id_when_lookup_fails(monkeypatch):
     """When Clerk lookup returns None the Slack card is still useful — it
     just falls back to the raw id rather than posting an empty ``User:`` line."""
-    from app.modules.guard.routers import events as _events
+    from app.modules.guard.routers import events_ingest as _events
 
     captured = {}
     monkeypatch.setattr(_events, "notify_guard_block", lambda _db, _ws, **kw: captured.update(kw))

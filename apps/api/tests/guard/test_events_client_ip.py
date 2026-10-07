@@ -20,28 +20,28 @@ def _mk_request(*, xff: str | None, client_host: str):
 
 
 def test_client_ip_ignores_xff_without_trusted_cidrs():
-    from app.modules.guard.routers import events
+    from app.modules.guard.routers import events_common as events
     with patch.object(events, "settings", SimpleNamespace(trusted_proxy_cidrs="")):
         req = _mk_request(xff="1.2.3.4, 5.6.7.8", client_host="10.0.0.5")
         assert events._client_ip_from(req) == "10.0.0.5"
 
 
 def test_client_ip_walks_xff_from_right_when_trusted_cidrs_set():
-    from app.modules.guard.routers import events
+    from app.modules.guard.routers import events_common as events
     with patch.object(events, "settings", SimpleNamespace(trusted_proxy_cidrs="10.0.0.0/8")):
         req = _mk_request(xff="1.2.3.4, 10.0.0.5, 10.0.0.6", client_host="10.0.0.6")
         assert events._client_ip_from(req) == "1.2.3.4"
 
 
 def test_client_ip_ignores_malformed_xff_hop():
-    from app.modules.guard.routers import events
+    from app.modules.guard.routers import events_common as events
     with patch.object(events, "settings", SimpleNamespace(trusted_proxy_cidrs="10.0.0.0/8")):
         req = _mk_request(xff="1.2.3.4, not-an-ip, 10.0.0.5", client_host="10.0.0.5")
         assert events._client_ip_from(req) == "1.2.3.4"
 
 
 def test_client_ip_falls_back_when_xff_missing():
-    from app.modules.guard.routers import events
+    from app.modules.guard.routers import events_common as events
     with patch.object(events, "settings", SimpleNamespace(trusted_proxy_cidrs="10.0.0.0/8")):
         req = _mk_request(xff=None, client_host="203.0.113.5")
         assert events._client_ip_from(req) == "203.0.113.5"

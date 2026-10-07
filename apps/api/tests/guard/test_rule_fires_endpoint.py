@@ -57,7 +57,7 @@ def test_endpoint_redacts_input_summary_before_returning():
     _install_rows(db, [_event("2026-09-10T00:00:00Z", "hipaa-x", f"leak: {secret}")])
     try:
         with patch(
-            "app.modules.guard.routers.events._org_ws_subquery",
+            "app.modules.guard.routers.events_query._org_ws_subquery",
             return_value=MagicMock(),
         ):
             r = client.get("/guard/events/rule/hipaa-x/fires")
@@ -81,7 +81,7 @@ def test_endpoint_hash_prefix_and_size_fields_populated():
     _install_rows(db, [_event("2026-09-10T00:00:00Z", "rule-A", raw)])
     try:
         with patch(
-            "app.modules.guard.routers.events._org_ws_subquery",
+            "app.modules.guard.routers.events_query._org_ws_subquery",
             return_value=MagicMock(),
         ):
             r = client.get("/guard/events/rule/rule-A/fires")
@@ -100,7 +100,7 @@ def test_endpoint_empty_result_returns_empty_list():
     _install_rows(db, [])
     try:
         with patch(
-            "app.modules.guard.routers.events._org_ws_subquery",
+            "app.modules.guard.routers.events_query._org_ws_subquery",
             return_value=MagicMock(),
         ):
             r = client.get("/guard/events/rule/nobody-fired-this/fires")
@@ -117,7 +117,7 @@ def test_endpoint_null_input_summary_yields_null_preview():
     _install_rows(db, [_event("2026-09-10T00:00:00Z", "rule-x", "")])
     try:
         with patch(
-            "app.modules.guard.routers.events._org_ws_subquery",
+            "app.modules.guard.routers.events_query._org_ws_subquery",
             return_value=MagicMock(),
         ):
             r = client.get("/guard/events/rule/rule-x/fires")
