@@ -74,7 +74,7 @@ def test_missing_local_profiles_do_not_expose_raw_owner_ids(monkeypatch, mode):
 
 def test_profile_endpoint_rejects_agent_caps_without_changing_shared_cap(monkeypatch):
     from uuid import uuid4
-    from app.routers import gateway_profiles_v2 as router
+    from app.routers import gateway_profiles_v2_crud as router
 
     workspace, profile, identity = str(uuid4()), uuid4(), str(uuid4())
     shared = SimpleNamespace(agent_identity_id=None, rpm=120, tpm=250000)
@@ -100,7 +100,7 @@ def test_profile_endpoint_rejects_agent_caps_without_changing_shared_cap(monkeyp
 
 def test_empty_legacy_agent_input_does_not_remove_any_caps(monkeypatch):
     from uuid import uuid4
-    from app.routers import gateway_profiles_v2 as router
+    from app.routers import gateway_profiles_v2_crud as router
 
     shared = SimpleNamespace(agent_identity_id=None, rpm=60, tpm=100000)
     override = SimpleNamespace(agent_identity_id=str(uuid4()), rpm=2, tpm=500)
@@ -116,7 +116,7 @@ def test_empty_legacy_agent_input_does_not_remove_any_caps(monkeypatch):
 
 def test_agent_only_save_does_not_create_a_shared_cap(monkeypatch):
     from uuid import uuid4
-    from app.routers import gateway_profiles_v2 as router
+    from app.routers import gateway_profiles_v2_crud as router
 
     db = MagicMock()
     db.query.return_value.filter.return_value.all.return_value = []
