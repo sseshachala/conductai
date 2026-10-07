@@ -29,9 +29,9 @@ def test_saved_legacy_hosted_mcp_moves_to_gateway(saved):
 
 
 def test_hosted_mcp_default_applies_to_generated_bridge(monkeypatch):
-    from conduct_cli import main
-    monkeypatch.setattr(main, "_load_config", lambda: {})
-    args = main._mcp_remote_args(deployment.SAAS_API, "cond_agt_synthetic")
+    from conduct_cli.commands import mcp_setup
+    monkeypatch.setattr(mcp_setup, "_load_config", lambda: {})
+    args = mcp_setup._mcp_remote_args(deployment.SAAS_API, "cond_agt_synthetic")
     assert deployment.SAAS_MCP in args and deployment.LEGACY_SAAS_MCP not in args
 
 
@@ -168,11 +168,11 @@ def test_dry_run_does_not_refresh_tokens_or_install_packages(monkeypatch):
 
 
 def test_server_override_cannot_reuse_saved_credentials(monkeypatch):
-    from conduct_cli import main
-    monkeypatch.setattr(main, "_load_config", lambda: {
+    from conduct_cli.commands import shared as commands_shared
+    monkeypatch.setattr(commands_shared, "_load_config", lambda: {
         **CUSTOM, "workspace_id": "test", "agent_token": "synthetic"})
     with pytest.raises(SystemExit):
-        main._require_auth(SimpleNamespace(server=deployment.SAAS_API, token=None))
+        commands_shared._require_auth(SimpleNamespace(server=deployment.SAAS_API, token=None))
 
 
 def test_hosted_mcp_move_updates_bearer_and_native_oauth_entries(isolated):

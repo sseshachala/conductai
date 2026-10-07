@@ -9,7 +9,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from conduct_cli import main as cli
+from conduct_cli.commands import auth as cli
 
 
 @pytest.fixture

@@ -352,7 +352,7 @@ def run_drain_daemon() -> None:
                     if auth_error.code != 401:
                         raise
                     auth_error.close()
-                    from conduct_cli.main import _refresh_agent_token
+                    from conduct_cli.commands.auth import _refresh_agent_token
                     if not _refresh_agent_token(expected_config=cfg):
                         raise
                     refreshed = load_config()

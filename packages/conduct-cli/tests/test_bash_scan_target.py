@@ -9,7 +9,7 @@ import re
 
 import pytest
 
-from conduct_cli.hooks.pretooluse import (
+from conduct_cli.hooks.policy_scan import (
     _bash_operator_signature,
     _bash_scan_target,
 )

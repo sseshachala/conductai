@@ -2,7 +2,7 @@
 
 Covers both entry points:
 - conduct_cli.guard._report_tools_to_server (reads guard config + conduct config)
-- conduct_cli.main._report_tool_coverage (reads main conduct config)
+- conduct_cli.commands.mcp_setup._report_tool_coverage (reads main conduct config)
 
 These paths had a legacy cond_live_* prefix check that was removed. These tests
 lock in the current behavior: prefer the agent-token read, fall back to the
@@ -18,7 +18,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from conduct_cli import guard as guard_mod
-from conduct_cli import main as main_mod
+from conduct_cli.commands import mcp_setup
 
 
 # ── guard._report_tools_to_server ─────────────────────────────────────────────
@@ -86,15 +86,15 @@ def test_main_report_prefers_agent_token_over_token(monkeypatch):
     fake_resp.__enter__ = lambda s: s
     fake_resp.__exit__  = MagicMock(return_value=False)
 
-    with patch.object(main_mod, "_load_config", return_value={
+    with patch.object(mcp_setup, "_load_config", return_value={
              "server": "https://api.example",
              "agent_token": "cond_agt_MAIN",
              "token": "should_lose",
              "email": "u@x.com",
          }), \
-         patch.object(main_mod, "_detect_ai_tools", return_value=[{"name": "cursor"}]), \
+         patch.object(mcp_setup, "_detect_ai_tools", return_value=[{"name": "cursor"}]), \
          patch("urllib.request.urlopen", return_value=fake_resp) as mock_open:
-        main_mod._report_tool_coverage()
+        mcp_setup._report_tool_coverage()
 
     req = mock_open.call_args[0][0]
     assert req.get_header("Authorization") == "Bearer cond_agt_MAIN"
@@ -106,15 +106,15 @@ def test_main_report_falls_back_to_token_when_no_agent_token(monkeypatch):
     fake_resp.__enter__ = lambda s: s
     fake_resp.__exit__  = MagicMock(return_value=False)
 
-    with patch.object(main_mod, "_load_config", return_value={
+    with patch.object(mcp_setup, "_load_config", return_value={
              "server": "https://api.example",
              "agent_token": "",
              "token": "fallback_tok",
              "email": "u@x.com",
          }), \
-         patch.object(main_mod, "_detect_ai_tools", return_value=[{"name": "cursor"}]), \
+         patch.object(mcp_setup, "_detect_ai_tools", return_value=[{"name": "cursor"}]), \
          patch("urllib.request.urlopen", return_value=fake_resp) as mock_open:
-        main_mod._report_tool_coverage()
+        mcp_setup._report_tool_coverage()
 
     req = mock_open.call_args[0][0]
     assert req.get_header("Authorization") == "Bearer fallback_tok"

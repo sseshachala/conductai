@@ -5,7 +5,7 @@ from urllib.error import HTTPError
 
 import pytest
 
-from conduct_cli import main
+from conduct_cli.commands import auth, shared
 from conduct_cli.hooks import base
 from conduct_cli.credential_lock import credential_lock
 
@@ -15,7 +15,8 @@ def environment(tmp_path, monkeypatch):
     config = tmp_path / "config.json"
     config.write_text(json.dumps({"api_url": "https://api.test", "workspace_id": "ws",
                                  "agent_token": "old", "refresh_token": "refresh-old"}))
-    monkeypatch.setattr(main, "CONFIG_PATH", config)
+    monkeypatch.setattr(shared, "CONFIG_PATH", config)
+    monkeypatch.setattr(auth, "CONFIG_PATH", config)
     monkeypatch.setattr(base, "CONFIG_PATH", config)
     journal = tmp_path / "journal"
     monkeypatch.setattr(base, "JOURNAL_DIR", journal)
@@ -110,8 +111,8 @@ def test_other_process_rotation_is_reused(environment, monkeypatch):
     snapshot = json.loads(config.read_text())
     updated = dict(snapshot, agent_token="other-process-token", refresh_token="other-refresh")
     config.write_text(json.dumps(updated))
-    monkeypatch.setattr(main.urllib.request, "urlopen", lambda *a, **k: pytest.fail("extra rotation"))
-    assert main._refresh_agent_token(expected_config=snapshot)
+    monkeypatch.setattr(auth.urllib.request, "urlopen", lambda *a, **k: pytest.fail("extra rotation"))
+    assert auth._refresh_agent_token(expected_config=snapshot)
 
 
 def test_workspace_switch_is_not_overwritten(environment, monkeypatch):
@@ -121,8 +122,8 @@ def test_workspace_switch_is_not_overwritten(environment, monkeypatch):
         config.write_text(json.dumps({"workspace_id": "different", "agent_token": "other"}))
         return refresh_response()
 
-    monkeypatch.setattr(main.urllib.request, "urlopen", request)
-    assert not main._refresh_agent_token()
+    monkeypatch.setattr(auth.urllib.request, "urlopen", request)
+    assert not auth._refresh_agent_token()
     assert json.loads(config.read_text())["workspace_id"] == "different"
 
 
@@ -169,5 +170,5 @@ def test_refresh_does_not_cross_workspace(environment, monkeypatch):
     config, _ = environment
     snapshot = json.loads(config.read_text())
     config.write_text(json.dumps(dict(snapshot, workspace_id="other")))
-    monkeypatch.setattr(main.urllib.request, "urlopen", lambda *a, **k: pytest.fail("cross-workspace refresh"))
-    assert not main._refresh_agent_token(expected_config=snapshot)
+    monkeypatch.setattr(auth.urllib.request, "urlopen", lambda *a, **k: pytest.fail("cross-workspace refresh"))
+    assert not auth._refresh_agent_token(expected_config=snapshot)

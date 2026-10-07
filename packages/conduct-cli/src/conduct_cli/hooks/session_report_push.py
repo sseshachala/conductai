@@ -7,11 +7,11 @@ Usage (internal):
 """
 from __future__ import annotations
 
+from conduct_cli import paxel_runner
 from conduct_cli.deployment import api_url as deployment_api_url
 import getpass
 import json
 import shutil
-import subprocess
 import sys
 import tempfile
 import urllib.request
@@ -41,22 +41,12 @@ def run(session_id: str = "") -> None:
     if not server or not workspace_id:
         return
 
-    bundled = Path(__file__).parent.parent / "paxel.py"
-    if not bundled.exists():
+    if not paxel_runner.available():
         return
 
     tmpdir = Path(tempfile.mkdtemp(prefix="conduct-paxel-bg-"))
     try:
-        paxel_script = tmpdir / "paxel.py"
-        shutil.copy(bundled, paxel_script)
-
-        result = subprocess.run(
-            [sys.executable, str(paxel_script), "--no-open"],
-            cwd=str(tmpdir),
-            capture_output=True,
-            text=True,
-            timeout=120,
-        )
+        paxel_runner.run_paxel(tmpdir, timeout=120)
 
         stats_path = tmpdir / "stats.json"
         report_path = tmpdir / "report.md"
@@ -64,8 +54,8 @@ def run(session_id: str = "") -> None:
         if not stats_path.exists():
             return
 
-        stats = json.loads(stats_path.read_text())
-        report_md = report_path.read_text() if report_path.exists() else ""
+        stats = json.loads(stats_path.read_text(encoding="utf-8"))
+        report_md = report_path.read_text(encoding="utf-8") if report_path.exists() else ""
 
         volume   = stats.get("volume", {})
         behavior = stats.get("behavior", {})

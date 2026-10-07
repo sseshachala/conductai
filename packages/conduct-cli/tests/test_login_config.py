@@ -56,12 +56,13 @@ def test_unsafe_origins_rejected(value):
 
 
 def test_login_persists_endpoints_without_cross_server_restore_or_sync(tmp_path):
-    from conduct_cli import main as cli
+    from conduct_cli.commands import auth as cli
     path = tmp_path / "config.json"
     path.write_text(json.dumps({"api_url": API, "workspace_id": "old", "refresh_token": "old-fixture"}))
     args = SimpleNamespace(server="https://localhost:3444", web_url="https://localhost:3443",
                            token=None, no_sync=True)
-    with patch.object(cli, "CONFIG_PATH", path), patch.object(cli, "_web_login_flow",
+    with patch.object(cli, "CONFIG_PATH", path), patch("conduct_cli.commands.shared.CONFIG_PATH", path), \
+            patch.object(cli, "_web_login_flow",
             return_value={"agent_token": "synthetic", "workspace_id": "new"}) as login, \
             patch.object(cli.api, "req", return_value=[]) as request, \
             patch("conduct_cli.guard.cmd_guard_sync") as sync:

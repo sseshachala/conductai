@@ -101,7 +101,7 @@ def test_custom_mcp_override_and_symlink_are_untouched(local, tmp_path):
 
 
 def test_managed_mcp_refresh_switches_deployment_but_preserves_custom_entries(local):
-    from conduct_cli.main import _write_mcp_config
+    from conduct_cli.commands.mcp_setup import _write_mcp_config
     root = ADAPTERS["cursor"].root()
     root.mkdir()
     path = root / "mcp.json"
