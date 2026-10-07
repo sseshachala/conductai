@@ -27,7 +27,93 @@ const adapters: Array<[string, ReactNode]> = [
 
 const results = ["claude-agent-sdk", "openai-agents", "langchain", "google-adk", "crewai"]
 
-const tryIt = `cd packages/conduct-agent-guard/examples
+const setup = `pip install "conduct-agent-guard[claude]"   # or [openai] [langchain] [adk] [crewai]
+export CONDUCT_AGENT_TOKEN=cond_agt_...     # conduct login stores one`
+
+const sharedTools = `def search_web(query: str) -> str:
+    """Search the web and return the top result."""
+    ...
+
+def memory_save(text: str, scope: str, source: str) -> str:
+    """Save text to memory. scope: session | long_term."""
+    ...
+
+PROMPT = "Search for our refund policy, then save it to long-term memory."`
+
+// ponytail: snippets mirror packages/conduct-agent-guard/examples/*; update both together.
+const snippets: Array<[string, string]> = [
+  ["Claude Agent SDK", `import asyncio
+from claude_agent_sdk import ClaudeAgentOptions, create_sdk_mcp_server, query, tool
+from conduct_agent_guard.claude import conduct_hooks
+
+@tool("search_web", "Search the web.", {"query": str})
+async def search(args):
+    return {"content": [{"type": "text", "text": search_web(args["query"])}]}
+
+@tool("memory_save", "Save to memory.", {"text": str, "scope": str, "source": str})
+async def save(args):
+    return {"content": [{"type": "text", "text": memory_save(**args)}]}
+
+options = ClaudeAgentOptions(
+    mcp_servers={"demo": create_sdk_mcp_server("demo", tools=[search, save])},
+    allowed_tools=["mcp__demo__search_web", "mcp__demo__memory_save"],
+    hooks=conduct_hooks(),  # ← Conduct
+)
+
+async def main():
+    async for message in query(prompt=PROMPT, options=options):
+        print(message)
+
+asyncio.run(main())`],
+  ["OpenAI Agents SDK", `from agents import Agent, Runner, function_tool
+from conduct_agent_guard.openai_agents import guard_tools
+
+agent = Agent(
+    name="support",
+    instructions="You are a support agent.",
+    tools=guard_tools([function_tool(search_web), function_tool(memory_save)]),  # ← Conduct
+)
+print(Runner.run_sync(agent, PROMPT).final_output)`],
+  ["LangChain / LangGraph", `from langchain.agents import create_agent
+from conduct_agent_guard.langchain import ConductMiddleware
+
+agent = create_agent(
+    "anthropic:claude-haiku-4-5-20251001",
+    tools=[search_web, memory_save],
+    middleware=[ConductMiddleware()],  # ← Conduct
+)
+agent.invoke({"messages": [{"role": "user", "content": PROMPT}]})`],
+  ["Google ADK", `from google.adk.agents import LlmAgent
+from conduct_agent_guard.adk import conduct_before_tool_callback
+
+agent = LlmAgent(
+    name="support",
+    model="gemini-2.5-flash",
+    instruction="You are a support agent.",
+    tools=[search_web, memory_save],
+    before_tool_callback=conduct_before_tool_callback(),  # ← Conduct
+)
+# run it with google.adk.runners.InMemoryRunner as usual`],
+  ["CrewAI", `from crewai import Agent, Crew, Task
+from crewai.tools import tool
+from conduct_agent_guard.crewai import register_conduct_hook
+
+register_conduct_hook()  # ← Conduct: every tool call in every crew
+
+agent = Agent(
+    role="Support agent",
+    goal="Answer refund questions",
+    backstory="Follows instructions exactly.",
+    tools=[tool("search_web")(search_web), tool("memory_save")(memory_save)],
+)
+task = Task(description=PROMPT, expected_output="Which steps ran or were blocked.", agent=agent)
+Crew(agents=[agent], tasks=[task]).kickoff()`],
+]
+
+const pre = "bg-stone-950 text-stone-100 rounded-lg p-5 overflow-x-auto text-sm"
+
+const tryIt = `git clone https://github.com/sseshachala/conductai
+cd conductai/packages/conduct-agent-guard/examples
 ./run_all.sh smoke     # no LLM: every adapter against your live policy
 ./run_all.sh           # plus a real agent in each of the five frameworks`
 
@@ -64,6 +150,19 @@ export default function BlogPost() {
           </table>
         </div>
         <p>The design rule is simple: <strong>adapters translate, Conduct decides.</strong> No policy logic lives in an adapter. Each one is about 30 lines that turn its framework&apos;s hook into the same call, so a new framework is an afternoon, not a project.</p>
+
+        <h2>The code, framework by framework</h2>
+        <p>Install the extra for your framework and set a Conduct agent token:</p>
+        <pre className={pre}><code>{setup}</code></pre>
+        <p>Every example below uses the same two plain Python tools and prompt:</p>
+        <pre className={pre}><code>{sharedTools}</code></pre>
+        {snippets.map(([name, code]) => (
+          <section key={name} className="space-y-3">
+            <h3 className="text-lg font-semibold text-stone-900">{name}</h3>
+            <pre className={pre}><code>{code}</code></pre>
+          </section>
+        ))}
+        <p>The marked line is the only Conduct code. Unreachable Conduct fails closed: the tool is blocked. Pass <code>ToolGuard(..., unreachable_fallback=&quot;fail_open&quot;)</code> to change that.</p>
         <p>The same week, we extended our LiteLLM guardrail to MCP tool calls (<code>mode: [pre_call, pre_mcp_call]</code>). Teams that route tools through LiteLLM&apos;s MCP gateway get the same enforcement with one config line.</p>
 
         <h2>How it fits together</h2>
@@ -103,8 +202,8 @@ export default function BlogPost() {
         <p><strong>3. Errors must say who failed.</strong> When a model provider rejected a stale API key, our gateway answered with a generic 502, which looks like an outage and makes SDKs retry against a dead key. It now returns a 424 naming the profile whose credential to rotate. Other provider errors pass through with the provider&apos;s own message. Governance infrastructure that can&apos;t explain its own failures doesn&apos;t get trusted.</p>
 
         <h2>Try it</h2>
-        <p>You need <a className="underline" href="https://docs.astral.sh/uv/">uv</a> and a Conduct agent token (<code>conduct login</code> stores one).</p>
-        <pre className="bg-stone-950 text-stone-100 rounded-lg p-5 overflow-x-auto text-sm"><code>{tryIt}</code></pre>
+        <p>To run the full demo, all five frameworks against your live policy, you need <a className="underline" href="https://docs.astral.sh/uv/">uv</a> and a Conduct agent token (<code>conduct login</code> stores one).</p>
+        <pre className={pre}><code>{tryIt}</code></pre>
         <p>Each framework runs in its own environment; current CrewAI and OpenAI Agents can&apos;t share one. The agents default to Anthropic. Point <code>ANTHROPIC_BASE_URL</code> or <code>OPENAI_BASE_URL</code> at the Conduct Gateway to govern the model traffic too.</p>
         <p>Then open <strong>Guard → Activity</strong> and filter by AI tool to see every decision, framework by framework.</p>
         <p>Next: an agent that hands work to another agent. When Agent A, acting for a user, asks Agent B to delete something, the question is whether the <em>user</em> may, not whether B may. That&apos;s the delegation-chain problem we&apos;re working on now.</p>
