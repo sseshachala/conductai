@@ -3,6 +3,8 @@ Canonical tool group mapping — single source of truth for semantic match_tool 
 Shared across CLI hook, MCP, and API (mirrored at apps/api/app/modules/guard/tool_groups.py).
 """
 
+from __future__ import annotations
+
 from fnmatch import fnmatchcase
 
 TOOL_GROUPS: dict[str, set[str]] = {
