@@ -255,7 +255,7 @@ def test_create_workflow_missing_required_inputs_422(mock_rls):
         "    run: echo {{inputs.required_key}}\n"
     )
 
-    with patch("app.routers.workflows._TEMPLATE_PLAYBOOKS", {"fake_template": "fake.yml"}), \
+    with patch("app.routers.workflows_crud._TEMPLATE_PLAYBOOKS", {"fake_template": "fake.yml"}), \
          patch("pathlib.Path.exists", return_value=True), \
          patch("pathlib.Path.read_text", return_value=fake_yaml):
         client = _make_client(db)
@@ -282,10 +282,10 @@ def test_create_workflow_template_yaml_parse_error_422(mock_rls):
     # No placeholders — substitution succeeds, but load_workflow_yaml raises
     fake_yaml = "name: test\nsteps:\n  - name: s\n    run: echo hello\n"
 
-    with patch("app.routers.workflows._TEMPLATE_PLAYBOOKS", {"bad_template": "bad.yml"}), \
+    with patch("app.routers.workflows_crud._TEMPLATE_PLAYBOOKS", {"bad_template": "bad.yml"}), \
          patch("pathlib.Path.exists", return_value=True), \
          patch("pathlib.Path.read_text", return_value=fake_yaml), \
-         patch("app.routers.workflows.load_workflow_yaml", side_effect=Exception("bad DSL")):
+         patch("app.routers.workflows_crud.load_workflow_yaml", side_effect=Exception("bad DSL")):
         client = _make_client(db)
         try:
             resp = client.post("/workflows", json={
@@ -352,7 +352,7 @@ def test_get_workflow_wrong_workspace_404(mock_rls):
 # ---------------------------------------------------------------------------
 
 @patch("app.core.workspace_context.set_workspace_rls")
-@patch("app.routers.workflows.audit")
+@patch("app.routers.workflows_crud.audit")
 def test_update_workflow_name(mock_audit, mock_rls):
     """Name-only update: sets wf.name, commits, returns 200.
 
@@ -376,8 +376,8 @@ def test_update_workflow_name(mock_audit, mock_rls):
 
 
 @patch("app.core.workspace_context.set_workspace_rls")
-@patch("app.routers.workflows._run_compiler")
-@patch("app.routers.workflows.audit")
+@patch("app.routers.workflows_crud._run_compiler")
+@patch("app.routers.workflows_crud.audit")
 def test_update_workflow_graph_creates_version(mock_audit, mock_compiler, mock_rls):
     """Graph update creates a new WorkflowVersion and updates current_version_id."""
     db = MagicMock()
@@ -405,7 +405,7 @@ def test_update_workflow_graph_creates_version(mock_audit, mock_compiler, mock_r
 
 
 @patch("app.core.workspace_context.set_workspace_rls")
-@patch("app.routers.workflows.audit")
+@patch("app.routers.workflows_crud.audit")
 def test_update_workflow_not_found_404(mock_audit, mock_rls):
     db = MagicMock()
     db.query.return_value.filter.return_value.with_for_update.return_value.first.return_value = None
@@ -445,7 +445,7 @@ def _profile_query_mock(db_mock, prof):
 
 
 @patch("app.core.workspace_context.set_workspace_rls")
-@patch("app.routers.workflows.audit")
+@patch("app.routers.workflows_crud.audit")
 def test_update_workflow_gateway_profile_published_accepted(mock_audit, mock_rls):
     """Published profile in this workspace pins on the row and returns 200."""
     db = MagicMock()
@@ -467,7 +467,7 @@ def test_update_workflow_gateway_profile_published_accepted(mock_audit, mock_rls
 
 
 @patch("app.core.workspace_context.set_workspace_rls")
-@patch("app.routers.workflows.audit")
+@patch("app.routers.workflows_crud.audit")
 def test_update_workflow_gateway_profile_unpublished_400(mock_audit, mock_rls):
     """Draft profile (active_revision_id NULL) is rejected at the boundary."""
     db = MagicMock()
@@ -489,7 +489,7 @@ def test_update_workflow_gateway_profile_unpublished_400(mock_audit, mock_rls):
 
 
 @patch("app.core.workspace_context.set_workspace_rls")
-@patch("app.routers.workflows.audit")
+@patch("app.routers.workflows_crud.audit")
 def test_update_workflow_gateway_profile_cross_workspace_404(mock_audit, mock_rls):
     """Profile id from another workspace surfaces as 404 (not 403 — no existence disclosure)."""
     db = MagicMock()
@@ -507,7 +507,7 @@ def test_update_workflow_gateway_profile_cross_workspace_404(mock_audit, mock_rl
 
 
 @patch("app.core.workspace_context.set_workspace_rls")
-@patch("app.routers.workflows.audit")
+@patch("app.routers.workflows_crud.audit")
 def test_update_workflow_gateway_profile_clear(mock_audit, mock_rls):
     """Explicit null clears the pin without a profile lookup and returns 200."""
     db = MagicMock()
@@ -529,7 +529,7 @@ def test_update_workflow_gateway_profile_clear(mock_audit, mock_rls):
 # ---------------------------------------------------------------------------
 
 @patch("app.core.workspace_context.set_workspace_rls")
-@patch("app.routers.workflows.audit")
+@patch("app.routers.workflows_crud.audit")
 def test_delete_workflow_soft_deletes(mock_audit, mock_rls):
     """Soft delete: sets archived_at, commits, returns 204."""
     db = MagicMock()
@@ -548,7 +548,7 @@ def test_delete_workflow_soft_deletes(mock_audit, mock_rls):
 
 
 @patch("app.core.workspace_context.set_workspace_rls")
-@patch("app.routers.workflows.audit")
+@patch("app.routers.workflows_crud.audit")
 def test_delete_workflow_not_found_404(mock_audit, mock_rls):
     db = MagicMock()
     db.query.return_value.filter.return_value.first.return_value = None
@@ -561,7 +561,7 @@ def test_delete_workflow_not_found_404(mock_audit, mock_rls):
 
 
 @patch("app.core.workspace_context.set_workspace_rls")
-@patch("app.routers.workflows.audit")
+@patch("app.routers.workflows_crud.audit")
 def test_delete_already_archived_returns_404(mock_audit, mock_rls):
     """Workflow.archived_at.is_(None) in the filter means the router never sees archived rows."""
     db = MagicMock()
