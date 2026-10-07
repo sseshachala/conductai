@@ -181,9 +181,17 @@ services:
       # threshold is tuned via `GATEWAY_ADMISSION_*` env vars.
       - key: ADMISSION_ENABLED
         value: "true"
+      # One worker on starter (512 MB): each worker is the full API app
+      # (~136 MB) + LiteLLM (~130 MB). Two workers ≈ 530 MB idle = OOM
+      # restarts on first model call. One async worker covers current load.
+      - key: WEB_CONCURRENCY
+        value: "1"
+      # Import LiteLLM at boot, not inside the first request (5s loop stall).
+      - key: GATEWAY_PRELOAD_LITELLM
+        value: "true"
       # Pool sizing note (see block comment above). SQLAlchemy defaults
-      # are pool_size=5 + max_overflow=10 = 15 per worker. Two workers
-      # per service = 30 per instance. Three web services on one
+      # are pool_size=5 + max_overflow=10 = 15 per worker. One worker
+      # here = 15; the api service runs two = 30 per instance. Three web services on one
       # Postgres instance (starter, `max_connections=97`) means 3 * 30
       # = 90, headroom for migrations. Cap explicitly via env var so a
       # future scale-up on the API service doesn't oversubscribe the DB.
