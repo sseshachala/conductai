@@ -245,10 +245,11 @@ def test_full_onboarding_flow(db):
     # We patch Clerk helper functions globally for the duration of this test so
     # that no real HTTP calls are made to api.clerk.com.
     with (
-        patch("app.routers.projects.get_clerk_user_email", return_value=ADMIN_EMAIL),
-        patch("app.routers.projects.get_clerk_user_info", return_value={"email": ADMIN_EMAIL, "name": "Test Admin"}),
-        patch("app.routers.projects.find_clerk_user_id_by_email", return_value=None),
-        patch("app.routers.projects.send_template_email", return_value=False),
+        patch("app.routers.projects_core.get_clerk_user_email", return_value=ADMIN_EMAIL),
+        patch("app.routers.projects_members.get_clerk_user_email", return_value=ADMIN_EMAIL),
+        patch("app.routers.projects_members.get_clerk_user_info", return_value={"email": ADMIN_EMAIL, "name": "Test Admin"}),
+        patch("app.routers.projects_members.find_clerk_user_id_by_email", return_value=None),
+        patch("app.routers.projects_members.send_template_email", return_value=False),
         patch("app.core.auth.get_clerk_user_email", return_value=ADMIN_EMAIL),
     ):
         workspace_id: str | None = None
@@ -344,7 +345,7 @@ def test_full_onboarding_flow(db):
             ]
 
             for user_id, email, expected_role in invited_users:
-                with patch("app.routers.projects.get_clerk_user_email", return_value=email):
+                with patch("app.routers.projects_core.get_clerk_user_email", return_value=email):
                     member_client = _client_for(user_id, workspace_id, role=expected_role, email=email)
                     resp = member_client.get("/projects")
                     assert resp.status_code == 200, (

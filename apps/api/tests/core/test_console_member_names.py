@@ -6,7 +6,7 @@ import pytest
 
 from app.core.config import settings
 from app.modules.auth.console.profiles import member_names
-from app.routers.projects import list_members
+from app.routers.projects_members import list_members
 
 
 def member():
@@ -19,7 +19,7 @@ def test_proxy_members_use_local_names_without_clerk(monkeypatch):
     db = MagicMock()
     db.execute.return_value.fetchall.return_value = [member()]
     with patch("app.modules.auth.console.profiles.member_names", return_value={"oidc_admin": "Console admin"}) as names, \
-            patch("app.routers.projects.get_clerk_user_info") as clerk:
+            patch("app.routers.projects_members.get_clerk_user_info") as clerk:
         result = list_members("ws", "oidc_admin", "ws", "admin", db)
     assert result[0].name == "Console admin"
     assert result[0].email is None
@@ -32,7 +32,7 @@ def test_clerk_members_keep_existing_lookup(monkeypatch):
     monkeypatch.setattr(settings, "auth_mode", "clerk")
     db = MagicMock()
     db.execute.return_value.fetchall.return_value = [member()]
-    with patch("app.routers.projects.get_clerk_user_info", return_value={"email": None, "name": "Clerk admin"}), \
+    with patch("app.routers.projects_members.get_clerk_user_info", return_value={"email": None, "name": "Clerk admin"}), \
             patch("app.modules.auth.console.profiles.member_names") as names:
         result = list_members("ws", "oidc_admin", "ws", "admin", db)
     assert result[0].name == "Clerk admin"
