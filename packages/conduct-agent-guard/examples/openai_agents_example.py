@@ -5,10 +5,13 @@
     python examples/openai_agents_example.py
 """
 from _demo import MODEL, PROVIDER, PROMPT, SYSTEM, memory_save, search_web
-from agents import Agent, Runner, function_tool
+from agents import Agent, Runner, function_tool, set_tracing_disabled
 from agents.extensions.models.litellm_model import LitellmModel
 
 from conduct_agent_guard.openai_agents import guard_tools
+
+# The SDK uploads traces to OpenAI by default, outside your Gateway. Off for a governed demo.
+set_tracing_disabled(True)
 
 agent = Agent(
     name="support",
