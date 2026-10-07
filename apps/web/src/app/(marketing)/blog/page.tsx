@@ -1,6 +1,14 @@
 export default function BlogIndex() {
   const posts = [
     {
+      slug: "one-policy-five-agent-frameworks",
+      title: "One policy, five agent frameworks",
+      excerpt: "One Conduct rule in front of agents built with the Claude Agent SDK, OpenAI Agents SDK, LangChain, Google ADK and CrewAI. The same rule blocked the same memory-poisoning attempt in all five, with one line of code per framework and one audit trail.",
+      date: "October 6, 2026",
+      tag: "Integrations",
+      tagColor: "text-orange-700 bg-orange-50 border-orange-200",
+    },
+    {
       slug: "conduct-guard-discover",
       title: "Discover your AI tools. See what's actually verified.",
       excerpt: "Conduct Guard Discovery separates installed tools, configured hooks, observed activity, and Gateway connectivity. One command to see what's known and what still needs verification.",
