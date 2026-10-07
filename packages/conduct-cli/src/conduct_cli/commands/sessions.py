@@ -333,7 +333,7 @@ def _fetch_runs(cfg: dict) -> list[dict]:
         return []
 
 
-def _fetch_guard_activity(cfg: dict, guard_cfg: dict) -> list[dict]:
+def _fetch_guard_activity(cfg: dict) -> list[dict]:
     """Fetch recent Guard events grouped by developer."""
     server  = (cfg.get("server") or cfg.get("api_url") or "").rstrip("/")
     api_key = cfg.get("agent_token", "")
@@ -481,7 +481,7 @@ def _render_tui(rows: list[dict]) -> None:
         panels.append(Panel(runs_tbl, title="[bold green]▶ Agent Runs[/]", expand=True))
 
         # Team Activity panel (Guard)
-        team_data = _fetch_guard_activity(cfg, guard_cfg)
+        team_data = _fetch_guard_activity(cfg)
         team_tbl  = Table(box=box.SIMPLE, expand=True, show_header=True, header_style="bold white")
         team_tbl.add_column("Developer",  min_width=28)
         team_tbl.add_column("Calls",      width=8,  justify="right")
