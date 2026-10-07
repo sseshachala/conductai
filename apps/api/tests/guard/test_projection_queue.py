@@ -17,6 +17,7 @@ from tests.guard._projection_queue_helpers import (  # noqa: F401 — fixtures
 )
 
 from app.modules.guard import knowledge
+from app.modules.guard import projection_intents
 from app.modules.guard import projection_queue as pq
 from app.modules.guard.projection_contract import (
     PROJECTION_QUEUE_KEY,
@@ -64,7 +65,7 @@ def test_high_severity_allowed_event_routes_individually():
 
 def test_allowed_summary_coalesces_one_debounced_durable_intent(monkeypatch):
     statement = FakeStatement()
-    monkeypatch.setattr(pq, "insert", lambda model: statement)
+    monkeypatch.setattr(projection_intents, "insert", lambda model: statement)
     summary_id = uuid4()
     db = FakeDB(summary_id=summary_id, versions=[1, 2])
     first = pq.persist_audit_event_projection(
@@ -89,7 +90,7 @@ def test_allowed_summary_coalesces_one_debounced_durable_intent(monkeypatch):
 
 def test_allowed_summary_processing_race_creates_only_one_next_intent(monkeypatch):
     statement = FakeStatement()
-    monkeypatch.setattr(pq, "insert", lambda model: statement)
+    monkeypatch.setattr(projection_intents, "insert", lambda model: statement)
     processing = make_intent(
         source_kind=ProjectionSourceKind.AUDIT_SUMMARY.value,
         source_id=str(uuid4()),
