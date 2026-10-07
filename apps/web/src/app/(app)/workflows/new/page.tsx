@@ -53,14 +53,8 @@ const MANUAL_WEBHOOK_SLUGS = new Set(["incident_responder", "dependency_updater"
 const TEMPLATES = [
   { id: "autopilot_full",     label: "Autopilot",               description: "Issue labeled → implement fix → open PR.", tags: ["GitHub", "Slack"] },
   { id: "autopilot_approved", label: "Autopilot + Approval",    description: "Fix → tests → human approves in Slack → open PR.", tags: ["GitHub", "Slack"] },
-  { id: "pr_reviewer",        label: "PR Reviewer",             description: "PR opened → AI reviews diff → posts comment.", tags: ["GitHub", "Slack"] },
-  { id: "issue_triage",       label: "Issue Triage",            description: "New issue → AI classifies and adds labels.", tags: ["GitHub", "Slack"] },
-  { id: "release_notes",      label: "Release Notes",           description: "Tag pushed → AI writes CHANGELOG → posts to Slack.", tags: ["GitHub", "Slack"] },
-  { id: "ci_notify",          label: "CI Failure Alert",        description: "CI fails → AI diagnoses → posts root cause to Slack.", tags: ["GitHub", "Slack"] },
   { id: "incident_responder", label: "Incident Responder",      description: "Alert fires → AI correlates commits → posts to #incidents.", tags: ["Slack"] },
-  { id: "dependency_updater", label: "Dependency Updater",      description: "Weekly cron → bump patch/minor deps → open PR.", tags: ["GitHub", "Slack"] },
   { id: "security_scanner",   label: "Security Scanner",        description: "PR opened → OWASP scan → structured security report.", tags: ["GitHub"] },
-  { id: "copilot_reviewer",   label: "Copilot Reviewer",        description: "Copilot/Cursor PR → AI reviews → human approves before merge.", tags: ["GitHub", "Slack"] },
 ]
 
 export default function NewWorkflowPage() {

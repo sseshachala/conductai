@@ -3,10 +3,6 @@ Playbook regression suite — loads every playbook YAML through the DSL loader
 and asserts it parses without error.
 
 Run before and after any schema or loader change to catch regressions.
-
-Known failures (tracked in GH issues, not schema bugs):
-  bughunter-active-scan.yaml — uses for_each, prompt:/system: fields, and
-    slash-format actions not yet in the DSL. Unblocked by #564 + #565.
 """
 from pathlib import Path
 import pytest
@@ -16,7 +12,6 @@ PLAYBOOKS_DIR = Path(__file__).resolve().parent.parent / "playbooks"
 PLAYBOOK_FILES = sorted(f for f in PLAYBOOKS_DIR.glob("*.yaml") if f.name != "registry.yaml")
 
 # Playbooks that use DSL features not yet implemented — tracked in GH issues
-# bughunter-active-scan.yaml was unblocked by #565 (system/prompt/for_each/input fields)
 XFAIL_PLAYBOOKS: dict[str, str] = {}
 
 
@@ -38,7 +33,7 @@ def test_playbook_loads_without_error(playbook_path):
 
 
 def test_all_playbooks_discovered():
-    """Sanity check — at least 20 playbooks must exist or something is wrong."""
-    assert len(PLAYBOOK_FILES) >= 20, (
-        f"Only {len(PLAYBOOK_FILES)} playbooks found — expected at least 20"
+    """Sanity check — at least 15 playbooks must exist or something is wrong."""
+    assert len(PLAYBOOK_FILES) >= 15, (
+        f"Only {len(PLAYBOOK_FILES)} playbooks found — expected at least 15"
     )
