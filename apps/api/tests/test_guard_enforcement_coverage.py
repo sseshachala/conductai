@@ -19,7 +19,7 @@ from app.modules.guard.enforcement import (
 )
 from app.modules.guard.models import GuardRuleOverride, WorkspaceCustomRule, WorkspaceSkillPack
 from app.modules.guard.policy_engine import _skill_pack_version_key
-from app.modules.guard.routers import policies
+from app.modules.guard.routers import policies_read as policies
 from app.modules.guard.routers.mcp import _match_policy
 from scripts.generate_guard_enforcement_coverage import OUTPUT_PATH, render_document
 

@@ -198,15 +198,15 @@ def _call_pack_patch(body: PolicyPatch, base_action: str):
         expires_at=body.expires_at,
     )
     with patch(
-        "app.modules.guard.routers.policies._find_pack_rule",
+        "app.modules.guard.routers.policies_write._find_pack_rule",
         return_value=({"id": "r1", "action": base_action}, workspace_pack),
     ), patch(
-        "app.modules.guard.routers.policies._upsert_override",
+        "app.modules.guard.routers.policies_write._upsert_override",
         return_value=override,
     ) as upsert, patch(
-        "app.modules.guard.routers.policies.invalidate_policy_cache",
+        "app.modules.guard.routers.policies_write.invalidate_policy_cache",
     ), patch(
-        "app.modules.guard.routers.policies._write_audit",
+        "app.modules.guard.routers.policies_write._write_audit",
     ):
         result = patch_policy(
             "r1",
@@ -276,12 +276,12 @@ def test_patch_can_revoke_active_exception_before_expiry():
     )
 
     with patch(
-        "app.modules.guard.routers.policies._find_pack_rule",
+        "app.modules.guard.routers.policies_write._find_pack_rule",
         return_value=({"id": "r1", "action": "block"}, workspace_pack),
     ), patch(
-        "app.modules.guard.routers.policies.invalidate_policy_cache",
+        "app.modules.guard.routers.policies_write.invalidate_policy_cache",
     ), patch(
-        "app.modules.guard.routers.policies._write_audit",
+        "app.modules.guard.routers.policies_write._write_audit",
     ):
         result = patch_policy(
             "r1",
