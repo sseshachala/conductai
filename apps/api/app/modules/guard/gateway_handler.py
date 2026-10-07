@@ -2136,6 +2136,20 @@ async def _execute_v2(
                     f"{last.error_summary or 'no matching target permitted'}"
                 ),
             ) from exc
+        # The provider rejected the profile's credential (dead/rotated key).
+        # 424, not 502: it's a config problem the operator must fix, and SDKs
+        # auto-retry 502s, which would hammer the provider with a dead key.
+        last = exc.attempts[-1] if exc.attempts else None
+        if last is not None and last.upstream_status in (401, 403):
+            raise _HTTPException(
+                status_code=424,
+                detail=(
+                    f"Provider {last.provider_or_integration} rejected the credential for "
+                    f"target '{last.target_id}' on Gateway profile "
+                    f"'{plan.resolved.profile.name}' (HTTP {last.upstream_status}). "
+                    f"Rotate that provider credential in Conduct."
+                ),
+            ) from exc
         raise _HTTPException(
             status_code=502,
             detail=(

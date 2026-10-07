@@ -700,7 +700,7 @@ function HowToUse({ profile }: { profile: GatewayProfileV2Out }) {
   // Derive the provider suffix from the profile's targets. For a
   // profile with an anthropic target, users need
   // ``/gateway/v1/anthropic``. For OpenAI + OpenRouter (via
-  // passthrough) users go through ``/gateway/v1/openai``. When a
+  // passthrough) users go through ``/gateway/v1/openai/v1``. When a
   // profile fronts multiple providers (mixed fallback), we list all
   // of them so the admin picks the one matching their SDK.
   // Gateway lives on a different hostname from the dashboard
@@ -717,18 +717,22 @@ function HowToUse({ profile }: { profile: GatewayProfileV2Out }) {
   for (const t of wc.targets ?? []) {
     // Passthrough routes speak OpenAI Chat Completions today
     // (OpenRouter is OpenAI-compatible) — the SDK still points at
-    // /gateway/v1/openai for those.
+    // /gateway/v1/openai/v1 for those.
     if (t.transport === "http_passthrough") {
       surfaces.add("openai")
     } else if (t.provider === "anthropic" || t.provider === "openai") {
       surfaces.add(t.provider)
     }
   }
+  // SDK base URLs. The OpenAI SDK appends ``/chat/completions`` and the
+  // Gateway serves ``/gateway/v1/openai/v1/chat/completions``, so its base
+  // needs the ``/v1``. The Anthropic SDK appends ``/v1/messages`` itself.
+  const sdkBase = (p: string) => `${origin}/gateway/v1/${p}${p === "openai" ? "/v1" : ""}`
   const urls = surfaces.size === 0
     // Fallback for a draft with no targets yet — show both so the
     // admin sees the pattern.
-    ? [`${origin}/gateway/v1/anthropic`, `${origin}/gateway/v1/openai`]
-    : [...surfaces].map(p => `${origin}/gateway/v1/${p}`)
+    ? [sdkBase("anthropic"), sdkBase("openai")]
+    : [...surfaces].map(sdkBase)
 
   return (
     <div className="card card-pad" style={{ background: "var(--surface-2)" }}>
@@ -764,7 +768,7 @@ function HowToUse({ profile }: { profile: GatewayProfileV2Out }) {
       </div>
       <p style={{ fontSize: 11.5, color: "var(--text-3)", margin: "10px 0 0" }}>
         Point your SDK's base URL at the matching entry above (Anthropic
-        SDK → ``/gateway/v1/anthropic``, OpenAI SDK → ``/gateway/v1/openai``)
+        SDK → ``/gateway/v1/anthropic``, OpenAI SDK → ``/gateway/v1/openai/v1``)
         and set <code className="mono">model:</code> to the profile identifier.
       </p>
       <TestPanel profileId={profile.id} urls={urls} />
@@ -782,7 +786,7 @@ function TestPanel({ profileId, urls }: { profileId: string; urls: string[] }) {
   // vendor paths — that's why the identity of the picker is just the
   // provider string, not the full URL.
   const providers: Array<"anthropic" | "openai"> = urls.map(u =>
-    u.endsWith("/anthropic") ? "anthropic" : "openai",
+    u.includes("/gateway/v1/anthropic") ? "anthropic" : "openai",
   ) as Array<"anthropic" | "openai">
   const [open, setOpen] = useState(false)
   const [provider, setProvider] = useState<"anthropic" | "openai">(providers[0] ?? "openai")
@@ -948,7 +952,7 @@ function friendlyError(status: number, raw: string): string {
   if (status === 401 || status === 403) return "Auth token was rejected by the gateway."
   if (status === 404) return "Profile not routable — check that it's published and the URL matches."
   if (status === 424 || /vault|credential/i.test(raw)) {
-    return `Vault credential missing or unreachable.\n\n${raw}`
+    return `Provider credential problem (missing, unreachable, or rejected by the provider).\n\n${raw}`
   }
   return raw || `HTTP ${status}`
 }

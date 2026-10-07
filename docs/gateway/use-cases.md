@@ -19,7 +19,7 @@ Native HTTPS, LiteLLM SDK, and external Gateway targets support streaming.
    | SDK you're using | Base URL |
    |---|---|
    | Anthropic SDK | `https://gateway.conductai.ai/gateway/v1/anthropic` |
-   | OpenAI SDK (incl. OpenRouter passthrough) | `https://gateway.conductai.ai/gateway/v1/openai` |
+   | OpenAI SDK (incl. OpenRouter passthrough) | `https://gateway.conductai.ai/gateway/v1/openai/v1` |
 
 5. **Model field** can use the profile's unambiguous cond-code identifier:
    ```
@@ -171,7 +171,7 @@ from openai import OpenAI
 
 client = OpenAI(
     api_key="guard-mt-YOUR_TOKEN",
-    base_url="https://gateway.conductai.ai/gateway/v1/openai",
+    base_url="https://gateway.conductai.ai/gateway/v1/openai/v1",
 )
 resp = client.chat.completions.create(
     model="cond-abc12345-gpt-4o",
@@ -335,7 +335,7 @@ from openai import OpenAI
 
 client = OpenAI(
     api_key="guard-mt-YOUR_TOKEN",
-    base_url="https://gateway.conductai.ai/gateway/v1/openai",
+    base_url="https://gateway.conductai.ai/gateway/v1/openai/v1",
 )
 resp = client.chat.completions.create(
     model="cond-abc12345-via-openrouter",
@@ -377,7 +377,7 @@ from openai import OpenAI
 
 client = OpenAI(
     api_key="guard-mt-YOUR_TOKEN",
-    base_url="https://gateway.conductai.ai/gateway/v1/openai",
+    base_url="https://gateway.conductai.ai/gateway/v1/openai/v1",
 )
 stream = client.chat.completions.create(
     model="cond-abc12345-gpt-4o",
@@ -426,7 +426,7 @@ from openai import OpenAI
 
 client = OpenAI(
     api_key="guard-mt-YOUR_TOKEN",
-    base_url="https://gateway.conductai.ai/gateway/v1/openai",
+    base_url="https://gateway.conductai.ai/gateway/v1/openai/v1",
 )
 resp = client.responses.create(
     model="cond-abc12345-gpt-4o",
