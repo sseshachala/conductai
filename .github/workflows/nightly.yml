@@ -110,6 +110,10 @@ jobs:
     # web-smoke.yml runs on every push to main; add a scheduled invocation
     # here so we catch regressions that don't touch apps/web or apps/api
     # (dependency updates, upstream Clerk changes, etc).
+    # Shares the Clerk sandbox users with web-smoke.yml; see the note there.
+    concurrency:
+      group: clerk-sandbox-e2e
+      cancel-in-progress: false
     if: ${{ github.event.inputs.only == '' || github.event.inputs.only == 'all' || github.event.inputs.only == 'web-smoke' }}
     runs-on: ubuntu-latest
     # 45 min: matches web-smoke.yml — Group F expanded runtime past 25.
