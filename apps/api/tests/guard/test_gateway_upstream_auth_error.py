@@ -5,6 +5,9 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 from uuid import UUID
 
+import base64
+import json
+
 import httpx
 import pytest
 from fastapi import HTTPException
@@ -13,7 +16,12 @@ from app.modules.guard import gateway_handler
 from app.modules.guard.gateway_config import GatewayProfileV2, LiteLLMSDKTarget
 from app.modules.guard.gateway_runtime import ResolvedV2
 from app.runtime import gateway_transports
-from app.runtime.attempt_coordinator import AllAttemptsFailed, AttemptCoordinator, AttemptRecord
+from app.runtime.attempt_coordinator import (
+    AllAttemptsFailed,
+    AttemptCoordinator,
+    AttemptRecord,
+    provider_error_message,
+)
 
 REV = UUID("22222222-2222-2222-2222-222222222222")
 
@@ -30,11 +38,21 @@ def _resolved() -> ResolvedV2:
     return ResolvedV2(revision_id=REV, profile=profile)
 
 
-def _attempt(status: int | None) -> AttemptRecord:
+def _b64(obj: object) -> str:
+    raw = obj if isinstance(obj, str) else json.dumps(obj)
+    return base64.b64encode(raw.encode()).decode()
+
+
+ANTHROPIC_400 = {"type": "error", "error": {"type": "invalid_request_error",
+                                            "message": "thinking: unsupported for this model"}}
+
+
+def _attempt(status: int | None, body: str | None = None) -> AttemptRecord:
     return AttemptRecord(
         target_id="primary", transport="native_http", provider_or_integration="anthropic",
         started_at_monotonic=0.0, completed_at_monotonic=1.0, succeeded=False,
         error_class="HTTPStatusError", error_summary="upstream returned", upstream_status=status,
+        response_bytes_b64=body,
     )
 
 
@@ -59,9 +77,9 @@ async def test_coordinator_records_upstream_status_from_httpx_error() -> None:
 # ── handler maps it to 424 ──────────────────────────────────────────────
 
 
-async def _run(monkeypatch: pytest.MonkeyPatch, status: int | None) -> HTTPException:
+async def _run(monkeypatch: pytest.MonkeyPatch, status: int | None, body: str | None = None) -> HTTPException:
     coord = MagicMock()
-    coord.execute = AsyncMock(side_effect=AllAttemptsFailed([_attempt(status)]))
+    coord.execute = AsyncMock(side_effect=AllAttemptsFailed([_attempt(status, body)]))
     monkeypatch.setattr(gateway_transports, "get_coordinator", AsyncMock(return_value=coord))
     plan = SimpleNamespace(
         resolved=_resolved(), operation="anthropic_messages", needs_anthropic_conversion=False,
@@ -85,3 +103,41 @@ async def test_credential_rejected_is_424_naming_profile(monkeypatch: pytest.Mon
 @pytest.mark.parametrize("status", [500, None])
 async def test_other_failures_stay_502(monkeypatch: pytest.MonkeyPatch, status: int | None) -> None:
     assert (await _run(monkeypatch, status)).status_code == 502
+
+
+@pytest.mark.anyio("asyncio")
+async def test_auth_error_omits_provider_text(monkeypatch: pytest.MonkeyPatch) -> None:
+    body = _b64({"error": {"message": "Incorrect API key provided: sk-abc***xyz"}})
+    exc = await _run(monkeypatch, 401, body)
+    assert exc.status_code == 424 and "sk-" not in exc.detail
+
+
+@pytest.mark.anyio("asyncio")
+@pytest.mark.parametrize("status", [400, 404, 413, 429])
+async def test_provider_4xx_passes_through_with_message(monkeypatch: pytest.MonkeyPatch, status: int) -> None:
+    exc = await _run(monkeypatch, status, _b64(ANTHROPIC_400))
+    assert exc.status_code == status
+    assert "thinking: unsupported for this model" in exc.detail
+    assert "claude-litellm" in exc.detail
+
+
+# ── provider_error_message ──────────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    ("body", "expected"),
+    [
+        (_b64(ANTHROPIC_400), "thinking: unsupported for this model"),
+        (_b64({"error": {"message": "max_tokens too large", "type": "invalid_request_error"}}), "max_tokens too large"),
+        (_b64({"error": "plain string error"}), "plain string error"),
+        (_b64("<html>bad gateway</html>"), "<html>bad gateway</html>"),
+        (None, None),
+        ("", None),
+    ],
+)
+def test_provider_error_message(body: str | None, expected: str | None) -> None:
+    assert provider_error_message(body) == expected
+
+
+def test_provider_error_message_truncates() -> None:
+    assert len(provider_error_message(_b64({"error": {"message": "x" * 2000}}))) == 500

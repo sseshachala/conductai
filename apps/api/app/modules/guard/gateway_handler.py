@@ -2136,18 +2136,32 @@ async def _execute_v2(
                     f"{last.error_summary or 'no matching target permitted'}"
                 ),
             ) from exc
-        # The provider rejected the profile's credential (dead/rotated key).
-        # 424, not 502: it's a config problem the operator must fix, and SDKs
-        # auto-retry 502s, which would hammer the provider with a dead key.
+        # The provider answered with a 4xx: surface it instead of a blanket 502
+        # (SDKs auto-retry 502s, and the client can't fix what it can't see).
         last = exc.attempts[-1] if exc.attempts else None
-        if last is not None and last.upstream_status in (401, 403):
+        upstream = last.upstream_status if last is not None else None
+        if last is not None and upstream is not None and 400 <= upstream < 500:
+            where = (
+                f"target '{last.target_id}' on Gateway profile '{plan.resolved.profile.name}' "
+                f"(HTTP {upstream})"
+            )
+            if upstream in (401, 403):
+                # Dead/rotated profile credential: operator config problem → 424.
+                # Provider text omitted on purpose — auth errors can echo key fragments.
+                raise _HTTPException(
+                    status_code=424,
+                    detail=(
+                        f"Provider {last.provider_or_integration} rejected the credential for "
+                        f"{where}. Rotate that provider credential in Conduct."
+                    ),
+                ) from exc
+            from app.runtime.attempt_coordinator import provider_error_message
+            reason = provider_error_message(last.response_bytes_b64)
             raise _HTTPException(
-                status_code=424,
+                status_code=upstream,
                 detail=(
-                    f"Provider {last.provider_or_integration} rejected the credential for "
-                    f"target '{last.target_id}' on Gateway profile "
-                    f"'{plan.resolved.profile.name}' (HTTP {last.upstream_status}). "
-                    f"Rotate that provider credential in Conduct."
+                    f"Provider {last.provider_or_integration} rejected the request for {where}"
+                    + (f": {reason}" if reason else ".")
                 ),
             ) from exc
         raise _HTTPException(
