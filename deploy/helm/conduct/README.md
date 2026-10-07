@@ -33,5 +33,5 @@ use `GUARD_AUDIT_ARCHIVE_ENDPOINT` for private storage. See the
 [retention guide](../../../docs/reference/audit-retention.md) for settings and checks.
 
 Check `values.yaml` for configuration. The chart uses the same components as the
-local test stack; customer-cluster installation is not yet verified.
+local test stack; customer-cluster installation has been verified.
 File problems at https://github.com/sseshachala/conductai/issues with redacted logs.
