@@ -187,6 +187,36 @@ def test_tools_call_runs_allowed_tool_dict_result_with_structured_content():
     assert "42" in result["content"][0]["text"]
 
 
+def test_tools_call_list_result_is_wrapped_in_object():
+    """MCP requires structuredContent to be an object; a bare list made
+    claude.ai reject get_recent_events with a schema error."""
+    def impl():
+        return [{"id": 1}, {"id": 2}]
+    registry = _registry_with([_tool("events", impl=impl)])
+    request = {
+        "jsonrpc": "2.0", "id": 3, "method": "tools/call",
+        "params": {"name": "events"},
+    }
+    with patch("app.mcp.server.evaluate_composed", return_value=_allow_decision()):
+        result = dispatch(request, _ctx(), registry)["result"]
+    assert result["structuredContent"] == {"items": [{"id": 1}, {"id": 2}]}
+    assert '"id": 1' in result["content"][0]["text"]
+
+
+def test_every_registered_output_schema_is_an_object():
+    """MCP outputSchema must describe an object (or a oneOf of objects)."""
+    from app.tools import registrations  # noqa: F401  # populates default_registry
+    from app.tools.registry import default_registry
+
+    def is_object(schema: dict) -> bool:
+        if "oneOf" in schema:
+            return all(is_object(s) for s in schema["oneOf"])
+        return schema.get("type") == "object" or "properties" in schema
+
+    bad = [t.name for t in default_registry.list() if t.output_schema and not is_object(t.output_schema)]
+    assert bad == []
+
+
 def test_tools_call_blocked_by_policy_returns_error_envelope():
     def impl():
         return "should not run"
