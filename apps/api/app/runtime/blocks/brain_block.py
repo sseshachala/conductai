@@ -865,6 +865,7 @@ def _execute_brain(
                               cf_ray=_up_err.cf_ray, render_req=_up_err.request_id,
                               attempts=_up_err.attempts,
                               run_id=run_id, block_id=block_id)
+                    _close_session()  # #2401: don't leak the sandbox
                     raise
                 except Exception as _llm_err:
                     _cause = getattr(_llm_err, "__cause__", None) or getattr(_llm_err, "__context__", None)
@@ -872,6 +873,7 @@ def _execute_brain(
                               error=str(_llm_err), cause=str(_cause),
                               base_url=_conduct_proxy_url, turn=turns,
                               run_id=run_id, block_id=block_id)
+                    _close_session()  # #2401: don't leak the sandbox
                     raise
                 _cache_set(run_id, block_id, turns, response.to_cache_dict())
                 _did_actual_llm_call = True
@@ -1473,6 +1475,10 @@ def _execute_brain(
                           cf_ray=_up_err.cf_ray, render_req=_up_err.request_id,
                           attempts=_up_err.attempts,
                           run_id=run_id, block_id=block_id)
+                _close_session()  # #2401: don't leak the sandbox
+                raise
+            except Exception:
+                _close_session()  # #2401: don't leak the sandbox
                 raise
             _cache_set(run_id, block_id, 0, response.to_cache_dict())
         text = next((b.text for b in response.content if isinstance(b, LLMTextBlock)), "")

@@ -179,6 +179,17 @@ def test_upstream_error_mid_run_emits_and_reraises():
     assert (evt["turn"], evt["status"], evt["is_final"]) == (1, 502, True)
     assert len(h.checkpoints) == 1
     assert h.run_updates() == []
+    assert h.session.close_calls == 1  # #2401 item 2: no session leak
+
+
+def test_generic_model_error_mid_run_closes_session():
+    script = [tool_response(("t1", "read_file", {"path": "a.py"})),
+              ValueError("gateway exploded")]
+    with brain_harness(script) as h:
+        with pytest.raises(ValueError, match="gateway exploded"):
+            run_brain(h, _agentic(), base_state())
+    assert h.emitted("llm_upstream_blocked") == []
+    assert h.session.close_calls == 1  # #2401 item 2: no session leak
 
 
 def test_require_tests_pass_blocks_commit_until_tests_ran():

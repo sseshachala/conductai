@@ -135,6 +135,7 @@ def test_single_turn_upstream_error_emits_and_reraises():
     assert evt["base_url"] == PROXY_URL
     assert h.kinds() == ["llm_upstream_blocked"]
     assert h.traces == []
+    assert h.session.close_calls == 1  # #2401 item 2: no session leak
 
 
 def test_single_turn_generic_model_error_propagates_without_event():
@@ -142,6 +143,7 @@ def test_single_turn_generic_model_error_propagates_without_event():
         with pytest.raises(ValueError, match="gateway exploded"):
             run_brain(h, brain_block(agentic=False), base_state())
     assert h.emits == []
+    assert h.session.close_calls == 1  # #2401 item 2: no session leak
 
 
 # ── Gateway profile requirement (#2170) ──────────────────────────────
