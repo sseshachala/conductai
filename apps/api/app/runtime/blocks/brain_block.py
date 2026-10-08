@@ -325,15 +325,6 @@ def _execute_brain(
     from app.runtime.exceptions import ClarificationRequired
     from app.runtime.tool_engine import _resolve_remote_host, _resolve_refs, _summarise_tool_call
 
-    if state.get("__dry_run"):
-        return {
-            "dry_run": True,
-            "note": "Dry run — Brain block would invoke Claude AI with the workflow context",
-            "description": block["data"].get("description", ""),
-            "is_agentic": block["data"].get("isAgentic", False),
-            "remote_host": bool((block.get("data", {}).get("config") or {}).get("remote_host")),
-        }
-
     # PR 4 — every brain_block MUST route through a published Gateway
     # profile pinned on the workflow. Direct-provider clients are gone.
     # Reviewer P2 #2184: validate BEFORE any resource allocation
@@ -370,6 +361,16 @@ def _execute_brain(
             f"{_prof_row.name!r} which has no published revision. "
             f"Fix: publish the profile or pick a different one."
         )
+    # #2401: dry run returns only after the #2170 profile checks above, so a
+    # dry run can't report success for a workflow that would refuse to run.
+    if state.get("__dry_run"):
+        return {
+            "dry_run": True,
+            "note": "Dry run — Brain block would invoke Claude AI with the workflow context",
+            "description": block["data"].get("description", ""),
+            "is_agentic": block["data"].get("isAgentic", False),
+            "remote_host": bool((block.get("data", {}).get("config") or {}).get("remote_host")),
+        }
     _alias = (_prof_row.model_alias or "").strip()
     _profile_cond_key = (
         f"cond-{_prof_row.cond_code}-{_alias}"

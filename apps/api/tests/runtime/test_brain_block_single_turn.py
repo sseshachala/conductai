@@ -185,3 +185,18 @@ def test_dry_run_with_profile_returns_stub_without_model_call():
     }
     assert h.llm_calls == []
     assert h.session.close_calls == 0
+
+
+def test_dry_run_without_profile_refuses_like_a_real_run():
+    """#2401 item 5: dry run enforces the #2170 profile requirement."""
+    with brain_harness([], assigned=False) as h:
+        with pytest.raises(RuntimeError, match="has no Gateway profile assigned"):
+            run_brain(h, brain_block(agentic=False), base_state(__dry_run=True))
+    assert h.llm_calls == []
+
+
+def test_dry_run_without_workflow_id_refuses():
+    with brain_harness([]) as h:
+        with pytest.raises(RuntimeError, match="requires a workflow context"):
+            run_brain(h, brain_block(agentic=False), base_state(__dry_run=True),
+                      workflow_id=None)
