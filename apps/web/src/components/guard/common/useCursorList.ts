@@ -35,8 +35,11 @@ export function useCursorList<T>(fetchPage: (before?: string, offset?: number) =
       const last = cur[cur.length - 1]
       const page = await fetchPage(mode === "cursor" && last ? cursorOf(last) : undefined, mode === "offset" ? cur.length : 0)
       if (id !== gen.current) return
-      setRows(first ? page : [...cur, ...page])
-      setHasMore(page.length === limit)
+      // ponytail: until the backend honours `before`, every page repeats the first rows; dedupe and stop when a page adds nothing.
+      const seen = new Set(cur.map(cursorOf))
+      const fresh = first ? page : page.filter(r => !seen.has(cursorOf(r)))
+      setRows(first ? page : [...cur, ...fresh])
+      setHasMore(page.length === limit && (first || fresh.length > 0))
     } catch (e) {
       if (id === gen.current) setError(e instanceof Error ? e.message : "Unable to load")
     } finally {
