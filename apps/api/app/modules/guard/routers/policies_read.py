@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import os
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -50,6 +50,8 @@ from app.modules.guard.routers.policies_helpers import (
 )
 
 router = APIRouter(prefix="/guard/policies", tags=["guard-policies"])
+
+_LAST_HIT_WINDOW_DAYS = 30
 
 
 @router.post("/generate", response_model=PolicyGenerateOut)
@@ -176,6 +178,7 @@ def sync_policies(
 
 @router.get("", response_model=list[PolicyOut])
 def list_policies(
+    limit: int = Query(500, ge=1, le=500),
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
     _: str = Depends(require_permission("guard.policies.view")),
@@ -187,10 +190,13 @@ def list_policies(
 
     out: list[PolicyOut] = []
 
-    # Last-hit timestamp per rule_id, aggregated across org workspaces
+    # Last-hit timestamp per rule_id, aggregated across org workspaces.
+    # Bounded to the last 30 days: rules with no hit in that window show none.
+    hit_cutoff = datetime.now(timezone.utc) - timedelta(days=_LAST_HIT_WINDOW_DAYS)
     last_hits: dict[str, datetime] = dict(
         db.query(GuardAuditEvent.rule_id, func.max(GuardAuditEvent.ts))
         .filter(GuardAuditEvent.workspace_id.in_(org_ws))
+        .filter(GuardAuditEvent.ts >= hit_cutoff)
         .filter(GuardAuditEvent.rule_id.isnot(None))
         .group_by(GuardAuditEvent.rule_id)
         .all()
@@ -229,6 +235,7 @@ def list_policies(
             seen.add(rule["id"])
             out.append(_pack_rule_to_out(rule, wp.pack_slug, wp.installed_at, ws_uuid, overrides.get(rule["id"])))
 
+    out = out[:limit]
     for p in out:
         p.last_triggered = last_hits.get(p.rule_id)
 

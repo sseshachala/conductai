@@ -11,7 +11,9 @@ from sqlalchemy.dialects.postgresql import insert
 from app.core.auth import get_guard_hook_auth, get_workspace_id
 from app.core.database import get_db
 from app.modules.guard.models import DiscoveredAgent, DiscoveryScan
-from app.modules.guard.discovery_inventory import FRAMEWORKS, agent_view, clean_evidence, summarize, workspace_inventory
+from app.modules.guard.discovery_inventory import (
+    FRAMEWORKS, agent_view, clean_evidence, summarize, workspace_inventory, workspace_inventory_page,
+)
 from app.modules.guard.routers.mcp_reconciliation import router as mcp_reconciliation_router
 
 router = APIRouter(prefix="/guard/discover", tags=["guard"])
@@ -121,12 +123,8 @@ def list_scans(workspace_id: str = Depends(get_workspace_id), db: Session = Depe
 def list_agents(workspace_id: str = Depends(get_workspace_id), db: Session = Depends(get_db),
                 under_guard: bool | None = None, limit: int = Query(100, ge=1, le=500), offset: int = Query(0, ge=0),
                 inventory: Literal["all", "current", "legacy"] = "all"):
-    agents = workspace_inventory(db, workspace_id)
-    if inventory != "all":
-        agents = [a for a in agents if (a["detection"] == "legacy_unverified") == (inventory == "legacy")]
-    if under_guard is not None:
-        agents = [a for a in agents if a["under_guard"] == under_guard]
-    return agents[offset:offset + limit]
+    return workspace_inventory_page(db, workspace_id, inventory=inventory, under_guard=under_guard,
+                                    limit=limit, offset=offset)
 
 
 @router.post("/agents/{agent_id}/register")

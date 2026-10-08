@@ -300,6 +300,27 @@ def _find_pack_rule(
     return None
 
 
+def _pack_rule_map(
+    db: Session,
+    workspace_id: uuid.UUID,
+) -> dict[str, tuple[dict, WorkspaceSkillPack]]:
+    """rule_id -> (rule, workspace_pack); first install wins (matches _find_pack_rule)."""
+    installed = (
+        db.query(WorkspaceSkillPack)
+        .filter(WorkspaceSkillPack.workspace_id == workspace_id)
+        .order_by(WorkspaceSkillPack.installed_at)
+        .all()
+    )
+    out: dict[str, tuple[dict, WorkspaceSkillPack]] = {}
+    for wp in installed:
+        pack = _resolve_workspace_pack(db, wp)
+        if not pack:
+            continue
+        for rule in pack.rules or []:
+            out.setdefault(rule["id"], (rule, wp))
+    return out
+
+
 def _resolve_workspace_pack(
     db: Session,
     workspace_pack: WorkspaceSkillPack,
@@ -357,8 +378,18 @@ def _audit_exception_transitions(
         .filter(GuardRuleOverride.workspace_id == workspace_id)
         .all()
     )
-    for override in overrides:
-        found = _find_pack_rule(db, workspace_id, override.rule_id)
+    # Only overrides with a pending transition need a pack lookup; the common
+    # GET /guard/policies case (nothing pending) does zero extra queries.
+    pending = [
+        o for o in overrides
+        if (audit_use and o.use_audited_at is None)
+        or (o.expires_at is not None and o.expires_at <= now and o.expiry_audited_at is None)
+    ]
+    if not pending:
+        return
+    rules_by_id = _pack_rule_map(db, workspace_id)
+    for override in pending:
+        found = rules_by_id.get(override.rule_id)
         if not found:
             continue
         rule, _ = found

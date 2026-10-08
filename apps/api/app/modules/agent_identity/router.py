@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
@@ -119,9 +119,11 @@ def list_agent_identities(
         db.query(AgentIdentity)
         .filter(AgentIdentity.workspace_id == workspace_id)
         .order_by(AgentIdentity.created_at.desc())
+        .limit(500)
         .all()
     )
     from app.modules.guard.models import GuardAuditEvent as Event
+    cutoff = datetime.now(timezone.utc) - timedelta(days=30)
     activity = {
         row.agent_identity_id: row
         for row in db.query(
@@ -130,6 +132,7 @@ def list_agent_identities(
             func.max(Event.ts).label("last_activity"),
         ).filter(
             Event.workspace_id == uuid.UUID(workspace_id),
+            Event.ts >= cutoff,
             Event.agent_identity_id.isnot(None),
             Event.hook_session_id.isnot(None),
             Event.hook_session_id != "",
@@ -163,6 +166,7 @@ def list_activity_sessions(
     if identity is None:
         raise HTTPException(404, detail="Agent identity not found")
     from app.modules.guard.models import GuardAuditEvent as Event
+    cutoff = datetime.now(timezone.utc) - timedelta(days=30)
     rows = db.query(
         Event.hook_session_id.label("session_id"),
         func.array_agg(func.distinct(Event.ai_tool)).label("tools"),
@@ -173,7 +177,7 @@ def list_activity_sessions(
         func.sum(case((Event.decision == "blocked", 1), else_=0)).label("blocked_count"),
     ).filter(
         Event.workspace_id == uuid.UUID(workspace_id),
-        Event.agent_identity_id == identity_id,
+        Event.agent_identity_id == identity_id, Event.ts >= cutoff,
         Event.hook_session_id.isnot(None), Event.hook_session_id != "",
     ).group_by(Event.hook_session_id).order_by(
         func.max(Event.ts).desc(), Event.hook_session_id,
@@ -441,9 +445,8 @@ def list_run_tokens(
     _: str = Depends(require_permission("platform.credentials.manage")),
     db: Session = Depends(get_db),
 ):
-    from app.models.run import Run
-    from app.models.workflow import Workflow, WorkflowVersion
     from app.modules.agent_identity.run_token_model import AgentRunToken
+    from app.modules.agent_identity.run_token_serialize import serialize_run_tokens
 
     _require_workspace_identity(db, workspace_id, identity_id)
 
@@ -458,32 +461,7 @@ def list_run_tokens(
         .all()
     )
 
-    result = []
-    for r in rows:
-        workflow_name = None
-        workflow_id = None
-        run = db.query(Run).filter(Run.id == r.run_id).first()
-        if run:
-            try:
-                wv = db.query(WorkflowVersion).filter(WorkflowVersion.id == run.workflow_version_id).first()
-                if wv:
-                    wf = db.query(Workflow).filter(Workflow.id == wv.workflow_id).first()
-                    if wf:
-                        workflow_name = wf.name
-                        workflow_id = str(wf.id)
-            except Exception:
-                pass
-        result.append({
-            "id": r.id,
-            "run_id": r.run_id,
-            "token_prefix": r.token_prefix,
-            "workflow_id": workflow_id,
-            "workflow_name": workflow_name,
-            "created_at": r.created_at.isoformat() if r.created_at else None,
-            "first_used_at": r.first_used_at.isoformat() if r.first_used_at else None,
-            "invalidated_at": r.invalidated_at.isoformat() if r.invalidated_at else None,
-        })
-    return result
+    return serialize_run_tokens(db, rows)
 
 
 @router.get("/agent-run-tokens")
@@ -493,9 +471,8 @@ def list_workspace_run_tokens(
     _: str = Depends(require_permission("platform.credentials.manage")),
     db: Session = Depends(get_db),
 ):
-    from app.models.run import Run
-    from app.models.workflow import Workflow, WorkflowVersion
     from app.modules.agent_identity.run_token_model import AgentRunToken
+    from app.modules.agent_identity.run_token_serialize import serialize_run_tokens
 
     rows = (
         db.query(AgentRunToken)
@@ -505,32 +482,7 @@ def list_workspace_run_tokens(
         .all()
     )
 
-    result = []
-    for r in rows:
-        workflow_name = None
-        workflow_id = None
-        run = db.query(Run).filter(Run.id == r.run_id).first()
-        if run:
-            try:
-                wv = db.query(WorkflowVersion).filter(WorkflowVersion.id == run.workflow_version_id).first()
-                if wv:
-                    wf = db.query(Workflow).filter(Workflow.id == wv.workflow_id).first()
-                    if wf:
-                        workflow_name = wf.name
-                        workflow_id = str(wf.id)
-            except Exception:
-                pass
-        result.append({
-            "id": r.id,
-            "run_id": r.run_id,
-            "token_prefix": r.token_prefix,
-            "workflow_id": workflow_id,
-            "workflow_name": workflow_name,
-            "created_at": r.created_at.isoformat() if r.created_at else None,
-            "first_used_at": r.first_used_at.isoformat() if r.first_used_at else None,
-            "invalidated_at": r.invalidated_at.isoformat() if r.invalidated_at else None,
-        })
-    return result
+    return serialize_run_tokens(db, rows)
 
 
 # ─── Long-lived API tokens (cond_api_*) ─────────────────────────────────────

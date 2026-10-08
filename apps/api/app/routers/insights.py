@@ -193,7 +193,6 @@ def get_agents(
 ):
     cutoff_24h = _now() - timedelta(hours=24)
     stale_cutoff = _stale_cutoff()
-
     workflows = (
         db.query(Workflow)
         .filter(Workflow.workspace_id == workspace_id)
@@ -201,55 +200,55 @@ def get_agents(
         .all()
     )
 
+    # Three grouped queries for all workflows (was 4 queries per workflow).
+    wf_ids = [wf.id for wf in workflows]
+    counts: dict[tuple, int] = {}
+    stale_by_wf: dict = {}
+    last_by_wf: dict = {}
+    if wf_ids:
+        runs_q = (
+            db.query(WorkflowVersion.workflow_id, Run.status, func.count(Run.id))
+            .join(Run, Run.workflow_version_id == WorkflowVersion.id)
+            .filter(WorkflowVersion.workflow_id.in_(wf_ids))
+        )
+        counts = {
+            (wid, status): n
+            for wid, status, n in runs_q.filter(Run.created_at >= cutoff_24h)
+            .group_by(WorkflowVersion.workflow_id, Run.status).all()
+        }
+        stale_by_wf = dict(
+            runs_q.filter(Run.status == "running", Run.locked_at < stale_cutoff)
+            .group_by(WorkflowVersion.workflow_id)
+            .with_entities(WorkflowVersion.workflow_id, func.count(Run.id)).all()
+        )
+        last_by_wf = {
+            wid: (created_at, status)
+            for wid, created_at, status in db.query(
+                WorkflowVersion.workflow_id, Run.created_at, Run.status
+            )
+            .join(Run, Run.workflow_version_id == WorkflowVersion.id)
+            .filter(WorkflowVersion.workflow_id.in_(wf_ids))
+            .distinct(WorkflowVersion.workflow_id)
+            .order_by(WorkflowVersion.workflow_id, Run.created_at.desc())
+            .all()
+        }
+
     result: list[AgentStatus] = []
     for wf in workflows:
-        version_ids_sq = (
-            db.query(WorkflowVersion.id)
-            .filter(WorkflowVersion.workflow_id == wf.id)
-            .subquery()
-        )
-
-        runs_24h = (
-            db.query(Run)
-            .filter(
-                Run.workflow_version_id.in_(version_ids_sq),
-                Run.created_at >= cutoff_24h,
-            )
-            .all()
-        )
-
-        succeeded_24h = sum(1 for r in runs_24h if r.status == "succeeded")
-        failed_24h = sum(1 for r in runs_24h if r.status == "failed")
-        total_24h = len(runs_24h)
+        succeeded_24h = counts.get((wf.id, "succeeded"), 0)
+        failed_24h = counts.get((wf.id, "failed"), 0)
+        total_24h = sum(n for (wid, _), n in counts.items() if wid == wf.id)
         success_rate = round(succeeded_24h / total_24h, 3) if total_24h else 0.0
-
-        active = sum(1 for r in runs_24h if r.status == "running")
-        pending = sum(1 for r in runs_24h if r.status == "paused")
-
-        # Stale: running with locked_at older than threshold
-        stale = (
-            db.query(func.count(Run.id))
-            .filter(
-                Run.workflow_version_id.in_(version_ids_sq),
-                Run.status == "running",
-                Run.locked_at < stale_cutoff,
-            )
-            .scalar()
-        ) or 0
-
-        last_run = (
-            db.query(Run)
-            .filter(Run.workflow_version_id.in_(version_ids_sq))
-            .order_by(Run.created_at.desc())
-            .first()
-        )
-
+        active = counts.get((wf.id, "running"), 0)
+        pending = counts.get((wf.id, "paused"), 0)
+        stale = stale_by_wf.get(wf.id, 0)
+        last_run = last_by_wf.get(wf.id)
         # Health classification
         if stale > 0:
             health = "stale"
         elif total_24h == 0:
             health = "idle"
-        elif success_rate < 0.8 or (last_run and last_run.status == "failed"):
+        elif success_rate < 0.8 or (last_run and last_run[1] == "failed"):
             health = "degraded"
         else:
             health = "healthy"
@@ -265,8 +264,8 @@ def get_agents(
             success_rate_24h=success_rate,
             succeeded_24h=succeeded_24h,
             failed_24h=failed_24h,
-            last_run_at=last_run.created_at.isoformat() if last_run else None,
-            last_run_status=last_run.status if last_run else None,
+            last_run_at=last_run[0].isoformat() if last_run else None,
+            last_run_status=last_run[1] if last_run else None,
         ))
 
     return result
