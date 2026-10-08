@@ -111,18 +111,18 @@ ALLOWLIST = {
     # Registered on two paths (/packs/available + /packs/catalog), single function
     "routers/compliance.py::list_pack_catalog",
     # Project templates (intentionally public — no user data)
-    "routers/projects.py::list_templates",
+    "routers/projects_core.py::list_templates",
     # Admin approve (auth via X-Admin-Secret HMAC — internal ops endpoint)
     "routers/projects.py::admin_approve",
     # Share link resolver (auth via opaque token in URL path)
     "routers/share.py::resolve_share",
     # YAML validation / graph conversion — stateless, no DB reads, no user data
-    "routers/workflows.py::validate_workflow_yaml",
-    "routers/workflows.py::workflow_yaml_from_graph",
+    "routers/workflows_yaml.py::validate_workflow_yaml",
+    "routers/workflows_yaml.py::workflow_yaml_from_graph",
     # Eval/benchmark endpoints — aggregate report data committed to git, no user data
-    "routers/eval.py::get_eval_summary",
-    "routers/eval.py::get_playbook_eval",
-    "routers/eval.py::list_playbook_evals",
+    "routers/eval_reports.py::get_eval_summary",
+    "routers/eval_reports.py::get_playbook_eval",
+    "routers/eval_reports.py::list_playbook_evals",
     "routers/eval.py::list_benchmark_editions",
     "routers/eval.py::get_benchmark_edition",
 }

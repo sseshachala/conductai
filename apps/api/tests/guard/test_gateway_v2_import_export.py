@@ -22,10 +22,16 @@ from __future__ import annotations
 from pathlib import Path
 
 
-_ROUTER_SRC = (
-    Path(__file__).resolve().parents[2]
-    / "app" / "routers" / "gateway_profiles_v2.py"
-).read_text(encoding="utf-8")
+# The router is split across sibling modules (endpoints + helpers); the
+# contract locks below read them as one source.
+_ROUTER_SRC = "\n".join(
+    (Path(__file__).resolve().parents[2] / "app" / "routers" / name).read_text(encoding="utf-8")
+    for name in (
+        "gateway_profiles_v2_crud.py",
+        "gateway_profiles_v2.py",
+        "gateway_profiles_v2_helpers.py",
+    )
+)
 
 
 # ─── Contract locks on the router source ──────────────────────────────
@@ -73,7 +79,7 @@ def test_strip_credentials_is_pure_no_mutation_of_input():
     """The helper's docstring promises no mutation. Locks the deep
     copy so a future edit can't remove it silently."""
     start = _ROUTER_SRC.index("def _strip_credentials(")
-    end = _ROUTER_SRC.index("\n@router.", start)
+    end = _ROUTER_SRC.index("\ndef ", start)
     body = _ROUTER_SRC[start:end]
     assert "json.loads(json.dumps" in body or "deepcopy" in body, (
         "_strip_credentials MUST deep-copy the input. Mutating a "
