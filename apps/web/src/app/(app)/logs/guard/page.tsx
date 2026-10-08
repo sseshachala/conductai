@@ -11,6 +11,7 @@ import { useGuardTeam } from "@/hooks/useGuardTeam"
 import { useGuardRole } from "@/hooks/useGuardRole"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 import { useAuthFetch } from "@/hooks/useAuthFetch"
+import { usePolledFetch, useLatestRequest } from "@/hooks/usePolledFetch"
 import { API } from "@/lib/api"
 import { GuardShell } from "@/components/guard/GuardShell"
 import { ActivityRow, ActivityHeader, DecisionBadge, BlastRadiusBadge, type AuditEvent } from "@/components/guard/ActivityRow"
@@ -200,25 +201,51 @@ function ActivityContent() {
     if (!teamLoading && !teamId) setLoading(false)
   }, [teamLoading, teamId])
 
-  const load = useCallback(async () => {
+  const beginLoad = useLatestRequest()
+  const foregroundInFlight = useRef(false)
+
+  // Foreground load (mount / filter change) resets the list and shows the
+  // skeleton. Background load (poll) never touches loading, offset or loaded
+  // pages: it prepends rows we have not seen and updates known rows in place.
+  const load = useCallback(async (opts?: { background?: boolean }) => {
     if (!teamId) return
-    setLoading(true)
-    setError(null)
-    offsetRef.current = 0
+    const background = !!opts?.background
+    if (background && foregroundInFlight.current) return
+    const isCurrent = beginLoad()
+    if (!background) {
+      foregroundInFlight.current = true
+      setLoading(true)
+      setError(null)
+      offsetRef.current = 0
+    }
     try {
       const res = await authFetch(`${API}/guard/events?${buildParams(0)}`)
       if (!res.ok) throw new Error("Failed to load activity events")
       const rows: AuditEvent[] = await res.json()
-      setEvents(rows)
-      setHasMore(rows.length === PAGE_SIZE)
-      offsetRef.current = rows.length
+      if (!isCurrent()) return
+      if (background) {
+        setEvents(prev => {
+          const incoming = new Map(rows.map(r => [r.id, r] as const))
+          const known = new Set(prev.map(r => r.id))
+          const fresh = rows.filter(r => !known.has(r.id))
+          return [...fresh, ...prev.map(r => incoming.get(r.id) ?? r)]
+        })
+      } else {
+        setEvents(rows)
+        setHasMore(rows.length === PAGE_SIZE)
+        offsetRef.current = rows.length
+      }
       setLive(true)
       setLastUpdated(new Date())
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unknown error")
+      if (!isCurrent()) return
+      if (!background) setError(err instanceof Error ? err.message : "Unknown error")
       setLive(false)
     } finally {
-      setLoading(false)
+      if (!background && isCurrent()) {
+        foregroundInFlight.current = false
+        setLoading(false)
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authFetch, teamId, effectiveDeveloperFilter, filterTool, filterDecision, filterSince, filterUntil, filterRuleId, filterHookSession, filterAgentIdentity, filterEventId])
@@ -240,11 +267,10 @@ function ActivityContent() {
     }
   }, [authFetch, teamId])
 
-  useEffect(() => {
-    load()
-    const t = setInterval(load, 30_000)
-    return () => clearInterval(t)
-  }, [load])
+  useEffect(() => { void load() }, [load])
+
+  // Background refresh: events view only, and never while SSE "Go Live" is on.
+  usePolledFetch(() => { void load({ background: true }) }, 30_000, activeView === "events" && !streaming)
 
   // SSE real-time feed — only active when streaming=true (user clicked Go Live)
   const LIVE_EVENT_CAP = 500
@@ -339,8 +365,6 @@ function ActivityContent() {
   useEffect(() => {
     if (activeView !== "sessions") return
     loadSessions()
-    const t = setInterval(loadSessions, 60_000)
-    return () => clearInterval(t)
   }, [activeView, loadSessions])
 
   useEffect(() => {

@@ -9,6 +9,7 @@ import {
   type FilterPill,
 } from "@/components/guard/common"
 import { useAuthFetch } from "@/hooks/useAuthFetch"
+import { usePolledFetch } from "@/hooks/usePolledFetch"
 import { guard, guardInbox } from "@/lib/api"
 import { API } from "@/lib/api/client"
 import type {
@@ -209,43 +210,12 @@ export default function GuardInboxPage() {
   useEffect(() => { void load() }, [load])
   useEffect(() => { void loadApprovals() }, [loadApprovals])
 
-  // 15s polling while the tab is visible. Pauses while hidden; refreshes
-  // immediately on becoming visible again. Cleans up on unmount and on
-  // dep-change (filter switch cancels the previous interval). Ticks
-  // BOTH inbox findings and pending approvals on the same cadence.
-  useEffect(() => {
-    let intervalId: ReturnType<typeof setInterval> | null = null
-
-    const tick = () => {
-      void load({ background: true })
-      void loadApprovals({ background: true })
-    }
-    const start = () => {
-      if (intervalId !== null) return
-      intervalId = setInterval(tick, 15_000)
-    }
-    const stop = () => {
-      if (intervalId !== null) {
-        clearInterval(intervalId)
-        intervalId = null
-      }
-    }
-    const onVis = () => {
-      if (document.visibilityState === "visible") {
-        tick()  // instant refresh on return
-        start()
-      } else {
-        stop()
-      }
-    }
-
-    if (document.visibilityState === "visible") start()
-    document.addEventListener("visibilitychange", onVis)
-    return () => {
-      document.removeEventListener("visibilitychange", onVis)
-      stop()
-    }
-  }, [load, loadApprovals])
+  // 15s polling while the tab is visible (pauses while hidden, refreshes on
+  // return). Ticks BOTH inbox findings and pending approvals.
+  usePolledFetch(() => {
+    void load({ background: true })
+    void loadApprovals({ background: true })
+  }, 15_000)
 
   // Load auto-close config once we have a workspace.
   useEffect(() => {
