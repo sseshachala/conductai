@@ -13,11 +13,11 @@ from app.core.auth import (
     get_user_id,
     require_permission,
 )
+from app.core.keyset import before_clause
 from app.core.stream_auth import stream_credentials
 from app.core.database import SessionLocal, get_db
 from app.core.pii import redact_secrets
 from app.modules.guard.models import GuardAuditEvent, GuardSession
-from sqlalchemy import text as _sql_text
 from app.modules.guard.routers.events_common import (
     BatchEventIn,
     EventOut,
@@ -74,6 +74,7 @@ def list_events(
     until: datetime | None = Query(default=None, description="ISO datetime upper bound"),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
+    before: str | None = Query(default=None, description="Keyset cursor '<iso_ts>|<id>' from the last row; wins over offset"),
     hook_session_id: str | None = Query(default=None),
     agent_identity_id: str | None = Query(default=None),
     event_id: UUID | None = Query(default=None),
@@ -103,8 +104,11 @@ def list_events(
     if until:
         q = q.filter(GuardAuditEvent.ts <= _end_of_day_if_bare(until))
 
+    cursor = before_clause(GuardAuditEvent.ts, GuardAuditEvent.id, before)
+    if cursor is not None:
+        q, offset = q.filter(cursor), 0
     rows = (
-        q.order_by(GuardAuditEvent.ts.desc())
+        q.order_by(GuardAuditEvent.ts.desc(), GuardAuditEvent.id.desc())
         .offset(offset)
         .limit(limit)
         .all()
@@ -364,72 +368,6 @@ def ingest_batch(
             ingest_event(event, request, background, db, auth_context)
         except HTTPException:
             pass  # skip individual bad events; don't fail the whole batch
-
-
-@router.get("/unified")
-def list_unified_activity(
-    db: Session = Depends(get_db),
-    workspace_id: str = Depends(get_workspace_id),
-    source: str | None = Query(default=None, description="policy|tool"),
-    status: str | None = Query(default=None, description="allowed|blocked|warned|audited|info|warning|error"),
-    actor: str | None = Query(default=None, description="user_email — only matches policy rows"),
-    since: datetime | None = Query(default=None),
-    until: datetime | None = Query(default=None),
-    limit: int = Query(default=50, ge=1, le=200),
-    offset: int = Query(default=0, ge=0),
-):
-    """One feed, three sources later (policy + tool today, run pending)."""
-    org_ws = _org_ws_subquery(db, workspace_id)
-    ws_ids = [str(r[0]) for r in org_ws.all()]
-
-    where = ["workspace_id::text = ANY(:ws_ids)"]
-    params: dict = {"ws_ids": ws_ids}
-    if source:
-        if source not in ("policy", "tool"):
-            raise HTTPException(status_code=422, detail="source must be policy|tool")
-        where.append("source = :src")
-        params["src"] = source
-    if status:
-        where.append("status = :st")
-        params["st"] = status
-    if actor:
-        where.append("actor = :ac")
-        params["ac"] = actor
-    if since:
-        where.append("ts >= :since")
-        params["since"] = since
-    if until:
-        where.append("ts <= :until")  # note: caller should end-of-day normalise; TODO
-        params["until"] = until
-
-    sql = (
-        "SELECT event_id, source, ts, actor, action, status, reason, message, session_id "
-        "FROM unified_activity_v "
-        "WHERE " + " AND ".join(where) + " "
-        "ORDER BY ts DESC OFFSET :off LIMIT :lim"
-    )
-    params["off"] = offset
-    params["lim"] = limit
-
-    rows = db.execute(_sql_text(sql), params).mappings().all()
-    return {
-        "items": [
-            {
-                "event_id":   r["event_id"],
-                "source":     r["source"],
-                "ts":         r["ts"].isoformat() if r["ts"] else None,
-                "actor":      r["actor"],
-                "action":     r["action"],
-                "status":     r["status"],
-                "reason":     r["reason"],
-                "message":    r["message"],
-                "session_id": r["session_id"],
-            }
-            for r in rows
-        ],
-        "limit":  limit,
-        "offset": offset,
-    }
 
 
 @router.get("/audit/verify")

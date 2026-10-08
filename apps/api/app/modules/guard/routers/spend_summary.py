@@ -7,6 +7,7 @@ from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 from app.core.auth import get_workspace_id
 from app.core.database import get_db
+from app.core.keyset import before_clause
 from app.modules.guard.models import GuardAuditEvent, GuardDeveloperTools, GuardSession
 import structlog as _structlog
 from app.modules.guard.routers.spend_common import (
@@ -353,14 +354,17 @@ def list_sessions(
     workspace_id: str = Depends(get_workspace_id),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
+    before: str | None = Query(default=None, description="Keyset cursor '<started_at>|<id>' from the last row ('|<id>' when started_at is null); wins over offset"),
     db: Session = Depends(get_db),
 ):
     """List sessions with cumulative spend totals."""
     org_ws = _org_ws_subquery(db, workspace_id)
+    q = db.query(GuardSession).filter(GuardSession.workspace_id.in_(org_ws))
+    cursor = before_clause(GuardSession.started_at, GuardSession.id, before, nulls_last=True)
+    if cursor is not None:
+        q, offset = q.filter(cursor), 0
     rows = (
-        db.query(GuardSession)
-        .filter(GuardSession.workspace_id.in_(org_ws))
-        .order_by(GuardSession.started_at.desc())
+        q.order_by(GuardSession.started_at.desc().nulls_last(), GuardSession.id.desc())
         .offset(offset)
         .limit(limit)
         .all()

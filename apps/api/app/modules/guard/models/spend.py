@@ -257,4 +257,5 @@ class SessionReport(Base):
     __table_args__ = (
         Index("ix_session_reports_workspace", "workspace_id"),
         Index("ix_session_reports_email", "developer_email"),
+        Index("ix_session_reports_ws_created", "workspace_id", "created_at"),
     )

@@ -26,12 +26,15 @@ from app.modules.guard.routers.events_ingest import (  # noqa: F401 — re-expor
 )
 from app.modules.guard.routers.events_query import (  # noqa: F401 — re-exports
     _SSE_NIL_UUID, _fetch_new_events, _project_rule_fire, cost_trend, ingest_batch,
-    list_correlated_events, list_events, list_rule_fires, list_unified_activity,
+    list_correlated_events, list_events, list_rule_fires,
     session_reconciliation, stream_events, verify_audit_chain,
 )
+from app.modules.guard.routers.events_unified import list_unified_activity  # noqa: F401 — re-export
 from app.modules.guard.routers import events_ingest as _events_ingest
+from app.modules.guard.routers import events_unified as _events_unified
 from app.modules.guard.routers import events_query as _events_query
 
 router = APIRouter()
 router.include_router(_events_ingest.router)
+router.include_router(_events_unified.router)
 router.include_router(_events_query.router)
