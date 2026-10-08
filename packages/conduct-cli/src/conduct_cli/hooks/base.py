@@ -265,26 +265,29 @@ def ensure_drain_daemon(hook_module_path: Optional[Path] = None) -> None:
                 pass
         if hook_module_path is None:
             return
-        popen_kwargs: dict = {
-            "stdout": subprocess.DEVNULL,
-            "stderr": subprocess.DEVNULL,
-        }
-        if sys.platform == "win32":
-            # ponytail: DETACHED_PROCESS + CREATE_NEW_PROCESS_GROUP are the
-            # Windows equivalent of POSIX start_new_session — both constants
-            # only exist on Windows Python, so gate the reference behind the
-            # platform check.
-            popen_kwargs["creationflags"] = (
-                subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
-            )
-        else:
-            popen_kwargs["start_new_session"] = True
-        subprocess.Popen(
-            [sys.executable, str(hook_module_path), "drain"],
-            **popen_kwargs,
-        )
+        spawn_detached([sys.executable, str(hook_module_path), "drain"])
     except Exception:
         pass
+
+
+def spawn_detached(argv: list[str]) -> None:
+    """Start a background process that outlives the hook (no stdio, own session/group)."""
+    popen_kwargs: dict = {
+        "stdin": subprocess.DEVNULL,
+        "stdout": subprocess.DEVNULL,
+        "stderr": subprocess.DEVNULL,
+    }
+    if sys.platform == "win32":
+        # ponytail: DETACHED_PROCESS + CREATE_NEW_PROCESS_GROUP are the
+        # Windows equivalent of POSIX start_new_session — both constants
+        # only exist on Windows Python, so gate the reference behind the
+        # platform check.
+        popen_kwargs["creationflags"] = (
+            subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
+        )
+    else:
+        popen_kwargs["start_new_session"] = True
+    subprocess.Popen(argv, **popen_kwargs)
 
 
 def run_drain_daemon() -> None:

@@ -86,7 +86,7 @@ def main() -> None:
 
     try:
         from conduct_cli.memory import post_session_to_api
-        post_session_to_api(session_id, transcript_path, detect_repo())
+        post_session_to_api(session_id, transcript_path, detect_repo(), tool="claude-code")
     except Exception:
         pass
 

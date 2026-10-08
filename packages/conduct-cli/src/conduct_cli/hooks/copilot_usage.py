@@ -10,7 +10,6 @@ import hashlib
 import json
 import os
 from pathlib import Path
-import subprocess
 import sys
 import time
 from uuid import UUID
@@ -55,6 +54,16 @@ def context(cfg: dict) -> tuple:
             cfg.get("workspace_id"), cfg.get("clerk_user_id"))
 
 
+def events_path(session_id: str) -> Path:
+    """Copilot's per-session event log; the id is validated so hook input never picks a path."""
+    session_id = str(UUID(session_id))
+    root = Path(os.environ.get("COPILOT_HOME", str(Path.home() / ".copilot")))
+    path = root / "session-state" / session_id / "events.jsonl"
+    if path.resolve().parent.parent != (root / "session-state").resolve():
+        raise ValueError("Session path escaped Copilot home")
+    return path
+
+
 def collect(session_id: str, hook_path: Path, expected: tuple) -> bool:
     from conduct_cli.guard_commands.tool_lifecycle import disabled
     if disabled("copilot-cli"):
@@ -63,10 +72,7 @@ def collect(session_id: str, hook_path: Path, expected: tuple) -> bool:
     cfg = base.load_config()
     if not expected[1] or context(cfg) != tuple(expected):
         return False
-    root = Path(os.environ.get("COPILOT_HOME", str(Path.home() / ".copilot")))
-    path = root / "session-state" / session_id / "events.jsonl"
-    if path.resolve().parent.parent != (root / "session-state").resolve():
-        raise ValueError("Session path escaped Copilot home")
+    path = events_path(session_id)
     key = hashlib.sha256(json.dumps([session_id, str(path.resolve())]).encode()).hexdigest()
     context_key = hashlib.sha256(json.dumps(expected).encode()).hexdigest()
     state = Path.home() / ".conduct" / "copilot-usage" / (key + ".json")
@@ -126,10 +132,7 @@ def handle(mode: str, data: dict, hook_path: Path) -> None:
     if mode != "session-end":
         return
     # Copilot may write shutdown after sessionEnd returns. Poll out of process.
-    options = {"creationflags": subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP} if os.name == "nt" else {"start_new_session": True}
-    subprocess.Popen([sys.executable, "-m", __name__, session_id, str(hook_path), json.dumps(expected)],
-                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                     stderr=subprocess.DEVNULL, **options)
+    base.spawn_detached([sys.executable, "-m", __name__, session_id, str(hook_path), json.dumps(expected)])
 
 
 def main() -> None:

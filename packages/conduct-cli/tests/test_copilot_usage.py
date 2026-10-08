@@ -124,7 +124,7 @@ def test_session_end_worker_is_detached_and_has_no_credentials(collector, monkey
     session, _, cfg, _ = collector
     cfg["agent_token"] = "secret"
     spawn = Mock()
-    monkeypatch.setattr(usage.subprocess, "Popen", spawn)
+    monkeypatch.setattr(usage.base.subprocess, "Popen", spawn)
     usage.handle("session-end", {"sessionId": session}, Path("hook.py"))
     assert "secret" not in str(spawn.call_args)
     assert spawn.call_args.kwargs.get("start_new_session") or spawn.call_args.kwargs.get("creationflags")

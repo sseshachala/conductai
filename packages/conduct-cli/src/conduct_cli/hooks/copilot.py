@@ -24,11 +24,32 @@ def normalize(data: dict) -> dict:
             "session_id": data.get("sessionId", data.get("session_id"))}
 
 
+def _team_memory(mode: str, data: dict) -> dict:
+    """Capture learnings at sessionEnd; return sessionStart additionalContext (never raises).
+
+    Copilot consumes only ``additionalContext`` from sessionStart and ignores
+    sessionEnd output, so capture runs in a detached worker.
+    """
+    try:
+        from conduct_cli import memory
+        session_id = str(data.get("sessionId") or data.get("session_id") or "")
+        if mode == "session-end":
+            memory.spawn_capture("copilot-cli", session_id, None)
+            return {}
+        lines = memory.team_knowledge_lines()
+        return {"additionalContext": "\n".join(["Conduct team memory for this repo:", *lines])} if lines else {}
+    except Exception:
+        return {}
+
+
 def run(mode: str, hook_path: Path, data: dict) -> dict:
     if mode in ("session-start", "session-end"):
         from .copilot_usage import handle
-        handle(mode, data, hook_path)
-        return {}
+        try:
+            handle(mode, data, hook_path)
+        except (OSError, ValueError, KeyError, TypeError, TimeoutError):
+            pass  # Usage collection is best-effort; team memory still runs.
+        return _team_memory(mode, data)
     normalized = normalize(data)
     if mode == "pre":
         # Establish the usage baseline even if sync was run mid-session.

@@ -13,6 +13,11 @@ import urllib.request
 from pathlib import Path
 
 from conduct_cli.tool_groups import expand_match_tool, tool_matches
+# Periodic team-memory flush (every 8 hours): one implementation, in memory.py.
+from conduct_cli.memory import (
+    mark_flushed as _mark_flushed,
+    should_periodic_flush as _should_periodic_flush,
+)
 from conduct_cli.hooks.base import (
     BUDGET_CACHE_PATH,
     BUDGET_CACHE_TTL,
@@ -40,29 +45,6 @@ from conduct_cli.hooks.policy_scan import (
     _is_developer_source_path,
     _rule_is_doc_sensitive,
 )
-
-# ── Periodic memory flush (every 8 hours) ─────────────────────────────────────
-
-_FLUSH_INTERVAL = 8 * 3600
-_FLUSH_STAMP    = Path.home() / ".conduct" / "last_memory_flush"
-
-
-def _should_periodic_flush() -> bool:
-    try:
-        if not _FLUSH_STAMP.exists():
-            return True
-        return time.time() - float(_FLUSH_STAMP.read_text().strip()) >= _FLUSH_INTERVAL
-    except Exception:
-        return True
-
-
-def _mark_flushed() -> None:
-    try:
-        _FLUSH_STAMP.parent.mkdir(parents=True, exist_ok=True)
-        _FLUSH_STAMP.write_text(str(time.time()))
-    except Exception:
-        pass
-
 
 # ── Daemon health check ───────────────────────────────────────────────────────
 
@@ -492,6 +474,18 @@ def _guard_approval_request(
         return "unavailable"
 
 
+def _flush_team_memory(data: dict) -> None:
+    from conduct_cli.memory import post_session_to_api
+    from conduct_cli.transcript_text import transcript_format
+    tool = detect_ai_tool()
+    if transcript_format(tool) is None:
+        return
+    session_id = data.get("session_id") or ""
+    transcript_path = data.get("transcript_path") or data.get("transcriptPath")
+    post_session_to_api(session_id, transcript_path, detect_repo(), tool=tool)
+    _mark_flushed()
+
+
 def main() -> None:
     try:
         data = json.load(sys.stdin)
@@ -503,22 +497,13 @@ def main() -> None:
 
     # Stop hook — session ended, capture for team memory
     if data.get("hook_event_name") == "Stop" or data.get("stop_hook_active"):
-        session_id      = data.get("session_id", "")
-        transcript_path = data.get("transcript_path")
-        repo            = detect_repo()
-        from conduct_cli.memory import post_session_to_api
-        post_session_to_api(session_id, transcript_path, repo)
-        _mark_flushed()
+        _flush_team_memory(data)
         sys.exit(0)
 
-    # Periodic flush — at most once every 8 hours mid-session
+    # Periodic flush — at most once every 8 hours mid-session, only for
+    # surfaces whose transcript format is known (never parse Codex as Claude).
     if _should_periodic_flush():
-        session_id      = data.get("session_id", "")
-        transcript_path = data.get("transcript_path")
-        repo            = detect_repo()
-        from conduct_cli.memory import post_session_to_api
-        post_session_to_api(session_id, transcript_path, repo)
-        _mark_flushed()
+        _flush_team_memory(data)
 
     # Policy version check (cached 60s) — auto-syncs if server version differs
     _maybe_sync_policy()

@@ -87,7 +87,7 @@ def test_generic_lifecycle_resolves_codex_surface_before_spawning(setup, monkeyp
     spawn = Mock()
     monkeypatch.setattr(usage.base, "detect_ai_tool", lambda: detected)
     monkeypatch.setattr(usage, "collect", collector)
-    monkeypatch.setattr(usage.subprocess, "Popen", spawn)
+    monkeypatch.setattr(usage.base.subprocess, "Popen", spawn)
     usage.handle(data, "codex", poll=True)
     assert collector.call_args.args[1] == expected
     assert spawn.call_args.args[0][4] == expected
@@ -247,7 +247,7 @@ def test_detached_worker_does_not_receive_credentials_or_tool_input(setup, monke
     cfg["agent_token"] = "private-token"
     data["tool_input"] = {"command": "private-command"}
     spawn = Mock()
-    monkeypatch.setattr(usage.subprocess, "Popen", spawn)
+    monkeypatch.setattr(usage.base.subprocess, "Popen", spawn)
     usage.handle(data, "codex", poll=True)
     assert "private-token" not in str(spawn.call_args)
     assert "private-command" not in str(spawn.call_args)

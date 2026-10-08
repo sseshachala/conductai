@@ -10,7 +10,6 @@ import hashlib
 import json
 import os
 from pathlib import Path
-import subprocess
 import sys
 import time
 from datetime import datetime, timezone
@@ -200,24 +199,53 @@ def collect(data: dict, surface: str, expected: tuple) -> bool:
     return queued
 
 
+def resolve_surface(surface: str | None) -> str:
+    """Refine the generic installed ``codex`` id to codex-cli/codex-desktop when detectable."""
+    surface = surface or base.detect_ai_tool()
+    if surface == "codex":
+        detected = base.detect_ai_tool()
+        if detected in {"codex-cli", "codex-desktop"}:
+            surface = detected
+    return surface
+
+
+def team_memory(data: dict, surface: str | None) -> None:
+    """Codex only (Claude has its own Stop/SessionStart hooks): capture at Stop, inject at SessionStart.
+
+    Codex adds SessionStart ``hookSpecificOutput.additionalContext`` as developer
+    context; Stop requires JSON or empty stdout, so Stop prints nothing.
+    """
+    try:
+        surface = resolve_surface(surface)
+        if not surface.startswith("codex"):
+            return
+        from conduct_cli import memory
+        event = data.get("hook_event_name")
+        if event == "Stop":
+            memory.spawn_capture(surface, str(data.get("session_id") or ""),
+                                 data.get("transcript_path") or data.get("transcriptPath"))
+        elif event == "SessionStart":
+            lines = memory.team_knowledge_lines()
+            if lines:
+                # JSON (ASCII-escaped) so a cp1252 Windows console cannot break the output.
+                print(json.dumps({"hookSpecificOutput": {
+                    "hookEventName": "SessionStart",
+                    "additionalContext": "\n".join(["Conduct team memory for this repo:", *lines])}}))
+    except Exception:
+        pass  # Team memory must never break or slow the lifecycle hook.
+
+
 def handle(data: dict, surface: str | None = None, *, poll: bool = False) -> None:
     """Best-effort synchronous collection plus one bounded worker per session."""
     try:
-        surface = surface or base.detect_ai_tool()
-        if surface == "codex":
-            detected = base.detect_ai_tool()
-            if detected in {"codex-cli", "codex-desktop"}:
-                surface = detected
+        surface = resolve_surface(surface)
         if surface not in SURFACES:
             return
         expected = context(base.load_config())
         safe = {key: data[key] for key in ("session_id", "transcript_path", "transcriptPath") if key in data}
         collect(safe, surface, expected)
         if poll:
-            options = ({"creationflags": subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP}
-                       if os.name == "nt" else {"start_new_session": True})
-            subprocess.Popen([sys.executable, "-m", __name__, json.dumps(safe), surface, json.dumps(expected)],
-                             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **options)
+            base.spawn_detached([sys.executable, "-m", __name__, json.dumps(safe), surface, json.dumps(expected)])
     except (OSError, ValueError, KeyError, TypeError, TimeoutError):
         pass
 
@@ -237,6 +265,7 @@ def main() -> None:
             data = json.load(sys.stdin)
             surface = sys.argv[1] if len(sys.argv) > 1 else None
             handle(data, surface, poll=data.get("hook_event_name") != "SessionStart")
+            team_memory(data, surface)
     except (OSError, ValueError, KeyError, TypeError, TimeoutError):
         pass
 
