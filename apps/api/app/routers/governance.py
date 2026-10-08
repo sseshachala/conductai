@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 
 from app.core.auth import require_permission, get_workspace_id, get_user_id, get_clerk_user_email
 from app.core.database import get_db
+from app.core.keyset import before_clause
 from app.models.workspace import Workspace
 from app.modules.guard.models import (
     GuardAuditEvent,
@@ -400,6 +401,7 @@ def get_recent_events(
     decision: str | None = None,    # filter: blocked | warned | allowed | audited
     from_dt: datetime | None = None,  # ISO-8601 — events with ts >= from_dt
     to_dt: datetime | None = None,    # ISO-8601 — events with ts <  to_dt
+    before: str | None = None,        # keyset cursor "<iso_ts>|<id>" from the last row
     db: Session = Depends(get_db),
     workspace_id: str = Depends(get_workspace_id),
     _: str = Depends(require_permission("guard.activity.view_own")),
@@ -408,13 +410,16 @@ def get_recent_events(
     20 events; pass ?decision=blocked or ?decision=warned to filter. Reports
     use from_dt/to_dt + higher limit cap."""
     ws_uuid = uuid.UUID(workspace_id)
-    limit = max(1, min(limit, 1000))
+    limit = max(1, min(limit, 200))
 
     q = (
         db.query(GuardAuditEvent)
         .filter(GuardAuditEvent.workspace_id == ws_uuid)
-        .order_by(GuardAuditEvent.ts.desc())
+        .order_by(GuardAuditEvent.ts.desc(), GuardAuditEvent.id.desc())
     )
+    cursor = before_clause(GuardAuditEvent.ts, GuardAuditEvent.id, before)
+    if cursor is not None:
+        q = q.filter(cursor)
     if decision:
         q = q.filter(GuardAuditEvent.decision == decision)
     if from_dt:

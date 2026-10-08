@@ -24,6 +24,7 @@ from app.core.auth import (
     require_permission,
 )
 from app.core.database import SessionLocal, get_db
+from app.core.keyset import before_clause
 from app.core.workspace_context import set_workspace_rls
 from app.modules.guard.embedding import (
     embedding_client_for_workspace as _embedding_client_for_workspace,
@@ -99,18 +100,22 @@ def _report_to_out(r: SessionReport) -> SessionReportOut:
 @router.get("", response_model=list[SessionReportOut])
 def list_session_reports(
     workspace_id: UUID = Query(..., description="Workspace UUID"),
+    limit: int = Query(default=50, ge=1, le=200),
+    before: str | None = Query(default=None, description="Keyset cursor '<created_at>|<id>' from the last row"),
     db: Session = Depends(get_db),
     _: str = Depends(require_permission("guard.activity.view_all")),
 ):
-    """List session reports for a workspace, newest first, up to 200 rows.
+    """List session reports for a workspace, newest first (default 50, max 200).
 
     Requires guard.activity.view_all (admin or security role).
     """
+    q = db.query(SessionReport).filter(SessionReport.workspace_id == workspace_id)
+    cursor = before_clause(SessionReport.created_at, SessionReport.id, before)
+    if cursor is not None:
+        q = q.filter(cursor)
     rows = (
-        db.query(SessionReport)
-        .filter(SessionReport.workspace_id == workspace_id)
-        .order_by(SessionReport.created_at.desc())
-        .limit(200)
+        q.order_by(SessionReport.created_at.desc(), SessionReport.id.desc())
+        .limit(limit)
         .all()
     )
     return [_report_to_out(r) for r in rows]
