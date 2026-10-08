@@ -13,7 +13,6 @@ from conduct_cli.hooks.base import (
     CONFIG_PATH,
     GUARD_DIR,
     SNAPSHOT_PATH,
-    detect_repo,
     load_config,
     post_event,
 )
@@ -266,15 +265,8 @@ def main() -> None:
 
         # Inject relevant team memories for the current repo
         try:
-            repo = detect_repo()
-            from conduct_cli.memory import search_team_memory
-            results = search_team_memory("recent learnings patterns bugs", repo=repo, limit=3)
-            if results:
-                lines.append("- Team knowledge:")
-                for r in results[:3]:
-                    dev     = r.get("developer_id", "teammate")[:8]
-                    summary = r.get("summary", "")[:120]
-                    lines.append(f"  {dev}: {summary}")
+            from conduct_cli.memory import team_knowledge_lines
+            lines.extend(team_knowledge_lines())
         except Exception:
             pass
 

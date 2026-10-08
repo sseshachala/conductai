@@ -5,7 +5,7 @@ from typing import Any
 
 import structlog
 from fastapi import APIRouter, BackgroundTasks, Depends, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -82,6 +82,16 @@ class SessionMemoryIn(BaseModel):
     developer_id: str | None = None
     developer_email: str | None = None
 
+    @field_validator("tool")
+    @classmethod
+    def _canonical_tool(cls, value: str) -> str:
+        # CLIs now send the hook surface id; keep Claude rows on the legacy label.
+        return _TOOL_ALIASES.get(value, value)
+
+
+# Hook surface ids that map onto an existing stored label.
+_TOOL_ALIASES = {"claude-code": "claude_code"}
+
 
 def _extract_topic_tags(text_content: str) -> list[str]:
     lower = text_content.lower()
@@ -155,8 +165,10 @@ def _embed_team_memory(row_id: str, workspace_id: str, expected_summary: str) ->
         log.warning("team_memory.embed_write_failed", row_id=row_id, error=str(exc))
 
 
-# Tools already handled by the CLI Stop hook — skip to avoid double-storing
-_HOOK_TOOLS = {"claude_code", "claude-code"}
+# Tools whose sessions the CLI captures natively from transcripts (Claude Stop,
+# Codex Stop, Copilot sessionEnd); synthesis skips their audit events so the
+# same session is not stored twice. Values are guard_audit_events.ai_tool ids.
+_HOOK_TOOLS = {"claude_code", "claude-code", "codex-cli", "codex-desktop", "copilot-cli"}
 # Inactivity window: events >30 min apart = separate session
 _SESSION_GAP = timedelta(minutes=30)
 
