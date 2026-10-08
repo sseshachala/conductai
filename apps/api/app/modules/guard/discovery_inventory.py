@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 import uuid
 import re
 
+from sqlalchemy import and_, func, not_
 from sqlalchemy.dialects.postgresql import insert
 
 from app.modules.guard.models import DiscoveredAgent
@@ -123,6 +124,23 @@ def workspace_inventory(db, workspace_id):
     rows = db.query(DiscoveredAgent).filter(DiscoveredAgent.workspace_id == uuid.UUID(str(workspace_id))).order_by(
         DiscoveredAgent.last_seen_at.desc(), DiscoveredAgent.id).all()
     now = datetime.now(timezone.utc)
+    return [agent_view(row, now) for row in rows]
+
+
+def workspace_inventory_page(db, workspace_id, *, inventory="all", under_guard=None, limit=100, offset=0):
+    """Same rows/order as workspace_inventory() + Python filters, filtered and sliced in SQL."""
+    now = datetime.now(timezone.utc)
+    D = DiscoveredAgent
+    normalized = and_(D.device_id.isnot(None), D.installation_id.isnot(None), D.installation_id != "")
+    q = db.query(D).filter(D.workspace_id == uuid.UUID(str(workspace_id)))
+    if inventory != "all":
+        current = and_(normalized, func.coalesce(D.detection, "").in_(("installed", "running", "possible_integration")))
+        q = q.filter(not_(current) if inventory == "legacy" else current)
+    if under_guard is not None:
+        observed = and_(normalized, D.hook_event_id.isnot(None), D.hook_observed_at.isnot(None),
+                        D.hook_observed_at >= now - FRESH_FOR, D.hook_observed_at <= now)
+        q = q.filter(observed if under_guard else not_(observed))
+    rows = q.order_by(D.last_seen_at.desc(), D.id).offset(offset).limit(limit).all()
     return [agent_view(row, now) for row in rows]
 
 

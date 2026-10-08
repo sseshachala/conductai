@@ -169,13 +169,11 @@ def list_budgets(
         .all()
         if r.clerk_user_id
     }
+    groups = _month_cost_groups(db, ws_uuid) if budgets else []
     return [
         _budget_out(
             b,
-            _current_month_cost(
-                db, ws_uuid, b.clerk_user_id, b.ai_tool,
-                agent_identity_id=b.agent_identity_id,
-            ),
+            _cost_from_groups(groups, b),
             uid_email.get(b.clerk_user_id) if b.clerk_user_id else None,
         )
         for b in budgets
@@ -258,6 +256,40 @@ def _current_month_cost(
     if agent_identity_id is not None:
         q = q.filter(GuardAuditEvent.agent_identity_id == agent_identity_id)
     return float(q.scalar() or 0.0)
+
+
+def _month_cost_groups(
+    db: Session, ws_uuid: uuid.UUID,
+) -> list[tuple[str | None, str | None, str | None, float]]:
+    """One GROUP BY for the month: (clerk_user_id, ai_tool, agent_identity_id, cost).
+
+    Replaces one SUM query per budget; each budget is then resolved in Python by
+    `_cost_from_groups` with the same None-means-unfiltered semantics as
+    `_current_month_cost`.
+    """
+    rows = db.query(
+        GuardAuditEvent.clerk_user_id,
+        GuardAuditEvent.ai_tool,
+        GuardAuditEvent.agent_identity_id,
+        func.coalesce(func.sum(GuardAuditEvent.cost_usd_after), 0.0),
+    ).filter(
+        GuardAuditEvent.workspace_id == ws_uuid,
+        GuardAuditEvent.ts >= _current_period_start(),
+    ).group_by(
+        GuardAuditEvent.clerk_user_id,
+        GuardAuditEvent.ai_tool,
+        GuardAuditEvent.agent_identity_id,
+    ).all()
+    return [(r[0], r[1], r[2], float(r[3] or 0.0)) for r in rows]
+
+
+def _cost_from_groups(groups, budget: GuardSpendBudget) -> float:
+    return sum(
+        cost for uid, tool, agent, cost in groups
+        if (budget.clerk_user_id is None or uid == budget.clerk_user_id)
+        and (budget.ai_tool is None or tool == budget.ai_tool)
+        and (budget.agent_identity_id is None or agent == budget.agent_identity_id)
+    )
 
 
 def _budget_out(budget: GuardSpendBudget, current_cost: float, email: str | None = None) -> BudgetOut:

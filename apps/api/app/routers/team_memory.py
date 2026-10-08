@@ -1,3 +1,4 @@
+import time
 import uuid
 from datetime import datetime, timedelta, timezone
 from math import log as math_log
@@ -173,6 +174,22 @@ _HOOK_TOOLS = {"claude_code", "claude-code", "codex-cli", "codex-desktop", "copi
 _SESSION_GAP = timedelta(minutes=30)
 
 
+# ponytail: in-process throttle; ceiling = once per hour PER WORKER (N workers => up to N runs/h).
+# Move to Redis SET NX EX if that ever matters.
+_SYNTH_INTERVAL_S = 3600.0
+_SYNTH_MAX_ROWS = 5000
+_synth_last_run: dict[str, float] = {}
+
+
+def _synth_due(workspace_id: str) -> bool:
+    now = time.monotonic()
+    last = _synth_last_run.get(workspace_id)
+    if last is not None and now - last < _SYNTH_INTERVAL_S:
+        return False
+    _synth_last_run[workspace_id] = now
+    return True
+
+
 def _synthesize_mcp_sessions(workspace_id: str) -> None:
     """
     Background task: group recent MCP audit events into synthetic team memory sessions.
@@ -194,8 +211,10 @@ def _synthesize_mcp_sessions(workspace_id: str) -> None:
                   AND ai_tool != ALL(:skip_tools)
                   AND input_summary IS NOT NULL
                 ORDER BY user_email, ai_tool, ts ASC
+                LIMIT :max_rows
             """),
-            {"ws": ws_uuid, "since": since, "skip_tools": list(_HOOK_TOOLS)},
+            {"ws": ws_uuid, "since": since, "skip_tools": list(_HOOK_TOOLS),
+             "max_rows": _SYNTH_MAX_ROWS},
         ).fetchall()
 
         if not rows:
@@ -360,7 +379,8 @@ def search_session_memory(
     _: str = Depends(require_permission("guard.activity.view_own")),
     db: Session = Depends(get_db),
 ) -> list[dict[str, Any]]:
-    background_tasks.add_task(_synthesize_mcp_sessions, workspace_id)
+    if _synth_due(workspace_id):
+        background_tasks.add_task(_synthesize_mcp_sessions, workspace_id)
     db.rollback()
     embedding = _embed(q, workspace_id) if q else None
     set_workspace_rls(db, workspace_id)
