@@ -972,6 +972,7 @@ def _execute_brain(
                         "max_cost_usd": max_cost_usd,
                         "note": "rollback_on_failure=true — full git revert is a follow-up action",
                     })
+                _record_turns(db, run_id, turns, True)  # #2401: same as the turn path
                 _close_session()
                 raise RuntimeError(
                     f"Cost budget exhausted: agent reached ${cost_usd:.4f} with cap ${max_cost_usd:.4f} "
@@ -1418,7 +1419,7 @@ def _execute_brain(
                 "cost_usd": cost_usd,
                 "note": "rollback_on_failure=true — full git revert is a follow-up action",
             })
-        _record_turns(db, run_id, max_turns, True)
+        _record_turns(db, run_id, turns, True)  # #2401: turns used, not the cap
         _close_session()
         raise RuntimeError(
             f"Turn budget exhausted: agent did not reach end_turn after {max_turns} turns "
@@ -1518,5 +1519,6 @@ def _execute_brain(
         _extracted = _extract_last_json_object(result.get("output", ""))
         if _extracted:
             result = {**_extracted, **result}
+        _record_turns(db, run_id, 1, False)  # #2401: single call is one turn
         _close_session()
         return result

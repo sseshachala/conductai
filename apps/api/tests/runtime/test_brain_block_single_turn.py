@@ -111,6 +111,8 @@ def test_single_turn_json_happy_path():
     assert h.session.close_calls == 1
     assert h.session.capture_calls == 0
     assert state == before
+    # #2401 item 4: single-call mode records its turn on the Run row too.
+    assert h.run_updates() == [{"actual_turns": 1, "budget_exhausted": False}]
 
 
 def test_single_turn_for_each_index_in_idempotency_key():

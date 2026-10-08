@@ -123,6 +123,9 @@ def test_turn_budget_exhausted_raises_with_partial_state():
     assert len(h.checkpoints) == 2
     assert len(h.session.dispatched) == 2
     assert h.session.close_calls == 1
+    # #2401 item 4: the loop's own turn count is recorded (equals max_turns
+    # here, since the loop only exits on turns == max_turns).
+    assert h.run_updates() == [{"actual_turns": 2, "budget_exhausted": True}]
 
 
 def test_block_max_turns_overrides_run_level_budget():
@@ -146,6 +149,8 @@ def test_cost_budget_exhausted_raises_before_tools_run():
     assert evt["max_cost_usd"] == 0.25
     assert h.session.dispatched == []
     assert h.session.close_calls == 1
+    # #2401 item 4: cost exhaustion writes the Run row like the turn path.
+    assert h.run_updates() == [{"actual_turns": 1, "budget_exhausted": True}]
 
 
 def test_mark_complete_returns_structured_result():
