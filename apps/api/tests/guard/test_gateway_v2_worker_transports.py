@@ -30,8 +30,8 @@ import pytest
 
 _HANDLER_SRC = (
     Path(__file__).resolve().parents[2]
-    / "app" / "modules" / "guard" / "gateway_handler.py"
-).read_text(encoding="utf-8")
+    / "app" / "modules" / "guard" / "gateway_v2_execute.py"
+).read_text(encoding="utf-8")  # _execute_v2 (coordinator call) moved here
 
 
 @pytest.fixture(autouse=True)

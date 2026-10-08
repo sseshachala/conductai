@@ -320,9 +320,9 @@ def test_gateway_handler_stores_operation_in_routing_meta():
     write ``"operation": plan.operation`` — pinned via source-string
     match so the presence isn't lost silently."""
     import inspect
-    from app.modules.guard import gateway_handler
+    from app.modules.guard import gateway_v2_execute
 
-    src = inspect.getsource(gateway_handler)
+    src = inspect.getsource(gateway_v2_execute)
     assert src.count('"operation": plan.operation') >= 2
 
 # ─── #7 OpenAI empty usage → UNAVAILABLE ────────────────────────────────
