@@ -9,12 +9,13 @@ export const governance = {
   narrative: (f: AuthFetch, workspaceId: string, period: string) =>
     json<any>(f, `${base()}/narrative?workspace_id=${workspaceId}&period=${period}`),
 
-  eventsRecent: (f: AuthFetch, workspaceId: string, params?: { limit?: number; decision?: string; from_dt?: string; to_dt?: string }) => {
+  eventsRecent: (f: AuthFetch, workspaceId: string, params?: { limit?: number; decision?: string; from_dt?: string; to_dt?: string; before?: string }) => {
     const q = new URLSearchParams({ workspace_id: workspaceId })
     if (params?.limit != null) q.set("limit", String(params.limit))
     if (params?.decision) q.set("decision", params.decision)
     if (params?.from_dt) q.set("from_dt", params.from_dt)
     if (params?.to_dt) q.set("to_dt", params.to_dt)
+    if (params?.before) q.set("before", params.before)
     return json<any[]>(f, `${base()}/events/recent?${q}`)
   },
 

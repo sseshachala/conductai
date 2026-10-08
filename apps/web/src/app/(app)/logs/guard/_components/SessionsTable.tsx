@@ -1,3 +1,4 @@
+import { GuardSkeletonRows } from "@/components/guard/common"
 import { ToolBadge, formatTs } from "@/components/guard/ActivityRow"
 
 export const displayEmail = (v: string | null | undefined): string => {
@@ -40,9 +41,7 @@ export function SessionsTable({ sessions, sessionsLoading }: { sessions: GuardSe
         ))}
       </div>
       {sessionsLoading ? (
-        [...Array(4)].map((_, i) => (
-          <div key={i} style={{ height: 44, background: "var(--surface-2)", borderRadius: 0, opacity: 0.5, borderBottom: "1px solid var(--border)" }} />
-        ))
+        <GuardSkeletonRows count={4} />
       ) : sessions.length === 0 ? (
         <div style={{ padding: "32px 18px", textAlign: "center", fontSize: 13, color: "var(--text-muted)" }}>
           No sessions found.
