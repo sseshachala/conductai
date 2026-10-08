@@ -29,6 +29,11 @@ _HANDLER = (
     Path(__file__).resolve().parents[2]
     / "app" / "modules" / "guard" / "gateway_handler.py"
 ).read_text(encoding="utf-8")
+# ``_execute_v2`` moved to gateway_v2_execute.py.
+_EXECUTE = (
+    Path(__file__).resolve().parents[2]
+    / "app" / "modules" / "guard" / "gateway_v2_execute.py"
+).read_text(encoding="utf-8")
 
 
 def test_legacy_credential_block_is_gated_on_no_v2_plan():
@@ -83,9 +88,9 @@ def test_execute_v2_does_not_reference_v1_credentials():
     the ``_v2_plan is None`` gate above safe — the v2 code path never
     reads a v1-populated variable, so leaving them None is correct."""
     # Extract the body of _execute_v2.
-    start = _HANDLER.index("async def _execute_v2(")
-    end = _HANDLER.index("\n\ndef ", start)  # next top-level def
-    body = _HANDLER[start:end]
+    start = _EXECUTE.index("async def _execute_v2(")
+    end = _EXECUTE.index("\n\ndef ", start)  # next top-level def
+    body = _EXECUTE[start:end]
 
     # None of the v1-only credential accessors should appear in
     # _execute_v2's body. If they do, the ``_v2_plan is None`` gate

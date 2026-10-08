@@ -255,7 +255,7 @@ def test_discovery_and_challenge_use_selected_deployment(monkeypatch, issuer):
 @pytest.fixture
 def audited_journey(journey, monkeypatch):
     from app.modules.guard.models import GuardAuditArchiveSegment, GuardAuditEvent
-    from app.modules.guard.routers import mcp as legacy_mcp
+    from app.modules.guard.routers import mcp_helpers as legacy_mcp
     from app.modules.guard.mcp_impls import guard_activity_impl
     from app.tools.registrations.guard import _wrap
     client, engine, _ = journey

@@ -211,7 +211,7 @@ def test_summary_partial_index_predicate_quotes_sql_literals():
     migration = (
         root / "alembic/versions/0165_guard_projection_intents.py"
     ).read_text()
-    models = (root / "app/modules/guard/models.py").read_text()
+    models = (root / "app/modules/guard/models/projection.py").read_text()
     quote = chr(39)
     predicate = (
         f"source_kind = {quote}audit_summary{quote} "
@@ -224,7 +224,7 @@ def test_summary_partial_index_predicate_quotes_sql_literals():
 
 def test_event_and_worker_wiring_preserve_queue_separation():
     root = Path(__file__).resolve().parents[2]
-    events_source = (root / "app/modules/guard/routers/events.py").read_text()
+    events_source = (root / "app/modules/guard/routers/events_ingest.py").read_text()
     ingest_source = events_source[events_source.index("def ingest_event("):]
     worker_source = (root / "app/worker.py").read_text()
     rls_index = ingest_source.index("set_workspace_rls(db, ws_uuid)")

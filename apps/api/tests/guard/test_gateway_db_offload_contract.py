@@ -23,6 +23,12 @@ _HELPERS = (
     / "app" / "modules" / "guard" / "gateway_helpers.py"
 ).read_text(encoding="utf-8")
 
+# _resolve_gateway_auth lives in gateway_auth.py (re-exported by gateway_helpers).
+_AUTH = (
+    Path(__file__).resolve().parents[2]
+    / "app" / "modules" / "guard" / "gateway_auth.py"
+).read_text(encoding="utf-8")
+
 
 def _preceded_by_run_in_threadpool(source: str, marker: str, *, window: int = 400) -> bool:
     """True iff ANY occurrence of ``marker`` in ``source`` has
@@ -91,14 +97,14 @@ def test_response_gate_runs_in_threadpool():
 def test_resolve_gateway_auth_owns_its_session():
     """The session-per-thread helper must open ``SessionLocal()`` at
     entry and close it in a ``finally`` regardless of exit path."""
-    assert "def _resolve_gateway_auth(" in _HELPERS, (
-        "_resolve_gateway_auth removed from gateway_helpers — offload "
+    assert "def _resolve_gateway_auth(" in _AUTH, (
+        "_resolve_gateway_auth removed from gateway_auth — offload "
         "contract broken."
     )
     # The wrapper body must open + close a session.
-    start = _HELPERS.index("def _resolve_gateway_auth(")
-    end = _HELPERS.index("def _resolve_gateway_auth_inner(", start)
-    body = _HELPERS[start:end]
+    start = _AUTH.index("def _resolve_gateway_auth(")
+    end = _AUTH.index("def _resolve_gateway_auth_inner(", start)
+    body = _AUTH[start:end]
     assert "SessionLocal" in body, (
         "_resolve_gateway_auth wrapper must open its own SessionLocal."
     )

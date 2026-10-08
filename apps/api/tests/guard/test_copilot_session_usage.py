@@ -19,7 +19,7 @@ def report(**overrides):
 
 
 def test_maps_to_distinct_session_event_without_inventing_cost(monkeypatch):
-    from app.modules.guard.routers import events
+    from app.modules.guard.routers import events_ingest as events
     body = report()
     db = MagicMock()
     db.query.return_value.filter.return_value.first.return_value = None
@@ -41,7 +41,7 @@ def test_maps_to_distinct_session_event_without_inventing_cost(monkeypatch):
 
 
 def test_retried_snapshot_does_not_add_session_totals_again(monkeypatch):
-    from app.modules.guard.routers import events
+    from app.modules.guard.routers import events_ingest as events
     body = report()
     db = MagicMock()
     existing = object()
@@ -57,7 +57,7 @@ def test_retried_snapshot_does_not_add_session_totals_again(monkeypatch):
 
 
 def test_workspace_mismatch_rejected_before_database_access():
-    from app.modules.guard.routers import events
+    from app.modules.guard.routers import events_ingest as events
     db = MagicMock()
     with pytest.raises(HTTPException) as error:
         events.ingest_session_usage(report(), SimpleNamespace(), BackgroundTasks(), db, (str(uuid4()), "user"))
@@ -72,7 +72,7 @@ def test_invalid_token_counts_rejected(tokens):
 
 
 def test_naive_time_rejected():
-    from app.modules.guard.routers import events
+    from app.modules.guard.routers import events_ingest as events
     body = report(observed_at=datetime(2026, 9, 28))
     with pytest.raises(HTTPException) as error:
         events.ingest_session_usage(body, SimpleNamespace(), BackgroundTasks(), MagicMock(),
@@ -82,7 +82,7 @@ def test_naive_time_rejected():
 
 @pytest.mark.parametrize("surface", ["codex", "codex-cli", "codex-desktop", "claude-code", "copilot-cli"])
 def test_all_supported_clients_map_to_session_usage(monkeypatch, surface):
-    from app.modules.guard.routers import events
+    from app.modules.guard.routers import events_ingest as events
     body = report(ai_tool=surface)
     db = MagicMock()
     db.query.return_value.filter.return_value.first.return_value = None
@@ -101,7 +101,7 @@ def test_unsupported_usage_client_rejected():
 
 
 def test_metadata_only_backfill_does_not_invent_zero_usage():
-    from app.modules.guard.routers import events
+    from app.modules.guard.routers import events_ingest as events
     body = events.UsageUpdate(workspace_id=str(uuid4()), hook_session_id="session", tool_use_id="call-id", execution_status="success")
     event = SimpleNamespace(decision="warned")
     db = MagicMock()
@@ -115,7 +115,7 @@ def test_metadata_only_backfill_does_not_invent_zero_usage():
 
 
 def test_legacy_backfill_still_accepts_reported_tokens():
-    from app.modules.guard.routers import events
+    from app.modules.guard.routers import events_ingest as events
     body = events.UsageUpdate(workspace_id=str(uuid4()), hook_session_id="session", tokens_input=100, tokens_output=20)
     event = SimpleNamespace(decision="allowed")
     db = MagicMock()

@@ -94,7 +94,9 @@ if _ORIG_APP_CORE_CONFIG is not None:
 else:
     sys.modules.pop("app.core.config", None)
 sys.modules.pop("app.core.database", None)
-sys.modules.pop("app.modules.guard.models", None)
+for _name in [m for m in sys.modules if m == "app.modules.guard.models"
+              or m.startswith("app.modules.guard.models.")]:
+    sys.modules.pop(_name, None)
 for _mod, _orig in _ORIG_STUBBED_MODULES.items():
     if _orig is not None:
         sys.modules[_mod] = _orig

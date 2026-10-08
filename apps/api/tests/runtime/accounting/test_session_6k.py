@@ -51,12 +51,12 @@ def test_execute_v2_success_and_failure_paths_use_plan_operation():
     correctly reference ``plan.operation`` — plan IS in scope there.
     Distinct from the handle_gateway_request site above."""
     import inspect
-    from app.modules.guard import gateway_handler
+    from app.modules.guard import gateway_handler, gateway_v2_execute
 
-    src = inspect.getsource(gateway_handler)
+    src = inspect.getsource(gateway_v2_execute)
     # Both request-level and per-attempt metadata preserve the protocol.
     assert src.count('"operation": plan.operation') == 4
-    assert src.count('"operation": operation') == 1
+    assert inspect.getsource(gateway_handler).count('"operation": operation') == 1
 
 
 # ─── #2 strict cache-tier pricing without a rate-card tier map ─────────

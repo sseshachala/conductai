@@ -6,7 +6,7 @@ from uuid import uuid4
 import pytest
 
 from app.mcp.server import _detect_surface
-from app.modules.guard.routers import mcp
+from app.modules.guard.routers import mcp_helpers as mcp
 from app.tools.registrations import guard
 
 

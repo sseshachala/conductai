@@ -74,11 +74,15 @@ _sa.create_engine = _safe_create_engine
 # test_guard_savings.py now that it uses setdefault there).
 for _mod in [
     "app.modules.guard.routers.spend",
+    "app.modules.guard.routers.spend_common",
+    "app.modules.guard.routers.spend_summary",
+    "app.modules.guard.routers.spend_budgets",
+    "app.modules.guard.routers.spend_budget_check",
     "app.modules.guard.routers.savings",
 ]:
     sys.modules.pop(_mod, None)
 
-from app.modules.guard.routers import spend as spend_mod  # noqa: E402
+from app.modules.guard.routers import spend_summary as spend_mod  # noqa: E402
 from app.modules.guard.routers.spend import (  # noqa: E402
     _next_period_start,
     _parse_period_start,
@@ -307,7 +311,7 @@ class TestSourceHasSymmetricBounds:
             src,
             flags=re.DOTALL,
         )
-        assert m, "could not locate _get_spend_summary_inner in spend.py"
+        assert m, "could not locate _get_spend_summary_inner in spend_summary.py"
         body = m.group("body")
         lower = re.findall(
             r"(?:ts|started_at)\s*>=\s*(?:period_start|today_start)", body

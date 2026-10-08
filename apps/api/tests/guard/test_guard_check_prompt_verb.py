@@ -138,7 +138,7 @@ def test_get_rules_pulls_proxy_persona():
     """Sanity check: _get_rules must accept and forward the persona arg."""
     from app.modules.guard.routers.mcp import _get_rules
 
-    with patch("app.modules.guard.routers.mcp.compute_policy") as cp:
+    with patch("app.modules.guard.routers.mcp_helpers.compute_policy") as cp:
         cp.return_value = [{"id": "r1", "persona": "proxy"}]
         _get_rules(db=MagicMock(), ws_uuid=WS_UUID, persona="proxy")
 

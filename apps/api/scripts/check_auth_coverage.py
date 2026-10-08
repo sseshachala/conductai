@@ -101,7 +101,7 @@ ALLOWLIST = {
     # gates passed. Existing-user challenges NEVER return an agent token.
     "modules/guard/routers/trial.py::redeem_trial",
     # Guard budget check (workspace_id validated against guard_config — called pre-tool-use)
-    "modules/guard/routers/spend.py::budget_check",
+    "modules/guard/routers/spend_budget_check.py::budget_check",
     # Telemetry ingest (auth via Authorization or X-Workspace-Id header — alternative auth)
     "modules/telemetry/routes.py::ingest_event",
     # Playbook catalog (intentionally public — no user data returned)

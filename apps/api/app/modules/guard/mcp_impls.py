@@ -20,7 +20,6 @@ import json
 import logging
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from typing import Any
 
 import structlog
@@ -45,7 +44,6 @@ from app.modules.guard.models import (
     GuardConfig,
     WorkspaceSkillPack,
 )
-from app.models.workspace import Workspace
 
 # Late import at module scope — routers/mcp.py is fully loaded by main.py
 # before app.tools.registrations imports this module, so no import cycle.
@@ -53,14 +51,13 @@ from app.models.workspace import Workspace
 # functions live at module top now and need them here.
 from app.modules.guard.routers.mcp import (  # noqa: E402
     _get_rules,
-    _list_agents,
-    _list_playbooks,
-    _list_projects,
     _match_policy,
     _project_rule,
     _record_event,
-    _run_workflow,
-    _get_run_status,
+)
+from app.modules.guard.mcp_impls_conduct import (  # noqa: F401 — re-exports; dispatched below
+    conduct_current_workspace_impl, conduct_get_run_impl, conduct_list_agents_impl,
+    conduct_list_playbooks_impl, conduct_list_projects_impl, conduct_run_workflow_impl,
 )
 
 
@@ -132,7 +129,6 @@ def guard_status_impl(ctx: GuardCtx, **arguments) -> str:
         "policy_version":     _pv,
         "policy_computed_at": _pv_at,
     }, indent=2)
-
 
 
 def guard_check_impl(ctx: GuardCtx, **arguments) -> str:
@@ -385,7 +381,6 @@ def guard_sync_impl(ctx: GuardCtx, **arguments) -> str:
     return f"Policy is live — {len(rules)} active rule(s). Remote MCP always uses latest."
 
 
-
 def guard_enable_impl(ctx: GuardCtx, **arguments) -> str:
     db = ctx.db
     ws_uuid = ctx.ws_uuid
@@ -429,7 +424,6 @@ def guard_enable_impl(ctx: GuardCtx, **arguments) -> str:
     )
 
 
-
 def guard_spend_impl(ctx: GuardCtx, **arguments) -> str:
     db = ctx.db
     ws_uuid = ctx.ws_uuid
@@ -465,7 +459,6 @@ def guard_spend_impl(ctx: GuardCtx, **arguments) -> str:
     return "\n".join(lines)
 
 
-
 def guard_local_risks_impl(ctx: GuardCtx, **arguments) -> str:
     db = ctx.db
     ws_uuid = ctx.ws_uuid
@@ -492,7 +485,6 @@ def guard_local_risks_impl(ctx: GuardCtx, **arguments) -> str:
     return "\n".join(lines)
 
 
-
 def guard_activity_impl(ctx: GuardCtx, **arguments) -> str:
     db = ctx.db
     ws_uuid = ctx.ws_uuid
@@ -506,7 +498,6 @@ def guard_activity_impl(ctx: GuardCtx, **arguments) -> str:
     _workflow = arguments.get("conduct_workflow") or None
     _record_event(db, ws_uuid, "guard_activity", {"summary": summary, "category": category}, "allowed", None, ai_tool, user_email, session_id, conductai_run_id=_run_id, conductai_workflow=_workflow)
     return f"Activity logged — '{summary}'"
-
 
 
 def guard_recent_activity_impl(ctx: GuardCtx, **arguments) -> str:
@@ -559,7 +550,6 @@ def guard_recent_activity_impl(ctx: GuardCtx, **arguments) -> str:
     return "\n".join(_lines)
 
 
-
 def guard_discover_impl(ctx: GuardCtx, **arguments) -> str:
     db = ctx.db
     ws_uuid = ctx.ws_uuid
@@ -568,7 +558,6 @@ def guard_discover_impl(ctx: GuardCtx, **arguments) -> str:
     from app.modules.guard.discovery_inventory import workspace_inventory, summarize
     agents = workspace_inventory(db, ws_uuid)
     return json.dumps({**summarize(agents), "agents": agents}, default=str)
-
 
 
 def guard_discover_register_impl(ctx: GuardCtx, **arguments) -> str:
@@ -590,106 +579,6 @@ def guard_discover_register_impl(ctx: GuardCtx, **arguments) -> str:
                            "remediation": agent_view(row)["remediation"]})
     except Exception as e:
         return f"Error registering agent: {e}"
-
-
-
-def conduct_list_agents_impl(ctx: GuardCtx, **arguments) -> str:
-    db = ctx.db
-    ws_uuid = ctx.ws_uuid
-
-    return json.dumps(_list_agents(db, ws_uuid), indent=2)
-
-
-
-def conduct_list_projects_impl(ctx: GuardCtx, **arguments) -> str:
-    db = ctx.db
-    ws_uuid = ctx.ws_uuid
-
-    return json.dumps(_list_projects(db, ws_uuid), indent=2)
-
-
-
-def conduct_list_playbooks_impl(ctx: GuardCtx, **arguments) -> str:
-    db = ctx.db
-    ws_uuid = ctx.ws_uuid
-
-    return json.dumps(_list_playbooks(db, ws_uuid), indent=2)
-
-
-
-def conduct_run_workflow_impl(ctx: GuardCtx, **arguments) -> str:
-    db = ctx.db
-    ws_uuid = ctx.ws_uuid
-    user_email = ctx.user_email
-
-    wf_id = arguments.get("workflow_id", "")
-    payload = arguments.get("payload") or {}
-    if not wf_id:
-        return "Error — workflow_id is required."
-    try:
-        result = _run_workflow(db, ws_uuid, wf_id, payload, user_email)
-        return json.dumps(result, indent=2)
-    except ValueError as e:
-        return f"Error — {e}"
-
-
-
-def conduct_get_run_impl(ctx: GuardCtx, **arguments) -> str:
-    db = ctx.db
-    ws_uuid = ctx.ws_uuid
-
-    wf_id = arguments.get("workflow_id", "")
-    run_id = arguments.get("run_id", "")
-    if not wf_id or not run_id:
-        return "Error — workflow_id and run_id are required."
-    try:
-        result = _get_run_status(db, ws_uuid, wf_id, run_id)
-        return json.dumps(result, indent=2)
-    except ValueError as e:
-        return f"Error — {e}"
-
-
-
-def conduct_current_workspace_impl(ctx: GuardCtx, **arguments) -> str:
-    """Return the caller's active workspace: id, name, and their role.
-
-    LLMs use this to remind themselves which workspace context they're in —
-    useful when a user is a member of multiple workspaces and has multiple
-    Conduct MCP connectors installed (see issue #1747 for the alternative
-    in-chat workspace-switching design).
-
-    Returns JSON: {workspace_id, workspace_name, role, member_email}. If the
-    workspace or membership can't be resolved, returns an {error} envelope.
-    """
-    db = ctx.db
-    ws_uuid = ctx.ws_uuid
-    clerk_user_id = ctx.clerk_user_id
-    user_email = ctx.user_email
-
-    try:
-        row = db.execute(
-            _sql("""
-                SELECT w.id AS workspace_id, w.name AS workspace_name, wu.role AS role
-                FROM workspaces w
-                LEFT JOIN workspace_users wu
-                       ON wu.workspace_id = w.id AND wu.clerk_user_id = :uid
-                WHERE w.id = :ws
-                LIMIT 1
-            """),
-            {"ws": str(ws_uuid), "uid": clerk_user_id or ""},
-        ).fetchone()
-    except Exception as e:
-        return json.dumps({"error": f"lookup_failed: {e}"})
-
-    if row is None:
-        return json.dumps({"error": "workspace_not_found"})
-
-    return json.dumps({
-        "workspace_id":   str(row.workspace_id),
-        "workspace_name": row.workspace_name,
-        "role":           row.role or "unknown",
-        "member_email":   user_email,
-    }, indent=2)
 
 
 _GUARD_TOOL_IMPLS: dict[str, Any] = {
