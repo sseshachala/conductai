@@ -11,16 +11,22 @@ from datetime import datetime, timezone
 from fastapi import HTTPException
 from sqlalchemy import Uuid, and_, or_
 
-Cursor = tuple[datetime, str]
+Cursor = tuple[datetime | None, str]
 
 
-def parse_before(before: str | None) -> Cursor | None:
-    """Parse ``"<iso_ts>|<id>"``; None/empty -> None; malformed -> 400."""
+def parse_before(before: str | None, allow_null_ts: bool = False) -> Cursor | None:
+    """Parse ``"<iso_ts>|<id>"``; None/empty -> None; malformed -> 400.
+
+    With ``allow_null_ts`` an empty ts (``"|<id>"``) is the cursor of a row whose
+    sort column is NULL and parses to ``(None, id)``.
+    """
     if not before:
         return None
     ts_raw, sep, id_raw = before.partition("|")
-    if not sep or not ts_raw.strip() or not id_raw.strip():
+    if not sep or not id_raw.strip() or (not ts_raw.strip() and not allow_null_ts):
         raise HTTPException(status_code=400, detail="Invalid 'before' cursor: expected '<iso_ts>|<id>'")
+    if not ts_raw.strip():
+        return None, id_raw.strip()
     # An unescaped '+' in a query string arrives as ' ' ("...T10:00:00 00:00").
     ts_raw = ts_raw.strip().replace(" ", "+").replace("Z", "+00:00")
     try:
@@ -32,12 +38,15 @@ def parse_before(before: str | None) -> Cursor | None:
     return ts, id_raw.strip()
 
 
-def before_clause(ts_col, id_col, before: str | None):
+def before_clause(ts_col, id_col, before: str | None, nulls_last: bool = False):
     """SQLAlchemy predicate for rows strictly older than the cursor, or None.
 
-    Pair with ``.order_by(ts_col.desc(), id_col.desc())``.
+    Pair with ``.order_by(ts_col.desc(), id_col.desc())``. For a nullable ts
+    column pass ``nulls_last=True`` and order by ``ts_col.desc().nulls_last()``:
+    NULL-ts rows then sort after every dated row (by id DESC); their cursor is
+    ``"|<id>"``.
     """
-    cur = parse_before(before)
+    cur = parse_before(before, allow_null_ts=nulls_last)
     if cur is None:
         return None
     ts, raw_id = cur
@@ -47,7 +56,10 @@ def before_clause(ts_col, id_col, before: str | None):
             last_id = uuid.UUID(raw_id)
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid 'before' cursor: bad id") from None
-    return or_(ts_col < ts, and_(ts_col == ts, id_col < last_id))
+    if ts is None:
+        return and_(ts_col.is_(None), id_col < last_id)
+    older = or_(ts_col < ts, and_(ts_col == ts, id_col < last_id))
+    return or_(older, ts_col.is_(None)) if nulls_last else older
 
 
 def before_sql(before: str | None, ts_col: str = "ts", id_col: str = "id") -> tuple[str, dict]:

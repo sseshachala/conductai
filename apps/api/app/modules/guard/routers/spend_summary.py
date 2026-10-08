@@ -354,17 +354,17 @@ def list_sessions(
     workspace_id: str = Depends(get_workspace_id),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
-    before: str | None = Query(default=None, description="Keyset cursor '<started_at>|<id>' from the last row; wins over offset"),
+    before: str | None = Query(default=None, description="Keyset cursor '<started_at>|<id>' from the last row ('|<id>' when started_at is null); wins over offset"),
     db: Session = Depends(get_db),
 ):
     """List sessions with cumulative spend totals."""
     org_ws = _org_ws_subquery(db, workspace_id)
     q = db.query(GuardSession).filter(GuardSession.workspace_id.in_(org_ws))
-    cursor = before_clause(GuardSession.started_at, GuardSession.id, before)
+    cursor = before_clause(GuardSession.started_at, GuardSession.id, before, nulls_last=True)
     if cursor is not None:
         q, offset = q.filter(cursor), 0
     rows = (
-        q.order_by(GuardSession.started_at.desc(), GuardSession.id.desc())
+        q.order_by(GuardSession.started_at.desc().nulls_last(), GuardSession.id.desc())
         .offset(offset)
         .limit(limit)
         .all()

@@ -17,6 +17,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.schema import CreateTable
 from sqlalchemy.pool import StaticPool
 
 # Engine is never connected in these tests; DSN composed at runtime (no literal credentials in source).
@@ -50,8 +51,9 @@ T0 = datetime(2026, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
 @pytest.fixture
 def db():
     engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
-    for m in (Workspace, GuardAuditEvent, GuardSession, SessionReport):
-        m.__table__.create(engine, checkfirst=True)
+    with engine.begin() as conn:  # CREATE TABLE only: SQLite can't build the PG-specific indexes
+        for m in (Workspace, GuardAuditEvent, GuardSession, SessionReport):
+            conn.execute(CreateTable(m.__table__))
     s = sessionmaker(bind=engine)()
     s.add(Workspace(id=WS, name="w"))
     s.commit()
@@ -187,6 +189,28 @@ def test_spend_sessions_before_and_offset(db):
     ids = [r.id for r in seen]
     assert len(ids) == len(set(ids)) and set(ids) == expected
     assert [r.id for r in _sessions(db, 3, offset=3)] == ids[3:6]
+
+
+def test_spend_sessions_null_started_at_paged_exactly_once(db):
+    expected = set()
+    for i in range(10):  # 6 dated (3 tie pairs) + 4 NULL; limit 2 is smaller than either group
+        s = GuardSession(id=uuid.uuid4(), workspace_id=WS, ai_tool="claude_code",
+                         started_at=_ts(i) if i < 6 else None)
+        db.add(s)
+        expected.add(str(s.id))
+    db.commit()
+    seen = _page_all(lambda n, c: _sessions(db, n, c), 2,
+                     lambda r: f"{r.started_at or ''}|{r.id}")
+    ids = [r.id for r in seen]
+    assert len(ids) == len(set(ids)) and set(ids) == expected
+    assert [r.started_at is None for r in seen] == [False] * 6 + [True] * 4  # NULLS LAST
+
+
+def test_null_cursor_rejected_unless_opted_in():
+    with pytest.raises(HTTPException) as e:
+        parse_before("|abc")
+    assert e.value.status_code == 400
+    assert parse_before("|abc", allow_null_ts=True) == (None, "abc")
 
 
 # ------------------------------------------------- GET /guard/session-reports

@@ -1,6 +1,6 @@
 """Indexes backing keyset paging + filtered Guard event lists
 
-- guard_sessions (workspace_id, started_at)        -> GET /guard/spend/sessions
+- guard_sessions (workspace_id, started_at DESC NULLS LAST) -> GET /guard/spend/sessions
 - guard_audit_events (workspace_id, rule_id, ts)   -> rule filter on /guard/events
 - guard_audit_events (workspace_id, decision, ts)  -> decision filter on /guard/events
 - session_reports (workspace_id, created_at)       -> GET /guard/session-reports
@@ -23,7 +23,7 @@ branch_labels = None
 depends_on = None
 
 _INDEXES = (
-    ("ix_guard_sessions_ws_started", "guard_sessions", "workspace_id, started_at"),
+    ("ix_guard_sessions_ws_started", "guard_sessions", "workspace_id, started_at DESC NULLS LAST"),
     ("ix_guard_audit_events_ws_rule_ts", "guard_audit_events", "workspace_id, rule_id, ts"),
     ("ix_guard_audit_events_ws_decision_ts", "guard_audit_events", "workspace_id, decision, ts"),
     ("ix_session_reports_ws_created", "session_reports", "workspace_id, created_at"),

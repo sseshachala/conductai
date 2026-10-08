@@ -122,7 +122,7 @@ class GuardSession(Base):
     session_parser = Column(String(30), nullable=True)        # claude_code_v1|codex_v1
 
     __table_args__ = (
-        Index("ix_guard_sessions_ws_started", "workspace_id", "started_at"),
+        Index("ix_guard_sessions_ws_started", "workspace_id", sa.text("started_at DESC NULLS LAST")),
     )
 
 
