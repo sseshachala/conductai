@@ -18,6 +18,9 @@ from app.runtime.llm_client import (
     LLMToolUseBlock,
     LLMUpstreamError,
 )
+from app.runtime.blocks.brain_guard import (
+    record_runtime_guard_verdict as _record_guard_verdict,
+)
 from app.runtime.model_router import resolve_for_workspace as _router_resolve
 from app.runtime.pricing import freeze_pricing_snapshot, get_model_rates
 
@@ -1127,14 +1130,23 @@ def _execute_brain(
                                 if _guard_hit:
                                     _guard_action = _guard_hit.get("action", "audit")
                                     _guard_msg = _guard_hit.get("message", "")
+                                    # _project_rule renames id -> rule_id (#2401).
+                                    _guard_rule_id = _guard_hit.get("rule_id") or _guard_hit.get("id")
                                     if db and run_id:
                                         _emit(db, run_id, block_id, "brain_tool_call", {
                                             "tool": tc.name,
                                             "guard_action": _guard_action,
-                                            "guard_rule": _guard_hit.get("id"),
+                                            "guard_rule": _guard_rule_id,
                                             "guard_message": _guard_msg,
                                             "turn": turns,
                                         })
+                                    _record_guard_verdict(
+                                        db, workspace_id=workspace_id, user_email=user_email,
+                                        tool_name=tc.name, action=_guard_action,
+                                        rule_id=_guard_rule_id, message=_guard_msg,
+                                        input_text=_mcp_inp_text, run_id=run_id,
+                                        playbook_slug=playbook_slug, workflow_id=workflow_id,
+                                    )
                                     if _guard_action == "block":
                                         raw_tool_results.append((tc.id, f"[guard_blocked] {_guard_msg}"))
                                         continue
@@ -1269,60 +1281,14 @@ def _execute_brain(
                                             "guard_message": _guard_msg,
                                             "turn": turns,
                                         })
-                                    # Decision label used in both the audit row and the
-                                    # notification payload — kept as one variable so the
-                                    # two surfaces never disagree.
-                                    _decision_label = (
-                                        "blocked" if _guard_action == "block"
-                                        else "warned" if _guard_action == "warn"
-                                        else "audited"
+                                    # Audit row (flight recorder) + block/warn fan-out.
+                                    _record_guard_verdict(
+                                        db, workspace_id=workspace_id, user_email=user_email,
+                                        tool_name=tc.name, action=_guard_action,
+                                        rule_id=_guard_rule_id, message=_guard_msg,
+                                        input_text=_tool_input_text, run_id=run_id,
+                                        playbook_slug=playbook_slug, workflow_id=workflow_id,
                                     )
-
-                                    # Also write to the Guard audit trail so it appears
-                                    # in the flight recorder (Guard → Activity), same as
-                                    # hook and proxy verdicts.
-                                    try:
-                                        from app.modules.guard.models import GuardAuditEvent
-                                        from datetime import datetime as _dt, timezone as _tz
-                                        db.add(GuardAuditEvent(
-                                            workspace_id=_uuid.UUID(workspace_id),
-                                            user_email=user_email,
-                                            ai_tool="conduct_runtime",
-                                            tool_call=tc.name,
-                                            source="runtime",
-                                            decision=_decision_label,
-                                            rule_id=_guard_rule_id,
-                                            rule_message=_guard_msg,
-                                            input_summary=_tool_input_text[:500],
-                                            conductai_run_id=str(run_id) if run_id else None,
-                                            conductai_workflow=playbook_slug,
-                                            conductai_workflow_id=str(workflow_id) if workflow_id else None,
-                                            ts=_dt.now(_tz.utc),
-                                        ))
-                                        db.commit()
-                                    except Exception as _audit_exc:
-                                        log.warning("brain.non_mcp_guard.audit_write_failed",
-                                                    error=str(_audit_exc))
-                                        db.rollback()
-
-                                    # Fan out block/warn (skip audit — too noisy) to the
-                                    # workspace's configured notification channels
-                                    # (Slack, webhook, PagerDuty, email). Same helper the
-                                    # proxy and MCP surfaces use.
-                                    if _guard_action in ("block", "warn"):
-                                        try:
-                                            from app.modules.guard.routers.events import notify_guard_block
-                                            notify_guard_block(
-                                                db, workspace_id,
-                                                decision=_decision_label,
-                                                rule_id=_guard_rule_id,
-                                                user_email=user_email,
-                                                tool=tc.name,
-                                                source="runtime",
-                                            )
-                                        except Exception as _notify_exc:
-                                            log.warning("brain.non_mcp_guard.notify_failed",
-                                                        error=str(_notify_exc))
 
                                     if _guard_action == "block":
                                         result_content = f"[guard_blocked] {_guard_msg}  [rule: {_guard_rule_id}]"

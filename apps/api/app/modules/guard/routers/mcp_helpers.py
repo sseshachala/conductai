@@ -203,6 +203,9 @@ def _project_rule(r: dict) -> dict:
         "match_ai_tool":     r.get("match_ai_tool"),  # #1752: was dropped by projector
         "match_pattern":     r.get("match_pattern"),
         "match_path_pattern": r.get("match_path_pattern"),
+        # #2401: the workflow runtime scopes MCP tool rules by server name;
+        # dropping this made server-scoped rules apply to every server.
+        "match_mcp_server":  r.get("match_mcp_server"),
         # #1770 follow-up: proxy-native matchers preserved so guard_check_prompt
         # honours them from the MCP transport. Legacy MCP callers pass no
         # prompt/provider/model in tool_input, so these fields are inert
