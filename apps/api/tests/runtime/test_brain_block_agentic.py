@@ -148,6 +148,32 @@ def test_cost_budget_exhausted_raises_before_tools_run():
     assert h.session.close_calls == 1
 
 
+def test_mark_complete_returns_structured_result():
+    script = [tool_response(("t1", "mark_complete",
+                             {"result": "all good", "output": {"pr": 7}}), cost=0.002)]
+    with brain_harness(script) as h:
+        result = run_brain(h, _agentic(), base_state())
+    assert result == {
+        "output": "all good",
+        "structured_output": {"pr": 7},
+        "turns": 1,
+        "stop_reason": "mark_complete",
+        "input_tokens": 10,
+        "output_tokens": 5,
+        "cost_usd": 0.002,
+        "files_changed": FILES_CHANGED,
+        "diff_stat": DIFF_STAT,
+        "provider": PROVIDER,
+        "model": MODEL,
+    }
+    assert h.session.dispatched == []
+    assert h.run_updates() == [{"actual_turns": 1, "budget_exhausted": False}]
+    assert h.session.close_calls == 1
+    # #2401 item 3: artifacts are captured while the session is still open.
+    assert h.session.capture_calls == 1
+    assert not h.session.captured_after_close
+
+
 def test_needs_clarification_on_first_turn_pauses_block():
     script = [text_response("NEEDS_CLARIFICATION: which repository?")]
     with brain_harness(script) as h:

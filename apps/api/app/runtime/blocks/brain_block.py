@@ -1063,9 +1063,10 @@ def _execute_brain(
 
                 # mark_complete — structured early exit
                 if tc.name == "mark_complete":
+                    # #2401: capture before close — a closed session has no artifacts.
+                    files_changed, diff_stat = session.capture_artifacts() if session else ([], "")
                     _close_session()
                     _record_turns(db, run_id, turns, False)
-                    files_changed, diff_stat = session.capture_artifacts() if session else ([], "")
                     return {
                         "output": tc.input.get("result", ""),
                         "structured_output": tc.input.get("output"),
