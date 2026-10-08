@@ -17,57 +17,11 @@ from __future__ import annotations
 import uuid
 from unittest.mock import MagicMock, patch
 
-
-def _wf_row(gateway_profile_id):
-    row = MagicMock()
-    row.gateway_profile_id = gateway_profile_id
-    return row
-
-
-def _profile_row(*, id=None, cond_code="ABC12345", model_alias="default", active=True):
-    row = MagicMock()
-    row.id = id or uuid.uuid4()
-    row.cond_code = cond_code
-    row.model_alias = model_alias
-    row.active_revision_id = uuid.uuid4() if active else None
-    row.name = f"profile-{cond_code}"
-    return row
-
-
-def _dispatch_db(*, wf_row, prof_row, revision_snapshot: dict | None = None):
-    """Return a MagicMock db whose ``query`` dispatches by ORM model."""
-    from app.models.workflow import Workflow as _WF
-    from app.models.gateway_profile import (
-        GatewayProfile as _GP,
-        GatewayProfileRevision as _GPR,
-    )
-
-    wf_q = MagicMock()
-    wf_q.filter.return_value.first.return_value = wf_row
-    prof_q = MagicMock()
-    prof_q.filter.return_value.first.return_value = prof_row
-
-    # #2170 PR 3 — brain_block queries the revision snapshot to decide
-    # per-profile streaming safety. Provide a minimal snapshot so those
-    # code paths don't get MagicMock objects.
-    rev_row = MagicMock()
-    rev_row.snapshot = revision_snapshot or {"targets": []}
-    rev_q = MagicMock()
-    rev_q.filter.return_value.first.return_value = rev_row
-
-    db = MagicMock()
-
-    def _q(model):
-        if model is _WF:
-            return wf_q
-        if model is _GP:
-            return prof_q
-        if model is _GPR:
-            return rev_q
-        return MagicMock()
-
-    db.query.side_effect = _q
-    return db
+from tests.runtime.brain_block_harness import (
+    _dispatch_db,
+    _profile_row,
+    _wf_row,
+)
 
 
 def _min_block_and_state():
