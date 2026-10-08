@@ -6,6 +6,7 @@ import AppShell from "@/components/AppShell"
 import { useAuthFetch } from "@/hooks/useAuthFetch"
 import { teamMemory } from "@/lib/api"
 import { GuardShell } from "@/components/guard/GuardShell"
+import { GuardList } from "@/components/guard/common"
 import { useGuardTeam } from "@/hooks/useGuardTeam"
 import { useGuardRole } from "@/hooks/useGuardRole"
 import { useWorkspace } from "@/lib/WorkspaceContext"
@@ -182,21 +183,21 @@ function TeamMemoryContent() {
         </div>
       )}
 
-      {/* Table */}
-      {loading ? (
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {[...Array(6)].map((_, i) => (
-            <div key={i} style={{ height: 44, background: "var(--surface-2)", borderRadius: 8, opacity: 0.6 }} />
-          ))}
-        </div>
-      ) : filtered.length === 0 ? (
-        <div className="card" style={{ padding: "40px 24px", textAlign: "center", fontSize: 13, color: "var(--text-muted)" }}>
-          {isSearching
-            ? `No sessions found for "${query}".`
-            : "No team memories yet. Sessions are captured automatically when developers exit Claude Code, Cursor, and Codex."
-          }
-        </div>
-      ) : (
+      <GuardList
+        rows={filtered}
+        loading={loading}
+        skeletonRows={6}
+        skeletonGap
+        getKey={e => `${e.developer_id}-${e.created_at}-${e.summary.slice(0, 24)}`}
+        emptyState={
+          <div className="card" style={{ padding: "40px 24px", textAlign: "center", fontSize: 13, color: "var(--text-muted)" }}>
+            {isSearching
+              ? `No sessions found for "${query}".`
+              : "No team memories yet. Sessions are captured automatically when developers exit Claude Code, Cursor, and Codex."
+            }
+          </div>
+        }
+        wrap={rows => (
         <div className="card" style={{ overflow: "hidden" }}>
           {/* Table header */}
           <div style={{
@@ -211,18 +212,24 @@ function TeamMemoryContent() {
             ))}
           </div>
 
-          {/* Table rows */}
-          {filtered.map((entry, i) => {
+{rows}
+
+          <div style={{ borderTop: "1px solid var(--border)", padding: "8px 18px", textAlign: "center", fontSize: 12, color: "var(--text-muted)" }}>
+            {filtered.length} {filtered.length === 1 ? "session" : "sessions"}
+          </div>
+        </div>
+        )}
+        renderRow={(entry, i) => {
             const extraTagCount = (entry.tags ?? []).length > 3 ? (entry.tags ?? []).length - 3 : 0
             const confidencePct = entry.confidence != null ? Math.round(entry.confidence * 100) : null
 
             return (
-              <div key={`${entry.developer_id}-${entry.created_at}-${i}`}
+              <div
                 style={{
                   display: "grid",
                   gridTemplateColumns: "1.1fr 0.8fr 2.6fr 0.7fr 1fr 0.6fr",
                   gap: 12, padding: "11px 18px",
-                  borderBottom: i < filtered.length - 1 ? "1px solid var(--border)" : "none",
+                  borderTop: i > 0 ? "1px solid var(--border)" : "none",
                   alignItems: "start",
                 }}
               >
@@ -276,13 +283,8 @@ function TeamMemoryContent() {
                 </div>
               </div>
             )
-          })}
-
-          <div style={{ borderTop: "1px solid var(--border)", padding: "8px 18px", textAlign: "center", fontSize: 12, color: "var(--text-muted)" }}>
-            {filtered.length} {filtered.length === 1 ? "session" : "sessions"}
-          </div>
-        </div>
-      )}
+        }}
+      />
     </GuardShell>
   )
 }

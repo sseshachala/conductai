@@ -5,6 +5,7 @@ import { useWorkspace } from "@/lib/WorkspaceContext"
 import AppShell from "@/components/AppShell"
 import { useAuthFetch } from "@/hooks/useAuthFetch"
 import { governance, guard } from "@/lib/api"
+import { GuardList, useCursorList } from "@/components/guard/common"
 
 interface FrameworkRow {
   framework: string
@@ -42,6 +43,8 @@ interface ChainVerifyOut {
   verified_at: string
 }
 
+const EVENT_PAGE = 50
+
 function fmtDate(iso: string) {
   return new Date(iso).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })
 }
@@ -69,7 +72,6 @@ function Soc2Report() {
   const [to, setTo] = useState<string>(todayIso())
   const [narrative, setNarrative] = useState<NarrativeOut | null>(null)
   const [frameworks, setFrameworks] = useState<FrameworksOut | null>(null)
-  const [events, setEvents] = useState<RecentEventOut[]>([])
   const [loading, setLoading] = useState(false)
   const [chain, setChain] = useState<ChainVerifyOut | null>(null)
   const [chainLoading, setChainLoading] = useState(false)
@@ -78,25 +80,22 @@ function Soc2Report() {
     if (!workspaceId) return
     setLoading(true)
     try {
-      const fromIso = `${from}T00:00:00Z`
-      const toIso = `${to}T23:59:59Z`
-
-      const [narrativeData, frameworksData, eventsData] = await Promise.allSettled([
+      const [narrativeData, frameworksData] = await Promise.allSettled([
         governance.narrative(authFetch, workspaceId, "month"),
         governance.frameworks(authFetch, workspaceId),
-        governance.eventsRecent(authFetch, workspaceId, {
-          limit: 1000,
-          from_dt: fromIso,
-          to_dt: toIso,
-        }),
       ])
       if (narrativeData.status === "fulfilled") setNarrative(narrativeData.value)
       if (frameworksData.status === "fulfilled") setFrameworks(frameworksData.value)
-      if (eventsData.status === "fulfilled") setEvents(eventsData.value)
     } finally {
       setLoading(false)
     }
-  }, [workspaceId, authFetch, from, to])
+  }, [workspaceId, authFetch])
+
+  const fetchEvents = useCallback((before?: string) => governance.eventsRecent(authFetch, workspaceId!, {
+    limit: EVENT_PAGE, from_dt: `${from}T00:00:00Z`, to_dt: `${to}T23:59:59Z`, before,
+  }) as Promise<RecentEventOut[]>, [authFetch, workspaceId, from, to])
+  const eventList = useCursorList<RecentEventOut>(fetchEvents, { limit: EVENT_PAGE, enabled: !!workspaceId })
+  const events = eventList.rows
 
   useEffect(() => { load() }, [load])
 
@@ -170,9 +169,9 @@ function Soc2Report() {
         </div>
 
         <div className="kpis">
-          <div className="kpi"><div className="kpi-label">Events screened</div><div className="kpi-value">{total.toLocaleString()}</div></div>
-          <div className="kpi"><div className="kpi-label">Blocked</div><div className="kpi-value" style={{ color: "var(--err)" }}>{blocked.toLocaleString()}</div></div>
-          <div className="kpi"><div className="kpi-label">Warned</div><div className="kpi-value" style={{ color: "var(--warn)" }}>{warned.toLocaleString()}</div></div>
+          <div className="kpi"><div className="kpi-label">Events loaded</div><div className="kpi-value">{total.toLocaleString()}</div></div>
+          <div className="kpi"><div className="kpi-label">Blocked (in loaded rows)</div><div className="kpi-value" style={{ color: "var(--err)" }}>{blocked.toLocaleString()}</div></div>
+          <div className="kpi"><div className="kpi-label">Warned (in loaded rows)</div><div className="kpi-value" style={{ color: "var(--warn)" }}>{warned.toLocaleString()}</div></div>
         </div>
 
         <h2>SOC 2 control coverage</h2>
@@ -198,34 +197,38 @@ function Soc2Report() {
         )}
 
         <h2>Event log</h2>
-        {events.length === 0 ? (
-          <p style={{ fontSize: 12, color: "#777" }}>No events in the selected range.</p>
-        ) : (
-          <table>
-            <thead>
-              <tr>
-                <th style={{ width: "16%" }}>Date</th>
-                <th style={{ width: "18%" }}>Actor</th>
-                <th style={{ width: "12%" }}>Tool</th>
-                <th style={{ width: "10%" }}>Decision</th>
-                <th style={{ width: "20%" }}>Rule</th>
-                <th>Call</th>
-              </tr>
-            </thead>
-            <tbody>
-              {events.map(e => (
-                <tr key={e.id}>
-                  <td>{fmtDateTime(e.ts)}</td>
-                  <td>{e.user_email ?? "—"}</td>
-                  <td>{e.ai_tool}</td>
-                  <td><span className={`decision ${e.decision}`}>{e.decision}</span></td>
-                  <td>{e.rule_id ?? "—"}</td>
-                  <td style={{ wordBreak: "break-word" }}>{e.tool_call}</td>
+        {eventList.error && <p role="alert" style={{ fontSize: 12, color: "var(--err)" }}>Unable to load events. {eventList.error}</p>}
+        <GuardList rows={events} loading={eventList.loading} getKey={e => e.id} hasMore={eventList.hasMore}
+          onLoadMore={eventList.loadMore} loadingMore={eventList.loadingMore}
+          emptyState={<p style={{ fontSize: 12, color: "#777" }}>No events in the selected range.</p>}
+          wrap={rows => (
+            <table>
+              <thead>
+                <tr>
+                  <th style={{ width: "16%" }}>Date</th>
+                  <th style={{ width: "18%" }}>Actor</th>
+                  <th style={{ width: "12%" }}>Tool</th>
+                  <th style={{ width: "10%" }}>Decision</th>
+                  <th style={{ width: "20%" }}>Rule</th>
+                  <th>Call</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+              </thead>
+              <tbody>{rows}</tbody>
+            </table>
+          )}
+          renderRow={e => (
+            <tr>
+              <td>{fmtDateTime(e.ts)}</td>
+              <td>{e.user_email ?? "—"}</td>
+              <td>{e.ai_tool}</td>
+              <td><span className={`decision ${e.decision}`}>{e.decision}</span></td>
+              <td>{e.rule_id ?? "—"}</td>
+              <td style={{ wordBreak: "break-word" }}>{e.tool_call}</td>
+            </tr>
+          )} />
+        {events.length > 0 && <p className="no-print" style={{ fontSize: 11, color: "#777" }}>
+          {events.length.toLocaleString()} events loaded{eventList.hasMore ? "; load more before printing for a complete log. Counts above cover loaded rows only." : "."}
+        </p>}
 
         <h2>Audit log integrity</h2>
         <div style={{ display: "flex", alignItems: "flex-start", gap: 16, padding: "14px 16px", border: "1px solid #e5e5e5", borderRadius: 6, background: "#fafafa" }}>

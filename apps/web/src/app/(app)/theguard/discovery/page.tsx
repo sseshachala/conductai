@@ -1,11 +1,11 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { Copy, RefreshCw, Search, X } from "lucide-react"
 import AppShell from "@/components/AppShell"
 import Link from "next/link"
 import { GuardShell } from "@/components/guard/GuardShell"
-import { GuardPageHeader } from "@/components/guard/common"
+import { GuardList, GuardPageHeader, useCursorList } from "@/components/guard/common"
 import { AskLensLink } from "@/components/glens/AskLensLink"
 import { useAuthFetch } from "@/hooks/useAuthFetch"
 import { API, guard } from "@/lib/api"
@@ -86,12 +86,10 @@ export default function DiscoveryPage() {
 function WorkspaceDiscovery({ workspaceId }: { workspaceId: string }) {
   const { authFetch } = useAuthFetch()
   const [summary, setSummary] = useState<DiscoverySummary | null>(null)
-  const [agents, setAgents] = useState<DiscoveryAgent[]>([])
   const [scans, setScans] = useState<Scan[]>([])
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(true)
   const [revision, setRevision] = useState(0)
-  const [limit, setLimit] = useState(100)
   const [query, setQuery] = useState("")
   const [filter, setFilter] = useState("current")
   const [isAdmin, setIsAdmin] = useState(false)
@@ -109,14 +107,17 @@ function WorkspaceDiscovery({ workspaceId }: { workspaceId: string }) {
   useEffect(() => {
     let active = true
     setLoading(true); setError("")
-    const pages = Promise.all(Array.from({ length: Math.ceil(limit / 100) }, (_, page) =>
-      guard.discover.agents(authFetch, page * 100, 100, inventory))).then(results => results.flat())
-    Promise.all([guard.discover.summary(authFetch), pages, guard.discover.scans(authFetch)])
-      .then(([sum, rows, history]) => { if (active) { setSummary(sum); setAgents(rows); setScans(history) } })
+    Promise.all([guard.discover.summary(authFetch), guard.discover.scans(authFetch)])
+      .then(([sum, history]) => { if (active) { setSummary(sum); setScans(history) } })
       .catch(() => { if (active) setError("Unable to load discovery. Try again.") })
       .finally(() => { if (active) setLoading(false) })
     return () => { active = false }
-  }, [authFetch, workspaceId, revision, limit, inventory])
+  }, [authFetch, workspaceId, revision])
+  const fetchAgents = useCallback((_before?: string, offset = 0) => guard.discover.agents(authFetch, offset, 100, inventory),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [authFetch, workspaceId, revision, inventory])
+  const list = useCursorList<DiscoveryAgent>(fetchAgents, { limit: 100, mode: "offset" })
+  const agents = list.rows
   const visible = agents.filter(a => (!query || `${a.framework} ${a.device_id ?? ""}`.toLowerCase().includes(query.toLowerCase())) &&
     (filter === "all" || filter === "current" && a.detection !== "legacy_unverified" || (filter === "attention" ? a.hooks_status !== "observed" || a.freshness !== "fresh" : a.detection === filter)))
   const total = summary ? inventory === "legacy" ? summary.legacy_unverified : inventory === "current" ? summary.total - (summary.legacy_unverified ?? 0) : summary.total : agents.length
@@ -125,12 +126,13 @@ function WorkspaceDiscovery({ workspaceId }: { workspaceId: string }) {
       <GuardPageHeader title="Agent Discovery"/>
       <div className="flex shrink-0 items-center gap-2">
         <Link href="/settings?tab=tool_setup" className="btn btn-ghost btn-sm">Tool Setup</Link>
-        <button className="btn btn-ghost btn-icon btn-sm" aria-label="Refresh discovery" title="Refresh discovery" disabled={loading}
+        <button className="btn btn-ghost btn-icon btn-sm" aria-label="Refresh discovery" title="Refresh discovery" disabled={loading || list.loading}
           onClick={() => { setSelected(null); setRevision(r => r + 1) }}><RefreshCw size={18}/></button>
       </div>
     </div>
     {error && <p role="alert" className="text-red-700">{error}</p>}
     {loading && <p role="status">Loading discovery...</p>}
+    {list.error && <p role="alert" className="text-red-700">Unable to load findings. Try again.</p>}
     {summary && <dl className="grid grid-cols-2 gap-5 border-y border-stone-200 py-5 md:grid-cols-4">
       {[["Tool installations", summary.confirmed], ["Possible integrations", summary.possible_integrations],
         ["Recent hook activity", summary.recent_hook_evidence], ["Needs review", summary.needs_attention]].map(([label, count]) =>
@@ -141,15 +143,13 @@ function WorkspaceDiscovery({ workspaceId }: { workspaceId: string }) {
       <div className="flex flex-wrap items-center gap-3">
         <label className="flex items-center gap-2"><Search size={16}/><input aria-label="Search tool or device" placeholder="Tool or device" value={query}
           onChange={e => setQuery(e.target.value)} className="min-w-0 rounded border border-stone-300 px-3 py-2 text-sm"/></label>
-        <select aria-label="Filter findings" value={filter} onChange={e => { setFilter(e.target.value); setLimit(100) }} className="rounded border border-stone-300 px-3 py-2 text-sm">
+        <select aria-label="Filter findings" value={filter} onChange={e => setFilter(e.target.value)} className="rounded border border-stone-300 px-3 py-2 text-sm">
           <option value="current">Current findings</option><option value="all">All including legacy</option><option value="attention">Needs review</option><option value="installed">Installed</option>
           <option value="running">Running at scan</option><option value="possible_integration">Possible integrations</option><option value="legacy_unverified">Legacy / unverified</option>
         </select>
       </div>
-      <div className="overflow-x-auto">
-        <table aria-label="Discovered tool installations" className="w-full min-w-[900px] border-collapse"><thead><tr>{["Tool / installation", "Detection", "Hooks", "MCP", "Gateway", "Last scan / detection", ""].map(h =>
-          <th key={h} className={cell + " font-medium text-stone-500"}>{h}</th>)}</tr></thead>
-          <tbody>{visible.map(a => <tr key={a.id}>
+      <GuardList rows={visible} loading={list.loading} getKey={a => a.id} hasMore={list.hasMore} onLoadMore={list.loadMore} loadingMore={list.loadingMore}
+        skeletonRows={5} renderRow={a => <tr key={a.id}>
             <td className={cell}><strong>{discoveryLabel(a.framework)}</strong><div className="font-mono text-xs text-stone-500"
               title={`Device ${a.device_id ?? "not recorded"}; installation ${a.installation_id ?? "not recorded"}`}>
                 {a.device_id?.slice(0, 8) ?? "Legacy device"}{a.installation_id && ` / ${a.installation_id.slice(0, 8)}`}
@@ -163,13 +163,16 @@ function WorkspaceDiscovery({ workspaceId }: { workspaceId: string }) {
               ? "Gateway adapter pending" : discoveryLabel(a.gateway_status)}</td>
             <td className={cell}>{discoveryTime(a.last_seen_at)}<div className="text-xs text-stone-500">{discoveryLabel(a.freshness)}</div></td>
             <td className={cell}><button className="btn btn-ghost btn-sm" onClick={() => setSelected(a)}>Evidence</button></td>
-          </tr>)}</tbody>
+          </tr>}
+        wrap={rows => <div className="overflow-x-auto">
+        <table aria-label="Discovered tool installations" className="w-full min-w-[900px] border-collapse"><thead><tr>{["Tool / installation", "Detection", "Hooks", "MCP", "Gateway", "Last scan / detection", ""].map(h =>
+          <th key={h} className={cell + " font-medium text-stone-500"}>{h}</th>)}</tr></thead>
+          <tbody>{rows}</tbody>
         </table>
-      </div>
-      {!visible.length && <p>No findings match these filters.</p>}
+      </div>}/>
+      {!list.loading && !visible.length && <p>No findings match these filters.</p>}
       <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-stone-500">
         <p>{visible.length} shown from {agents.length} loaded / {total} findings</p>
-        {summary && agents.length < total && <button className="btn btn-ghost btn-sm" disabled={loading} onClick={() => setLimit(n => n + 100)}>Load more</button>}
       </div>
     </>}
     <details className="border-t border-stone-200 pt-5" onToggle={event => setShowMcp(event.currentTarget.open)}>
