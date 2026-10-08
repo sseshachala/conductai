@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from "react"
 import { useAuth, useUser } from "@/lib/auth/client"
 import { useAuthFetch } from "@/hooks/useAuthFetch"
+import { usePolledFetch } from "@/hooks/usePolledFetch"
 import { guard } from "@/lib/api"
 import { API } from "@/lib/api/client"
 import { useGuardTeam } from "@/hooks/useGuardTeam"
@@ -64,6 +65,8 @@ export function useGuardDashboard() {
   } | null>(null)
 
   const PAGE_SIZE = 100
+  // The overview feed shows 5 rows; fetch a small first page.
+  const INITIAL_LIMIT = 20
 
   // Filters
   const [filterTool, setFilterTool]           = useState("all")
@@ -94,21 +97,21 @@ export function useGuardDashboard() {
 
   const loadEvents = useCallback(async (decision?: string, dateRange?: string) => {
     if (!teamId) return
-    const params: Record<string, string> = { limit: String(PAGE_SIZE), offset: "0", workspace_id: teamId }
+    const params: Record<string, string> = { limit: String(INITIAL_LIMIT), offset: "0", workspace_id: teamId }
     if (decision && decision !== "all") params.decision = decision
     const since = dateRangeToSince(dateRange ?? filterDateRange)
     if (since) params.since = since
     try {
       const data: GuardEvent[] = await guard.events.list(authFetch, params)
       setEvents(data)
-      setHasMore(data.length === PAGE_SIZE)
+      setHasMore(data.length === INITIAL_LIMIT)
       setLastUpdated(new Date())
     } catch {
       // non-fatal
     } finally {
       setLoading(false)
     }
-  }, [authFetch, teamId, PAGE_SIZE, filterDateRange, dateRangeToSince])
+  }, [authFetch, teamId, filterDateRange, dateRangeToSince])
 
   const loadMore = useCallback(async () => {
     if (!teamId || loadingMore) return
@@ -204,24 +207,22 @@ export function useGuardDashboard() {
     } catch { /* non-fatal */ }
   }, [authFetch, teamId])
 
+  // Mount: open SSE and do the one-off fetches. Events are loaded by the
+  // filter effect below (it also runs on mount), so not duplicated here.
   useEffect(() => {
     connectSSE()
-    loadEvents()
     loadStats()
     loadToolCoverage()
     loadRecentSessions()
-    const statsInterval        = setInterval(() => { loadStats() }, 60_000)
-    const coverageInterval     = setInterval(() => { loadToolCoverage() }, 60_000)
-    const sessionsInterval     = setInterval(() => { loadRecentSessions() }, 60_000)
-    const refreshInterval      = setInterval(() => { refreshRecent() }, 10_000)
-    return () => {
-      clearInterval(statsInterval)
-      clearInterval(coverageInterval)
-      clearInterval(sessionsInterval)
-      clearInterval(refreshInterval)
-      esRef.current?.close()
-    }
-  }, [connectSSE, loadEvents, loadStats, loadToolCoverage, loadRecentSessions, refreshRecent])
+    return () => { esRef.current?.close() }
+  }, [connectSSE, loadStats, loadToolCoverage, loadRecentSessions])
+
+  // Polling pauses while the tab is hidden. Recent events only poll when SSE
+  // is not delivering them.
+  usePolledFetch(() => { void refreshRecent() }, 10_000, !live)
+  usePolledFetch(() => { void loadStats() }, 60_000)
+  usePolledFetch(() => { void loadToolCoverage() }, 60_000)
+  usePolledFetch(() => { void loadRecentSessions() }, 60_000)
 
   useEffect(() => {
     loadEvents(filterDecision !== "all" ? filterDecision : undefined, filterDateRange)

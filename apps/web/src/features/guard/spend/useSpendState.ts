@@ -10,8 +10,9 @@
 // no stale-cache bugs, no cross-page coupling.
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { useAuthFetch } from "@/hooks/useAuthFetch"
+import { usePolledFetch } from "@/hooks/usePolledFetch"
 import { useGuardRole } from "@/hooks/useGuardRole"
 import { useGuardSavings } from "@/hooks/useGuardSavings"
 import { useGuardTeam } from "@/hooks/useGuardTeam"
@@ -97,10 +98,18 @@ export function useSpendState(): UseSpendState {
   const isAdmin = permissions.canEditBudgets
   const canViewSpend = permissions.canViewAllSpend || permissions.canViewOwnSpend
 
+  // Skeleton only on the first load for a given workspace+month; later
+  // refreshes (30s poll) update in place and keep existing data on failure.
+  const loadedKey = useRef<string | null>(null)
+
   const load = useCallback(async () => {
     if (!teamId) return
-    setLoading(true)
-    setError(null)
+    const key = `${teamId}:${month}`
+    const background = loadedKey.current === key
+    if (!background) {
+      setLoading(true)
+      setError(null)
+    }
 
     try {
       const [spendData, budgetList] = await Promise.all([
@@ -164,7 +173,10 @@ export function useSpendState(): UseSpendState {
         )
       }
       setLastUpdated(new Date())
+      loadedKey.current = key
+      setError(null)
     } catch (err: any) {
+      if (background) return
       const msg = err?.message ?? String(err)
       if (msg.includes("401")) setError("Session expired — please refresh")
       else if (msg.includes("403")) setError("You don't have permission to view spend data")
@@ -175,11 +187,8 @@ export function useSpendState(): UseSpendState {
     }
   }, [authFetch, teamId, month])
 
-  useEffect(() => {
-    load()
-    const t = setInterval(load, 30_000)
-    return () => clearInterval(t)
-  }, [load])
+  useEffect(() => { load() }, [load])
+  usePolledFetch(() => { void load() }, 30_000)
 
   useEffect(() => {
     if (teamError) setError(teamError)

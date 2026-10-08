@@ -2,9 +2,9 @@
 
 import Link from "next/link"
 
-import { useEffect, useState, useCallback, useRef } from "react"
+import { useEffect, useState, useCallback } from "react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
-import { useAuth, useUser } from "@/lib/auth/client"
+import { useUser } from "@/lib/auth/client"
 import AppShell from "@/components/AppShell"
 import ToolActivityTable from "@/components/guard/ToolActivityTable"
 import { useGuardTeam } from "@/hooks/useGuardTeam"
@@ -29,6 +29,7 @@ import { SessionsTable, type GuardSession } from "./_components/SessionsTable"
 import { SessionReportsView, type SessionReport } from "./_components/SessionReportsView"
 import { GroupedEvents } from "./_components/GroupedEvents"
 import { exportCsv } from "./_components/exportCsv"
+import { useGuardEventsFeed } from "./useGuardEventsFeed"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -56,7 +57,6 @@ export default function ActivityPage() {
 }
 
 function ActivityContent() {
-  const { getToken } = useAuth()
   const { authFetch } = useAuthFetch()
   const { user } = useUser()
   const { teamId, loading: teamLoading } = useGuardTeam()
@@ -66,29 +66,14 @@ function ActivityContent() {
   const [reports, setReports] = useState<SessionReport[]>([])
   const [reportsLoading, setReportsLoading] = useState(false)
   const [reportsError, setReportsError] = useState<string | null>(null)
-  const [events, setEvents] = useState<AuditEvent[]>([])
   // #1990 item D — drift between server clock and browser clock. When a
   // SSE payload carries server_time, we recompute (client_now - server_now).
   // LifecyclePill uses this to correct client-side 'expired' detection so
   // a badly-skewed browser doesn't render rows as ∅ that aren't expired
   // server-side. 0 = no drift / not yet initialized.
-  const [serverTimeDrift, setServerTimeDrift] = useState<number>(0)
-  // #1959 Phase 3 — count of currently-in-flight durable rows. Derived
-  // client-side so the badge stays in sync with the same event stream
-  // that drives the table, no extra endpoint needed.
-  const inFlightCount = events.filter(ev => ev.lifecycle_state === "accepted").length
   const [sessions, setSessions] = useState<GuardSession[]>([])
   const [sessionsLoading, setSessionsLoading] = useState(false)
   const [sessionsError, setSessionsError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [loadingMore, setLoadingMore] = useState(false)
-  const [hasMore, setHasMore] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [live, setLive] = useState(false)
-  const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
-  const offsetRef = useRef(0)
-  const esRef = useRef<EventSource | null>(null)
-  const [streaming, setStreaming] = useState(false)
   const [chainStatus, setChainStatus] = useState<{ valid: boolean; total: number; verified_from: string | null } | null>(null)
   const [advisoryMode, setAdvisoryMode] = useState(false)
 
@@ -171,57 +156,25 @@ function ActivityContent() {
 
   const currentUserEmail = user?.primaryEmailAddress?.emailAddress ?? null
 
-  const developers = Array.from(new Set(events.map(e => e.user_email).filter(Boolean) as string[])).sort()
-  const tools = Array.from(new Set(events.map(e => e.ai_tool).filter(Boolean) as string[])).sort()
-
   const effectiveDeveloperFilter = !permissions.canViewAllActivity && currentUserEmail
     ? currentUserEmail
     : filterDeveloper
 
-  function buildParams(offset: number) {
-    const p = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String(offset) })
-    if (teamId) p.set("workspace_id", teamId)
-    if (filterEventId) {
-      p.set("event_id", filterEventId)
-      return p.toString()
-    }
-    if (effectiveDeveloperFilter) p.set("user_email", effectiveDeveloperFilter)
-    if (filterTool) p.set("ai_tool", filterTool)
-    if (filterDecision) p.set("decision", filterDecision)
-    if (filterRuleId) p.set("rule_id", filterRuleId)
-    if (filterHookSession) p.set("hook_session_id", filterHookSession)
-    if (filterAgentIdentity) p.set("agent_identity_id", filterAgentIdentity)
-    if (filterSince) p.set("since", filterSince)
-    if (filterUntil) p.set("until", filterUntil)
-    return p.toString()
-  }
+  const {
+    events, loading, loadingMore, hasMore, error, live, lastUpdated, streaming, setStreaming,
+    serverTimeDrift, loadMore,
+  } = useGuardEventsFeed({
+    teamId, teamLoading, activeView, effectiveDeveloperFilter,
+    filterTool, filterDecision, filterSince, filterUntil, filterRuleId,
+    filterHookSession, filterAgentIdentity, filterEventId,
+  })
 
-  useEffect(() => {
-    if (!teamLoading && !teamId) setLoading(false)
-  }, [teamLoading, teamId])
-
-  const load = useCallback(async () => {
-    if (!teamId) return
-    setLoading(true)
-    setError(null)
-    offsetRef.current = 0
-    try {
-      const res = await authFetch(`${API}/guard/events?${buildParams(0)}`)
-      if (!res.ok) throw new Error("Failed to load activity events")
-      const rows: AuditEvent[] = await res.json()
-      setEvents(rows)
-      setHasMore(rows.length === PAGE_SIZE)
-      offsetRef.current = rows.length
-      setLive(true)
-      setLastUpdated(new Date())
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unknown error")
-      setLive(false)
-    } finally {
-      setLoading(false)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authFetch, teamId, effectiveDeveloperFilter, filterTool, filterDecision, filterSince, filterUntil, filterRuleId, filterHookSession, filterAgentIdentity, filterEventId])
+  // #1959 Phase 3 — count of currently-in-flight durable rows. Derived
+  // client-side so the badge stays in sync with the same event stream
+  // that drives the table, no extra endpoint needed.
+  const inFlightCount = events.filter(ev => ev.lifecycle_state === "accepted").length
+  const developers = Array.from(new Set(events.map(e => e.user_email).filter(Boolean) as string[])).sort()
+  const tools = Array.from(new Set(events.map(e => e.ai_tool).filter(Boolean) as string[])).sort()
 
   const loadSessions = useCallback(async () => {
     if (!teamId) return
@@ -239,85 +192,6 @@ function ActivityContent() {
       setSessionsLoading(false)
     }
   }, [authFetch, teamId])
-
-  useEffect(() => {
-    load()
-    const t = setInterval(load, 30_000)
-    return () => clearInterval(t)
-  }, [load])
-
-  // SSE real-time feed — only active when streaming=true (user clicked Go Live)
-  const LIVE_EVENT_CAP = 500
-  useEffect(() => {
-    if (!streaming || !teamId || filterEventId) return
-    let es: EventSource | null = null
-    let reconnectTimer: ReturnType<typeof setTimeout> | null = null
-
-    const connect = async (forceRefresh = false) => {
-      const token = await getToken({ skipCache: forceRefresh } as Parameters<typeof getToken>[0])
-      if (!token) return
-      const url = `${API}/guard/events/stream?workspace_id=${teamId}&token=${encodeURIComponent(token)}`
-      es = new EventSource(url)
-      esRef.current = es
-      es.onmessage = (e) => {
-        try {
-          const msg = JSON.parse(e.data)
-          if (msg.kind === "stream_timeout") {
-            es?.close()
-            // planned reconnect — refresh token in case it aged during the 5min stream
-            reconnectTimer = setTimeout(() => connect(true), 1000)
-            return
-          }
-          // #1990 item D — reset drift on every payload. Server_time
-          // is an ISO string emitted by /guard/events/stream.
-          if (typeof msg.server_time === "string") {
-            const serverMs = Date.parse(msg.server_time)
-            if (!Number.isNaN(serverMs)) {
-              setServerTimeDrift(Date.now() - serverMs)
-            }
-          }
-          if (Array.isArray(msg.events) && msg.events.length > 0) {
-            setEvents(prev => {
-              // Split incoming into updates (id already in list — durable
-              // finalize UPDATE) and fresh rows so the lifecycle pill flips
-              // in place (#1959 Phase 3). Fresh rows still prepend as before.
-              const byId = new Map(prev.map(ev => [ev.id, ev] as const))
-              const incoming = (msg.events as AuditEvent[]).filter(ev =>
-                (!filterHookSession || ev.hook_session_id === filterHookSession)
-                && (!filterAgentIdentity || ev.agent_identity_id === filterAgentIdentity)
-              )
-              const fresh: AuditEvent[] = []
-              let anyUpdate = false
-              for (const ev of incoming) {
-                if (byId.has(ev.id)) {
-                  byId.set(ev.id, ev)
-                  anyUpdate = true
-                } else {
-                  fresh.push(ev)
-                }
-              }
-              if (!fresh.length && !anyUpdate) return prev
-              const merged = prev.map(ev => byId.get(ev.id) ?? ev)
-              return [...fresh.reverse(), ...merged].slice(0, LIVE_EVENT_CAP)
-            })
-            setLastUpdated(new Date())
-          }
-        } catch { /* ignore parse errors */ }
-      }
-      es.onerror = () => {
-        es?.close()
-        // force-refresh token on error — stale token is the most common cause of 403 on reconnect
-        reconnectTimer = setTimeout(() => connect(true), 5000)
-      }
-    }
-
-    connect()
-    return () => {
-      es?.close()
-      esRef.current = null
-      if (reconnectTimer) clearTimeout(reconnectTimer)
-    }
-  }, [streaming, teamId, getToken, filterHookSession, filterAgentIdentity, filterEventId])
 
   const loadReports = useCallback(async () => {
     if (!teamId) return
@@ -339,30 +213,12 @@ function ActivityContent() {
   useEffect(() => {
     if (activeView !== "sessions") return
     loadSessions()
-    const t = setInterval(loadSessions, 60_000)
-    return () => clearInterval(t)
   }, [activeView, loadSessions])
 
   useEffect(() => {
     if (activeView !== "session_reports") return
     loadReports()
   }, [activeView, loadReports])
-
-  async function loadMore() {
-    setLoadingMore(true)
-    try {
-      const res = await authFetch(`${API}/guard/events?${buildParams(offsetRef.current)}`)
-      if (!res.ok) throw new Error("Failed to load more events")
-      const rows: AuditEvent[] = await res.json()
-      setEvents(prev => [...prev, ...rows])
-      setHasMore(rows.length === PAGE_SIZE)
-      offsetRef.current += rows.length
-    } catch {
-      // non-fatal
-    } finally {
-      setLoadingMore(false)
-    }
-  }
 
   function toggleGroup(key: string) {
     setCollapsedGroups(prev => ({ ...prev, [key]: !prev[key] }))

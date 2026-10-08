@@ -12,6 +12,7 @@ import {
   type FilterPill,
 } from "@/components/guard/common"
 import { useAuthFetch } from "@/hooks/useAuthFetch"
+import { usePolledFetch, useLatestRequest } from "@/hooks/usePolledFetch"
 import { API } from "@/lib/api/client"
 import { AgentAvatar } from "@/components/guard/AgentAvatar"
 
@@ -96,35 +97,38 @@ export default function ApprovalsPage() {
   const [reasonMap, setReasonMap] = useState<Record<string, string>>({})
   const [lastFetched, setLastFetched] = useState<Date | null>(null)
 
-  const load = useCallback(async () => {
+  const beginLoad = useLatestRequest()
+
+  const load = useCallback(async (opts?: { background?: boolean }) => {
     if (!workspaceId) return
-    setLoading(true)
-    setErr(null)
+    const background = !!opts?.background
+    const isCurrent = beginLoad()
+    if (!background) {
+      setLoading(true)
+      setErr(null)
+    }
     try {
       const url = `${API}/guard/approvals?status=${filter}&limit=100`
       const res = await authFetch(url)
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const data: ListOut = await res.json()
+      if (!isCurrent()) return
       setItems(data.items)
       if (data.counts) setStatusCounts(data.counts)
       setLastFetched(new Date())
     } catch (e) {
-      setErr((e as Error).message)
+      if (isCurrent() && !background) setErr((e as Error).message)
     } finally {
-      setLoading(false)
+      if (!background && isCurrent()) setLoading(false)
     }
-  }, [authFetch, workspaceId, filter])
+  }, [authFetch, workspaceId, filter, beginLoad])
 
   useEffect(() => {
     load()
   }, [load])
 
-  // Poll every 5s while viewing pending — cheap and reliable, avoids SSE plumbing.
-  useEffect(() => {
-    if (filter !== "pending") return
-    const t = setInterval(load, 5000)
-    return () => clearInterval(t)
-  }, [filter, load])
+  // Poll every 15s while viewing pending (pauses while the tab is hidden).
+  usePolledFetch(() => { void load({ background: true }) }, 15_000, filter === "pending")
 
   useEffect(() => {
     if (!highlight || items.length === 0) return
