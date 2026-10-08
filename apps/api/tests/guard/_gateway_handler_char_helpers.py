@@ -43,6 +43,7 @@ from app.guard.policy_types import PolicyAction, PolicyDecision
 from app.modules.guard import gateway_handler, gateway_helpers, gateway_lifecycle
 from app.modules.guard.gateway_config import GatewayProfileV2
 from app.modules.guard.gateway_profile_rate_limit import ProfileRateDecision
+from app.modules.guard.rate_limit import RateLimitDecision
 from app.runtime.attempt_coordinator import AttemptCoordinator
 from app.runtime.native_http_transport import NativeHTTPTransport
 
@@ -263,6 +264,10 @@ async def gw(monkeypatch):
     monkeypatch.setattr("app.core.workspace_context.set_workspace_rls", lambda *a, **k: None)
     monkeypatch.setattr("app.modules.guard.gateway_profile_rate_limit.check_profile_rate_limit",
                         MagicMock(return_value=ProfileRateDecision()))
+    # v1 path: the real limiter reads limits through the mocked DB (MagicMock) and,
+    # with Redis available (CI), compares them to live counters. Stub it like v2's.
+    monkeypatch.setattr("app.modules.guard.rate_limit.check_rate_limit",
+                        MagicMock(return_value=RateLimitDecision(False, None, None, None, None, "none")))
     h.set_policy(policy("ALLOW"))
     h.set_profile(profile("gpt-4o"))
 
