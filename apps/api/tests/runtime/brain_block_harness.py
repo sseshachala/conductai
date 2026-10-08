@@ -27,9 +27,10 @@ from __future__ import annotations
 
 import copy
 import uuid
+from collections.abc import Iterator
 from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass, field
-from typing import Any, Iterator
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 from app.runtime.llm_client import (
@@ -75,11 +76,13 @@ def _profile_row(*, id=None, cond_code="ABC12345", model_alias="default", active
 
 def _dispatch_db(*, wf_row, prof_row, revision_snapshot: dict | None = None):
     """Return a MagicMock db whose ``query`` dispatches by ORM model."""
-    from app.models.workflow import Workflow as _WF
     from app.models.gateway_profile import (
         GatewayProfile as _GP,
+    )
+    from app.models.gateway_profile import (
         GatewayProfileRevision as _GPR,
     )
+    from app.models.workflow import Workflow as _WF
 
     wf_q = MagicMock()
     wf_q.filter.return_value.first.return_value = wf_row
