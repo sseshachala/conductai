@@ -196,6 +196,7 @@ async def handle_gateway_request(
     from app.modules.guard.gateway_attempt_outcome import merge_attempts as _merge_attempts  # #2403
     from app.modules.guard.gateway_attempt_outcome import served_model as _served_model, wrap_stream_finally
     from app.modules.guard import gateway_phase_ingress as _ingress
+    from app.modules.guard import gateway_phase_routing as _routing
 
     started = time.monotonic()
 
@@ -227,204 +228,19 @@ async def handle_gateway_request(
         _agent_identity_id, _agent_risk_tier = st.agent_identity_id, st.agent_risk_tier
         _federation, _admission_ticket = st.federation, st.admission_ticket
         from app.modules.auth.federation.gateway import recheck_gateway, delegated_policy_check
-        from app.modules.auth.federation.ingress import provenance
 
-        # 3. Parse request body
-        try:
-            body = await request.json()
-        except Exception:
-            return _fail_closed(400, "Body must be valid JSON")
+        # 3. Body → model routing → v2 plan (gateway_phase_routing).
+        _early = await _routing.parse_and_route(st, build_v2_plan_owned=_build_v2_plan_owned)
+        _v2_plan = st.v2_plan
+        if _early is not None:
+            return _early
+        body, model, _routing_meta, ai_tool = st.body, st.model, st.routing_meta, st.ai_tool
+        _tools_offered, _tool_names_supplied = st.tools_offered, st.tool_names_supplied
 
-        # #2004 Phase 1 — v2 execution wire-in. We're INSIDE the request
-        # lifecycle here: Guard policy hasn't run yet, durable audit
-        # hasn't opened, response gate hasn't attached. The v2 fork
-        # deliberately does NOT short-circuit any of those; it only
-        # replaces the ``transport.forward`` step further down. Every
-        # v1 gate below (policy eval, rate limit, redaction, guidance
-        # injection, durable audit open/close, response gate) runs
-        # identically for a v2-routed request.
-        #
-        # Resolution + credential pre-fetch happen in this DB block; the
-        # coordinator call happens later, outside the DB block, using
-        # a resolver closure over the pre-fetched keys. Flag stays OFF
-        # by default; a missing binding falls through to v1 rather
-        # than fail-closed, so a partial rollout never surprises a
-        # workspace that hasn't published a v2 profile yet.
-
-        _selection = None
-        _v2_enabled = settings.gateway_profile_v2_enabled_for(workspace_id)
-        if canonical_profile and _v2_enabled and _extract_cond_code(body.get("model")) is None:
-            from app.modules.guard.gateway_model_selection import select_model_owned
-            _selection = await run_in_threadpool(
-                select_model_owned, workspace_id, body.get("model"), provider, upstream_path,
-            )
-            model = body["model"] = _selection.model_id
-            _routing_meta = _selection.metadata
-        else:
-            model, _routing_meta = await run_in_threadpool(
-                _apply_tier_resolution_owned, workspace_id, provider, body,
-            )
-        # Keep the wire operation for audit normalization even without a
-        # v2 profile. The generic "inference" label cannot distinguish
-        # Chat Completions from Responses usage.
-        _routing_meta = {**(_routing_meta or {}), "operation": upstream_path}
-        if _federation:
-            _routing_meta["federation"] = provenance(_federation)
-        if operation != "inference":
-            _routing_meta = {
-                **(_routing_meta or {}),
-                "operation": operation,
-                "billable": False,
-            }
-
-        # #2159 PR 2 — record tools offered by the caller AND tool
-        # results the caller supplied (multi-turn continuation). Kept
-        # here (pre-dispatch) so audit lands the fields even when the
-        # response gate blocks or the coordinator returns an error.
-        # ``tool_calls_generated`` lands later after the response gate
-        # sees what the model actually returned.
-        from app.modules.guard.tools_validator import (
-            extract_tool_names_supplied as _extract_tool_names_supplied,
-            extract_tool_results_supplied as _extract_tool_results_supplied,
-            extract_tools_offered as _extract_tools_offered,
-        )
-        _tools_offered = _extract_tools_offered(body)
-        _tool_results_supplied = _extract_tool_results_supplied(body)
-        # Reviewer P2 #3 (2026-09-20): supplied-tool NAMES are the
-        # policy-relevant signal (rule fires on "bank_transfer", not on
-        # "call_abc"). IDs stay on routing_meta for the correlation
-        # trail; names go into PolicyContext.tool_names_supplied.
-        _tool_names_supplied = _extract_tool_names_supplied(body)
-        if _tools_offered:
-            _routing_meta = {**(_routing_meta or {}), "tools_offered": _tools_offered}
-        if _tool_results_supplied:
-            _routing_meta = {
-                **(_routing_meta or {}),
-                "tool_results_supplied": _tool_results_supplied,
-            }
-        if _tool_names_supplied:
-            _routing_meta = {
-                **(_routing_meta or {}),
-                "tool_names_supplied": _tool_names_supplied,
-            }
-
-        # #2004 Phase 1 — v2 lookup + credential pre-fetch. Runs while
-        # the DB session is still open; if a binding matches, we hand
-        # the coordinator a pre-resolved credential map so the forward
-        # step doesn't need to reach back into the DB. A None plan means
-        # v1 handles this request as before.
-        # v3 schema (#2007 follow-up): resolve by cond_code parsed out
-        # of the client-sent ``model:`` field. Environment binding is
-        # gone; the vault ref inside the target's credential_ref
-        # carries the env. Format expected: ``cond-<8chars>-<alias>``.
-        # Cond-prefixed identifier detection runs REGARDLESS of the flag.
-        # A client that sent `cond-<code>-<alias>` explicitly asked for
-        # a v2 profile; silently routing them via v1 when the flag is
-        # off would misrepresent which profile served the traffic.
-        #
-        # PR 3 canary: the flag is now per-workspace via
-        # ``gateway_profile_v2_enabled_for(workspace_id)`` — allowlist +
-        # pct bucketing on top of the global kill switch. Deterministic
-        # bucketing means a workspace never oscillates between v1 and v2
-        # mid-session for a given rollout pct.
-        _v2_plan = None
-        _cond_code = _selection.cond_code if _selection else _extract_cond_code(body.get("model"))
-        if _cond_code is not None and not _v2_enabled:
-            from fastapi import HTTPException as _HTTPException
-            raise _HTTPException(
-                status_code=501,
-                detail=(
-                    f"Gateway Profile v2 (cond_code {_cond_code!r}) is not "
-                    "enabled for this workspace. Use a v1 model name or "
-                    "ask ops to enable v2."
-                ),
-            )
-        if _v2_enabled:
-            if _cond_code is not None:
-                # P1 review fix — v2 plan build (profile + credential
-                # resolution) offloaded to threadpool with its own session.
-                # Was the primary latency bottleneck on the v2 path.
-                _v2_plan = await run_in_threadpool(
-                    _build_v2_plan_owned,
-                    workspace_id=workspace_id,
-                    cond_code=_cond_code,
-                    provider=provider,
-                    upstream_path=upstream_path,
-                    body=body,
-                    **({"resolved": _selection.resolved} if _selection else {}),
-                )
-                if _v2_plan is not None:
-                    _routing_meta = {
-                        **(_routing_meta or {}),
-                        "gateway_version": "v2",
-                        "cond_code": _cond_code,
-                        "gateway_profile_id": str(_v2_plan.resolved.profile_id) if getattr(_v2_plan.resolved, "profile_id", None) else None,
-                        "gateway_profile": model,
-                        "revision_id": str(_v2_plan.resolved.revision_id),
-                        "v2_operation": _v2_plan.operation,
-                    }
-        if _routing_meta:
-            log.info(
-                "proxy.tier_resolved",
-                workspace_id=workspace_id,
-                provider=provider,
-                tier_form=_routing_meta.get("tier_form"),
-                resolved_model=model,
-                reason=_routing_meta.get("reason"),
-            )
-        ai_tool = request.headers.get("x-conduct-ai-tool") or _infer_ai_tool(request)
-
-        # 4a. Resolve user email for audit rows — offloaded to threadpool
-        # with an own-session helper (P1 review fix, replaces sync
-        # ``db.query`` on the event loop that used the shared session).
-        from app.modules.guard.gateway_helpers import _lookup_user_email as _lookup_user_email_fn
-        _user_email = await run_in_threadpool(
-            _lookup_user_email_fn, workspace_id, clerk_user_id,
-        )
-
-        # 4b. Run context from brain block headers (workflow runs only)
-        _run_id = request.headers.get("x-conductai-run-id") or None
-        if _federation and _federation.run_id:
-            _run_id = str(_federation.run_id)
-        _workflow = request.headers.get("x-conductai-workflow") or None
-        _workflow_id = request.headers.get("x-conductai-workflow-id") or None
-        _environment_id = request.headers.get("x-conductai-environment-id") or None
-        # #1959 Phase 0 note: Flight Recorder session correlation currently
-        # requires clients to send X-Conduct-Session-Id. Codex Desktop's
-        # config.toml does not populate it today. Without this header the
-        # audit row lands with hook_session_id=NULL; do NOT synthesize one
-        # from timestamps or client IP — attribution has to be honest.
-        # Follow-up: signed session claims via Agent Identity (tracked
-        # alongside #1968) will make this observable per-request.
-        _hook_session_id = request.headers.get("x-conduct-session-id") or None
-
-        # #1712 Track 1 — trial-plan lookup before policy eval so a BLOCK
-        # response can carry an anonymous receipt URL. Cheap indexed read;
-        # any failure falls back to workspace-only receipt.
-        #
-        # `is_trial` is TRUE only when the workspace is on the seed trial
-        # plan AND has no owner attached — i.e. the anonymous curl-install
-        # flow. Trials with an email/owner (Option A install, existing Try
-        # page signup) get the workspace URL because the owner has a real
-        # account to view it under, and we don't want block prompts to
-        # default to a publicly-shareable link.
-        from app.modules.guard.trial_seed import TRIAL_PLAN as _TRIAL_PLAN
-        from app.modules.guard.gateway_helpers import _lookup_workspace_trial as _lookup_workspace_trial_fn
-        _is_trial = False
-        # P1 review fix — trial lookup offloaded to threadpool with an
-        # own-session helper. Was a sync db.execute on the event loop.
-        try:
-            _ws_plan, _ws_owner = await run_in_threadpool(
-                _lookup_workspace_trial_fn, workspace_id,
-            )
-            _row = (
-                type("_Row", (), {"plan": _ws_plan, "owner_id": _ws_owner})()
-                if _ws_plan is not None else None
-            )
-            if _row is not None:
-                _is_trial = (_row.plan == _TRIAL_PLAN and _row.owner_id is None)
-        except Exception:
-            pass
+        # 4a/4b. User email, workflow-run headers, trial plan.
+        await _routing.load_request_context(st)
+        _user_email, _run_id, _workflow, _workflow_id = st.user_email, st.run_id, st.workflow, st.workflow_id
+        _environment_id, _hook_session_id, _is_trial = st.environment_id, st.hook_session_id, st.is_trial
 
         # 4c. Pre-call Guard policy evaluation — composed engine (#1225 Phase 4)
         # P1 review fix — offloaded to threadpool with an owned session
