@@ -209,7 +209,7 @@ class ToolRunner:
         # Guard check before every MCP tool call
         if r.state.get("__guard_enabled") and db and workspace_id:
             try:
-                from app.modules.guard.routers.mcp import _match_policy, _get_rules  # noqa: F401
+                from app.modules.guard.routers.mcp import _match_policy, _get_rules
                 from app.modules.guard.tool_groups import tool_matches
                 import uuid as _uuid
                 _guard_rules = _get_rules(db, _uuid.UUID(workspace_id))
