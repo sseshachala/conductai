@@ -168,27 +168,22 @@ async def test_allowed_non_streaming_durable_audit_off_records_legacy_row(gw):
 
 
 @pytest.mark.asyncio
-async def test_same_client_request_id_is_not_deduplicated(gw):
-    """Idempotent retry: NOT implemented. X-Request-Id is correlation only.
-
-    Two requests with the same ``X-Request-Id`` both dispatch upstream,
-    each gets a fresh server-minted request id, reservation and receipt.
-    The client id is recorded on routing_meta.client_request_id.
+async def test_same_client_request_id_maps_to_one_server_request_id(gw):
+    """Idempotent retry (#2403 item 1): X-Request-Id is hashed with workspace
+    + principal into the server request id, so a repeat collides on the
+    audit row's unique request_id index and is refused with 409 before
+    reserve/dispatch. This harness fakes ``insert_accepted`` without the
+    index, so it only pins the derivation; the refusal itself is covered
+    by ``test_gateway_2403_idempotency``.
     """
     headers = {"x-request-id": "client-retry-1"}
     first, _ = await gw.call(headers=headers)
     second, _ = await gw.call(headers=headers)
 
-    assert first.status_code == second.status_code == 200
-    assert len(gw.sent) == 2
     ids = [first.headers["x-conduct-request-id"], second.headers["x-conduct-request-id"]]
-    assert ids[0] != ids[1] and "client-retry-1" not in ids
+    assert ids[0] == ids[1] and "client-retry-1" not in ids
     assert [i.kwargs["request_id"] for i in gw.inserted] == ids
     assert [i.kwargs["routing_meta"]["client_request_id"] for i in gw.inserted] == ["client-retry-1"] * 2
-    assert [f["routing_meta"]["client_request_id"] for f in gw.finalized] == ["client-retry-1"] * 2
-    assert [r["request_id"] for r in gw.ledger.reserve_calls] == ids
-    assert [r["request_id"] for r in gw.receipts] == ids
-    assert len(gw.ledger.commit_calls) == 2
 
 
 @pytest.mark.asyncio

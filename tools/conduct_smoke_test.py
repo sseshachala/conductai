@@ -138,7 +138,7 @@ def inference(client, url, token, model, prompt, run_id, block_marker=None, faul
     status, data, _ = client.post(endpoint(url) + "/chat/completions", token, {
         "model": model, "messages": [{"role": "user", "content": prompt}],
         "max_tokens": 32, "stream": False,
-    }, {"X-Request-ID": run_id})
+    }, {"X-Request-ID": f"{run_id}-{uuid.uuid4().hex[:8]}"})  # unique per call: the gateway dedupes repeats (#2403)
     if block_marker:
         statuses = (400, 403, 503) if fault else (400, 403)
         error = (data.get("error") or data.get("detail")) if isinstance(data, dict) else None

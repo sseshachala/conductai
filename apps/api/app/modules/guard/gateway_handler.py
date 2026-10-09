@@ -789,6 +789,7 @@ async def handle_gateway_request(
             conductai_workflow=_workflow,
             conductai_workflow_id=_workflow_id,
             request_correlation_id=None,  # already merged into _routing_meta above
+            idempotency_key=_client_request_id,  # #2403 item 1
         )
         if _durable.fail_response is not None:
             return _durable.fail_response
