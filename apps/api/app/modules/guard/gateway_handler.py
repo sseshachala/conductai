@@ -22,6 +22,7 @@ from sqlalchemy import text
 
 from app.core.config import settings
 from app.modules.auth.federation.resolver import FederationDenied
+from app.modules.guard.gateway_request_state import GatewayCall
 from app.modules.guard.gateway_v2_plan import (  # noqa: F401 — re-exports
     _V2_HEADER_ALLOWLIST,
     _V2Plan,
@@ -194,31 +195,22 @@ async def handle_gateway_request(
     )
     from app.modules.guard.gateway_attempt_outcome import merge_attempts as _merge_attempts  # #2403
     from app.modules.guard.gateway_attempt_outcome import served_model as _served_model, wrap_stream_finally
+    from app.modules.guard import gateway_phase_ingress as _ingress
 
     started = time.monotonic()
 
-    # 1. Extract member token from whichever auth header the SDK sent
-    raw = request.headers.get(auth_header_in, "")
-    token = _extract_member_token(raw, bearer=bearer)
-    if not token and auth_header_fallback:
-        raw = request.headers.get(auth_header_fallback, "")
-        token = _extract_member_token(
-            raw,
-            bearer=auth_header_fallback.lower() == "authorization",
-        )
+    st = GatewayCall(
+        request=request, background=background, provider=provider,
+        upstream_path=upstream_path, auth_header_in=auth_header_in,
+        auth_header_out=auth_header_out, auth_header_fallback=auth_header_fallback,
+        bearer=bearer, canonical_profile=canonical_profile, operation=operation,
+        started=started,
+    )
 
-    # Internal server-to-server bypass (brain block / runtime calling its own proxy).
-    # The runtime sends a per-run cond_run_* token OR the workspace's
-    # cond_agt_* Agent Identity token via x-conductai-internal.
-    _internal_key = request.headers.get("x-conductai-internal", "")
-    _is_internal = False  # flips to True only after run/agent token validation
-    _needs_run_token_validation = bool(_internal_key and _internal_key.startswith("cond_run_"))
-    _needs_agent_validation = bool(_internal_key and _internal_key.startswith("cond_agt_"))
-    _agent_identity_id: str | None = None
-    _agent_risk_tier: str | None = None
-
-    if not token and not _is_internal and not _needs_agent_validation and not _needs_run_token_validation:
-        return _fail_closed(401, "Missing or malformed Conduct member token — run `conduct login`")
+    # 1. Member token / internal key — 401 before any admission state.
+    _early = _ingress.extract_token(st)
+    if _early is not None:
+        return _early
 
     # PR 2 (#2056) admission state — kill switch: ADMISSION_ENABLED.
     _admission_ticket = None
@@ -227,74 +219,15 @@ async def handle_gateway_request(
     _profile_rate_streamed = False
     _v2_plan = None
 
-    # 2. Resolve workspace + user — auth logic extracted to gateway_helpers
-    # so admission (PR 2b) can wrap the whole post-auth body cleanly.
     try:
-        # PR 6b — auth cache check before hitting the DB. Member-token
-        # (Clerk) path only — run tokens and agent tokens have
-        # per-request side effects (headers, first_used_at) that make
-        # them cache-unfriendly. On cache hit we skip the threadpool
-        # + DB roundtrip entirely.
-        _cached_auth = None
-        if token and not _needs_run_token_validation and not _needs_agent_validation:
-            from app.core.auth_cache import get_auth_cache as _get_auth_cache
-            _ac = _get_auth_cache()
-            if _ac is not None:
-                _cached_auth = await _ac.resolve(token)
-
-        if _cached_auth is not None:
-            workspace_id = _cached_auth.workspace_id
-            clerk_user_id = _cached_auth.clerk_user_id or "system"
-            _is_internal = _cached_auth.is_internal
-            _agent_identity_id = _cached_auth.agent_identity_id
-            _agent_risk_tier = _cached_auth.agent_risk_tier
-        else:
-            # PR 3 — no persistent DB session on the handler. Every helper
-            # opens+uses+closes its own session inside a threadpool worker.
-            # Auth runs first and returns plain values.
-            _auth_result = await run_in_threadpool(
-                _resolve_gateway_auth,
-                request,
-                token=token,
-                internal_key=_internal_key,
-                needs_run_token_validation=_needs_run_token_validation,
-                needs_agent_validation=_needs_agent_validation,
-            )
-            if isinstance(_auth_result, JSONResponse):
-                return _auth_result
-            workspace_id = _auth_result.workspace_id
-            clerk_user_id = _auth_result.clerk_user_id
-            _is_internal = _auth_result.is_internal
-            _agent_identity_id = _auth_result.agent_identity_id
-            _agent_risk_tier = _auth_result.agent_risk_tier
-        from app.modules.auth.federation.gateway import prepare_gateway, recheck_gateway, delegated_policy_check
+        # 2. Identity → federation → admission acquire (gateway_phase_ingress).
+        if (_early := await _ingress.resolve_caller(st, operation=operation)) is not None:
+            return _early
+        workspace_id, clerk_user_id = st.workspace_id, st.clerk_user_id
+        _agent_identity_id, _agent_risk_tier = st.agent_identity_id, st.agent_risk_tier
+        _federation, _admission_ticket = st.federation, st.admission_ticket
+        from app.modules.auth.federation.gateway import recheck_gateway, delegated_policy_check
         from app.modules.auth.federation.ingress import provenance
-        _federation = await run_in_threadpool(
-            prepare_gateway, request, workspace_id, token, _internal_key, operation,
-        )
-        if isinstance(_federation, JSONResponse):
-            return _federation
-        if _federation and _agent_identity_id is None:
-            _agent_identity_id = str(_federation.caller.agent_identity_id)
-        # Admission acquire — immediately after auth, before any further
-        # DB work. Overload rejected fast without checking out a
-        # connection.
-        from app.core.admission import AdmissionRefused as _AdmRefused
-        from app.core.admission import _acquire as _admission_acquire
-        try:
-            _admission_ticket = await _admission_acquire("gateway", workspace_id)
-        except _AdmRefused as _adm_e:
-            return JSONResponse(
-                status_code=_adm_e.http_status,
-                content={
-                    "error": {
-                        "type": "conduct_gateway_admission_refused",
-                        "message": f"Gateway overloaded ({_adm_e.scope} slot full)",
-                        "scope": _adm_e.scope,
-                    }
-                },
-                headers={"Retry-After": str(int(_adm_e.retry_after_seconds))},
-            )
 
         # 3. Parse request body
         try:

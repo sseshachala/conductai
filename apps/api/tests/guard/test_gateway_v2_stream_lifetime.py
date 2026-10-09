@@ -23,17 +23,15 @@ Invariants this file locks:
 from __future__ import annotations
 
 import asyncio
-from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi.responses import StreamingResponse
 
+from tests.guard._gateway_handler_sources import gateway_lifecycle_source
 
-_HANDLER_SRC = (
-    Path(__file__).resolve().parents[2]
-    / "app" / "modules" / "guard" / "gateway_handler.py"
-).read_text(encoding="utf-8")
+
+_HANDLER_SRC = gateway_lifecycle_source()  # handler + #2399 phase modules
 
 
 # ─── Wall-clock deadline enforcement ──────────────────────────────────

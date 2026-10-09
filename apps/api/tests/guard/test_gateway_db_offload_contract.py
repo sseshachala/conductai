@@ -13,10 +13,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-_HANDLER = (
-    Path(__file__).resolve().parents[2]
-    / "app" / "modules" / "guard" / "gateway_handler.py"
-).read_text(encoding="utf-8")
+from tests.guard._gateway_handler_sources import gateway_lifecycle_source
+
+_HANDLER = gateway_lifecycle_source()  # handler + #2399 phase modules
 
 _HELPERS = (
     Path(__file__).resolve().parents[2]

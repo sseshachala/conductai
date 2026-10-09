@@ -158,11 +158,8 @@ def test_handler_wires_fallback_branch_when_durable_row_absent():
     """Source-level assertion: gateway_handler routes to the legacy
     fallback wrapper when v2 is on but durable-audit is off. Catches
     a future edit that would re-introduce the silent audit gap."""
-    from pathlib import Path
-    src = (
-        Path(__file__).resolve().parents[2]
-        / "app" / "modules" / "guard" / "gateway_handler.py"
-    ).read_text(encoding="utf-8")
+    from tests.guard._gateway_handler_sources import gateway_lifecycle_source
+    src = gateway_lifecycle_source()
     # Look for both branches within the v2 finalize block.
     assert "if _v2_plan is not None and _durable_row_id:" in src
     assert "elif _v2_plan is not None:" in src, (
@@ -183,11 +180,8 @@ def test_handler_records_audit_on_exception_when_durable_off():
     Source-level regression guard: the except block must also schedule
     ``_record_audit`` in the ``elif _v2_plan is not None:`` shape.
     """
-    from pathlib import Path
-    src = (
-        Path(__file__).resolve().parents[2]
-        / "app" / "modules" / "guard" / "gateway_handler.py"
-    ).read_text(encoding="utf-8")
+    from tests.guard._gateway_handler_sources import gateway_lifecycle_source
+    src = gateway_lifecycle_source()
 
     # Find the exception handler section.
     exc_start = src.index("except BaseException as _forward_exc")

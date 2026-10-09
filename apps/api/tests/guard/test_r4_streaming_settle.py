@@ -83,9 +83,9 @@ def test_handler_skips_inline_settle_for_streaming_responses():
     """Handler must NOT settle inline when the response is streaming —
     the wrapper owns it. Settling twice would double-commit or double-
     release."""
-    import app.modules.guard.gateway_handler as gh
+    from tests.guard._gateway_handler_sources import gateway_lifecycle_source
 
-    src = inspect.getsource(gh)
+    src = gateway_lifecycle_source()
     # P1-D reordered + added ``_receipts_durable`` gate — the condition
     # now spans multiple lines. The invariant is: settle body is gated on
     # ``not isinstance(_response, StreamingResponse)``.
@@ -103,9 +103,9 @@ def test_non_streaming_settle_prefers_upstream_snapshot():
     """Response-gate replaces _response.body with an error envelope.
     Settle must read _v2_upstream_body_bytes so token counts reflect
     what the provider actually served."""
-    import app.modules.guard.gateway_handler as gh
+    from tests.guard._gateway_handler_sources import gateway_lifecycle_source
 
-    src = inspect.getsource(gh)
+    src = gateway_lifecycle_source()
     assert '_snapshot = locals().get("_v2_upstream_body_bytes")' in src, (
         "R4 regressed: non-streaming settle no longer reads "
         "_v2_upstream_body_bytes. Gated responses will undercount."

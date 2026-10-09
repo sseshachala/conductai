@@ -425,11 +425,8 @@ def test_gateway_handler_uses_per_workspace_v2_resolver_not_global_flag():
     handler's request path pulls in Redis, RLS, Vault, and the composed
     policy engine — none of which this wiring change touches.
     """
-    from pathlib import Path
-    handler_src = (
-        Path(__file__).resolve().parents[2]
-        / "app" / "modules" / "guard" / "gateway_handler.py"
-    ).read_text(encoding="utf-8")
+    from tests.guard._gateway_handler_sources import gateway_lifecycle_source
+    handler_src = gateway_lifecycle_source()
 
     # Every read of the global-boolean flag inside the handler is a bug —
     # the handler must go through the per-workspace resolver so canary

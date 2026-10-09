@@ -28,9 +28,8 @@ import pytest
 
 
 def _handler_source() -> str:
-    from pathlib import Path
-    import app.modules.guard.gateway_handler as _mod
-    return Path(_mod.__file__).read_text()
+    from tests.guard._gateway_handler_sources import gateway_lifecycle_source
+    return gateway_lifecycle_source()
 
 
 class TestUnboundResponseGuard:

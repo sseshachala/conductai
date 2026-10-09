@@ -130,10 +130,9 @@ def test_gateway_handler_calls_settle_micros_for_attempts_unconditionally():
     routes settlement through the new engine, and it sums per-attempt
     (not winner-only) so preceding failed attempts are counted.
     """
-    import inspect
-    from app.modules.guard import gateway_handler
+    from tests.guard._gateway_handler_sources import gateway_lifecycle_source
 
-    src = inspect.getsource(gateway_handler)
+    src = gateway_lifecycle_source()
     # P1-2: per-attempt aggregation, not winner-only.
     assert "settle_micros_for_attempts" in src
     # No flag machinery — this is the whole point of Option A.
@@ -354,10 +353,9 @@ def test_handler_passes_request_url_path_as_operation_to_stream_wrapper():
     invoking ``_wrap_v2_stream_finalize`` so the normalizer picks the
     right family (Responses vs Chat). The wrapper has a default for
     legacy test scaffolding — this test locks the production wiring."""
-    import inspect
-    from app.modules.guard import gateway_handler
+    from tests.guard._gateway_handler_sources import gateway_lifecycle_source
 
-    src = inspect.getsource(gateway_handler)
+    src = gateway_lifecycle_source()
     assert "operation=request.url.path" in src, (
         "P1-4 regressed: handler no longer threads request.url.path into "
         "_wrap_v2_stream_finalize. Responses-shape usage will be parsed "

@@ -24,10 +24,9 @@ def test_gateway_handler_non_inference_uses_local_operation_var():
     request even when shadow accounting was disabled. Fixed to use the
     local ``operation`` variable. Pinned via source-string check so
     a future refactor cannot silently reintroduce the bug."""
-    import inspect
-    from app.modules.guard import gateway_handler
+    from tests.guard._gateway_handler_sources import gateway_lifecycle_source
 
-    src = inspect.getsource(gateway_handler)
+    src = gateway_lifecycle_source()
     # The non-inference block at line ~286-291 must not reference
     # ``plan.operation`` — plan is out of scope there.
     lines = src.splitlines()
@@ -51,12 +50,13 @@ def test_execute_v2_success_and_failure_paths_use_plan_operation():
     correctly reference ``plan.operation`` — plan IS in scope there.
     Distinct from the handle_gateway_request site above."""
     import inspect
-    from app.modules.guard import gateway_handler, gateway_v2_execute
+    from app.modules.guard import gateway_v2_execute
+    from tests.guard._gateway_handler_sources import gateway_lifecycle_source
 
     src = inspect.getsource(gateway_v2_execute)
     # Both request-level and per-attempt metadata preserve the protocol.
     assert src.count('"operation": plan.operation') == 4
-    assert inspect.getsource(gateway_handler).count('"operation": operation') == 1
+    assert gateway_lifecycle_source().count('"operation": operation') == 1
 
 
 # ─── #2 strict cache-tier pricing without a rate-card tier map ─────────

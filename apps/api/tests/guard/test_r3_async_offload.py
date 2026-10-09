@@ -25,15 +25,14 @@ these tests fail loudly at CI time.
 """
 from __future__ import annotations
 
-import inspect
 
 
 def test_reserve_runs_in_threadpool():
     """Handler must offload the reservation call so the event loop
     stays responsive during a slow DB or Redis."""
-    import app.modules.guard.gateway_handler as gh
+    from tests.guard._gateway_handler_sources import gateway_lifecycle_source
 
-    src = inspect.getsource(gh)
+    src = gateway_lifecycle_source()
     assert "await run_in_threadpool(_reserve_sync_owned)" in src, (
         "R3 regressed: reserve is back on the event loop. Wrap the "
         "reserve call in a run_in_threadpool helper that owns its own "
@@ -42,9 +41,9 @@ def test_reserve_runs_in_threadpool():
 
 
 def test_settle_runs_in_threadpool():
-    import app.modules.guard.gateway_handler as gh
+    from tests.guard._gateway_handler_sources import gateway_lifecycle_source
 
-    src = inspect.getsource(gh)
+    src = gateway_lifecycle_source()
     assert "await run_in_threadpool(_settle_sync_owned)" in src, (
         "R3 regressed: settle is back on the event loop. Wrap the "
         "settle call in a run_in_threadpool helper."
@@ -55,9 +54,9 @@ def test_no_shared_session_held_across_await():
     """The pre-R3 code held ``_budget_wire_db = SessionLocal()`` from
     before the reservation through to after the upstream await. Post-
     R3 no such shared session exists in the reserve-settle wire."""
-    import app.modules.guard.gateway_handler as gh
+    from tests.guard._gateway_handler_sources import gateway_lifecycle_source
 
-    src = inspect.getsource(gh)
+    src = gateway_lifecycle_source()
     assert "_budget_wire_db = SessionLocal()" not in src, (
         "R3 regressed: SessionLocal held across upstream await. Move "
         "the SessionLocal call inside the run_in_threadpool helper."
@@ -67,9 +66,9 @@ def test_no_shared_session_held_across_await():
 def test_reserve_sync_helper_owns_session_lifecycle():
     """The threadpool helper must open + close its own SessionLocal —
     otherwise a caught reserve exception leaks the session."""
-    import app.modules.guard.gateway_handler as gh
+    from tests.guard._gateway_handler_sources import gateway_lifecycle_source
 
-    src = inspect.getsource(gh)
+    src = gateway_lifecycle_source()
     idx = src.index("def _reserve_sync_owned")
     body = src[idx : idx + 1800]
     assert "_db = SessionLocal()" in body, "reserve helper must open its own session"
@@ -78,9 +77,9 @@ def test_reserve_sync_helper_owns_session_lifecycle():
 
 
 def test_settle_sync_helper_owns_session_lifecycle():
-    import app.modules.guard.gateway_handler as gh
+    from tests.guard._gateway_handler_sources import gateway_lifecycle_source
 
-    src = inspect.getsource(gh)
+    src = gateway_lifecycle_source()
     idx = src.index("def _settle_sync_owned")
     body = src[idx : idx + 2000]
     assert "_db = SessionLocal()" in body, "settle helper must open its own session"
