@@ -90,23 +90,22 @@ async def test_all_targets_5xx_raises_502_and_finalizes_error(gw):
 
 
 @pytest.mark.asyncio
-async def test_hang_past_profile_deadline_is_502_without_fallback(gw):
-    """A hang consumes the whole profile deadline; the fallback target is never dispatched."""
+async def test_hang_falls_back_within_profile_deadline(gw):
+    """#2403 item 5: each attempt gets a share of the profile deadline, so a
+    hung first target times out early and the fallback is dispatched."""
     async def _hang(request):
         await asyncio.sleep(30)
 
     gw.set_profile(profile("gpt-4o", "gpt-4o-mini", timeout_seconds=1))
     gw.upstream = [lambda request: _hang(request), ok_json]
 
-    exc = await _call_raises(gw)
+    response, _ = await gw.call()
 
-    assert exc.status_code == 502
-    assert "t0=TimeoutError" in exc.detail
-    assert len(gw.sent) == 1
+    assert response.status_code == 200
+    assert len(gw.sent) == 2
     assert [(a["target_id"], a["error_class"]) for a in gw.plan.last_meta["attempts"]] == [
-        ("t0", "TimeoutError"), ("t1", "DeadlineExceeded")]
-    assert gw.finalized[0]["decision"] == "error"
-    assert gw.ledger.commit_calls == [] and gw.ledger.release_calls == []
+        ("t0", "TimeoutError"), ("t1", None)]
+    assert gw.finalized[0]["decision"] == "allowed"
 
 
 @pytest.mark.asyncio

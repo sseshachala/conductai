@@ -97,3 +97,23 @@ async def test_all_targets_failed_durable_off_record_carries_attempts(gw):
     await _raises(gw)
     assert len(recorded) == 1
     assert len(recorded[0][1]["routing_meta"]["attempts"]) == 2
+
+
+# ── item 5: hung target falls back ───────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_hung_target_falls_back_within_profile_deadline(gw):
+    async def _hang(request):
+        await asyncio.sleep(30)
+
+    gw.set_profile(profile("gpt-4o", "gpt-4o-mini", timeout_seconds=2))
+    gw.upstream = [lambda request: _hang(request), ok_json]
+    started = time.monotonic()
+    response, _ = await gw.call()
+    assert response.status_code == 200
+    assert time.monotonic() - started < 2
+    assert [json.loads(r.content)["model"] for r in gw.sent] == ["gpt-4o", "gpt-4o-mini"]
+    attempts = gw.finalized[0]["routing_meta"]["attempts"]
+    assert [(a["target_id"], a["error_class"]) for a in attempts] == [
+        ("t0", "TimeoutError"), ("t1", None)]
