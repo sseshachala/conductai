@@ -26,7 +26,4 @@ LIFECYCLE_MODULES = (
 
 def gateway_lifecycle_source() -> str:
     """Concatenated source of ``gateway_handler.py`` and its phase modules."""
-    return "\n".join(
-        (_GUARD / name).read_text(encoding="utf-8")
-        for name in LIFECYCLE_MODULES if (_GUARD / name).exists()
-    )
+    return "\n".join((_GUARD / name).read_text(encoding="utf-8") for name in LIFECYCLE_MODULES)
