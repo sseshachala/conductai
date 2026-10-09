@@ -256,8 +256,10 @@ def _write_audit(
     *,
     actor_id: Optional[str] = None,
     details: Optional[str] = None,
+    raise_on_error: bool = False,
 ) -> None:
-    """Non-fatal audit row for policy mutations."""
+    """Audit row for policy mutations. Non-fatal by default; ``raise_on_error=True``
+    rolls back and re-raises so callers (audit export) can fail closed."""
     try:
         from app.modules.guard.models import chain_hash_for_insert
         ts = datetime.now(timezone.utc)
@@ -277,6 +279,8 @@ def _write_audit(
         db.commit()
     except Exception:
         db.rollback()
+        if raise_on_error:
+            raise
 
 
 def _find_pack_rule(

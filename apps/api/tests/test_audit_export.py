@@ -265,6 +265,43 @@ def test_check_permission_refuses_role_without_grant():
     assert exc.value.status_code == 403
 
 
+def test_audit_write_failure_returns_503_and_streams_nothing(env):
+    client, Session = env
+    with patch("app.modules.guard.routers.events_export._write_audit", side_effect=RuntimeError("db down")), \
+         patch.object(ax, "stream_export") as stream:
+        r = client.get("/guard/events/export", params=_qs())
+    assert r.status_code == 503
+    assert "attachment" not in r.headers.get("content-disposition", "")
+    assert '"entry_hash"' not in r.text
+    stream.assert_not_called()
+
+
+def test_audit_event_is_committed_before_streaming(env):
+    client, Session = env
+    seen = {}
+
+    def spy(*a, **k):
+        seen["committed"] = Session().query(GuardAuditEvent).filter_by(tool_call="audit.export").count()
+        return iter(())
+
+    with patch.object(ax, "stream_export", spy):
+        assert client.get("/guard/events/export", params=_qs()).status_code == 200
+    assert seen["committed"] == 1
+    ev = Session().query(GuardAuditEvent).filter_by(tool_call="audit.export").one()
+    assert "matching_rows=5" in ev.input_summary and "not the streamed row count" in ev.input_summary
+
+
+def test_write_audit_helper_swallows_by_default_and_raises_on_request():
+    from app.modules.guard.routers.policies_helpers import _write_audit
+    db = MagicMock()
+    db.add.side_effect = RuntimeError("boom")
+    with patch("app.modules.guard.models.chain_hash_for_insert", return_value=("", "h")):
+        _write_audit(db, uuid.UUID(WS), "t", "r", "a")  # default: swallowed
+        with pytest.raises(RuntimeError):
+            _write_audit(db, uuid.UUID(WS), "t", "r", "a", raise_on_error=True)
+    assert db.rollback.call_count == 2
+
+
 def test_endpoint_uses_strict_workspace_scoping_not_org_rollup():
     import inspect
     from app.modules.guard.routers import events_export
