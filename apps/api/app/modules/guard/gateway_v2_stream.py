@@ -34,6 +34,9 @@ def _wrap_v2_stream_finalize(
     workspace_id: str,
     provider: str,
     model: str,
+    # #2403 item 6: ``model`` is the served model; the client-facing
+    # alias (cond-...) rides on receipts as ``model_alias``.
+    model_alias: str | None = None,
     # P1-4: real request path (e.g. /gateway/v1/openai/v1/responses) — the
     # production caller (``handle_gateway_request``) always passes
     # ``request.url.path`` so the normalizer picks the right family
@@ -336,6 +339,7 @@ def _wrap_v2_stream_finalize(
                     ),
                     provider=provider,
                     model=model,
+                    model_alias=model_alias,
                     operation=operation,  # P1-4: real op flows to receipt normalizer too
                     dispatched=True,
                     response_bytes=_stream_resp_bytes,

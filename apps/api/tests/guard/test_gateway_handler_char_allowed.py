@@ -63,9 +63,9 @@ async def test_allowed_non_streaming_happy_path(gw):
     row = gw.finalized[0]
     assert row["row_id"] == "row-1" and row["workspace_id"] == WS
     assert (row["decision"], row["execution_status"], row["rule_id"]) == ("allowed", "ok", None)
-    # Audit model is the cond alias, not the served target model (per-attempt
-    # model lives in routing_meta.attempts).
-    assert row["model"] == COND_MODEL
+    # #2403 item 6: audit model is the served target model; the alias stays
+    # on routing_meta.gateway_profile.
+    assert row["model"] == "gpt-4o"
     assert json.loads(row["response_bytes"]) == CHAT
     # v2 coordinator overwrites routing_meta["operation"] (wire path -> v2 op).
     assert row["routing_meta"] == {**_V2_META, "operation": "openai_chat_completions",
@@ -77,7 +77,8 @@ async def test_allowed_non_streaming_happy_path(gw):
     receipt = gw.receipts[0]
     assert receipt["request_id"] == request_id
     assert receipt["dispatched"] is True
-    assert receipt["model"] == COND_MODEL and receipt["operation"] == PATH
+    assert receipt["model"] == "gpt-4o" and receipt["operation"] == PATH
+    assert receipt["model_alias"] == COND_MODEL
     assert receipt["reserved_microdollars"] == 10_000
     assert receipt["attempts_meta"] == _WINNER
     assert json.loads(receipt["response_bytes"]) == CHAT
@@ -153,7 +154,7 @@ async def test_allowed_non_streaming_durable_audit_off_records_legacy_row(gw):
     assert len(tasks) == 1
     task = tasks[0]
     assert task.name == "record"
-    assert task.args[:7] == (WS, MEMBER, "unknown", "openai", COND_MODEL, "allowed", None)
+    assert task.args[:7] == (WS, MEMBER, "unknown", "openai", "gpt-4o", "allowed", None)
     assert task.kwargs["execution_status"] == "ok"
     assert task.kwargs["request_id"] == request_id
     assert task.kwargs["agent_identity_id"] == IDENTITY and task.kwargs["route"] == PATH

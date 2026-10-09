@@ -117,3 +117,69 @@ async def test_hung_target_falls_back_within_profile_deadline(gw):
     attempts = gw.finalized[0]["routing_meta"]["attempts"]
     assert [(a["target_id"], a["error_class"]) for a in attempts] == [
         ("t0", "TimeoutError"), ("t1", None)]
+
+
+# ── item 6: served-model attribution ─────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_audit_and_receipt_record_served_model_alias_kept(gw):
+    gw.set_profile(profile("gpt-4o", "gpt-4o-mini"))
+    gw.upstream = [status(503), ok_json]
+    await gw.call()
+    row = gw.finalized[0]
+    assert row["model"] == "gpt-4o-mini"
+    assert row["routing_meta"]["gateway_profile"] == COND_MODEL
+    receipt = gw.receipts[0]
+    assert receipt["model"] == "gpt-4o-mini"
+    assert receipt["model_alias"] == COND_MODEL
+
+
+@pytest.mark.asyncio
+async def test_streaming_finalize_records_served_model(gw):
+    gw.upstream = [ok_sse]
+    response, _ = await gw.call({"model": COND_MODEL, "stream": True,
+                                 "messages": [{"role": "user", "content": "hello"}]})
+    assert await drain(response) == b"".join(SSE_CHUNKS)
+    assert gw.finalized[0]["model"] == "gpt-4o"
+    assert gw.receipts[0]["model_alias"] == COND_MODEL
+
+
+@pytest.mark.asyncio
+async def test_durable_off_record_uses_served_model(gw):
+    gw.durable(False)
+    response, background = await gw.call()
+    assert response.status_code == 200
+    assert audit_tasks(background)[0].args[4] == "gpt-4o"
+
+
+def test_finalize_writes_model_column(monkeypatch):
+    from app.guard import audit
+
+    executed = []
+
+    class _Result:
+        rowcount = 1
+
+    class _Session:
+        def execute(self, stmt, params=None):
+            executed.append((str(stmt), params))
+            return _Result()
+
+        def commit(self):
+            pass
+
+        def rollback(self):
+            pass
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(audit, "SessionLocal", _Session)
+    monkeypatch.setattr(audit, "set_workspace_rls", lambda *a, **k: None)
+    audit.finalize("00000000-0000-0000-0000-000000000001", "ws", decision="allowed",
+                   provider="openai", model="gpt-4o-mini", body={}, response_bytes=None,
+                   duration_ms=1)
+    sql, params = executed[-1]
+    assert "model" in sql.split("SET", 1)[1].split("WHERE", 1)[0]
+    assert params["model"] == "gpt-4o-mini"

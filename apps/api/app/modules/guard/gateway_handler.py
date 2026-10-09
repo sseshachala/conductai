@@ -192,6 +192,8 @@ async def handle_gateway_request(
         _vault_key,
         _wrap_streaming_response,
     )
+    from app.modules.guard.gateway_attempt_outcome import merge_attempts as _merge_attempts  # #2403
+    from app.modules.guard.gateway_attempt_outcome import served_model as _served_model, wrap_stream_finally
 
     started = time.monotonic()
 
@@ -1242,7 +1244,7 @@ async def handle_gateway_request(
                         row_id=_durable_row_id,
                         workspace_id=workspace_id,
                         provider=provider,
-                        model=model,
+                        model=_served_model(_routing_meta, model), model_alias=model,
                         operation=request.url.path,  # P1-4: real op for normalizer family
                         body=body,
                         ingress_decision=_audit_decision,
@@ -1287,7 +1289,7 @@ async def handle_gateway_request(
                         workspace_id=workspace_id,
                         decision=_v2_finalize["decision"],
                         provider=provider,
-                        model=model,
+                        model=_served_model(_routing_meta, model),
                         body=body,
                         response_bytes=_v2_finalize["response_bytes"],
                         duration_ms=int((time.monotonic() - started) * 1000),
@@ -1317,7 +1319,7 @@ async def handle_gateway_request(
                         clerk_user_id=clerk_user_id,
                         ai_tool=ai_tool,
                         provider=provider,
-                        model=model,
+                        model=_served_model(_routing_meta, model),
                         body=body,
                         prompt_summary=prompt_summary,
                         user_email=_user_email,
@@ -1354,7 +1356,7 @@ async def handle_gateway_request(
                     )
                     background.add_task(
                         _record_audit,
-                        workspace_id, clerk_user_id, ai_tool, provider, model,
+                        workspace_id, clerk_user_id, ai_tool, provider, _served_model(_routing_meta, model),
                         _v2_finalize["decision"],
                         _v2_finalize["rule_id"],
                         int((time.monotonic() - started) * 1000),
@@ -1375,7 +1377,6 @@ async def handle_gateway_request(
                         route=request.url.path,
                     )
         except BaseException as _forward_exc:  # noqa: BLE001 — need CancelledError too
-            from app.modules.guard.gateway_attempt_outcome import merge_attempts as _merge_attempts
             _routing_meta = _merge_attempts(_routing_meta, _v2_plan)  # #2403 item 4: all-failed attempts
             # Best-effort finalize so the row lands terminated immediately
             # instead of waiting on the reconciler's lease sweep. WHERE
@@ -1396,7 +1397,7 @@ async def handle_gateway_request(
                         workspace_id=workspace_id,
                         decision="error",
                         provider=provider,
-                        model=model,
+                        model=_served_model(_routing_meta, model),
                         body=body,
                         response_bytes=None,
                         duration_ms=int((time.monotonic() - started) * 1000),
@@ -1431,7 +1432,7 @@ async def handle_gateway_request(
                 try:
                     await _asyncio.to_thread(
                         _record_audit,
-                        workspace_id, clerk_user_id, ai_tool, provider, model,
+                        workspace_id, clerk_user_id, ai_tool, provider, _served_model(_routing_meta, model),
                         "error",
                         None,   # rule_id
                         int((time.monotonic() - started) * 1000),
@@ -1566,7 +1567,7 @@ async def handle_gateway_request(
                         workspace_id=workspace_id,
                         request_id=_audit_request_id,
                         provider=provider,
-                        model=model,
+                        model=_served_model(_routing_meta, model), model_alias=(model if _v2_plan is not None else None),
                         operation=request.url.path,
                         dispatched=_dispatched,
                         response_bytes=_resp_bytes,
@@ -1649,7 +1650,7 @@ async def handle_gateway_request(
             _response = _wrap_stream_receipts(
                 _response, upstream_capture=(_v2_plan.upstream_body if _v2_plan else None),
                 workspace_id=workspace_id, request_id=_audit_request_id,
-                provider=provider, model=model, operation=request.url.path,
+                provider=provider, model=_served_model(_routing_meta, model), model_alias=(model if _v2_plan else None), operation=request.url.path,
                 developer_external_id=clerk_user_id, agent_identity_id=_agent_identity_id,
                 source="gateway", client_tool=ai_tool, attempts_meta=(_routing_meta or {}).get("attempts"),
                 workflow_run_id=_run_id, hook_session_id=_hook_session_id,
@@ -1664,7 +1665,6 @@ async def handle_gateway_request(
         # the admission slot and releases it exactly once when the body
         # ends (drained, disconnect, upstream error) (#2403 item 2).
         if _admission_ticket is not None and isinstance(_response, StreamingResponse):
-            from app.modules.guard.gateway_attempt_outcome import wrap_stream_finally
             _response = wrap_stream_finally(_response, _admission_ticket.release)
             _admission_streamed = True
             _admission_ticket.defer()
@@ -1678,11 +1678,8 @@ async def handle_gateway_request(
         if _profile_rate_admission is not None and not _profile_rate_streamed:
             from app.modules.guard.gateway_profile_rate_limit import finish_profile_rate_limit
             await finish_profile_rate_limit(_profile_rate_admission, _v2_plan)
-        # Outer admission cleanup — fires on every exit path (early return
-        # in DB block, gap failure between DB and upstream try, exception,
-        # normal fall-through). Idempotent: safe if a streaming on_close
-        # already released. Skipped when the ticket was handed to the
-        # stream lifecycle above.
+        # Outer admission cleanup on every non-streaming exit path. A
+        # streamed ticket is released once by wrap_stream_finally above.
         if _admission_ticket is not None and not _admission_streamed:
             try:
                 if not _admission_ticket.released:

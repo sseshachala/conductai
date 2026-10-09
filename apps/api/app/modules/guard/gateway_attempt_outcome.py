@@ -7,6 +7,8 @@ Kept out of ``gateway_handler.py`` (already over the 500-line budget).
   and principal into the server-owned request id. The durable
   acceptance row's unique ``request_id`` index then refuses a repeat
   before any reservation or dispatch.
+- ``served_model``: the model that actually served the request, read
+  from the coordinator's attempt records.
 - ``merge_attempts``: carry the coordinator's attempt list onto
   ``routing_meta`` on every exit path, including all-targets-failed.
 - ``wrap_stream_finally``: run one cleanup exactly once when a streaming
@@ -41,6 +43,15 @@ def idempotent_request_id(
         str(workspace_id), str(clerk_user_id or ""), str(agent_identity_id or ""), client_key,
     ))
     return str(uuid.uuid5(_IDEMPOTENCY_NAMESPACE, scope))
+
+
+def served_model(routing_meta: dict | None, default: str) -> str:
+    """Model of the winning attempt; ``default`` (the requested model or
+    alias) when nothing served the request or no attempts were recorded."""
+    for attempt in (routing_meta or {}).get("attempts") or []:
+        if isinstance(attempt, dict) and attempt.get("succeeded") and attempt.get("model"):
+            return str(attempt["model"])
+    return default
 
 
 def merge_attempts(routing_meta: dict | None, plan: Any) -> dict | None:
