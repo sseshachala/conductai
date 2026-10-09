@@ -143,6 +143,11 @@ class GuardAuditEvent(Base):
         ),
     )
 
+    @classmethod
+    def budget_eligible(cls):
+        """Clause excluding client-reported ``session_usage`` rows: estimates must never enforce or settle budgets."""
+        return cls.tool_call.is_distinct_from("session_usage")
+
 
 class GuardAuditArchiveSegment(Base):
     __tablename__ = "guard_audit_archive_segments"

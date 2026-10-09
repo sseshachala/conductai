@@ -27,30 +27,7 @@ from app.runtime.llm_client import (
     raise_if_guard_proxy_blocked,
 )
 from app.runtime.pricing import get_model_rates
-
-
-def _infer_provider_from_model(model: str) -> str | None:
-    """Best-effort provider guess from the OpenAI-shape response ``model`` field.
-
-    Canonical responses always echo the upstream model. Cost tables key on
-    (provider, model), so we need a provider slug. Prefix heuristics cover
-    every model in the shipped pricing table; unknown prefixes return
-    ``None`` and the caller records 0 cost rather than misattributing.
-    A follow-up can replace this with an explicit ``X-Conduct-Attempt-Cost-Usd``
-    header from the gateway if a future model prefix escapes the map.
-    """
-    m = (model or "").lower().strip()
-    if not m:
-        return None
-    if m.startswith("claude"):
-        return "anthropic"
-    if m.startswith(("gpt", "chatgpt", "o1", "o3", "o4", "text-embedding", "text-davinci")):
-        return "openai"
-    if m.startswith("sonar") or m.startswith("perplexity"):
-        return "perplexity"
-    if m.startswith(("meta-llama", "mistral", "mixtral", "together")):
-        return "together"
-    return None
+from app.runtime.provider_inference import infer_provider_from_model as _infer_provider_from_model
 
 
 class GatewayProfileClient:

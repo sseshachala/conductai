@@ -95,6 +95,7 @@ def budget_check(
         q = db.query(func.coalesce(func.sum(GuardAuditEvent.cost_usd_after), 0.0)).filter(
             GuardAuditEvent.workspace_id == ws_uuid,
             GuardAuditEvent.ts >= period_start,
+            GuardAuditEvent.budget_eligible(),
         )
         if scoped_clerk is not None:
             q = q.filter(GuardAuditEvent.clerk_user_id == scoped_clerk)

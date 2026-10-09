@@ -30,6 +30,16 @@ _DEFAULT_PRICING: dict[str, dict[str, dict[str, float]]] = {
                 "ephemeral_1h": 6.00,
             },
         },
+        "claude-opus-5-5": {
+            "input": 4.00,
+            "output": 20.00,
+            "cache_read": 0.20,
+            "cache_write": 5.00,
+            "cache_write_by_tier": {
+                "ephemeral_5m": 5.00,
+                "ephemeral_1h": 8.00,
+            },
+        },
         "claude-opus-4-7": {
             "input": 15.00,
             "output": 75.00,
@@ -78,6 +88,12 @@ _DEFAULT_PRICING: dict[str, dict[str, dict[str, float]]] = {
         "gpt-5-mini": {
             "input": 0.60,
             "output": 2.40,
+        },
+        "gpt-6.1-sol": {
+            "input": 2.00,
+            "output": 10.00,
+            "cache_read": 0.10,
+            "cache_write": 2.50,
         },
         "gpt-5-nano": {
             "input": 0.20,

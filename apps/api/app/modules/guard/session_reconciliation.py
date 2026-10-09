@@ -1,5 +1,5 @@
 """Read-only session correlation. Reported deltas never become ledger charges."""
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 from uuid import UUID
 
 from sqlalchemy import or_, select
@@ -40,43 +40,11 @@ def session_evidence(db, event):
                 pass
     request_ids_truncated = len(request_ids) > 100
     request_ids = sorted(request_ids)[:100]
-    r = LlmAttemptReceipt
-    filters = [r.workspace_id == event.workspace_id,
-               r.source.in_(["gateway", "proxy"])]
-    if actor:
-        filters.append(r.developer_external_id == actor)
-    if identity:
-        filters.append(r.agent_identity_id == identity)
-    correlation = or_(r.hook_session_id == session,
-                      r.calculation_provenance["provider_response_id"].astext.in_(response_ids),
-                      r.request_id.in_(request_ids))
-    pairs = db.execute(select(r.request_id, r.agent_identity_id).where(*filters, correlation)
-                       .distinct().order_by(r.request_id).limit(101)).all()
-    gateway_truncated = len(pairs) > 100
-    # A request with conflicting identities is not a safe join key.
-    requests = {}
-    ambiguous = set()
-    for request_id, agent_id in pairs[:100]:
-        if request_id in requests and requests[request_id] != agent_id:
-            ambiguous.add(request_id)
-        requests[request_id] = agent_id
-    for request_id in ambiguous:
-        requests.pop(request_id)
+    found = gateway_receipts(db, workspace_id=event.workspace_id, actor=actor, identity=identity,
+                             session=session, response_ids=response_ids, request_ids=request_ids)
+    requests, ambiguous, gateway_truncated = found.requests, found.ambiguous, found.truncated
     evidence = read_request_evidence(db, workspace_id=event.workspace_id, requests=requests)
-    identities = db.execute(select(r.request_id, r.agent_identity_id, r.attempt_ordinal, r.provider, r.model,
-        r.total_input_tokens, r.total_output_tokens, r.usage_completeness, r.execution_outcome,
-        r.calculation_provenance).where(
-            *filters, r.request_id.in_(requests), correlation)).all() if requests else []
-    response_map = {}
-    request_map = {}
-    for receipt in identities:
-        if requests.get(receipt.request_id) != receipt.agent_identity_id:
-            continue
-        key = (receipt.calculation_provenance or {}).get("provider_response_id")
-        if key:
-            response_map.setdefault(key, []).append(receipt)
-        if receipt.execution_outcome == "succeeded":
-            request_map.setdefault(str(receipt.request_id), []).append(receipt)
+    response_map, request_map = found.response_map, found.request_map
     matching = match_reported_usage(reports, response_map, request_map)
     matching["truncated"] = response_ids_truncated or request_ids_truncated
     matching["complete"] = matching["complete"] and not matching["truncated"]
@@ -127,6 +95,58 @@ def session_evidence(db, event):
     }
 
 
+@dataclass
+class GatewayReceipts:
+    requests: dict
+    ambiguous: set
+    truncated: bool
+    response_map: dict
+    request_map: dict
+    session_linked: bool = False
+
+
+def gateway_receipts(db, *, workspace_id, actor, identity, session, response_ids, request_ids):
+    """Gateway receipts correlated to an authenticated actor by session, response id or request id."""
+    r = LlmAttemptReceipt
+    filters = [r.workspace_id == workspace_id,
+               r.source.in_(["gateway", "proxy"])]
+    if actor:
+        filters.append(r.developer_external_id == actor)
+    if identity:
+        filters.append(r.agent_identity_id == identity)
+    correlation = or_(r.hook_session_id == session,
+                      r.calculation_provenance["provider_response_id"].astext.in_(response_ids),
+                      r.request_id.in_(request_ids))
+    pairs = db.execute(select(r.request_id, r.agent_identity_id).where(*filters, correlation)
+                       .distinct().order_by(r.request_id).limit(101)).all()
+    truncated = len(pairs) > 100
+    # A request with conflicting identities is not a safe join key.
+    requests = {}
+    ambiguous = set()
+    for request_id, agent_id in pairs[:100]:
+        if request_id in requests and requests[request_id] != agent_id:
+            ambiguous.add(request_id)
+        requests[request_id] = agent_id
+    for request_id in ambiguous:
+        requests.pop(request_id)
+    identities = db.execute(select(r.request_id, r.agent_identity_id, r.attempt_ordinal, r.provider, r.model,
+        r.total_input_tokens, r.total_output_tokens, r.usage_completeness, r.execution_outcome,
+        r.calculation_provenance).where(
+            *filters, r.request_id.in_(requests), correlation)).all() if requests else []
+    response_map = {}
+    request_map = {}
+    for receipt in identities:
+        if requests.get(receipt.request_id) != receipt.agent_identity_id:
+            continue
+        key = (receipt.calculation_provenance or {}).get("provider_response_id")
+        if key:
+            response_map.setdefault(key, []).append(receipt)
+        if receipt.execution_outcome == "succeeded":
+            request_map.setdefault(str(receipt.request_id), []).append(receipt)
+    linked = db.execute(select(r.request_id).where(*filters, r.hook_session_id == session).limit(1)).first()
+    return GatewayReceipts(requests, ambiguous, truncated, response_map, request_map, linked is not None)
+
+
 def reported_rollups(reports):
     groups = {}
     for row in reports:
@@ -156,6 +176,24 @@ def reported_rollups(reports):
     return list(groups.values())
 
 
+def match_slice(part, response_map, request_map=None):
+    """("matched", receipt) | ("unmatched", None) | ("mismatched", None) for one reported slice."""
+    candidates = response_map.get(part.get("provider_response_id"), [])
+    if part.get("gateway_request_id"):
+        direct = (request_map or {}).get(str(part["gateway_request_id"]), [])
+        if part.get("provider_response_id") and candidates != direct:
+            return "mismatched", None
+        candidates = direct
+    # Ambiguous provider IDs are not filtered into a false unique match.
+    if len(candidates) != 1:
+        return "unmatched", None
+    receipt = candidates[0]
+    if ((part.get("provider") and part["provider"] != receipt.provider)
+            or (part.get("model") and part["model"] != receipt.model)):
+        return "mismatched", None
+    return "matched", receipt
+
+
 def match_reported_usage(reports, response_map, request_map=None):
     """Exact protocol IDs plus authenticated scope; never time/model similarity."""
     linked = {}
@@ -167,21 +205,10 @@ def match_reported_usage(reports, response_map, request_map=None):
             legacy += 1
         for part in parts:
             slice_count += 1
-            candidates = response_map.get(part.get("provider_response_id"), [])
-            if part.get("gateway_request_id"):
-                direct = (request_map or {}).get(part["gateway_request_id"], [])
-                if part.get("provider_response_id") and candidates != direct:
-                    mismatched += 1
-                    continue
-                candidates = direct
-            # Ambiguous provider IDs are not filtered into a false unique match.
-            if len(candidates) != 1:
-                unmatched += 1
-                continue
-            receipt = candidates[0]
-            if ((part.get("provider") and part["provider"] != receipt.provider)
-                    or (part.get("model") and part["model"] != receipt.model)):
-                mismatched += 1
+            outcome, receipt = match_slice(part, response_map, request_map)
+            if outcome != "matched":
+                unmatched += outcome == "unmatched"
+                mismatched += outcome == "mismatched"
                 continue
             key = (receipt.request_id, receipt.attempt_ordinal)
             item = linked.setdefault(key, {"request_id": str(receipt.request_id),

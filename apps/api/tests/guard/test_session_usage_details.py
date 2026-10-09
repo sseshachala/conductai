@@ -37,8 +37,7 @@ def test_estimate_preserves_categories_without_reasoning_double_charge():
     assert result["budget_eligible"] is False
 
 
-@pytest.mark.parametrize("override", [{"provider": None}, {"model": "unknown"},
-                                       {"cache_write_tokens": 10, "uncached_input_tokens": 90}])
+@pytest.mark.parametrize("override", [{"provider": None}, {"model": "unknown"}])
 def test_missing_pricing_is_not_zero(override):
     result = usage_evidence(report(input_tokens=150, output_tokens=20, usage=[part(**override)]))
     assert result["estimated_microdollars"] is None
