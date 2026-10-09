@@ -146,12 +146,8 @@ function ProjectContent({ getToken, currentUserId }: {
       const found: Project = await res.json()
       setProject(found)
       if (clerkEnabled && currentUserId) {
-        // P0-2: was /projects/${workspace_id}/members — fixed to /workspaces/${workspace_id}/members
-        const mRes = await authFetch(`${API}/workspaces/${found.workspace_id}/members`)
-        if (mRes.ok) {
-          const members: { clerk_user_id: string; role: string }[] = await mRes.json()
-          setIsAdmin(members.find(m => m.clerk_user_id === currentUserId)?.role === "admin")
-        }
+        const rRes = await authFetch(`${API}/projects/${projectId}/my-role`)
+        if (rRes.ok) setIsAdmin(((await rRes.json()) as { role: string }).role === "admin")
       }
     } catch {
       setError("Network error while loading project.")

@@ -156,8 +156,6 @@ function WorkflowsContent({ getToken, currentUserId }: { getToken: (() => Promis
   async function loadWorkflows(pid: string | null) {
     // #10: guard against missing user id when auth is enabled
     if (clerkEnabled && !currentUserId) return
-    // Skip poll when tab is hidden — Page Visibility API guard
-    if (document.visibilityState === "hidden") return
     setError(null)
     try {
             const res = await authFetch(`${API}/workflows`)

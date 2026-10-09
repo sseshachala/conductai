@@ -3,8 +3,9 @@ import { API, AuthFetch, json, post } from "./client"
 const base = () => `${API}/runs`
 
 export const runs = {
-  list: (f: AuthFetch, params?: { limit?: number; offset?: number }) => {
+  list: (f: AuthFetch, params?: { limit?: number; offset?: number; status?: string }) => {
     const q = new URLSearchParams()
+    if (params?.status) q.set("status", params.status)
     if (params?.limit != null) q.set("limit", String(params.limit))
     if (params?.offset != null) q.set("offset", String(params.offset))
     const qs = q.toString() ? `?${q}` : ""

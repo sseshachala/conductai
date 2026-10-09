@@ -158,9 +158,13 @@ function NewWorkflowForm({ getToken }: { getToken: (() => Promise<string | null>
         setReposLoading(true)
         await Promise.all([
           pbPromise,
-          authFetch(`${API}/credentials/github/repos`).then(async res => {
-            if (res.ok) {
-              const data: Repo[] = await res.json()
+          // Only hit /github/repos when a git credential exists (it 404s otherwise).
+          authFetch(`${API}/credentials`).then(async res => {
+            const creds: { service: string }[] = res.ok ? await res.json() : []
+            if (!creds.some(c => c.service === "git" || c.service === "github")) return
+            const rr = await authFetch(`${API}/credentials/github/repos`)
+            if (rr.ok) {
+              const data: Repo[] = await rr.json()
               setRepos(data)
               setSelectedRepo(data[0]?.full_name ?? "")
             }
