@@ -17,8 +17,12 @@ from app.runtime.llm_client import (
     LLMTextBlock,
     LLMToolUseBlock,
 )
-from app.runtime.blocks.brain_guard import (
-    record_runtime_guard_verdict as _record_guard_verdict,
+from app.runtime.blocks.brain_tools import (  # noqa: F401 — re-exports
+    BRAIN_TOOLS,
+    ToolRunner,
+    _classify_tool_error,
+    _MCP_JOIN_SEP,
+    _mcp_safe_name,
 )
 from app.runtime.blocks.brain_model import (
     BrainRun,
@@ -78,102 +82,6 @@ def _cache_set(run_id: str | None, block_id: str | None, turn: int, response_jso
         r.setex(_cache_key(run_id, block_id, turn), _LLM_CACHE_TTL, json.dumps(response_json))
     except Exception:
         pass
-
-# MCP tool naming — Anthropic tools API requires ^[a-zA-Z0-9_-]{1,128}$.
-# Prior joins used `::` which fails validation and broke every workflow
-# with MCP tools attached (self-driving-network-approval-demo regression,
-# 2026-09-10). We sanitize both halves to that alphabet and join with `__`,
-# and mirror the sanitization when building the server-name lookup map so
-# tool_use responses route back correctly.
-# ponytail: server.name authored to contain `__` will split ambiguously;
-# document convention rather than encode a fully-reversible scheme.
-_MCP_JOIN_SEP = "__"
-
-
-def _mcp_safe_name(s: str) -> str:
-    import re as _re
-    return _re.sub(r"[^A-Za-z0-9_-]", "-", s or "")
-
-
-# Re-imported here so block files can be imported standalone; also re-exported for
-# any caller that used to import BRAIN_TOOLS from executor.
-BRAIN_TOOLS = [
-    {
-        "name": "read_file",
-        "description": "Read the contents of a file at the given path.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "path": {"type": "string", "description": "Absolute or relative file path to read"}
-            },
-            "required": ["path"],
-        },
-    },
-    {
-        "name": "write_file",
-        "description": "Write content to a file at the given path. Creates parent directories if needed.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "path": {"type": "string", "description": "File path to write"},
-                "content": {"type": "string", "description": "Content to write to the file"},
-            },
-            "required": ["path", "content"],
-        },
-    },
-    {
-        "name": "run_shell",
-        "description": "Execute a shell command and return stdout/stderr. Use for tests, builds, git commands.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "command": {"type": "string", "description": "Shell command to execute"},
-                "working_dir": {"type": "string", "description": "Working directory (optional)"},
-            },
-            "required": ["command"],
-        },
-    },
-    {
-        "name": "search_code",
-        "description": "Search for a pattern in files using grep. Returns matching lines with file paths.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "pattern": {"type": "string", "description": "Regex pattern to search for"},
-                "path": {"type": "string", "description": "Directory or file to search in", "default": "."},
-                "file_glob": {"type": "string", "description": "File glob to filter (e.g. '*.py')", "default": "*"},
-            },
-            "required": ["pattern"],
-        },
-    },
-    {
-        "name": "mark_complete",
-        "description": (
-            "Signal that the task is complete and return a structured result. "
-            "Call this instead of stop_reason end_turn when you have a definitive outcome. "
-            "Always pass a 'result' key summarising what was accomplished."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "result": {"type": "string", "description": "Summary of what was accomplished"},
-                "output": {"type": "object", "description": "Optional structured output data"},
-            },
-            "required": ["result"],
-        },
-    },
-]
-
-
-def _classify_tool_error(result: str) -> str:
-    """Prefix tool results with a structured error category for LLM signal."""
-    if result.startswith("Refused:"):
-        return f"[permission_denied] {result}"
-    if "timed out" in result.lower() or "timeout" in result.lower():
-        return f"[timeout] {result}"
-    if result.startswith("Error:") or result.startswith("error:"):
-        return f"[tool_error] {result}"
-    return result
 
 
 def _load_workspace_mcp_tools(
@@ -439,8 +347,6 @@ def _execute_brain(
             _block_max_cost_f = float(_block_max_cost)
             if _block_max_cost_f < max_cost_usd:
                 max_cost_usd = max(0.01, _block_max_cost_f)
-        # Track whether a test run was observed in the current turn
-        _test_ran_this_turn: bool = False
 
         total_input_tokens = 0
         total_output_tokens = 0
@@ -474,29 +380,9 @@ def _execute_brain(
                     selected_ids=_mcp_selected,
                 )
 
-        # Build a lookup: {server_name -> McpServer row} for MCP dispatch during tool calls.
-        # Populated lazily on first MCP tool call.
-        _mcp_server_cache: dict | None = None
-
-        def _get_mcp_server_map():
-            nonlocal _mcp_server_cache
-            if _mcp_server_cache is not None:
-                return _mcp_server_cache
-            _mcp_server_cache = {}
-            if not db or not workspace_id:
-                return _mcp_server_cache
-            try:
-                from app.models.mcp_server import McpServer as _McpServer
-                servers = db.query(_McpServer).filter(
-                    _McpServer.workspace_id == workspace_id
-                ).all()
-                for s in servers:
-                    # Key by the sanitized form used in tool names so the parse
-                    # round-trips. Retain raw name in the value for downstream use.
-                    _mcp_server_cache[_mcp_safe_name(s.name)] = s
-            except Exception as exc:
-                log.warning("brain.mcp_dispatch.map_failed", error=str(exc))
-            return _mcp_server_cache
+        # Tool dispatch (MCP + built-in, Guard checks, require_tests_pass).
+        # The MCP server lookup map is built lazily on first MCP tool call.
+        tools = ToolRunner(r, require_tests_pass=_require_tests_pass)
 
         while turns < max_turns:
             # Skip turns that were already completed before a crash.
@@ -662,7 +548,7 @@ def _execute_brain(
                     })
 
             # Execute tool calls and collect results
-            _test_ran_this_turn = False  # reset per-turn; set True when a test command runs
+            tools.test_ran_this_turn = False  # reset per-turn; set True when a test command runs
             raw_tool_results: list[tuple[str, str]] = []
             for tc in tool_calls:
                 # Trace: tool_use
@@ -692,271 +578,10 @@ def _execute_brain(
                         "model": model_id,
                     }
 
-                try:
-                    if _MCP_JOIN_SEP in tc.name:
-                        # MCP tool dispatch — server-name__tool-name (see _mcp_safe_name).
-                        _mcp_server_name, _mcp_tool_name = tc.name.split(_MCP_JOIN_SEP, 1)
-
-                        # Guard check before every MCP tool call
-                        if state.get("__guard_enabled") and db and workspace_id:
-                            try:
-                                from app.modules.guard.routers.mcp import _match_policy, _get_rules
-                                from app.modules.guard.tool_groups import tool_matches
-                                import uuid as _uuid
-                                _guard_rules = _get_rules(db, _uuid.UUID(workspace_id))
-
-                                # Evaluate match_mcp_server and match_tool against MCP calls
-                                _mcp_inp_text = json.dumps(tc.input)
-                                _guard_hit = None
-                                _ACTION_PRIORITY = {"block": 0, "approval": 1, "warn": 2, "audit": 3}
-                                _best_priority = 999
-                                import re as _re
-                                for _rule in _guard_rules:
-                                    # match_mcp_server — matches against server name prefix
-                                    _ms = (_rule.get("match_mcp_server") or "").strip()
-                                    if _ms and _ms != "*":
-                                        if not _re.fullmatch(_ms, _mcp_server_name, _re.IGNORECASE):
-                                            continue
-                                    # match_tool — matches against the MCP tool name (after ::)
-                                    _mt = (_rule.get("match_tool") or "").strip()
-                                    if _mt and _mt != "*":
-                                        _mt_allowed = [t.strip() for t in _mt.split(",")]
-                                        if not tool_matches(_mcp_tool_name, _mt):
-                                            # Also try regex for patterns like delete_.*
-                                            try:
-                                                if not any(_re.fullmatch(p, _mcp_tool_name, _re.IGNORECASE) for p in _mt_allowed):
-                                                    continue
-                                            except _re.error:
-                                                continue
-                                    # match_pattern — against serialised input
-                                    _mp = _rule.get("match_pattern")
-                                    if _mp:
-                                        try:
-                                            if not _re.search(_mp, _mcp_inp_text, _re.IGNORECASE):
-                                                continue
-                                        except _re.error:
-                                            continue
-                                    _p = _ACTION_PRIORITY.get(_rule.get("action", "audit"), 3)
-                                    if _p < _best_priority:
-                                        _best_priority = _p
-                                        _guard_hit = _rule
-
-                                if _guard_hit:
-                                    _guard_action = _guard_hit.get("action", "audit")
-                                    _guard_msg = _guard_hit.get("message", "")
-                                    # _project_rule renames id -> rule_id (#2401).
-                                    _guard_rule_id = _guard_hit.get("rule_id") or _guard_hit.get("id")
-                                    if db and run_id:
-                                        _emit(db, run_id, block_id, "brain_tool_call", {
-                                            "tool": tc.name,
-                                            "guard_action": _guard_action,
-                                            "guard_rule": _guard_rule_id,
-                                            "guard_message": _guard_msg,
-                                            "turn": turns,
-                                        })
-                                    _record_guard_verdict(
-                                        db, workspace_id=workspace_id, user_email=user_email,
-                                        tool_name=tc.name, action=_guard_action,
-                                        rule_id=_guard_rule_id, message=_guard_msg,
-                                        input_text=_mcp_inp_text, run_id=run_id,
-                                        playbook_slug=playbook_slug, workflow_id=workflow_id,
-                                    )
-                                    if _guard_action == "block":
-                                        raw_tool_results.append((tc.id, f"[guard_blocked] {_guard_msg}"))
-                                        continue
-                            except Exception as _guard_exc:
-                                log.warning("brain.mcp_dispatch.guard_failed", error=str(_guard_exc))
-
-                        _mcp_map = _get_mcp_server_map()
-                        _mcp_server_row = _mcp_map.get(_mcp_server_name)
-                        if not _mcp_server_row:
-                            result_content = f"[mcp_error] MCP server '{_mcp_server_name}' not found in workspace"
-                        else:
-                            try:
-                                from app.core.crypto import decrypt as _decrypt
-                                from app.runtime.integrations import mcp_client as _mcp_client
-                                _mcp_token = (
-                                    _decrypt(_mcp_server_row.encrypted_auth).get("token")
-                                    if _mcp_server_row.encrypted_auth else None
-                                )
-                                _mcp_result = _mcp_client.call_tool(
-                                    _mcp_server_row.url,
-                                    _mcp_token,
-                                    _mcp_tool_name,
-                                    tc.input or {},
-                                    transport=_mcp_server_row.transport or "auto",
-                                )
-                                if isinstance(_mcp_result, dict):
-                                    result_content = json.dumps(_mcp_result)
-                                else:
-                                    result_content = str(_mcp_result)
-                            except Exception as _mcp_exc:
-                                result_content = f"[mcp_error] {_mcp_exc!s:.500}"
-                        result_content = _classify_tool_error(result_content)
-                    else:
-                        # Guard check for non-MCP tools (run_shell, edit, write, etc).
-                        # The MCP branch above already guards MCP tool calls, but shell
-                        # commands and file edits were bypassing every hook-surface rule
-                        # entirely — the audit trail never saw them and no rule could
-                        # block, even when match_tool included "shell" or "workflow".
-                        # This mirrors the MCP guard block against the same rule set.
-                        _guard_blocked_non_mcp = False
-                        if state.get("__guard_enabled") and db and workspace_id:
-                            try:
-                                from app.modules.guard.routers.mcp import _get_rules
-                                import uuid as _uuid
-                                import re as _re
-                                _guard_rules = _get_rules(db, _uuid.UUID(workspace_id))
-                                _tool_input_text = json.dumps(tc.input or {})
-                                _ACTION_PRIORITY = {"block": 0, "approval": 1, "warn": 2, "audit": 3}
-                                _best_priority = 999
-                                _guard_hit = None
-                                # Only fire rules that ACTUALLY apply to this tool.
-                                # "workflow" is a scope for workflow-level enforcement,
-                                # not a tool alias — treating it as a wildcard here
-                                # made every conduct-base workflow rule fire on every
-                                # brain tool_use, blocking all read_file / write_file /
-                                # search_code / run_shell calls.
-                                _TOOL_ALIASES = {
-                                    "run_shell": {"shell", "run_shell"},
-                                    "read_file": {"filesystem-read", "read_file", "read"},
-                                    "write_file": {"filesystem-write", "write_file", "write"},
-                                    "edit": {"filesystem-write", "edit"},
-                                    "search_code": {"filesystem-read", "search_code", "grep"},
-                                }
-                                for _rule in _guard_rules:
-                                    # Honour enforcement.runtime — a rule marked
-                                    # not_supported was authored for a different
-                                    # surface (e.g. surface-chat-no-bash targets
-                                    # chat UIs, not workflow runtime).
-                                    _enf = (_rule.get("enforcement") or {})
-                                    if _enf.get("runtime") == "not_supported":
-                                        continue
-
-                                    _mt = (_rule.get("match_tool") or "").strip()
-                                    if _mt and _mt != "*":
-                                        _mt_allowed = {t.strip().lower() for t in _mt.split(",")}
-                                        _tc_lower = tc.name.lower()
-                                        _my_aliases = _TOOL_ALIASES.get(_tc_lower, {_tc_lower})
-                                        if not (_mt_allowed & _my_aliases) and "*" not in _mt_allowed:
-                                            continue
-
-                                    _mp = _rule.get("match_pattern")
-                                    _mpp = _rule.get("match_path_pattern")
-
-                                    # Require SOME matcher — pattern, path pattern,
-                                    # or specific (non-wildcard) tool. A rule with
-                                    # only wildcards and no patterns would block
-                                    # every tool_use, almost always a config error.
-                                    if not _mp and not _mpp and (not _mt or _mt == "*"):
-                                        continue
-                                    if _mp:
-                                        try:
-                                            if not _re.search(_mp, _tool_input_text, _re.IGNORECASE):
-                                                continue
-                                        except _re.error:
-                                            continue
-
-                                    # match_path_pattern applies to the tool_input's
-                                    # path-like fields (path, file_path, filename).
-                                    # Rules like no-path-traversal use this to catch
-                                    # `../etc/passwd` style attacks — must be checked
-                                    # separately from match_pattern which is content-side.
-                                    if _mpp:
-                                        _path_val = (tc.input or {}).get("path") \
-                                                    or (tc.input or {}).get("file_path") \
-                                                    or (tc.input or {}).get("filename") \
-                                                    or ""
-                                        if not _path_val:
-                                            continue  # no path to check → rule doesn't apply
-                                        try:
-                                            if not _re.search(_mpp, str(_path_val), _re.IGNORECASE):
-                                                continue
-                                        except _re.error:
-                                            continue
-
-                                    _p = _ACTION_PRIORITY.get(_rule.get("action", "audit"), 3)
-                                    if _p < _best_priority:
-                                        _best_priority = _p
-                                        _guard_hit = _rule
-
-                                if _guard_hit:
-                                    _guard_action = _guard_hit.get("action", "audit")
-                                    _guard_msg = _guard_hit.get("message", "")
-                                    # _project_rule (mcp.py) renames id -> rule_id.
-                                    # Also fall back to "id" for defence in depth.
-                                    _guard_rule_id = _guard_hit.get("rule_id") or _guard_hit.get("id")
-                                    # Emit to run event stream so the CLI + dashboard see it
-                                    if db and run_id:
-                                        _emit(db, run_id, block_id, "brain_tool_call", {
-                                            "tool": tc.name,
-                                            "guard_action": _guard_action,
-                                            "guard_rule": _guard_rule_id,
-                                            "guard_message": _guard_msg,
-                                            "turn": turns,
-                                        })
-                                    # Audit row (flight recorder) + block/warn fan-out.
-                                    _record_guard_verdict(
-                                        db, workspace_id=workspace_id, user_email=user_email,
-                                        tool_name=tc.name, action=_guard_action,
-                                        rule_id=_guard_rule_id, message=_guard_msg,
-                                        input_text=_tool_input_text, run_id=run_id,
-                                        playbook_slug=playbook_slug, workflow_id=workflow_id,
-                                    )
-
-                                    if _guard_action == "block":
-                                        result_content = f"[guard_blocked] {_guard_msg}  [rule: {_guard_rule_id}]"
-                                        _guard_blocked_non_mcp = True
-                            except Exception as _guard_exc:
-                                log.warning("brain.non_mcp_dispatch.guard_failed", error=str(_guard_exc))
-
-                        # require_tests_pass guardrail: intercept commit-like calls
-                        # when no test run has been observed yet in this turn.
-                        _GIT_COMMIT_PATTERNS = ("git commit", "git push", "gh pr create")
-                        _is_commit_call = (
-                            tc.name == "run_shell"
-                            and any(
-                                p in (tc.input or {}).get("command", "")
-                                for p in _GIT_COMMIT_PATTERNS
-                            )
-                        )
-                        if _guard_blocked_non_mcp:
-                            pass  # result_content already set to the guard block message
-                        elif _require_tests_pass and _is_commit_call and not _test_ran_this_turn:
-                            result_content = (
-                                "[guardrail_blocked] Tests must pass before committing. "
-                                "Run tests first."
-                            )
-                            if db and run_id:
-                                _emit(db, run_id, block_id, "guardrail.require_tests_pass", {
-                                    "tool": tc.name,
-                                    "command": (tc.input or {}).get("command", ""),
-                                    "turn": turns,
-                                    "message": "Blocked: tests must pass before committing",
-                                })
-                        else:
-                            result_content = _dispatch_with_creds(tc.name, tc.input)
-                            # Detect test runs so subsequent commit calls are allowed
-                            if (
-                                _require_tests_pass
-                                and tc.name == "run_shell"
-                                and not _test_ran_this_turn
-                            ):
-                                _cmd = (tc.input or {}).get("command", "").lower()
-                                _TEST_MARKERS = ("pytest", "npm test", "yarn test", "make test",
-                                                 "go test", "cargo test", "rspec", "jest", "vitest")
-                                if any(m in _cmd for m in _TEST_MARKERS):
-                                    _test_ran_this_turn = True
-                        result_content = _classify_tool_error(result_content)
-                except RuntimeError as sandbox_err:
-                    if db and run_id:
-                        _emit(db, run_id, block_id, "brain_tool_call", {
-                            "tool": "modal_error",
-                            "summary": str(sandbox_err),
-                            "turn": turns,
-                        })
-                    raise
+                result_content, _guard_blocked_mcp = tools.run(tc, turns)
                 raw_tool_results.append((tc.id, result_content))
+                if _guard_blocked_mcp:
+                    continue  # blocked MCP call: no tool_result trace / event
 
                 # Trace: tool_result
                 if db and run_id and block_id:
