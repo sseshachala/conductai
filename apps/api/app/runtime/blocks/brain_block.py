@@ -16,10 +16,20 @@ from app.core.config import settings
 from app.runtime.llm_client import (
     LLMTextBlock,
     LLMToolUseBlock,
-    LLMUpstreamError,
 )
 from app.runtime.blocks.brain_guard import (
     record_runtime_guard_verdict as _record_guard_verdict,
+)
+from app.runtime.blocks.brain_model import (
+    BrainRun,
+    cached_response,
+    call_llm,
+    record_turns,
+    run_single_turn,
+    shadow_account,
+)
+from app.runtime.blocks.brain_model import (  # noqa: F401 — re-export
+    extract_last_json_object as _extract_last_json_object,
 )
 from app.runtime.blocks.brain_setup import (
     ENVIRONMENT_PREAMBLE,
@@ -164,50 +174,6 @@ def _classify_tool_error(result: str) -> str:
     if result.startswith("Error:") or result.startswith("error:"):
         return f"[tool_error] {result}"
     return result
-
-
-def _extract_last_json_object(text: str) -> dict | None:
-    """
-    Find the last well-formed JSON object in text.
-    Handles three cases: compact JSON on last line, whole output is JSON,
-    and prose followed by a multi-line JSON block.
-    """
-    text = text.strip()
-    # 1. Last line (compact single-line JSON)
-    last_line = text.rsplit("\n", 1)[-1].strip()
-    if last_line.startswith("{") and last_line.endswith("}"):
-        try:
-            obj = json.loads(last_line)
-            if isinstance(obj, dict):
-                return obj
-        except Exception:
-            pass
-    # 2. Whole output is JSON (multi-line, no prose prefix)
-    if text.startswith("{") and text.endswith("}"):
-        try:
-            obj = json.loads(text)
-            if isinstance(obj, dict):
-                return obj
-        except Exception:
-            pass
-    # 3. Prose + trailing JSON block — brace-match from the last closing brace
-    last_close = text.rfind("}")
-    if last_close != -1:
-        depth = 0
-        for i in range(last_close, -1, -1):
-            if text[i] == "}":
-                depth += 1
-            elif text[i] == "{":
-                depth -= 1
-                if depth == 0:
-                    try:
-                        obj = json.loads(text[i : last_close + 1])
-                        if isinstance(obj, dict):
-                            return obj
-                    except Exception:
-                        pass
-                    break
-    return None
 
 
 def _load_workspace_mcp_tools(
@@ -424,19 +390,29 @@ def _execute_brain(
 
     pricing_rates, pricing_version = get_model_rates(provider, model_id, pricing_snapshot)
 
-    def _record_turns(db, run_id: str | None, actual: int, exhausted: bool) -> None:
-        """Persist actual_turns + budget_exhausted on the Run row for future estimation."""
-        if not db or not run_id:
-            return
-        try:
-            from app.models.run import Run as _Run
-            db.query(_Run).filter(_Run.id == run_id).update(
-                {"actual_turns": actual, "budget_exhausted": exhausted},
-                synchronize_session=False,
-            )
-            db.commit()
-        except Exception:
-            pass  # never block the run on telemetry writes
+    # Patch-sensitive helpers (_cache_get / _cache_set /
+    # _load_workspace_mcp_tools) are read from this module's globals here,
+    # at call time, so tests patching app.runtime.blocks.brain_block.<name>
+    # keep applying to the extracted phases.
+    r = BrainRun(
+        block=block, state=state, db=db, run_id=run_id, block_id=block_id,
+        playbook_slug=playbook_slug, workspace_id=workspace_id,
+        workflow_id=workflow_id, user_email=user_email,
+        environment_id=environment_id, attempt_id=attempt_id,
+        resume_from_turn=resume_from_turn,
+        emit=_emit, write_trace=_write_trace,
+        summarise_tool_call=_summarise_tool_call,
+        clarification_required=ClarificationRequired,
+        cache_get=_cache_get, cache_set=_cache_set,
+        load_mcp_tools=_load_workspace_mcp_tools,
+        session=session, close_session=_close_session,
+        dispatch_with_creds=_dispatch_with_creds, remote_host=remote_host,
+        system_prompt=system_prompt, user_message=user_message,
+        llm=llm, provider=provider, model_id=model_id,
+        routing_reason=routing_reason, pricing_rates=pricing_rates,
+        pricing_version=pricing_version, proxy_url=_conduct_proxy_url,
+        env_vars=_env_vars,
+    )
 
     if is_agentic:
         # Bounded agentic loop — deterministic retry boundaries from run state
@@ -548,144 +524,25 @@ def _execute_brain(
                 _write_trace(db, run_id, block_id, turns + 1, "user",
                              content=user_content[:8000] if user_content else None)
 
-            _cached = _cache_get(run_id, block_id, turns)
+            response = cached_response(r, turns)
             _did_actual_llm_call = False
-            if _cached is not None:
-                from app.runtime.llm_client import LLMResponse as _LLMResponse
-                response = _LLMResponse.from_cache_dict(_cached)
-                response.cost_usd = 0.0  # ponytail: no charge on replay
-                log.debug("brain.llm_cache_hit", run_id=run_id, block_id=block_id, turn=turns)
-            else:
-                try:
-                    # Stable idempotency key across our retry attempts within
-                    # this turn — lets OpenAI dedupe if a request was
-                    # intercepted mid-flight. Include __for_each_index so
-                    # iterations of the same block inside for_each don't
-                    # collide on the provider's dedup window.
-                    _fe_idx = state.get("__for_each_index")
-                    _idem_key = (
-                        f"conduct-{run_id}-{block_id}-{turns}"
-                        + (f"-fe{_fe_idx}" if _fe_idx is not None else "")
-                    ) if run_id and block_id else None
-                    # Emit llm_upstream_retry on each retry attempt so ops
-                    # can spot infra degradation. Fires only when retry
-                    # occurs; silent on happy path.
-                    def _on_retry_agentic(info: dict) -> None:
-                        if db and run_id:
-                            _emit(db, run_id, block_id, "llm_upstream_retry", {
-                                **info, "turn": turns,
-                                "block_attempt": state.get("__block_attempt", 1),
-                            })
-                    # If a future dag_runner block-retry wraps this call, it
-                    # sets state["__block_attempt"] to N. Passing outer_attempt
-                    # caps internal retries at 1 when N>1 so 3×3=9 stacked
-                    # attempts never happen. Silent no-op today (nothing sets
-                    # __block_attempt).
-                    _outer_attempt = int(state.get("__block_attempt", 1))
-                    response = llm.create(
-                        model=model_id,
-                        max_tokens=4096,
-                        system=full_system,
-                        tools=_active_tools,
-                        messages=messages,
-                        idempotency_key=_idem_key,
-                        on_retry=_on_retry_agentic,
-                        outer_attempt=_outer_attempt,
-                    )
-                except LLMUpstreamError as _up_err:
-                    # CF/Render/WAF intercepted. Emit a structured event with
-                    # cf-ray + render request ID BEFORE re-raising — the raise
-                    # goes into block_failed via str(exc) which is short and clean.
-                    # is_final marks this as the terminal adapter failure; if a
-                    # future dag_runner block-retry wraps this call and later
-                    # succeeds, consumers can filter for is_final events only.
-                    if db and run_id:
-                        _emit(db, run_id, block_id, "llm_upstream_blocked", {
-                            "provider": _up_err.provider,
-                            "status": _up_err.status,
-                            "content_type": _up_err.content_type,
-                            "attempts": _up_err.attempts,
-                            "cf_ray": _up_err.cf_ray,
-                            "render_request_id": _up_err.request_id,
-                            "body_snippet": _up_err.body_snippet,
-                            "turn": turns,
-                            "base_url": _conduct_proxy_url,
-                            "is_final": True,
-                            "block_attempt": state.get("__block_attempt", 1),
-                        })
-                    log.error("brain.llm_upstream_blocked",
-                              provider=_up_err.provider, status=_up_err.status,
-                              cf_ray=_up_err.cf_ray, render_req=_up_err.request_id,
-                              attempts=_up_err.attempts,
-                              run_id=run_id, block_id=block_id)
-                    _close_session()  # #2401: don't leak the sandbox
-                    raise
-                except Exception as _llm_err:
-                    _cause = getattr(_llm_err, "__cause__", None) or getattr(_llm_err, "__context__", None)
-                    log.error("brain.llm_call_failed",
-                              error=str(_llm_err), cause=str(_cause),
-                              base_url=_conduct_proxy_url, turn=turns,
-                              run_id=run_id, block_id=block_id)
-                    _close_session()  # #2401: don't leak the sandbox
-                    raise
+            if response is None:
+                response = call_llm(
+                    r, turns, agentic=True,
+                    model=model_id,
+                    max_tokens=4096,
+                    system=full_system,
+                    tools=_active_tools,
+                    messages=messages,
+                )
                 _cache_set(run_id, block_id, turns, response.to_cache_dict())
                 _did_actual_llm_call = True
 
             # #2209 Session 6b — workflow shadow accounting. Skip when the
             # adapter routes through Gateway (Session 4 hook already wrote
-            # the receipt). Reviewer #6 (#2221): also skip on cache-hit
-            # replay — no actual upstream inference happened, so no receipt.
-            # shadow_write is a no-op when the workspace is not on the
-            # canary allowlist; catches every exception.
+            # the receipt) and on cache-hit replay (Reviewer #6, #2221).
             if _did_actual_llm_call and not getattr(llm, "routes_through_gateway", False):
-                try:
-                    import json as _json_shadow
-                    import uuid as _uuid_shadow
-                    from app.runtime.accounting.shadow_writer import (
-                        shadow_write as _shadow_write,
-                    )
-                    if provider == "anthropic":
-                        _synth = _json_shadow.dumps({
-                            "usage": {
-                                "input_tokens": response.usage.input_tokens,
-                                "output_tokens": response.usage.output_tokens,
-                                "cache_read_input_tokens": (
-                                    response.usage.cache_read_tokens
-                                ),
-                                "cache_creation_input_tokens": (
-                                    response.usage.cache_write_tokens
-                                ),
-                            }
-                        }).encode()
-                    else:
-                        _synth = _json_shadow.dumps({
-                            "usage": {
-                                "prompt_tokens": response.usage.input_tokens,
-                                "completion_tokens": response.usage.output_tokens,
-                            }
-                        }).encode()
-                    # run_id is a Run.id UUID; block_id is a semantic slug.
-                    # Only run_id maps to a UUID column.
-                    _wf_run = None
-                    if run_id:
-                        try:
-                            _wf_run = _uuid_shadow.UUID(str(run_id))
-                        except (ValueError, TypeError):
-                            _wf_run = None
-                    _shadow_write(
-                        workspace_id=workspace_id,
-                        request_id=_uuid_shadow.uuid4(),
-                        provider=provider,
-                        model=model_id,
-                        operation="chat.completions",
-                        dispatched=True,
-                        response_bytes=_synth,
-                        workflow_run_id=_wf_run,
-                        source="workflow_runtime",
-                        client_tool=str(block_id) if block_id else None,
-                    )
-                except Exception:
-                    pass
+                shadow_account(r, response)
 
             turns += 1
             total_input_tokens       += response.usage.input_tokens
@@ -725,7 +582,7 @@ def _execute_brain(
                         "max_cost_usd": max_cost_usd,
                         "note": "rollback_on_failure=true — full git revert is a follow-up action",
                     })
-                _record_turns(db, run_id, turns, True)  # #2401: same as the turn path
+                record_turns(db, run_id, turns, True)  # #2401: same as the turn path
                 _close_session()
                 raise RuntimeError(
                     f"Cost budget exhausted: agent reached ${cost_usd:.4f} with cap ${max_cost_usd:.4f} "
@@ -787,7 +644,7 @@ def _execute_brain(
                 _extracted = _extract_last_json_object(result.get("output", ""))
                 if _extracted:
                     result = {**_extracted, **result}
-                _record_turns(db, run_id, turns, False)
+                record_turns(db, run_id, turns, False)
                 _close_session()
                 return result
 
@@ -820,7 +677,7 @@ def _execute_brain(
                     # #2401: capture before close — a closed session has no artifacts.
                     files_changed, diff_stat = session.capture_artifacts() if session else ([], "")
                     _close_session()
-                    _record_turns(db, run_id, turns, False)
+                    record_turns(db, run_id, turns, False)
                     return {
                         "output": tc.input.get("result", ""),
                         "structured_output": tc.input.get("output"),
@@ -1172,7 +1029,7 @@ def _execute_brain(
                 "cost_usd": cost_usd,
                 "note": "rollback_on_failure=true — full git revert is a follow-up action",
             })
-        _record_turns(db, run_id, turns, True)  # #2401: turns used, not the cap
+        record_turns(db, run_id, turns, True)  # #2401: turns used, not the cap
         _close_session()
         raise RuntimeError(
             f"Turn budget exhausted: agent did not reach end_turn after {max_turns} turns "
@@ -1180,98 +1037,4 @@ def _execute_brain(
         )
 
     else:
-        # Single call (no tools)
-        _cached = _cache_get(run_id, block_id, 0)
-        if _cached is not None:
-            from app.runtime.llm_client import LLMResponse as _LLMResponse
-            response = _LLMResponse.from_cache_dict(_cached)
-            response.cost_usd = 0.0  # ponytail: no charge on replay
-            log.debug("brain.llm_cache_hit", run_id=run_id, block_id=block_id, turn=0)
-        else:
-            _fe_idx = state.get("__for_each_index")
-            _idem_key = (
-                f"conduct-{run_id}-{block_id}-0"
-                + (f"-fe{_fe_idx}" if _fe_idx is not None else "")
-            ) if run_id and block_id else None
-            def _on_retry_single(info: dict) -> None:
-                if db and run_id:
-                    _emit(db, run_id, block_id, "llm_upstream_retry", {
-                        **info, "turn": 0,
-                        "block_attempt": state.get("__block_attempt", 1),
-                    })
-            _outer_attempt = int(state.get("__block_attempt", 1))
-            try:
-                response = llm.create(
-                    model=model_id,
-                    max_tokens=2048,
-                    system=system_prompt,
-                    messages=[{"role": "user", "content": user_message}],
-                    idempotency_key=_idem_key,
-                    on_retry=_on_retry_single,
-                    outer_attempt=_outer_attempt,
-                )
-            except LLMUpstreamError as _up_err:
-                if db and run_id:
-                    _emit(db, run_id, block_id, "llm_upstream_blocked", {
-                        "provider": _up_err.provider,
-                        "status": _up_err.status,
-                        "content_type": _up_err.content_type,
-                        "attempts": _up_err.attempts,
-                        "cf_ray": _up_err.cf_ray,
-                        "render_request_id": _up_err.request_id,
-                        "body_snippet": _up_err.body_snippet,
-                        "turn": 0,
-                        "base_url": _conduct_proxy_url,
-                        "is_final": True,
-                        "block_attempt": state.get("__block_attempt", 1),
-                    })
-                log.error("brain.llm_upstream_blocked",
-                          provider=_up_err.provider, status=_up_err.status,
-                          cf_ray=_up_err.cf_ray, render_req=_up_err.request_id,
-                          attempts=_up_err.attempts,
-                          run_id=run_id, block_id=block_id)
-                _close_session()  # #2401: don't leak the sandbox
-                raise
-            except Exception:
-                _close_session()  # #2401: don't leak the sandbox
-                raise
-            _cache_set(run_id, block_id, 0, response.to_cache_dict())
-        text = next((b.text for b in response.content if isinstance(b, LLMTextBlock)), "")
-        if db and run_id and block_id:
-            _emit(db, run_id, block_id, "brain_tool_call", {
-                "turn": 1,
-                "tool": "single_call",
-                "summary": text[:300],
-                "input": user_message[:600],
-                "output": text,
-                "model": model_id,
-                "provider": provider,
-                "input_tokens": response.usage.input_tokens,
-                "output_tokens": response.usage.output_tokens,
-            })
-            _write_trace(db, run_id, block_id, 1, "user",
-                         content=user_message[:8000] if user_message else None)
-            _write_trace(db, run_id, block_id, 1, "assistant",
-                         content=text[:8000] if text else None,
-                         input_tokens=response.usage.input_tokens,
-                         output_tokens=response.usage.output_tokens)
-        result = {
-            "output": text,
-            "turns": 1,
-            "input_tokens": response.usage.input_tokens,
-            "output_tokens": response.usage.output_tokens,
-            "cost_usd": response.cost_usd,
-            "provider": provider,
-            "model": model_id,
-            "routing_reason": routing_reason,
-            "pricing_version": pricing_version,
-            "pricing_rates": pricing_rates,
-            "upstream_url": _conduct_proxy_url,
-            "llm_upstream": _env_vars.get("PROXY_CONFIG_LLM_UPSTREAM") or None,
-        }
-        _extracted = _extract_last_json_object(result.get("output", ""))
-        if _extracted:
-            result = {**_extracted, **result}
-        _record_turns(db, run_id, 1, False)  # #2401: single call is one turn
-        _close_session()
-        return result
+        return run_single_turn(r)
