@@ -18,7 +18,6 @@ that belongs in the integration suite (R2 wiring).
 """
 from __future__ import annotations
 
-import inspect
 
 from app.modules.guard.gateway_lifecycle import DurableRow
 
@@ -49,8 +48,8 @@ def test_handler_uses_request_id_not_row_id_for_reservation():
         _audit_request_id = _durable.request_id or _durable_row_id
     and passes _audit_request_id to reserve_budgets_for_request.
     Grep-guard against a regression to _durable_row_id."""
-    import app.modules.guard.gateway_handler as gh
-    src = inspect.getsource(gh)
+    from tests.guard._gateway_handler_sources import gateway_lifecycle_source
+    src = gateway_lifecycle_source()
     assert "_audit_request_id = _durable.request_id or _durable_row_id" in src, (
         "R5 correlation missing: handler must derive _audit_request_id "
         "from _durable.request_id."
@@ -75,8 +74,8 @@ def test_refusal_branch_finalizes_before_close():
     _finalize_durable_row with decision='blocked' + a refusal rule_id
     BEFORE cancelling the renewal task. Pre-fix only close_durable was
     called; the audit row stayed 'accepted' until lease expiry."""
-    import app.modules.guard.gateway_handler as gh
-    src = inspect.getsource(gh)
+    from tests.guard._gateway_handler_sources import gateway_lifecycle_source
+    src = gateway_lifecycle_source()
 
     # Locate the fail-closed branch.
     branch_start = src.index("# Reserve failed = fail-closed reject")
@@ -97,8 +96,8 @@ def test_refusal_rule_ids_are_specific_per_outcome():
     """Each reserve outcome should map to a distinct rule_id so the
     drawer + Flight Recorder can label the refusal precisely (over
     cap vs unavailable vs cold-start vs generic error)."""
-    import app.modules.guard.gateway_handler as gh
-    src = inspect.getsource(gh)
+    from tests.guard._gateway_handler_sources import gateway_lifecycle_source
+    src = gateway_lifecycle_source()
     for rule in (
         "guard.budget_cap_exceeded",
         "guard.budget_ledger_not_ready",

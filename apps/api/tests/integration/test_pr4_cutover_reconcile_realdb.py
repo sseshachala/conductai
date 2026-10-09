@@ -397,10 +397,9 @@ def test_gateway_handler_writes_receipts_before_settling():
     BEFORE ``_settle_reservations`` on both the non-streaming and
     streaming settlement paths. Reversing that ordering leaves
     committed spend without recovery-authoritative evidence."""
-    import inspect
-    from app.modules.guard import gateway_handler
+    from tests.guard._gateway_handler_sources import gateway_lifecycle_source
 
-    src = inspect.getsource(gateway_handler)
+    src = gateway_lifecycle_source()
     # Non-streaming: receipts write logs 'receipts_partial_skip_settle'
     # and settle is gated on ``_receipts_durable``.
     assert "_receipts_durable" in src

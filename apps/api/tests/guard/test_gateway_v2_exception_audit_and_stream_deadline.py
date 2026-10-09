@@ -20,13 +20,10 @@ handler wiring so a future edit can't reintroduce either regression.
 """
 from __future__ import annotations
 
-from pathlib import Path
+from tests.guard._gateway_handler_sources import gateway_lifecycle_source
 
 
-_HANDLER_SRC = (
-    Path(__file__).resolve().parents[2]
-    / "app" / "modules" / "guard" / "gateway_handler.py"
-).read_text(encoding="utf-8")
+_HANDLER_SRC = gateway_lifecycle_source()  # handler + #2399 phase modules
 
 
 # ─── Z1 ───────────────────────────────────────────────────────────────

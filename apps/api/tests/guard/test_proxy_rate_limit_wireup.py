@@ -9,15 +9,14 @@ those prove check_rate_limit works; this proves the proxy calls it.
 """
 from __future__ import annotations
 
-import inspect
 
 import pytest
 
 
 def test_proxy_module_imports_check_rate_limit():
     """The proxy module source must contain the check_rate_limit import."""
-    from app.modules.guard import gateway_handler as proxy
-    source = inspect.getsource(proxy)
+    from tests.guard._gateway_handler_sources import gateway_lifecycle_source
+    source = gateway_lifecycle_source()
     assert "check_rate_limit" in source, (
         "Proxy hot path is missing check_rate_limit — #1587 E1 wire-in "
         "was reverted or refactored away. See migration 0096 for the "
@@ -29,8 +28,8 @@ def test_proxy_returns_429_on_rate_limit():
     """The wire-in must convert `limited=True` into a 429 response,
     not a silent pass. Grep for the specific error code so a refactor
     that changes the response code (e.g., to 503) trips this test."""
-    from app.modules.guard import gateway_handler as proxy
-    source = inspect.getsource(proxy)
+    from tests.guard._gateway_handler_sources import gateway_lifecycle_source
+    source = gateway_lifecycle_source()
     # Find the block that references _rate.limited and confirm 429 lives
     # within a small window (30 lines) — tolerates reformatting.
     idx = source.find("_rate.limited")
