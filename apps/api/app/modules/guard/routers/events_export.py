@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from typing import Literal
 from uuid import UUID
 
+import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
@@ -12,6 +13,7 @@ from app.core.database import get_db
 from app.modules.guard import audit_export as ax
 from app.modules.guard.routers.policies_helpers import _write_audit
 
+log = structlog.get_logger(__name__)
 router = APIRouter(prefix="/guard/events", tags=["guard"])
 
 _MEDIA = {"ndjson": "application/x-ndjson", "csv": "text/csv"}
@@ -44,11 +46,20 @@ def export_events(
     rows = min(total, ax.AUDIT_EXPORT_MAX_ROWS)
     capped = total > ax.AUDIT_EXPORT_MAX_ROWS
 
-    _write_audit(
-        db, ws_uuid, "audit.export", "audit_export", "export", actor_id=user_id,
-        details=(f"since={since.isoformat()} until={until.isoformat()} format={format} "
-                 f"rows={rows} capped={capped} decision={decisions or '*'} tool={tool or '*'}"),
-    )
+    # Fail closed: the export is recorded (and committed) before any row is sent.
+    # The streamed count isn't known yet, so record the capped COUNT instead.
+    try:
+        _write_audit(
+            db, ws_uuid, "audit.export", "audit_export", "export", actor_id=user_id,
+            details=(f"since={since.isoformat()} until={until.isoformat()} format={format} "
+                     f"matching_rows={total} max_rows={rows} capped={capped} "
+                     f"decision={decisions or '*'} tool={tool or '*'} "
+                     "(counted before streaming, not the streamed row count)"),
+            raise_on_error=True,
+        )
+    except Exception as exc:
+        log.error("audit_export.audit_write_failed", error=str(exc))
+        raise HTTPException(status_code=503, detail="Audit export unavailable: could not record the export") from exc
     headers = {
         "Content-Disposition": f'attachment; filename="{ax.export_filename(since, until, format)}"',
         "X-Conduct-Export-Capped": "true" if capped else "false",

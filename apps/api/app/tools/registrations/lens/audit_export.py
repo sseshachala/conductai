@@ -15,6 +15,11 @@ from app.tools.registrations.lens._shared import _LENS_TAGS, _READ_ONLY, _TS_SIN
 from app.tools.types import ToolDef
 
 
+FILTERED_HINT = ("Filtered export: rows are not contiguous. Verify with: conduct audit verify "
+                 "--allow-gaps <file>. For auditor evidence, export without filters.")
+UNFILTERED_HINT = "conduct audit verify <file>"
+
+
 def export_audit_log(ctx, since: str, until: str, format: str = "ndjson",
                      decision: str | list[str] | None = None, tool: str | None = None):
     """Summarise an audit export for [since, until] and return its download path."""
@@ -49,6 +54,7 @@ def export_audit_log(ctx, since: str, until: str, format: str = "ndjson",
         head, tail = ax.edge_hashes(db, ws, start, effective_end, decisions, tool)
     finally:
         db.close()
+    filtered = bool(decisions or tool)
     return {
         "kind": "audit_export",
         "row_count": min(total, ax.AUDIT_EXPORT_MAX_ROWS),
@@ -60,6 +66,8 @@ def export_audit_log(ctx, since: str, until: str, format: str = "ndjson",
         "head_hash": head,
         "tail_hash": tail,
         "download_path": ax.download_path(start, end, fmt, decisions, tool),
+        "filtered": filtered,
+        "verify_hint": FILTERED_HINT if filtered else UNFILTERED_HINT,
     }
 
 
@@ -71,7 +79,7 @@ TOOLS: list[ToolDef] = [ToolDef(
         "log or audit trail. Returns a summary (row_count, range, chain head/tail hashes, whether the "
         "100,000-row cap was hit) and a download_path the UI renders as a Download button; the file "
         "itself is not returned. Resolve relative ranges ('last week') to ISO-8601 since/until. "
-        "Report row_count, and say so when capped is true. Needs the platform.audit_log.view permission."
+        "Report row_count, say so when capped is true, and relay verify_hint to the user.Needs the platform.audit_log.view permission."
     ),
     input_schema={
         "type": "object",

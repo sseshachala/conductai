@@ -39,7 +39,8 @@ def test_lens_tool_result_shape_is_exact(lens_env):
     blocked = Session().query(GuardAuditEvent).filter_by(
         workspace_id=uuid.UUID(WS), decision="blocked").one()
     assert list(res) == ["kind", "row_count", "since", "until", "format", "capped", "cap",
-                         "head_hash", "tail_hash", "download_path"]
+                         "head_hash", "tail_hash", "download_path", "filtered", "verify_hint"]
+    assert res["filtered"] is True and "--allow-gaps" in res["verify_hint"]
     assert res["kind"] == "audit_export" and res["row_count"] == 1 and res["capped"] is False
     assert res["cap"] == 100_000 and res["format"] == "ndjson"
     assert res["head_hash"] == res["tail_hash"] == blocked.entry_hash
@@ -59,7 +60,16 @@ def test_lens_tool_full_range_hashes_and_count(lens_env):
     rows = Session().query(GuardAuditEvent).filter_by(
         workspace_id=uuid.UUID(WS)).order_by(GuardAuditEvent.ts).all()
     assert res["row_count"] == 5 and res["format"] == "csv"
+    assert res["filtered"] is False and res["verify_hint"] == "conduct audit verify <file>"
     assert (res["head_hash"], res["tail_hash"]) == (rows[0].entry_hash, rows[-1].entry_hash)
+
+
+def test_lens_tool_tool_filter_is_filtered_and_description_relays_hint(lens_env):
+    from app.tools.registrations.lens.audit_export import FILTERED_HINT, export_audit_log
+    from app.tools.registry import default_registry
+    res = export_audit_log(_Ctx(), since="2026-09-01T11:00:00Z", until="2026-09-01T13:00:00Z", tool="Bash")
+    assert res["filtered"] is True and res["verify_hint"] == FILTERED_HINT
+    assert "verify_hint" in default_registry.get("export_audit_log").description
 
 
 def test_lens_tool_refuses_without_permission(lens_env):
