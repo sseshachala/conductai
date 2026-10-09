@@ -153,3 +153,26 @@ def test_rebuilding_from_stored_evidence_is_deterministic():
     first = evidence(slice_(provider_response_id="msg_abc"), slice_(model="gpt-6.1-sol", provider="openai"))
     again = build_evidence(first["slices"], first["observed_at"])
     assert again["slices"] == first["slices"] and again["estimated_microdollars"] == first["estimated_microdollars"]
+
+
+@pytest.fixture
+def registry(monkeypatch):
+    """Real default registry with an empty LiteLLM table: any price must come from our table."""
+    service = PricingService()
+    monkeypatch.setattr("app.modules.guard.session_usage.default_pricing_service", lambda: service)
+    monkeypatch.setattr("app.runtime.litellm_rates._cost_map", lambda: {})
+
+
+def test_opus_5_5_priced_from_our_registry_with_tiers(registry):
+    result = evidence(slice_(cache_read_tokens=1000, cache_write_tokens=1000))
+    part = result["slices"][0]
+    assert "pricing_source" not in part and "+litellm" not in result["pricing_version"]
+    assert part["cache_write_tier_assumed"] == "5m"
+    # input 4 + cache_read 0.20 + cache_write(5m) 5 + output 20, per 1M tokens
+    assert result["estimated_microdollars"] == 1000 * 4 + 1000 * 0.2 + 1000 * 5 + 100 * 20
+
+
+def test_gpt_6_1_sol_priced_from_our_registry(registry):
+    result = evidence(slice_(model="gpt-6.1-sol", provider="openai", cache_read_tokens=500, cache_write_tokens=100))
+    assert "pricing_source" not in result["slices"][0] and "+litellm" not in result["pricing_version"]
+    assert result["estimated_microdollars"] == 1000 * 2 + 500 * 0.1 + 100 * 2.5 + 100 * 10

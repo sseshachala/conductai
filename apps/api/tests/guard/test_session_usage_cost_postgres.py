@@ -212,3 +212,23 @@ def test_backfill_apply_prices_and_is_idempotent(database):
     assert gsession.total_cost_usd == pytest.approx(0.006)
     assert db.execute(select(GuardAuditEvent.id).where(GuardAuditEvent.cost_usd_after.is_(None),
                       GuardAuditEvent.ts >= backfill.SINCE)).all()  # only the still-unpriced row
+
+
+def test_ingest_and_backfill_price_new_models_from_registry(database, monkeypatch):
+    db, ws = database
+    service = PricingService()
+    monkeypatch.setattr("app.modules.guard.session_usage.default_pricing_service", lambda: service)
+    monkeypatch.setattr("app.runtime.litellm_rates._cost_map", lambda: {})
+    parts = [part(), part(model="gpt-6.1-sol", provider="openai")]
+    event = priced(db, ws, parts)
+    assert event.cost_usd_after == pytest.approx(0.006 + 0.003)
+    assert all("pricing_source" not in s for s in event._session_usage["slices"])
+    row = report(db, ws, uuid4(), estimate=None)
+    row.routing_meta = {"session_usage": {"source": "client_reported", "observed_at": NOW.isoformat(), "slices": parts}}
+    row.ts = datetime(2026, 10, 5, tzinfo=timezone.utc)
+    db.flush()
+    backfill.run(db, apply=True)
+    db.expire_all()
+    assert row.cost_usd_after == pytest.approx(0.009)
+    assert all("pricing_source" not in s for s in row.routing_meta["session_usage"]["slices"])
+    assert "+litellm" not in row.routing_meta["session_usage"]["pricing_version"]
