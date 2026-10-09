@@ -5,13 +5,14 @@ import AppShell from "@/components/AppShell"
 import { GuardShell } from "@/components/guard/GuardShell"
 import {
   GuardFilterBar,
+  GuardList,
   GuardPageHeader,
+  useCursorList,
   type FilterPill,
 } from "@/components/guard/common"
 import { useAuthFetch } from "@/hooks/useAuthFetch"
-import { usePolledFetch } from "@/hooks/usePolledFetch"
+import { usePolledFetch, useLatestRequest } from "@/hooks/usePolledFetch"
 import { guard, guardInbox } from "@/lib/api"
-import { API } from "@/lib/api/client"
 import type {
   InboxRow,
   InboxEvent,
@@ -20,16 +21,18 @@ import type {
   InboxSource,
   ResolvedReason,
 } from "@/lib/api"
-import { AwaitingApprovals, type PendingApproval, type ApprovalListOut } from "./_components/AwaitingApprovals"
-import { InboxRowList } from "./_components/InboxRowList"
+import { AwaitingApprovals } from "./_components/AwaitingApprovals"
+import { InboxRowItem } from "./_components/InboxRowItem"
+import { useInboxApprovals } from "./_components/useInboxApprovals"
+
+const PAGE_SIZE = 50
+const rowId = (r: InboxRow) => r.id
 
 // ─── Page ─────────────────────────────────────────────────────────────────
 
 export default function GuardInboxPage() {
   const { authFetch, workspaceId } = useAuthFetch()
-  const [rows, setRows] = useState<InboxRow[]>([])
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
   const [lastFetched, setLastFetched] = useState<Date | null>(null)
 
   const [statusFilter, setStatusFilter] = useState<InboxStatus | "all">("open")
@@ -70,150 +73,63 @@ export default function GuardInboxPage() {
   //   - Workspace change hard-resets workspace-scoped state via the
   //     effect below; any in-flight response can't repopulate.
 
-  // ── Awaiting Approval fetch + decide (PR 2, race protection round 2) ──
-  const [approvals, setApprovals] = useState<PendingApproval[]>([])
-  const [approvalsError, setApprovalsError] = useState<string | null>(null)
-  const [decidingId, setDecidingId] = useState<string | null>(null)
-  // Per-row rejection reason input. Reviewer P1 (round 2): the API
-  // requires a non-empty reason on reject; the previous "send
-  // undefined" always 400'd. Keep the input inline, one row's worth
-  // of state at a time.
-  const [rejectingId, setRejectingId] = useState<string | null>(null)
-  const [rejectReason, setRejectReason] = useState<string>("")
-  const approvalsEpochRef = useRef(0)
+  // ── Inbox findings: offset paging (50/page) via useCursorList ──
+  const {
+    approvals, approvalsError, decidingId, rejectingId, rejectReason, setRejectReason,
+    loadApprovals, submitDecision, beginReject, confirmReject, cancelReject,
+  } = useInboxApprovals(workspaceId)
 
-  const loadApprovals = useCallback(async (opts?: { background?: boolean }) => {
-    const myEpoch = ++approvalsEpochRef.current
-    if (!opts?.background) setApprovalsError(null)
-    try {
-      const res = await authFetch(`${API}/guard/approvals?status=pending&limit=50`)
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}))
-        throw new Error(body?.detail || `HTTP ${res.status}`)
-      }
-      const data: ApprovalListOut = await res.json()
-      if (myEpoch !== approvalsEpochRef.current) return
-      // Reviewer P2 (round 2): the list endpoint sweeps pending rows to
-      // timed_out and RETURNS them. Filter here so we don't render
-      // Approve/Reject buttons for something the backend will 409 on.
-      // Empty status defaults to "pending" (backend contract) so
-      // rows without a status shouldn't happen, but be defensive.
-      const stillActionable = (data.items || []).filter(a =>
-        !("status" in a) || (a as { status?: string }).status === "pending",
-      )
-      setApprovals(stillActionable)
-    } catch (e) {
-      if (myEpoch !== approvalsEpochRef.current) return
-      setApprovalsError(e instanceof Error ? e.message : "approvals load failed")
-    }
-  }, [authFetch])
+  const fetchPage = useCallback((_before?: string, offset = 0) => guardInbox.list(authFetch, {
+    status: statusFilter === "all" ? undefined : statusFilter,
+    severity: severityFilter === "all" ? undefined : severityFilter,
+    source: sourceFilter === "all" ? undefined : sourceFilter,
+    limit: PAGE_SIZE,
+    offset,
+  // workspaceId is a dep so a workspace switch resets the list.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [authFetch, workspaceId, statusFilter, severityFilter, sourceFilter])
+  const list = useCursorList<InboxRow>(fetchPage, { mode: "offset", limit: PAGE_SIZE, cursorOf: rowId })
+  const { rows, setRows, reload } = list
+  const error = actionError ?? list.error
 
-  const submitDecision = useCallback(async (
-    id: string,
-    decision: "approved" | "rejected",
-    reason?: string,
-  ) => {
-    setDecidingId(id)
-    setApprovalsError(null)
-    try {
-      const res = await authFetch(`${API}/guard/approvals/${id}/decide`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ decision, reason }),
-      })
-      if (res.status === 409) {
-        const body = await res.json().catch(() => ({}))
-        setApprovalsError(body?.detail || "Another approver already decided this request.")
-      } else if (!res.ok) {
-        const body = await res.json().catch(() => ({ detail: `HTTP ${res.status}` }))
-        throw new Error(body?.detail || `HTTP ${res.status}`)
-      }
-      // Refresh from the server so approved/rejected rows disappear
-      // and any concurrent expiries show up.
-      await loadApprovals({ background: true })
-      // Reset any open reject-reason input.
-      setRejectingId(null)
-      setRejectReason("")
-    } catch (e) {
-      setApprovalsError(e instanceof Error ? e.message : "decide failed")
-    } finally {
-      setDecidingId(null)
-    }
-  }, [authFetch, loadApprovals])
-
-  const beginReject = useCallback((id: string) => {
-    // First click on Reject expands the reason input. Second click
-    // (Submit) hits the server with a required non-empty reason.
-    setRejectingId(id)
-    setRejectReason("")
-  }, [])
-
-  const confirmReject = useCallback(async (id: string) => {
-    const reason = rejectReason.trim()
-    if (!reason) {
-      setApprovalsError("A reason is required when rejecting an approval.")
-      return
-    }
-    await submitDecision(id, "rejected", reason)
-  }, [rejectReason, submitDecision])
-
-  const cancelReject = useCallback(() => {
-    setRejectingId(null)
-    setRejectReason("")
-  }, [])
-
-  // ── Inbox findings fetch ──
-  const epochRef = useRef(0)
-
-  const load = useCallback(async (opts?: { background?: boolean }) => {
-    const myEpoch = ++epochRef.current
-    if (!opts?.background) setLoading(true)
-    setError(null)
-    try {
-      const data = await guardInbox.list(authFetch, {
-        status: statusFilter === "all" ? undefined : statusFilter,
-        severity: severityFilter === "all" ? undefined : severityFilter,
-        source: sourceFilter === "all" ? undefined : sourceFilter,
-        limit: 200,
-      })
-      if (myEpoch !== epochRef.current) return  // stale — a newer fetch already ran
-      setRows(data)
-      setLastFetched(new Date())
-    } catch (e) {
-      if (myEpoch !== epochRef.current) return
-      setError(e instanceof Error ? e.message : "load failed")
-    } finally {
-      // Only clear loading if we're still the most-recent fetch;
-      // otherwise the newer fetch owns the spinner state.
-      if (myEpoch === epochRef.current && !opts?.background) setLoading(false)
-    }
-  }, [authFetch, statusFilter, severityFilter, sourceFilter])
-
-  // Workspace change: hard-reset workspace-scoped state so a late
-  // response from the previous workspace can't repopulate either the
-  // findings list or the approvals section. Both epoch refs bump so
-  // any in-flight fetch fails its freshness check on return.
+  // Workspace change: clear workspace-scoped UI state (the list and approvals reset themselves).
   useEffect(() => {
-    epochRef.current += 1
-    approvalsEpochRef.current += 1
-    setRows([])
-    setError(null)
+    setActionError(null)
     setExpandedId(null)
     setEvents({})
     setLastFetched(null)
-    setApprovals([])
-    setApprovalsError(null)
-    setRejectingId(null)
-    setRejectReason("")
   }, [workspaceId])
 
-  useEffect(() => { void load() }, [load])
-  useEffect(() => { void loadApprovals() }, [loadApprovals])
+  useEffect(() => { if (!list.loading && !list.error) setLastFetched(new Date()) }, [list.loading, list.error])
+
+  // Background refresh: re-fetch page 1, update known rows in place, prepend
+  // unseen ones. Loaded pages are never dropped.
+  const beginRefresh = useLatestRequest()
+  const fetchRef = useRef(fetchPage)
+  fetchRef.current = fetchPage
+  const refresh = useCallback(async () => {
+    const fp = fetchPage
+    const isCurrent = beginRefresh()
+    try {
+      const page = await fp(undefined, 0)
+      if (!isCurrent() || fetchRef.current !== fp) return
+      setRows(prev => {
+        const incoming = new Map(page.map(r => [r.id, r] as const))
+        const known = new Set(prev.map(r => r.id))
+        // Endpoint sorts last_seen_at DESC. A loaded row inside the fresh window (at/after the
+        // oldest row of a full page; everything if the page is short) but absent from it has left the filter.
+        const floor = page.length >= PAGE_SIZE ? Date.parse(page[page.length - 1].last_seen_at) : -Infinity
+        const kept = prev.filter(r => incoming.has(r.id) || Date.parse(r.last_seen_at) < floor)
+        return [...page.filter(r => !known.has(r.id)), ...kept.map(r => incoming.get(r.id) ?? r)]
+      })
+      setLastFetched(new Date())
+    } catch { /* background: keep the current rows */ }
+  }, [fetchPage, beginRefresh, setRows])
 
   // 15s polling while the tab is visible (pauses while hidden, refreshes on
   // return). Ticks BOTH inbox findings and pending approvals.
   usePolledFetch(() => {
-    void load({ background: true })
+    void refresh()
     void loadApprovals({ background: true })
   }, 15_000)
 
@@ -268,7 +184,7 @@ export default function GuardInboxPage() {
         const ev = await guardInbox.events(authFetch, row.id, 20)
         setEvents(prev => ({ ...prev, [row.id]: ev }))
       } catch (e) {
-        setError(e instanceof Error ? e.message : "events load failed")
+        setActionError(e instanceof Error ? e.message : "events load failed")
       }
     }
   }, [authFetch, events, expandedId])
@@ -283,13 +199,14 @@ export default function GuardInboxPage() {
         resolved_reason: next === "resolved" ? reason : undefined,
         resolved_note: next === "resolved" ? note : undefined,
       })
+      setActionError(null)
       setRows(prev => prev.map(r => (r.id === row.id ? updated : r)))
     } catch (e) {
-      setError(e instanceof Error ? e.message : "update failed")
+      setActionError(e instanceof Error ? e.message : "update failed")
     } finally {
       setBusyId(null)
     }
-  }, [authFetch, reasonMap, noteMap])
+  }, [authFetch, reasonMap, noteMap, setRows])
 
   const runBackfill = useCallback(async () => {
     setBackfillBusy(true)
@@ -305,14 +222,15 @@ export default function GuardInboxPage() {
       setBackfillMsg(
         `Synced last ${r.days} days — ${r.inserted} new, ${r.reconciled} reconciled.`,
       )
-      await load()
+      await reload()
     } catch (e) {
       setBackfillMsg(e instanceof Error ? e.message : "backfill failed")
     } finally {
       setBackfillBusy(false)
     }
-  }, [authFetch, backfillDays, load])
+  }, [authFetch, backfillDays, reload])
 
+  // Counts come from loaded rows only; with more pages they are lower bounds ("50+").
   const counts = useMemo(() => {
     const c = { open: 0, triaging: 0, resolved: 0 }
     for (const r of rows) {
@@ -322,6 +240,7 @@ export default function GuardInboxPage() {
     }
     return c
   }, [rows])
+  const countLabel = (n: number) => (list.hasMore ? `${n}+` : n)
 
   return (
     <AppShell>
@@ -440,9 +359,9 @@ export default function GuardInboxPage() {
 
         <GuardFilterBar<InboxStatus | "all">
           pills={([
-            { value: "open",     label: "Open",     count: counts.open },
-            { value: "triaging", label: "Triaging", count: counts.triaging },
-            { value: "resolved", label: "Resolved", count: counts.resolved },
+            { value: "open",     label: "Open",     count: countLabel(counts.open) },
+            { value: "triaging", label: "Triaging", count: countLabel(counts.triaging) },
+            { value: "resolved", label: "Resolved", count: countLabel(counts.resolved) },
             { value: "all",      label: "All" },
           ] as const) as readonly FilterPill<InboxStatus | "all">[]}
           active={statusFilter}
@@ -489,35 +408,38 @@ export default function GuardInboxPage() {
           </div>
         )}
 
-        {loading && rows.length === 0 && (
-          <div style={{ fontSize: 12, color: "var(--text-muted)", padding: 20, textAlign: "center" }}>
-            Loading…
-          </div>
-        )}
-
-        {!loading && rows.length === 0 && (
-          <div style={{
-            fontSize: 13, color: "var(--text-muted)", padding: 40, textAlign: "center",
-            background: "var(--surface)", border: "1px dashed var(--border)", borderRadius: 6,
-          }}>
-            No events in this view. Blocked, warned, and approved decisions land here as they happen.
-          </div>
-        )}
-
-        {rows.length > 0 && (
-          <InboxRowList
-            rows={rows}
-            expandedId={expandedId}
-            events={events}
-            toggleExpand={toggleExpand}
-            reasonMap={reasonMap}
-            setReasonMap={setReasonMap}
-            noteMap={noteMap}
-            setNoteMap={setNoteMap}
-            busyId={busyId}
-            applyStatus={applyStatus}
-          />
-        )}
+        <GuardList
+          rows={rows}
+          getKey={rowId}
+          loading={list.loading}
+          hasMore={list.hasMore}
+          onLoadMore={list.loadMore}
+          loadingMore={list.loadingMore}
+          emptyState={
+            <div style={{
+              fontSize: 13, color: "var(--text-muted)", padding: 40, textAlign: "center",
+              background: "var(--surface)", border: "1px dashed var(--border)", borderRadius: 6,
+            }}>
+              No events in this view. Blocked, warned, and approved decisions land here as they happen.
+            </div>
+          }
+          wrap={items => <div style={{ border: "1px solid var(--border)", borderRadius: 6, overflow: "hidden" }}>{items}</div>}
+          renderRow={(row, idx) => (
+            <InboxRowItem
+              row={row}
+              idx={idx}
+              expandedId={expandedId}
+              events={events}
+              toggleExpand={toggleExpand}
+              reasonMap={reasonMap}
+              setReasonMap={setReasonMap}
+              noteMap={noteMap}
+              setNoteMap={setNoteMap}
+              busyId={busyId}
+              applyStatus={applyStatus}
+            />
+          )}
+        />
       </GuardShell>
     </AppShell>
   )

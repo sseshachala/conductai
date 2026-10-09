@@ -7,6 +7,7 @@ import { GuardShell } from "@/components/guard/GuardShell"
 import {
   GuardBadge,
   GuardFilterBar,
+  GuardList,
   GuardPageHeader,
   timeAgo,
   type FilterPill,
@@ -194,18 +195,18 @@ export default function ApprovalsPage() {
           </div>
         )}
 
-        {loading && items.length === 0 && (
-          <div style={{ padding: 40, textAlign: "center", color: "var(--text-muted)" }}>Loading…</div>
-        )}
-
-        {!loading && items.length === 0 && !err && (
-          <div style={{ padding: 40, textAlign: "center", color: "var(--text-muted)" }}>
-            No {filter === "all" ? "" : STATUS_LABEL[filter as ApprovalStatus].toLowerCase()} approvals.
-          </div>
-        )}
-
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {items.map(row => {
+        <GuardList
+          rows={items}
+          getKey={row => row.id}
+          loading={loading && items.length === 0}
+          skeletonGap
+          emptyState={err ? null : (
+            <div style={{ padding: 40, textAlign: "center", color: "var(--text-muted)" }}>
+              No {filter === "all" ? "" : STATUS_LABEL[filter as ApprovalStatus].toLowerCase()} approvals.
+            </div>
+          )}
+          wrap={rows => <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>{rows}</div>}
+          renderRow={row => {
             const isExpanded = expandedId === row.id
             const isPending = row.status === "pending"
             return (
@@ -379,8 +380,8 @@ export default function ApprovalsPage() {
                 )}
               </div>
             )
-          })}
-        </div>
+          }}
+        />
       </GuardShell>
     </AppShell>
   )

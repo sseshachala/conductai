@@ -40,40 +40,6 @@ function ReportRow({ r, i }: { r: SessionReport; i: number }) {
   )
 }
 
-export function SessionReportsView({ reports, reportsLoading, reportsError }: {
-  reports: SessionReport[]
-  reportsLoading: boolean
-  reportsError: string | null
-}) {
-  return (
-    reportsError ? (
-      <div style={{ borderRadius: 8, border: "1px solid var(--err-bd)", background: "var(--err-bg)", padding: "10px 16px", fontSize: 13, color: "var(--err)", marginBottom: 16 }}>
-        {reportsError}
-      </div>
-    ) : reportsLoading ? (
-      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        {[...Array(4)].map((_, i) => <div key={i} style={{ height: 44, background: "var(--surface-2)", borderRadius: 8, opacity: 0.6 }} />)}
-      </div>
-    ) : reports.length === 0 ? (
-      <div className="card" style={{ padding: "40px 24px", textAlign: "center", fontSize: 13, color: "var(--text-muted)" }}>
-        No session reports yet. Developers run <code style={{ fontSize: 12 }}>conduct session-report</code> to push data here.
-      </div>
-    ) : (
-      <div className="card" style={{ overflow: "hidden" }}>
-        <div style={{ display: "grid", gridTemplateColumns: COLS, gap: 12, padding: "10px 18px", borderBottom: "1px solid var(--border)", background: "var(--surface-2)" }}>
-          {REPORT_HEADERS.map(h => (
-            <div key={h} className="eyebrow" style={{ fontSize: 9.5 }}>{h}</div>
-          ))}
-        </div>
-        {reports.map((r, i) => <ReportRow key={r.id} r={r} i={i} />)}
-        <div style={{ borderTop: "1px solid var(--border)", padding: "8px 18px", textAlign: "center", fontSize: 12, color: "var(--text-muted)" }}>
-          {reports.length} {reports.length === 1 ? "report" : "reports"}
-        </div>
-      </div>
-    )
-  )
-}
-
 /** Self-paging session reports (50 per page, `before` cursor on created_at). */
 export function SessionReportsList({ workspaceId }: { workspaceId: string | null }) {
   const { authFetch } = useAuthFetch()

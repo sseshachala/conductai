@@ -43,11 +43,17 @@ export function useGuardEventsFeed(params: Params) {
   const [streaming, setStreaming] = useState(false)
   // #1990 item D — drift between server clock and browser clock (see page).
   const [serverTimeDrift, setServerTimeDrift] = useState<number>(0)
-  const offsetRef = useRef(0)
+  // Unseen rows from poll/SSE held back so the list doesn't jump under the cursor.
+  const [pending, setPending] = useState<AuditEvent[]>([])
+  const eventsRef = useRef<AuditEvent[]>([])
+  eventsRef.current = events
+  const pendingRef = useRef<AuditEvent[]>([])
+  pendingRef.current = pending
   const esRef = useRef<EventSource | null>(null)
 
-  function buildParams(offset: number) {
-    const p = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String(offset) })
+  function buildParams(before?: string) {
+    const p = new URLSearchParams({ limit: String(PAGE_SIZE) })
+    if (before) p.set("before", before)
     if (teamId) p.set("workspace_id", teamId)
     if (filterEventId) {
       p.set("event_id", filterEventId)
@@ -69,6 +75,37 @@ export function useGuardEventsFeed(params: Params) {
   }, [teamLoading, teamId])
 
   const beginLoad = useLatestRequest()
+
+  // Merge incoming rows (newest first). Known rows update in place; unseen rows
+  // prepend directly when the user is at the top of the page, else wait in `pending`.
+  const intake = useCallback((incoming: AuditEvent[], cap?: number) => {
+    const upd = new Map(incoming.map(r => [r.id, r] as const))
+    const known = new Set(eventsRef.current.map(r => r.id))
+    const waiting = new Set(pendingRef.current.map(r => r.id))
+    const fresh = incoming.filter(r => !known.has(r.id) && !waiting.has(r.id))
+    const apply = (rows: AuditEvent[]) => rows.map(r => upd.get(r.id) ?? r)
+    const atTop = typeof window === "undefined" || window.scrollY <= 8
+    if (atTop) {
+      setPending([])
+      setEvents(prev => {
+        const merged = [...pendingRef.current, ...fresh, ...apply(prev)]
+        return cap ? merged.slice(0, cap) : merged
+      })
+    } else {
+      setEvents(prev => apply(prev))
+      setPending(prev => [...fresh, ...apply(prev)].slice(0, cap ?? Infinity))
+    }
+  }, [])
+
+  const showNew = useCallback(() => {
+    const rows = pendingRef.current
+    setPending([])
+    setEvents(prev => {
+      const known = new Set(prev.map(r => r.id))
+      return [...rows.filter(r => !known.has(r.id)), ...prev]
+    })
+    if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" })
+  }, [])
   const foregroundInFlight = useRef(false)
 
   // Foreground load (mount / filter change) resets the list and shows the
@@ -83,24 +120,18 @@ export function useGuardEventsFeed(params: Params) {
       foregroundInFlight.current = true
       setLoading(true)
       setError(null)
-      offsetRef.current = 0
+      setPending([])
     }
     try {
-      const res = await authFetch(`${API}/guard/events?${buildParams(0)}`)
+      const res = await authFetch(`${API}/guard/events?${buildParams()}`)
       if (!res.ok) throw new Error("Failed to load activity events")
       const rows: AuditEvent[] = await res.json()
       if (!isCurrent()) return
       if (background) {
-        setEvents(prev => {
-          const incoming = new Map(rows.map(r => [r.id, r] as const))
-          const known = new Set(prev.map(r => r.id))
-          const fresh = rows.filter(r => !known.has(r.id))
-          return [...fresh, ...prev.map(r => incoming.get(r.id) ?? r)]
-        })
+        intake(rows)
       } else {
         setEvents(rows)
         setHasMore(rows.length === PAGE_SIZE)
-        offsetRef.current = rows.length
       }
       setLive(true)
       setLastUpdated(new Date())
@@ -115,7 +146,7 @@ export function useGuardEventsFeed(params: Params) {
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authFetch, teamId, effectiveDeveloperFilter, filterTool, filterDecision, filterSince, filterUntil, filterRuleId, filterHookSession, filterAgentIdentity, filterEventId])
+  }, [authFetch, intake, teamId, effectiveDeveloperFilter, filterTool, filterDecision, filterSince, filterUntil, filterRuleId, filterHookSession, filterAgentIdentity, filterEventId])
 
   useEffect(() => { void load() }, [load])
 
@@ -153,29 +184,12 @@ export function useGuardEventsFeed(params: Params) {
             }
           }
           if (Array.isArray(msg.events) && msg.events.length > 0) {
-            setEvents(prev => {
-              // Split incoming into updates (id already in list — durable
-              // finalize UPDATE) and fresh rows so the lifecycle pill flips
-              // in place (#1959 Phase 3). Fresh rows still prepend as before.
-              const byId = new Map(prev.map(ev => [ev.id, ev] as const))
-              const incoming = (msg.events as AuditEvent[]).filter(ev =>
-                (!filterHookSession || ev.hook_session_id === filterHookSession)
-                && (!filterAgentIdentity || ev.agent_identity_id === filterAgentIdentity)
-              )
-              const fresh: AuditEvent[] = []
-              let anyUpdate = false
-              for (const ev of incoming) {
-                if (byId.has(ev.id)) {
-                  byId.set(ev.id, ev)
-                  anyUpdate = true
-                } else {
-                  fresh.push(ev)
-                }
-              }
-              if (!fresh.length && !anyUpdate) return prev
-              const merged = prev.map(ev => byId.get(ev.id) ?? ev)
-              return [...fresh.reverse(), ...merged].slice(0, LIVE_EVENT_CAP)
-            })
+            // Updates (durable finalize UPDATE) flip in place; fresh rows are
+            // held in `pending` unless the user is at the top (#1959 Phase 3).
+            intake((msg.events as AuditEvent[]).filter(ev =>
+              (!filterHookSession || ev.hook_session_id === filterHookSession)
+              && (!filterAgentIdentity || ev.agent_identity_id === filterAgentIdentity)
+            ).reverse(), LIVE_EVENT_CAP)
             setLastUpdated(new Date())
           }
         } catch { /* ignore parse errors */ }
@@ -193,17 +207,21 @@ export function useGuardEventsFeed(params: Params) {
       esRef.current = null
       if (reconnectTimer) clearTimeout(reconnectTimer)
     }
-  }, [streaming, teamId, getToken, filterHookSession, filterAgentIdentity, filterEventId])
+  }, [streaming, intake, teamId, getToken, filterHookSession, filterAgentIdentity, filterEventId])
 
   async function loadMore() {
+    const last = eventsRef.current[eventsRef.current.length - 1]
+    if (!last || loadingMore) return
     setLoadingMore(true)
     try {
-      const res = await authFetch(`${API}/guard/events?${buildParams(offsetRef.current)}`)
+      const res = await authFetch(`${API}/guard/events?${buildParams(`${last.ts}|${last.id}`)}`)
       if (!res.ok) throw new Error("Failed to load more events")
       const rows: AuditEvent[] = await res.json()
-      setEvents(prev => [...prev, ...rows])
+      setEvents(prev => {
+        const known = new Set(prev.map(r => r.id))
+        return [...prev, ...rows.filter(r => !known.has(r.id))]
+      })
       setHasMore(rows.length === PAGE_SIZE)
-      offsetRef.current += rows.length
     } catch {
       // non-fatal
     } finally {
@@ -213,6 +231,6 @@ export function useGuardEventsFeed(params: Params) {
 
   return {
     events, loading, loadingMore, hasMore, error, live, lastUpdated, streaming, setStreaming,
-    serverTimeDrift, loadMore,
+    serverTimeDrift, loadMore, pending, showNew,
   }
 }
