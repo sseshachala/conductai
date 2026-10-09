@@ -70,7 +70,7 @@ async def test_health_probe_responsive_during_blocking_policy_check():
         # regresses (someone drops the threadpool wrap), this call
         # would block the event loop for ``time.sleep`` duration.
         def _sync_body():
-            time.sleep(0.5)  # BLOCKING — real regression shape
+            time.sleep(2.0)  # BLOCKING — real regression shape (2s, so a stall clears the 1s bound)
             return None
 
         # Signal to the test that we've entered the callback, so
@@ -131,7 +131,8 @@ async def test_health_probe_responsive_during_blocking_policy_check():
     # stalls during the initial scheduling that a mid-run yield
     # measurement would miss).
     total_probe_elapsed = time.monotonic() - probe_start
-    assert total_probe_elapsed < 0.5, (
+    # 1s bound: a blocked loop stalls >=2s; healthy runs on loaded CI runners took 0.54-0.6s.
+    assert total_probe_elapsed < 1.0, (
         f"total wall-clock from probe_start to loop-still-free was "
         f"{total_probe_elapsed*1000:.1f}ms — a stall happened during "
         "scheduling before policy_started fired."
@@ -169,7 +170,7 @@ async def test_probe_responsive_with_ten_concurrent_blocking_policies():
             started_event.set()
 
         def _sync_body():
-            time.sleep(0.5)  # BLOCKING sync sleep — real regression shape.
+            time.sleep(2.0)  # BLOCKING sync sleep — real regression shape (2s vs 1s bound).
             return None
 
         try:
@@ -220,7 +221,8 @@ async def test_probe_responsive_with_ten_concurrent_blocking_policies():
     # And the total from probe_start — catches stalls during initial
     # scheduling that a mid-run yield wouldn't reflect.
     total = time.monotonic() - probe_start
-    assert total < 0.5, (
+    # 1s bound: a blocked loop stalls >=2s; healthy runs on loaded CI runners took 0.54-0.6s.
+    assert total < 1.0, (
         f"total wall-clock from probe start to loop-still-free was "
         f"{total*1000:.1f}ms — a stall happened before started_event "
         "fired."
