@@ -198,6 +198,7 @@ async def handle_gateway_request(
     from app.modules.guard import gateway_phase_ingress as _ingress
     from app.modules.guard import gateway_phase_routing as _routing
     from app.modules.guard import gateway_phase_policy as _policy
+    from app.modules.guard import gateway_phase_upstream as _upstream
 
     started = time.monotonic()
 
@@ -253,147 +254,14 @@ async def handle_gateway_request(
         if _early is not None:
             return _early
 
-        # 5. Vault lookup — for BYO gateways: upstream_key authenticates with the gateway,
-        # vault_key is the real vendor key the gateway forwards to Anthropic/OpenAI.
-        #
-        # X3 — legacy credential resolution is v1-only. v2 targets
-        # carry their own ``credential_ref`` pointing at Vault; the
-        # resolver was built in step 4 (``_build_v2_plan``). Running
-        # this block for v2 traffic was dead weight AND actively
-        # broke v2-only workspaces: if a workspace never provisioned
-        # a v1 ``ANTHROPIC_API_KEY`` / ``OPENAI_API_KEY`` but did
-        # publish a v2 profile with valid Vault refs, the 503 below
-        # fired before ``_execute_v2`` ever ran. Skip the whole block
-        # when ``_v2_plan`` is in play.
-        upstream = None
-        _upstream_key = None
-        _vault_key_val = None
-        transport = None
-        real_key = None
-        if _v2_plan is None:
-            # PR 2 Commit 3 — three sequential DB round-trips run off the
-            # event loop in one bounded session.
-            from app.modules.guard.gateway_helpers import _resolve_upstream_credentials
-            upstream, _upstream_key, _vault_key_val = await run_in_threadpool(
-                _resolve_upstream_credentials,
-                workspace_id, provider, _environment_id,
-            )
-            transport = get_provider_transport_registry().for_provider(provider)
-            if canonical_profile:
-                # PR 3 fix — canonical-profile TransportResolver runs
-                # off the event loop with its own session.
-                from app.modules.guard.gateway_runtime import TransportResolver
-                def _resolve_transport_owned():
-                    from app.core.database import SessionLocal as _SL
-                    from app.core.workspace_context import set_workspace_rls
-                    _db_local = _SL()
-                    try:
-                        set_workspace_rls(_db_local, workspace_id)
-                        return TransportResolver().resolve(
-                            _db_local, workspace_id, provider, _environment_id,
-                        )
-                    finally:
-                        _db_local.close()
-                profile_runtime = await run_in_threadpool(_resolve_transport_owned)
-                if profile_runtime:
-                    upstream = profile_runtime.upstream_url or upstream
-                    _upstream_key = profile_runtime.api_key or _upstream_key
-                    transport = profile_runtime.transport
-                    if profile_runtime.profile.provider == "litellm":
-                        _vault_key_val = None
-                    real_key = _upstream_key or _vault_key_val
-                else:
-                    real_key = _upstream_key or _vault_key_val
-            else:
-                real_key = _upstream_key or _vault_key_val
-            if not real_key:
-                # #1567 PR 2: trial workspaces with no BYO key fall through to a
-                # platform-funded env key, fenced by plan + provider + identity + daily cap.
-                # PR 3 fix — trial key resolution off event loop.
-                from app.modules.guard.trial_upstream import resolve_trial_key
-                _aid = str(_agent_identity_id) if _agent_identity_id else None
-                def _resolve_trial_key_owned():
-                    from app.core.database import SessionLocal as _SL
-                    from app.core.workspace_context import set_workspace_rls
-                    _db_local = _SL()
-                    try:
-                        set_workspace_rls(_db_local, workspace_id)
-                        return resolve_trial_key(
-                            _db_local, workspace_id, provider, _aid,
-                        )
-                    finally:
-                        _db_local.close()
-                _trial_key, _trial_status = await run_in_threadpool(_resolve_trial_key_owned)
-                if _trial_status == "expired":
-                    _policy.record_failure(st, 401, "trial_expired", rule_id="trial-expired")
-                    return _fail_closed(
-                        401,
-                        "trial_expired: 7-day trial ended. Add your own key in Settings → Environments.",
-                    )
-                if _trial_status == "exceeded":
-                    _policy.record_failure(st, 429, "trial_exceeded", rule_id="trial-quota")
-                    return _fail_closed(
-                        429,
-                        "trial_exceeded: daily trial quota hit. Add your own key in Settings → Environments.",
-                    )
-                real_key = _trial_key
-            if not real_key:
-                _policy.record_failure(st, 503, f"No {provider} API key configured", rule_id="credential-missing")
-                return _fail_closed(
-                    503,
-                    f"No API key configured — add {provider.upper()}_API_KEY in Settings → Environments, "
-                    f"or set LLM_UPSTREAM_API_KEY in Settings → Proxy.",
-                )
-        # 5.5 Redact secrets from body before forwarding — runs after policy eval so
-        # credential-leak rules still fire first and can block.
-        if operation == "inference":
-            body, _redacted = _redact_body(body)
-            if _redacted:
-                log.info("guard.proxy.redacted", types=_redacted, workspace_id=workspace_id)
-
-        # 5.6 Inject guidance to model when rule has inject_guidance=true (#1141).
-        # Fires for warn/audit/allow paths — block path is handled above via response body.
-        if _guidance_text and operation == "inference":
-            body = _inject_guidance(body, _guidance_text, provider)
-            log.info("guard.proxy.guidance_injected",
-                     rule_id=decision.get("rule_id"), workspace_id=workspace_id)
-
-        # 6. Forward + stream back. Use a fresh DB session inside the background task.
-        is_stream = bool(body.get("stream"))
-        # Pass through all vendor-specific headers the SDK sends (anthropic-beta,
-        # openai-organization, openai-project, etc.) minus the ones we own.
-        _skip = {
-            auth_header_in,
-            auth_header_fallback,
-            "host",
-            "content-length",
-            "transfer-encoding",
-            "connection",
-            "content-type",
-            "accept",
-            "user-agent",
-            "conduct-subject-token",
-            "conduct-federation-connection",
-        }
-        extra_headers = {
-            k.lower(): v for k, v in request.headers.items()
-            if k.lower() not in _skip and not k.lower().startswith("x-conduct")
-        }
-        # #1959 durable audit lifecycle. All logic (insert_accepted +
-        # fail-closed decision + whole-request renewal) lives in
-        # gateway_lifecycle so new Gateway behavior never grows in the
-        # legacy proxy.py file. This handler just threads the resulting
-        # row_id through the existing audit_args tuple at index 18.
-        #
-        # P2: merge the client's X-Request-Id into routing_meta *at the
-        # caller* so the enriched dict is what flows through open + audit
-        # + downstream finalize. Prior split (writer enriched, caller kept
-        # original) meant audit.finalize's ``routing_meta = CAST(:routing
-        # AS jsonb)`` UPDATE clobbered client_request_id back out on the
-        # finalized row.
-        _client_request_id = request.headers.get("x-request-id") or None
-        if _client_request_id:
-            _routing_meta = {**(_routing_meta or {}), "client_request_id": _client_request_id}
+        # 5–6. v1 credentials → outbound body/headers (gateway_phase_upstream).
+        if (_early := await _upstream.resolve_upstream_credentials(st)) is not None:
+            return _early
+        _upstream.prepare_outbound_request(st)
+        upstream, _upstream_key, _vault_key_val = st.upstream, st.upstream_key, st.vault_key_val
+        transport, real_key, body = st.transport, st.real_key, st.body
+        is_stream, extra_headers = st.is_stream, st.extra_headers
+        _client_request_id, _routing_meta = st.client_request_id, st.routing_meta
 
         from app.modules.guard.gateway_lifecycle import (
             open_durable_row as _open_durable,
