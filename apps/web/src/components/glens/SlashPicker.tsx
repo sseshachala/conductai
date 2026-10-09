@@ -1,7 +1,10 @@
 "use client"
 import { useEffect, useMemo, useRef, useState } from "react"
-import { API } from "@/lib/api"
+import { COMPLETERS, type CompleterOption } from "@/components/glens/slashCompleters"
 import { useAuthFetch } from "@/hooks/useAuthFetch"
+
+export { COMPLETERS, auditRangePresets } from "@/components/glens/slashCompleters"
+export type { CompleterOption }
 
 export type SlashArg = {
   name: string
@@ -17,84 +20,10 @@ export type SlashArg = {
   completer?: keyof typeof COMPLETERS
 }
 
-export type CompleterOption = { value: string; label: string; sublabel?: string }
-type AuthFetch = (path: string, init?: RequestInit) => Promise<Response>
-type CompleterFn = (authFetch: AuthFetch, workspaceId: string | null) => Promise<CompleterOption[]>
-
-// Map arg completers → REST endpoints. Every endpoint already exists — no
-// backend changes for this feature. Entries are wired to args in SLASH_TOOLS;
-// dormant entries (budgets/agents/marketplace_packs) are ready for the
-// #1300-#1304 mutators when they land.
-export const COMPLETERS: Record<string, CompleterFn> = {
-  workflows: async authFetch => {
-    const r = await authFetch(`${API}/workflows`)
-    if (!r.ok) throw new Error(`workflows ${r.status}`)
-    const rows = (await r.json()) as Array<{ id: string; name: string; playbook_slug?: string | null }>
-    return rows.map(w => ({
-      value: w.playbook_slug || w.id,
-      label: w.name,
-      sublabel: w.playbook_slug ? `slug: ${w.playbook_slug}` : undefined,
-    }))
-  },
-  pending_approvals: async authFetch => {
-    const r = await authFetch(`${API}/guard/approvals?status=pending&limit=50`)
-    if (!r.ok) throw new Error(`approvals ${r.status}`)
-    const body = (await r.json()) as { items: Array<{ id: string; rule_message: string | null; tool_name: string | null }> }
-    return body.items.map(a => ({
-      value: a.id,
-      label: a.rule_message || a.tool_name || a.id,
-      sublabel: a.tool_name ? `tool: ${a.tool_name}` : undefined,
-    }))
-  },
-  // Dormant until #1302 update_budget mutator lands and attaches completer.
-  budgets: async authFetch => {
-    const r = await authFetch(`${API}/guard/spend/budgets`)
-    if (!r.ok) throw new Error(`budgets ${r.status}`)
-    const rows = (await r.json()) as Array<{ id: string; email: string | null; monthly_limit_usd: number }>
-    return rows.map(b => ({
-      value: b.id,
-      label: b.email || b.id,
-      sublabel: `$${b.monthly_limit_usd}/mo`,
-    }))
-  },
-  // Dormant until #1304 deactivate_agent_identity mutator lands.
-  agents: async (authFetch, workspaceId) => {
-    if (!workspaceId) return []
-    const r = await authFetch(`${API}/workspaces/${workspaceId}/agent-identities?workspace_id=${workspaceId}`)
-    if (!r.ok) throw new Error(`agents ${r.status}`)
-    const rows = (await r.json()) as Array<{ id: string; name: string; provider: string }>
-    return rows.map(a => ({
-      value: a.id,
-      label: a.name,
-      sublabel: a.provider ? `provider: ${a.provider}` : undefined,
-    }))
-  },
-  // Wired for #1303 enable_policy / disable_policy — lists both custom and pack rules.
-  policies: async authFetch => {
-    const r = await authFetch(`${API}/guard/policies`)
-    if (!r.ok) throw new Error(`policies ${r.status}`)
-    const rows = (await r.json()) as Array<{ rule_id: string; description?: string | null; enabled: boolean; pack_id?: string | null }>
-    return rows.map(p => ({
-      value: p.rule_id,
-      label: p.description || p.rule_id,
-      sublabel: `${p.enabled ? "enabled" : "disabled"}${p.pack_id ? ` · pack: ${p.pack_id}` : ""}`,
-    }))
-  },
-  // Wired for #1300 install_pack mutator.
-  marketplace_packs: async authFetch => {
-    const r = await authFetch(`${API}/compliance/packs/available`)
-    if (!r.ok) throw new Error(`packs ${r.status}`)
-    const rows = (await r.json()) as Array<{ slug: string; name: string; description?: string }>
-    return rows.map(p => ({
-      value: p.slug,
-      label: p.name,
-      sublabel: p.description || undefined,
-    }))
-  },
-}
-
 export type SlashTool = {
   name: string
+  /** Backend tool Lens should call, when it differs from the slash name. */
+  toolName?: string
   description: string
   args: SlashArg[]
 }
@@ -159,6 +88,14 @@ export const SLASH_TOOLS: SlashTool[] = [
       { name: "reason", required: false, placeholder: "optional reason for audit" },
     ],
   },
+  {
+    name: "export-audit",
+    toolName: "export_audit_log",
+    description: "Export the audit log for a date range as a downloadable file.",
+    args: [
+      { name: "range", required: true, placeholder: "pick a preset or type a date range", completer: "audit_ranges" },
+    ],
+  },
 ]
 
 // Compose a natural-language prompt from tool + filled args. The LLM receives
@@ -170,9 +107,10 @@ export function composePrompt(tool: SlashTool, args: Record<string, string>): st
     .filter(a => (args[a.name] ?? "").trim().length > 0)
     .map(a => `${a.name}=${JSON.stringify(args[a.name].trim())}`)
     .join(", ")
+  const name = tool.toolName ?? tool.name
   return parts
-    ? `Please run ${tool.name} with ${parts}.`
-    : `Please run ${tool.name}.`
+    ? `Please run ${name} with ${parts}.`
+    : `Please run ${name}.`
 }
 
 export function filterTools(query: string): SlashTool[] {

@@ -1,4 +1,5 @@
 import type { GlensDashboardSpec } from "@/components/glens/GlensDashboard"
+import type { AuditExportResult } from "@/components/glens/bubbles/AuditExportBubble"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -25,6 +26,7 @@ export type MessageBody =
   | { role: "assistant"; kind: "policy_confirm"; answer: string; action: string; draft: Record<string, unknown>; mapping: PolicyMapping[]; targetRuleId?: string; sessionId: string; skill: string; warning?: string }
   | { role: "assistant"; kind: "action_confirm"; toolName: string; approvalRequestId: string; summary: string; warnings?: string[]; expiresAt?: string }
   | { role: "assistant"; kind: "run"; runId: string; workflowName: string; initialStatus: string }
+  | { role: "assistant"; kind: "audit_export"; result: AuditExportResult }
   | { role: "assistant"; kind: "blocks"; answer: string; blocks: unknown[]; warning?: string; skill: string; drilldown?: { path: string; filters?: Record<string, string> }; understoodAs?: string }
   | { role: "assistant"; kind: "table"; answer: string; columns?: unknown[]; rows: unknown[]; warning?: string; skill: string; drilldown?: { path: string; filters?: Record<string, string> }; understoodAs?: string }
 

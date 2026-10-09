@@ -23,6 +23,7 @@ import { AnswerBubble } from "@/components/glens/bubbles/AnswerBubble"
 import { LoadingBubble } from "@/components/glens/bubbles/LoadingBubble"
 import { DashboardBubble } from "@/components/glens/bubbles/DashboardBubble"
 import { PolicyConfirmBubble } from "@/components/glens/bubbles/PolicyConfirmBubble"
+import { AuditExportBubble, parseAuditExport } from "@/components/glens/bubbles/AuditExportBubble"
 import { ActionConfirmBubble } from "@/components/glens/bubbles/ActionConfirmBubble"
 import { RunBubble } from "@/components/glens/bubbles/RunBubble"
 
@@ -196,6 +197,8 @@ function GLensChatContent({ initialSessionId }: { initialSessionId?: string }) {
                 warnings: ce.warnings ?? [],
                 expiresAt: ce.expires_at,
               })
+            } else if (parseAuditExport(p)) {
+              thread.push({ role: "assistant", kind: "audit_export", result: parseAuditExport(p)! })
             } else if (p.run_started?.run_id) {
               // #1480 PR 12 — rehydrate RunBubble from persisted envelope
               const rs = p.run_started
@@ -267,6 +270,8 @@ function GLensChatContent({ initialSessionId }: { initialSessionId?: string }) {
         workflowName: rs.workflow_name,
         initialStatus: rs.status ?? "pending",
       }))
+    } else if (parseAuditExport(data)) {
+      setMessages(prev => replaceLast(prev, { role: "assistant", kind: "audit_export", result: parseAuditExport(data)! }))
     } else if (data.confirm_required && data.approval_request_id) {
       setMessages(prev => replaceLast(prev, {
         role: "assistant", kind: "action_confirm",
@@ -530,6 +535,7 @@ function GLensChatContent({ initialSessionId }: { initialSessionId?: string }) {
                       ])}
                     />
                   )}
+                  {msg.kind === "audit_export" && <AuditExportBubble result={msg.result} authFetch={authFetch} />}
                   {msg.kind === "run" && (
                     <RunBubble
                       runId={msg.runId}
