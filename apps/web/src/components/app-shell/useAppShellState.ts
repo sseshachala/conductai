@@ -9,6 +9,7 @@ import { type ToastData } from "@/components/ui/Toast"
 import { useAuthFetch } from "@/hooks/useAuthFetch"
 import { reportLayoutsApi, type ReportLayout } from "@/lib/reportBuilder/api"
 import { workspaces as workspacesApi, projects as projectsApi, organizations, runs, guard, workflows } from "@/lib/api"
+import { cachedGet } from "@/lib/api/sharedCache"
 import { getBreadcrumbs, PALETTE_COMMANDS } from "./nav-data"
 import type { NotificationItem, Project, UserRole } from "./types"
 
@@ -311,8 +312,7 @@ export function useAppShellState({ userId }: { userId: string | null }) {
     async function fetchRunsCount() {
       if (!activeWorkspace?.id) return
       try {
-        const parts = await Promise.all(["running", "paused"].map(status => runs.list(authFetch, { status, limit: 100 })))
-        const active = parts[0].length + parts[1].length
+        const active = await cachedGet(`runs-badge:${activeWorkspace.id}`, async () => (await Promise.all(["running", "paused"].map(status => runs.list(authFetch, { status, limit: 100 })))).reduce((n, p) => n + p.length, 0), 20_000) // 20s TTL
         if (!cancelled) setActiveRunsCount(active > 0 ? active : undefined)
       } catch {}
     }

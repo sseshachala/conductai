@@ -6,6 +6,8 @@ import { useWorkspace } from "@/lib/WorkspaceContext"
 import { setGuardTeamId } from "@/lib/guardStorage"
 import { useAuthFetch } from "@/hooks/useAuthFetch"
 import { guard } from "@/lib/api"
+import { invalidate } from "@/lib/api/sharedCache"
+import { apiUrl } from "@/lib/auth/runtime"
 
 interface GuardConfig {
   workspace_id: string
@@ -72,7 +74,10 @@ function ConductGuardModule() {
     setInstalling(true)
     setError(null)
     try {
+      // GET /guard/config auto-provisions; drop cached "not installed" before and after.
+      invalidate(`${apiUrl()}/guard/config`)
       await guard.config.get(authFetch, org.id)
+      invalidate(`${apiUrl()}/guard/config`)
       if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("guard-install-changed", { detail: { installed: true } }))
       await fetchInstallStatus(org.id)
     } catch {

@@ -6,6 +6,7 @@ import { apiUrl } from "@/lib/auth/runtime"
 import { createContext, useContext, useState, useEffect, type ReactNode } from "react"
 import { useAuth, useUser } from "@/lib/auth/client"
 import { useWorkspace } from "./WorkspaceContext"
+import { cachedGet } from "./api/sharedCache"
 
 export type GuardRole = "admin" | "security" | "developer" | "viewer"
 
@@ -87,19 +88,22 @@ export function GuardRoleClerkProvider({ children }: { children: ReactNode }) {
         if (!token) { if (!cancelled) setLoading(false); return }
         const params = new URLSearchParams({ workspace_id: workspaceId! })
         if (email) params.set("email", email)
-        const controller = new AbortController()
-        const timeout = setTimeout(() => controller.abort(), 8000)
-        const res = await fetch(
-          `${apiUrl()}/me/permissions?${params}`,
-          { headers: { Authorization: `Bearer ${token}` }, signal: controller.signal }
-        )
-        clearTimeout(timeout)
-        if (res.ok) {
-          const data: { role: string; permissions: string[] } = await res.json()
-          if (!cancelled) {
-            setRole(data.role as GuardRole)
-            setPermissions(data.permissions.length > 0 ? permissionsFromList(data.permissions) : VIEWER_PERMISSIONS)
+        const url = `${apiUrl()}/me/permissions?${params}`
+        // Short TTL: role changes must surface quickly. Key includes workspace + email.
+        const data = await cachedGet(url, async () => {
+          const controller = new AbortController()
+          const timeout = setTimeout(() => controller.abort(), 8000)
+          try {
+            const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` }, signal: controller.signal })
+            if (!res.ok) throw new Error(`permissions ${res.status}`)
+            return (await res.json()) as { role: string; permissions: string[] }
+          } finally {
+            clearTimeout(timeout)
           }
+        }, 30_000)
+        if (!cancelled) {
+          setRole(data.role as GuardRole)
+          setPermissions(data.permissions.length > 0 ? permissionsFromList(data.permissions) : VIEWER_PERMISSIONS)
         }
       } catch {
         // degrade to viewer

@@ -1,5 +1,7 @@
 import { API, AuthFetch, del, json, patch, post, put } from "./client"
 
+import { cachedGet } from "./sharedCache"
+
 const base = () => `${API}/workflows`
 
 export interface WorkflowVersionSummary {
@@ -108,7 +110,7 @@ export const workflows = {
   },
 
   playbooks: {
-    list: (f: AuthFetch) => json<any[]>(f, `${base()}/playbooks`),
+    list: (f: AuthFetch) => cachedGet(`${base()}/playbooks`, () => json<any[]>(f, `${base()}/playbooks`)),
     get: (f: AuthFetch, slug: string) => json<any>(f, `${base()}/playbooks/${slug}`),
   },
 

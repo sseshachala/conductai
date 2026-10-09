@@ -1,4 +1,5 @@
 import { API, AuthFetch, del, json, patch, post, put } from "./client"
+import { cachedGet, invalidating } from "./sharedCache"
 import { _mutateJson, _mutateVoid, base } from "./guard-http"
 import type {
   GatewayProfileRateLimits,
@@ -47,18 +48,18 @@ export const guard = {
   config: {
     get: (f: AuthFetch, workspaceId?: string) => {
       const q = workspaceId ? `?workspace_id=${workspaceId}` : ""
-      return json<any>(f, `${base()}/config${q}`)
+      return cachedGet(`${base()}/config${q}`, () => json<any>(f, `${base()}/config${q}`))
     },
     installed: (f: AuthFetch, workspaceId?: string) => {
       const q = workspaceId ? `?workspace_id=${workspaceId}` : ""
-      return json<any>(f, `${base()}/config/installed${q}`)
+      return cachedGet(`${base()}/config/installed${q}`, () => json<any>(f, `${base()}/config/installed${q}`))
     },
     persona: (f: AuthFetch) => json<any>(f, `${base()}/config/persona`),
     patch: (f: AuthFetch, workspaceId: string, body: Record<string, unknown>) =>
-      patch(f, `${base()}/config?workspace_id=${workspaceId}`, body),
+      invalidating(`${base()}/config`, patch(f, `${base()}/config?workspace_id=${workspaceId}`, body)),
     resync: (f: AuthFetch, workspaceId?: string) => {
       const q = workspaceId ? `?workspace_id=${workspaceId}` : ""
-      return post(f, `${base()}/config/resync${q}`, {})
+      return invalidating(`${base()}/config`, post(f, `${base()}/config/resync${q}`, {}))
     },
   },
 

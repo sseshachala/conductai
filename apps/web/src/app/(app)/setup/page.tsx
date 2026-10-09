@@ -18,6 +18,7 @@ import {
 import { StepWorkspace, StepTools, StepGuard } from "./_components/steps"
 import { StepPlaybook, PipelinePanel } from "./_components/StepPlaybook"
 
+import { invalidate } from "@/lib/api/sharedCache"
 const API = apiUrl() ?? ""
 
 // ── Main page component ───────────────────────────────────────────────────────
@@ -97,6 +98,7 @@ export default function SetupPage() {
         headers: h,
         body: JSON.stringify({ name: orgName.trim() }),
       })
+      invalidate(`${API}/organizations`)
       await ensureOk(r, "Save organisation")
     }
     if (wsId && wsName.trim()) {

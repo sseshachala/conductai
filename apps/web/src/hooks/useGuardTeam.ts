@@ -11,34 +11,25 @@ interface GuardTeamResult {
   error: string | null
 }
 
-// Module-level cache: one config fetch per workspace per page session, shared
-// by every Guard page/hook. Failed lookups are evicted so a retry can succeed.
-const teamIdCache = new Map<string, Promise<string>>()
-
-function resolveTeamId(
+// guard.config.get is cached per workspace by lib/api/sharedCache (shared with
+// the app shell and every Guard page); failures are evicted so a retry works.
+async function resolveTeamId(
   authFetch: Parameters<typeof guard.config.get>[0],
   wsId: string,
 ): Promise<string> {
-  const cached = teamIdCache.get(wsId)
-  if (cached) return cached
-  const promise = (async () => {
-    let data: any
-    try {
+  let data: any
+  try {
+    data = await guard.config.get(authFetch, wsId)
+  } catch (err: any) {
+    // Auto-install Guard if not yet configured (404); install invalidates the cache.
+    if (err?.message?.includes("404") || String(err).includes("404")) {
+      await projects.guard.install(authFetch, wsId)
       data = await guard.config.get(authFetch, wsId)
-    } catch (err: any) {
-      // Auto-install Guard if not yet configured (404)
-      if (err?.message?.includes("404") || String(err).includes("404")) {
-        await projects.guard.install(authFetch, wsId)
-        data = await guard.config.get(authFetch, wsId)
-      } else {
-        throw err
-      }
+    } else {
+      throw err
     }
-    return data.workspace_id as string
-  })()
-  teamIdCache.set(wsId, promise)
-  promise.catch(() => teamIdCache.delete(wsId))
-  return promise
+  }
+  return data.workspace_id as string
 }
 
 export function useGuardTeam(): GuardTeamResult {

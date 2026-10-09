@@ -1,4 +1,5 @@
 import { API, AuthFetch, del, json, patch, post, put } from "./client"
+import { cachedGet, invalidating } from "./sharedCache"
 
 const base = (id: string) => `${API}/workspaces/${id}`
 
@@ -12,11 +13,11 @@ export const workspaces = {
 
   projects: {
     list: (f: AuthFetch, workspaceId: string) =>
-      json<any[]>(f, `${base(workspaceId)}/projects`),
+      cachedGet(`${base(workspaceId)}/projects`, () => json<any[]>(f, `${base(workspaceId)}/projects`)),
     create: (f: AuthFetch, workspaceId: string, body: Record<string, unknown>) =>
-      post(f, `${base(workspaceId)}/projects`, body),
+      invalidating(`${base(workspaceId)}/projects`, post(f, `${base(workspaceId)}/projects`, body)),
     rename: (f: AuthFetch, workspaceId: string, projectId: string, body: Record<string, unknown>) =>
-      patch(f, `${base(workspaceId)}/projects/${projectId}`, body),
+      invalidating(`${base(workspaceId)}/projects`, patch(f, `${base(workspaceId)}/projects/${projectId}`, body)),
   },
 
   apiKeys: {
@@ -30,13 +31,16 @@ export const workspaces = {
 
   preferences: {
     get: (f: AuthFetch, workspaceId: string) =>
-      json<any>(f, `${base(workspaceId)}/preferences`),
+      cachedGet(`${base(workspaceId)}/preferences`, () => json<any>(f, `${base(workspaceId)}/preferences`)),
     update: (f: AuthFetch, workspaceId: string, body: Record<string, unknown>) =>
-      put(f, `${base(workspaceId)}/preferences`, body),
+      invalidating(`${base(workspaceId)}/preferences`, put(f, `${base(workspaceId)}/preferences`, body)),
   },
 
-  notifications: (f: AuthFetch, workspaceId: string, limit = 8) =>
-    json<{ items: any[]; total?: number }>(f, `${base(workspaceId)}/notifications?limit=${limit}`),
+  // Read-only in the web app (no read/clear writes exist); short TTL so new items surface.
+  notifications: (f: AuthFetch, workspaceId: string, limit = 8) => {
+    const url = `${base(workspaceId)}/notifications?limit=${limit}`
+    return cachedGet(url, () => json<{ items: any[]; total?: number }>(f, url), 30_000)
+  },
 
   auditLog: (f: AuthFetch, workspaceId: string, params?: { limit?: number; offset?: number; action?: string }) => {
     const q = new URLSearchParams()
