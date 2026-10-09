@@ -232,3 +232,19 @@ def test_ingest_and_backfill_price_new_models_from_registry(database, monkeypatc
     assert row.cost_usd_after == pytest.approx(0.009)
     assert all("pricing_source" not in s for s in row.routing_meta["session_usage"]["slices"])
     assert "+litellm" not in row.routing_meta["session_usage"]["pricing_version"]
+
+
+def test_redis_rebuild_excludes_client_reported_cost(database):
+    import fakeredis
+    from app.core.budget_ledger import BudgetLedger
+    from app.core.budget_ledger_keys import _scope_keys, monthly_period_key
+
+    db, ws = database
+    seed_budget(db, ws, "session_usage", 5.0)
+    db.add(GuardAuditEvent(workspace_id=ws, clerk_user_id="owner", ai_tool="claude-code", tool_call="Bash",
+                           decision="audited", cost_usd_after=2.0, ts=NOW))
+    db.flush()
+    redis = fakeredis.FakeRedis(decode_responses=True)
+    BudgetLedger(redis_client=redis).reconcile(db, str(ws), None)
+    keys = _scope_keys(str(ws), None, None, None, monthly_period_key())
+    assert int(redis.get(keys["committed"])) == 2_000_000

@@ -142,7 +142,7 @@ class _LedgerReconcileMixin:
         ).filter(
             GuardAuditEvent.workspace_id == ws_uuid,
             GuardAuditEvent.ts >= period_start,
-            GuardAuditEvent.cost_usd_after.isnot(None),
+            GuardAuditEvent.cost_usd_after.isnot(None), GuardAuditEvent.budget_eligible(),
             ~db.query(LlmAttemptReceipt.request_id)
             .filter(
                 LlmAttemptReceipt.request_id == GuardAuditEvent.request_id,
