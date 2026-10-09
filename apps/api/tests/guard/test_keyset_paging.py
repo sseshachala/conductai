@@ -171,6 +171,13 @@ def test_governance_recent_limit_max_200(db):
     assert len(_recent(db, 1000)) == 200
 
 
+def test_governance_recent_null_tool_call_does_not_500(db):
+    db.add(GuardAuditEvent(id=uuid.uuid4(), workspace_id=WS, ts=_ts(0), ai_tool="x",
+                           tool_call=None, decision="allowed"))
+    db.commit()
+    assert _recent(db, 10)[0].tool_call is None
+
+
 # ------------------------------------------------- GET /guard/spend/sessions
 
 def _sessions(db, limit, before=None, offset=0):

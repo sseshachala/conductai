@@ -29,7 +29,7 @@ interface RecentEventOut {
   decision: string
   rule_id: string | null
   ai_tool: string
-  tool_call: string
+  tool_call: string | null
   user_email: string | null
   input_summary: string | null
 }
@@ -223,7 +223,7 @@ function Soc2Report() {
               <td>{e.ai_tool}</td>
               <td><span className={`decision ${e.decision}`}>{e.decision}</span></td>
               <td>{e.rule_id ?? "—"}</td>
-              <td style={{ wordBreak: "break-word" }}>{e.tool_call}</td>
+              <td style={{ wordBreak: "break-word" }}>{e.tool_call ?? "—"}</td>
             </tr>
           )} />
         {events.length > 0 && <p className="no-print" style={{ fontSize: 11, color: "#777" }}>
