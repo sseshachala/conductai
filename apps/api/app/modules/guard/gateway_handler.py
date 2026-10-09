@@ -197,6 +197,7 @@ async def handle_gateway_request(
     from app.modules.guard.gateway_attempt_outcome import served_model as _served_model, wrap_stream_finally
     from app.modules.guard import gateway_phase_ingress as _ingress
     from app.modules.guard import gateway_phase_routing as _routing
+    from app.modules.guard import gateway_phase_policy as _policy
 
     started = time.monotonic()
 
@@ -242,139 +243,15 @@ async def handle_gateway_request(
         _user_email, _run_id, _workflow, _workflow_id = st.user_email, st.run_id, st.workflow, st.workflow_id
         _environment_id, _hook_session_id, _is_trial = st.environment_id, st.hook_session_id, st.is_trial
 
-        # 4c. Pre-call Guard policy evaluation — composed engine (#1225 Phase 4)
-        # P1 review fix — offloaded to threadpool with an owned session
-        # (was sync DB-heavy eval on the event loop).
-        prompt_summary = _flatten_prompt(body)[:200]
-
-        def _eval_prompt_policy_owned():
-            from app.core.database import SessionLocal as _SL
-            from app.core.workspace_context import set_workspace_rls
-            from app.guard.policy import evaluate_composed as _eval_composed
-            from app.guard.policy_types import PolicyContext as _PolicyContext
-            _db_local = _SL()
-            try:
-                set_workspace_rls(_db_local, workspace_id)
-                _ctx = _PolicyContext(
-                    workspace_id=workspace_id,
-                    clerk_user_id=clerk_user_id,
-                    agent_identity_id=str(_agent_identity_id) if _agent_identity_id else None,
-                    provider=provider,
-                    model=model,
-                    body=body,
-                    input_tokens=_estimate_tokens(body).input_tokens,
-                    db=_db_local,
-                    gate="prompt",
-                    risk_tier=_agent_risk_tier,
-                    ai_tool=ai_tool or None,
-                    # #2159 PR 2 (#2156) — tool-name signals populated on
-                    # the request-gate side. Empty list stays semantically
-                    # distinct from None (unset) so rules can distinguish.
-                    tool_names_offered=_tools_offered or None,
-                    tool_names_supplied=_tool_names_supplied or None,
-                )
-                return _eval_composed(_ctx)
-            finally:
-                _db_local.close()
-
-        _pd = await run_in_threadpool(_eval_prompt_policy_owned)
-        decision = _pd.extras.get("raw") or {
-            "action": _pd.action.value,
-            "rule_id": _pd.rule_id,
-            "message": _pd.reason,
-            "matched_rules": _pd.matched_rules,
-            "defense_score": _pd.defense_score,
-            "inject_guidance": _pd.inject_guidance,
-            "guidance": _pd.guidance,
-            "rule": _pd.extras.get("rule"),
-        }
-        _action = _pd.action.value
-        _guidance_text = _pd.guidance if _pd.inject_guidance else None
-
-        if _pd.blocks:
-            from app.modules.guard.routers._proxy_helpers import render_block as _render_block
-            return _render_block(
-                _pd, background, workspace_id, clerk_user_id, ai_tool, provider,
-                model, body, prompt_summary, _user_email, _run_id, _workflow,
-                _workflow_id, _hook_session_id, started, _record_audit, _fail_closed,
-                is_trial=_is_trial,
-                routing_meta=_routing_meta, agent_identity_id=_agent_identity_id,
-                route=request.url.path,
-            )
-
-        if _pd.needs_approval:
-            from app.modules.guard.routers._proxy_helpers import render_approval as _render_approval
-            return _render_approval(
-                _pd, background, workspace_id, clerk_user_id, ai_tool, provider,
-                model, body, prompt_summary, _user_email, _run_id, _workflow,
-                _workflow_id, _hook_session_id, started, _record_audit,
-                routing_meta=_routing_meta, agent_identity_id=_agent_identity_id,
-                route=request.url.path,
-            )
-
-        # Map internal action to audit decision string
-        _audit_decision = "warned" if _action == "WARN" else "allowed"
-        _audit_rule_id  = decision["rule_id"] if _action == "WARN" else None
-
-        def _record_failure(status: int, message: str, *, rule_id: str | None = None) -> None:
-            background.add_task(
-                _record_audit,
-                workspace_id, clerk_user_id, ai_tool, provider, model,
-                "blocked" if status in (403, 429) else _audit_decision,
-                rule_id or _audit_rule_id,
-                int((time.monotonic() - started) * 1000),
-                body=body, response_bytes=None, prompt_summary=prompt_summary,
-                user_email=_user_email, conductai_run_id=_run_id,
-                conductai_workflow=_workflow, conductai_workflow_id=_workflow_id,
-                hook_session_id=_hook_session_id, routing_meta=_routing_meta,
-                execution_status="error", result_summary=f"HTTP {status}: {message}"[:500],
-                agent_identity_id=str(_agent_identity_id) if _agent_identity_id else None,
-                route=request.url.path,
-            )
-
-        # v2 checks shared profile and agent-wide quotas atomically.
-        # Legacy traffic keeps its original workspace/agent limits.
-        from app.modules.guard.rate_limit import check_rate_limit as _check_rate_limit
-        def _rate_check_owned():
-            from app.core.database import SessionLocal as _SL
-            from app.core.workspace_context import set_workspace_rls
-            _db_local = _SL()
-            try:
-                if _v2_plan is not None:
-                    from app.modules.guard.gateway_profile_rate_limit import check_profile_rate_limit, reserved_profile_tokens
-                    return check_profile_rate_limit(
-                        _db_local, workspace_id=workspace_id,
-                        profile_id=getattr(_v2_plan.resolved, "profile_id", None),
-                        revision_id=_v2_plan.resolved.revision_id,
-                        agent_identity_id=str(_agent_identity_id) if _agent_identity_id else None,
-                        reserved_tokens=reserved_profile_tokens(body, _v2_plan.operation),
-                    )
-                set_workspace_rls(_db_local, workspace_id)
-                return _check_rate_limit(
-                    _db_local,
-                    workspace_id=workspace_id,
-                    agent_identity_id=str(_agent_identity_id) if _agent_identity_id else None,
-                    input_tokens=_estimate_tokens(body).input_tokens,
-                    fail_closed=canonical_profile and settings.environment == "production",
-                )
-            finally:
-                _db_local.close()
-        _rate = await run_in_threadpool(_rate_check_owned)
-        _profile_rate_admission = getattr(_rate, "admission", None)
-        if _rate.limited:
-            log.info(
-                "guard.proxy.rate_limited",
-                workspace_id=workspace_id,
-                scope=_rate.scope,
-                metric=_rate.metric,
-                limit=_rate.limit,
-                current=_rate.current,
-            )
-            status = getattr(_rate, "status", 429)
-            _record_failure(status, _rate.reason, rule_id="rate-limit")
-            response = _fail_closed(status, _rate.reason)
-            response.headers["Retry-After"] = str(getattr(_rate, "retry_after", 60))
-            return response
+        # 4c. Prompt gate → rate limit (gateway_phase_policy).
+        if (_early := await _policy.evaluate_prompt_gate(st)) is not None:
+            return _early
+        prompt_summary, decision, _guidance_text = st.prompt_summary, st.decision, st.guidance_text
+        _audit_decision, _audit_rule_id = st.audit_decision, st.audit_rule_id
+        _early = await _policy.check_rate_limits(st)
+        _profile_rate_admission = st.profile_rate_admission
+        if _early is not None:
+            return _early
 
         # 5. Vault lookup — for BYO gateways: upstream_key authenticates with the gateway,
         # vault_key is the real vendor key the gateway forwards to Anthropic/OpenAI.
@@ -448,20 +325,20 @@ async def handle_gateway_request(
                         _db_local.close()
                 _trial_key, _trial_status = await run_in_threadpool(_resolve_trial_key_owned)
                 if _trial_status == "expired":
-                    _record_failure(401, "trial_expired", rule_id="trial-expired")
+                    _policy.record_failure(st, 401, "trial_expired", rule_id="trial-expired")
                     return _fail_closed(
                         401,
                         "trial_expired: 7-day trial ended. Add your own key in Settings → Environments.",
                     )
                 if _trial_status == "exceeded":
-                    _record_failure(429, "trial_exceeded", rule_id="trial-quota")
+                    _policy.record_failure(st, 429, "trial_exceeded", rule_id="trial-quota")
                     return _fail_closed(
                         429,
                         "trial_exceeded: daily trial quota hit. Add your own key in Settings → Environments.",
                     )
                 real_key = _trial_key
             if not real_key:
-                _record_failure(503, f"No {provider} API key configured", rule_id="credential-missing")
+                _policy.record_failure(st, 503, f"No {provider} API key configured", rule_id="credential-missing")
                 return _fail_closed(
                     503,
                     f"No API key configured — add {provider.upper()}_API_KEY in Settings → Environments, "
@@ -1424,9 +1301,9 @@ async def handle_gateway_request(
         from app.modules.auth.federation.gateway import error_response
         return error_response(error)
     finally:
-        if _profile_rate_admission is not None and not _profile_rate_streamed:
+        if st.profile_rate_admission is not None and not _profile_rate_streamed:
             from app.modules.guard.gateway_profile_rate_limit import finish_profile_rate_limit
-            await finish_profile_rate_limit(_profile_rate_admission, _v2_plan)
+            await finish_profile_rate_limit(st.profile_rate_admission, st.v2_plan)
         # Outer admission cleanup on every non-streaming exit path. A
         # streamed ticket is released once by wrap_stream_finally above.
         if _admission_ticket is not None and not _admission_streamed:
