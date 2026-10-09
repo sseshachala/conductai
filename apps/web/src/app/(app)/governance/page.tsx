@@ -69,13 +69,28 @@ export default function GovernancePage() {
         if (res.ok && !cancelled) {
           const data: FrameworksOut = await res.json()
           setFrameworks(data)
-          if (!activeFramework) {
-            const first = data.installed[0] || data.bonus[0]
-            if (first) setActiveFramework(first.framework)
-          }
+          const first = data.installed[0] || data.bonus[0]
+          if (first) setActiveFramework(prev => prev || first.framework)
         }
       } catch { /* non-fatal */ }
 
+      try {
+        const res = await authFetch(`${API}/governance/kpis?workspace_id=${workspaceId}`)
+        if (res.ok && !cancelled) setKpis(await res.json())
+      } catch { /* non-fatal */ }
+
+      if (!cancelled) setLastFetched(new Date())
+    }
+    load()
+    return () => { cancelled = true }
+  }, [workspaceId, authFetch, tick])
+
+  // Narrative + recent events depend on filters; fetched separately so a filter
+  // or default-framework change never re-requests spend/packs/kpis.
+  useEffect(() => {
+    if (!workspaceId) return
+    let cancelled = false
+    const load = async () => {
       try {
         const res = await authFetch(`${API}/governance/narrative?workspace_id=${workspaceId}&period=${narrativePeriod}`)
         if (res.ok && !cancelled) setNarrative(await res.json())
@@ -89,17 +104,10 @@ export default function GovernancePage() {
           setRecentLoaded(true)
         }
       } catch { /* non-fatal */ }
-
-      try {
-        const res = await authFetch(`${API}/governance/kpis?workspace_id=${workspaceId}`)
-        if (res.ok && !cancelled) setKpis(await res.json())
-      } catch { /* non-fatal */ }
-
-      if (!cancelled) setLastFetched(new Date())
     }
     load()
     return () => { cancelled = true }
-  }, [workspaceId, authFetch, activeFramework, eventFilter, narrativePeriod, tick])
+  }, [workspaceId, authFetch, eventFilter, narrativePeriod, tick])
 
   // Certifications — only reload when installed packs change, not every 60s tick.
   useEffect(() => {

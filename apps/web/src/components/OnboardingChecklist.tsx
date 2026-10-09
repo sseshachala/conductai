@@ -43,7 +43,7 @@ export default function OnboardingChecklist({ hasProject, onNewProject }: Props)
       const [envResult, wfResult, runResult] = await Promise.allSettled([
         environmentsApi.list(authFetch),
         workflows.list(authFetch),
-        runs.list(authFetch),
+        runs.list(authFetch, { limit: 1 }),
       ])
       if (envResult.status === "fulfilled") setHasEnv(Array.isArray(envResult.value) && envResult.value.length > 0)
       if (wfResult.status === "fulfilled") setHasAgent(Array.isArray(wfResult.value) && wfResult.value.length > 0)

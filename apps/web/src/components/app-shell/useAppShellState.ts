@@ -311,8 +311,8 @@ export function useAppShellState({ userId }: { userId: string | null }) {
     async function fetchRunsCount() {
       if (!activeWorkspace?.id) return
       try {
-        const data: { status: string }[] = await runs.list(authFetch, { limit: 500, offset: 0 })
-        const active = data.filter(r => r.status === "running" || r.status === "paused").length
+        const parts = await Promise.all(["running", "paused"].map(status => runs.list(authFetch, { status, limit: 100 })))
+        const active = parts[0].length + parts[1].length
         if (!cancelled) setActiveRunsCount(active > 0 ? active : undefined)
       } catch {}
     }
