@@ -146,8 +146,9 @@ function ProjectContent({ getToken, currentUserId }: {
       const found: Project = await res.json()
       setProject(found)
       if (clerkEnabled && currentUserId) {
-        // Scope to this project, not the active workspace — my-role 404s when they differ.
-        const rRes = await authFetch(`${API}/projects/${projectId}/my-role?workspace_id=${projectId}`)
+        // Role lives on the project's workspace, not the project id (my-role 404s/403s otherwise).
+        const ws = found.workspace_id
+        const rRes = await authFetch(`${API}/projects/${ws}/my-role?workspace_id=${ws}`)
         if (rRes.ok) setIsAdmin(((await rRes.json()) as { role: string }).role === "admin")
       }
     } catch {
