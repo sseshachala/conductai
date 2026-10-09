@@ -95,6 +95,13 @@ def cmd_install(args):
         k, v = pair.split("=", 1)
         raw_inputs[k.strip()] = v.strip()
 
+    # --repo satisfies repo/github_repo inputs — must run before the required-input check.
+    if args.repo:
+        if "github_repo" in declared_inputs:
+            raw_inputs.setdefault("github_repo", args.repo)
+        if "repo" in declared_inputs:
+            raw_inputs.setdefault("repo", args.repo)
+
     # Check required inputs (no default and not supplied)
     missing = [
         k for k, v in declared_inputs.items()
@@ -117,13 +124,6 @@ def cmd_install(args):
     _base = _FRIENDLY_NAMES.get(slug) or pb["name"]
     _uid  = "".join(random.choices(string.ascii_uppercase + string.digits, k=4))
     agent_name = args.name or f"{_base} [{_uid}]"
-
-    # Repo input — inject into inputs if playbook expects github_repo
-    if args.repo:
-        if "github_repo" in declared_inputs:
-            raw_inputs.setdefault("github_repo", args.repo)
-        if "repo" in declared_inputs:
-            raw_inputs.setdefault("repo", args.repo)
 
     body: dict = {
         "name":     agent_name,
@@ -206,7 +206,6 @@ def cmd_reset(args):
 
 # All known playbook slugs in install order
 _ALL_SLUGS = [
-    "autopilot_quick",
     "autopilot_full",
     "autopilot_approved",
     "incident_responder",
@@ -214,12 +213,11 @@ _ALL_SLUGS = [
     "postmortem_drafter",
     "terraform_reviewer",
     "security_patch_updater",
-    "thirdparty_autopilot_fix",
-    "factory",
 ]
+# Not here: autopilot_quick + factory (archived, #2379); thirdparty_autopilot_fix
+# needs per-issue inputs (upstream_owner/upstream_repo/issue_number).
 
 _FRIENDLY_NAMES = {
-    "autopilot_quick":          "Autopilot Quick",
     "autopilot_full":           "Autopilot Full",
     "autopilot_approved":       "Autopilot + Approval",
     "incident_responder":       "Incident Responder",
@@ -228,7 +226,6 @@ _FRIENDLY_NAMES = {
     "postmortem_drafter":       "Postmortem Drafter",
     "terraform_reviewer":       "Terraform Plan Reviewer",
     "thirdparty_autopilot_fix": "Third-Party Autopilot Fix",
-    "factory":                  "Factory",
 }
 
 
