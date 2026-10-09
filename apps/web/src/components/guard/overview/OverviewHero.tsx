@@ -13,17 +13,11 @@ import { useCallback, useEffect, useState } from "react"
 import Link from "next/link"
 import type { AuthFetch } from "@/lib/api"
 import { guard, guardInbox } from "@/lib/api"
+import type { DiscoverySummary } from "@/lib/discovery"
 
 // ─── Types ────────────────────────────────────────────────────────────────
 
 type Tone = "accent" | "ok" | "warn" | "err" | "plain"
-
-interface DiscoverySummary {
-  total: number
-  under_guard: number
-  missing: number
-  coverage_pct: number
-}
 
 export interface OverviewHeroProps {
   authFetch: AuthFetch
@@ -182,18 +176,18 @@ export function OverviewHero({
       <Link href="/theguard/discovery" style={{ textDecoration: "none" }}>
         <HeroTile
           title="Agents Discovered"
-          value={discovery == null ? "—" : discovery.total}
+          value={discovery == null ? "—" : discovery.confirmed}
           sub={
             discovery == null
               ? "loading…"
               : discovery.total === 0
                 ? "run discovery to populate"
-                : `${discovery.under_guard}/${discovery.total} under Guard · ${discovery.missing} missing`
+                : `${discovery.needs_attention} need review · ${discovery.recent_hook_evidence} with recent activity`
           }
           tone={
             discovery == null || discovery.total === 0
               ? "plain"
-              : discovery.missing > 0 ? "warn" : "ok"
+              : discovery.needs_attention > 0 ? "warn" : "ok"
           }
         />
       </Link>

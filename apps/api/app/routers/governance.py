@@ -316,7 +316,7 @@ class RecentEventOut(BaseModel):
     decision: str                    # blocked | warned | allowed | audited
     rule_id: str | None = None
     ai_tool: str
-    tool_call: str
+    tool_call: str | None = None   # NULL on older audit rows
     user_email: str | None = None
     input_summary: str | None = None
     conductai_run_id: str | None = None
