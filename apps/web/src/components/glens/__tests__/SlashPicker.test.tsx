@@ -268,3 +268,24 @@ describe("Dormant completers (PR 3)", () => {
     ])
   })
 })
+
+describe("/export-audit", () => {
+  const tool = SLASH_TOOLS.find(t => t.name === "export-audit")!
+
+  it("is registered with a required range arg using the audit_ranges completer", () => {
+    expect(tool.args).toEqual([expect.objectContaining({ name: "range", required: true, completer: "audit_ranges" })])
+    expect(filterTools("export")).toContain(tool)
+  })
+
+  it("audit_ranges offers the four presets with ISO since/until", async () => {
+    const opts = await COMPLETERS.audit_ranges(authFetchMock, "ws-1")
+    expect(opts.map(o => o.label)).toEqual(["Last 24 hours", "Last 7 days", "Last 30 days", "This month"])
+    for (const o of opts) expect(o.value).toMatch(/^since \d{4}-\d\d-\d\dT[\d:.]+Z until \d{4}-\d\d-\d\dT[\d:.]+Z$/)
+  })
+
+  it("composePrompt routes to export_audit_log", () => {
+    expect(composePrompt(tool, { range: "since A until B" })).toBe(
+      'Please run export_audit_log with range="since A until B".',
+    )
+  })
+})
