@@ -14,7 +14,7 @@ the settlement as PENDING_RECONCILER (safe: the reconciler backfills it).
 from __future__ import annotations
 
 import base64
-from typing import Any, Mapping, Optional, Sequence
+from typing import Any, Iterable, Mapping, Optional, Sequence
 
 from app.runtime.accounting.contracts import (
     PricingCompleteness,
@@ -173,12 +173,8 @@ def settle_micros_for_attempts(
             strict=strict,
         )
 
-    total = 0
-    for attempt in attempts_meta:
-        att_provider = attempt.get("provider_or_integration") or request_provider
-        att_model = attempt.get("model") or request_model
-        succeeded = bool(attempt.get("succeeded"))
-        if succeeded:
+    def _attempt_micros(attempt: Mapping[str, Any]) -> Optional[int]:
+        if attempt.get("succeeded"):
             att_bytes = winner_response_bytes
         else:
             b64 = attempt.get("response_bytes_b64")
@@ -191,14 +187,63 @@ def settle_micros_for_attempts(
                 att_bytes = base64.b64decode(b64)
             except Exception:
                 return None
-        micros = compute_settlement_micros(
-            provider=att_provider,
-            model=att_model,
+        return compute_settlement_micros(
+            provider=attempt.get("provider_or_integration") or request_provider,
+            model=attempt.get("model") or request_model,
             operation=attempt.get("operation") or operation,
             response_bytes=att_bytes,
             strict=strict,
         )
+
+    return sum_attempt_micros(_attempt_micros(a) for a in attempts_meta)
+
+
+# ── One aggregation rule for every settlement surface (#2410) ──────────
+#
+# Live write (above), stale-reservation recovery
+# (``budget_reconciler.run_recovery_sweep``) and the Redis rebuild
+# (``BudgetLedger.reconcile``) must agree on what a multi-attempt request
+# costs. They share these helpers so the rule lives in one place.
+
+DEFINITIVE_USAGE = "complete"
+DEFINITIVE_PRICING = ("priced", "override_applied")
+
+
+def sum_attempt_micros(per_attempt: Iterable[Optional[int]]) -> Optional[int]:
+    """All-or-nothing sum of per-attempt costs.
+
+    Any attempt with unknown cost (None) → None: the priced attempts alone
+    are a lower bound, so the reservation stays open (PENDING_RECONCILER)
+    instead of committing them. No attempts → None. Consumes the iterable
+    lazily and stops at the first None.
+    """
+    total: Optional[int] = None
+    for micros in per_attempt:
         if micros is None:
             return None
-        total += micros
+        total = (total or 0) + int(micros)
     return total
+
+
+def receipt_settle_micros(receipt: Any) -> Optional[int]:
+    """A receipt's definitive cost, or None when it cannot settle
+    (partial usage, unpriced/incomplete pricing, or no cost)."""
+    cost = receipt.calculated_cost_microdollars
+    if (
+        cost is None
+        or receipt.usage_completeness != DEFINITIVE_USAGE
+        or receipt.pricing_completeness not in DEFINITIVE_PRICING
+    ):
+        return None
+    return int(cost)
+
+
+def definitive_receipt_clause(receipt_cls: Any) -> Any:
+    """SQL form of ``receipt_settle_micros(r) is not None``."""
+    from sqlalchemy import and_
+
+    return and_(
+        receipt_cls.calculated_cost_microdollars.isnot(None),
+        receipt_cls.usage_completeness == DEFINITIVE_USAGE,
+        receipt_cls.pricing_completeness.in_(DEFINITIVE_PRICING),
+    )

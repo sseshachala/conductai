@@ -219,43 +219,59 @@ def run_startup_reconciliation(session_factory=None) -> dict:
 # ── Recovery sweep ─────────────────────────────────────────────────
 
 
+def _request_receipts(db, request_id) -> list:
+    """Every attempt receipt for one request (one row per attempt_ordinal)."""
+    from app.models.llm_attempt_receipt import LlmAttemptReceipt
+
+    return (
+        db.query(LlmAttemptReceipt)
+        .filter(LlmAttemptReceipt.request_id == request_id)
+        .all()
+    )
+
+
+def _settled_micros(receipts) -> int | None:
+    """Sum of every attempt's definitive cost; None if any is unknown.
+    Same rule as the live write (``settle_micros_for_attempts``)."""
+    from app.runtime.accounting.settlement import (
+        receipt_settle_micros,
+        sum_attempt_micros,
+    )
+
+    return sum_attempt_micros(receipt_settle_micros(r) for r in receipts)
+
+
 def _classify_stale_reservation(db, row) -> str:
     """Return the recovery action for a stale open reservation.
 
     Rules (post-cutover — #2209 PR 4 P1-A):
 
-    - Cost source of truth is ``llm_attempt_receipts.calculated_cost_microdollars``.
-      Commit only when the receipt exists AND is a definitive settle
-      (usage_completeness='complete' + pricing_completeness in
-      {'priced','override_applied'}). Anything else must NOT be
-      auto-committed — settling a partial/unpriced number here would
-      release the reservation on a lower bound. Leave open; the
-      accounting reconciler backfills a definitive receipt later.
+    - Cost source of truth is ``llm_attempt_receipts.calculated_cost_microdollars``
+      across EVERY attempt of the request (#2410). Commit the sum only
+      when every receipt is a definitive settle (usage_completeness=
+      'complete' + pricing_completeness in {'priced','override_applied'}),
+      the live path's rule. If some attempts are priced and another is
+      not, leave open: the priced ones are a lower bound. The accounting
+      reconciler backfills a definitive receipt later.
     - Audit ``lifecycle_state`` still governs release-vs-leave for the
       no-cost cases: orphaned/expired ⇒ release (upstream never
       accepted bytes); accepted ⇒ leave_open (audit's own lease sweep
       will resolve).
     """
-    from app.models.llm_attempt_receipt import LlmAttemptReceipt
     from app.modules.guard.models import GuardAuditEvent
+    from app.runtime.accounting.settlement import receipt_settle_micros
 
     if row.request_id is None:
         return "released"
 
-    receipt = (
-        db.query(LlmAttemptReceipt)
-        .filter(
-            LlmAttemptReceipt.request_id == row.request_id,
-            LlmAttemptReceipt.calculated_cost_microdollars.isnot(None),
-            LlmAttemptReceipt.usage_completeness == "complete",
-            LlmAttemptReceipt.pricing_completeness.in_(
-                ("priced", "override_applied")
-            ),
-        )
-        .first()
-    )
-    if receipt is not None:
+    # #2410: a request is settled from ALL of its attempt receipts, with the
+    # live path's all-or-nothing rule. Priced attempts beside an unpriced one
+    # are a lower bound — leave open, never commit or release them.
+    receipts = _request_receipts(db, row.request_id)
+    if _settled_micros(receipts) is not None:
         return "committed"
+    if any(receipt_settle_micros(r) is not None for r in receipts):
+        return "left_open"
 
     ev = (
         db.query(GuardAuditEvent)
@@ -340,8 +356,11 @@ def run_recovery_sweep(session_factory=None, *, stale_seconds: int | None = None
 
         # Rehydrate a Reservation handle so we can call the ledger's
         # single-scope release()/commit() with the correct scope keys.
+        # #2410: ``reserve()`` keys the Redis reservation hash by the
+        # uuid's 32-char hex. ``str(row.id)`` (dashed) missed it, so
+        # sweep commits/releases never moved the Redis counters.
         res = Reservation(
-            reservation_id=str(row.id),
+            reservation_id=uuid.UUID(str(row.id)).hex,
             workspace_id=str(row.workspace_id),
             ai_tool=row.ai_tool or "_all",
             estimated_cents=int(row.estimated_cents),
@@ -352,30 +371,18 @@ def run_recovery_sweep(session_factory=None, *, stale_seconds: int | None = None
 
         try:
             if action == "committed":
-                # #2209 PR 4 P1-A: authoritative cost from the settleable
-                # receipt, not the legacy audit row. ``_classify_stale_reservation``
-                # only returns "committed" when a definitive receipt exists,
-                # so this query MUST find it.
-                from app.models.llm_attempt_receipt import LlmAttemptReceipt
-
-                receipt = (
-                    db.query(LlmAttemptReceipt)
-                    .filter(
-                        LlmAttemptReceipt.request_id == row.request_id,
-                        LlmAttemptReceipt.calculated_cost_microdollars.isnot(None),
-                        LlmAttemptReceipt.usage_completeness == "complete",
-                        LlmAttemptReceipt.pricing_completeness.in_(
-                            ("priced", "override_applied")
-                        ),
-                    )
-                    .first()
+                # #2209 PR 4 P1-A: authoritative cost from the receipts,
+                # not the legacy audit row. #2410: the SUM across every
+                # attempt, re-read so a receipt changed since classify is
+                # not committed stale.
+                actual_micros = _settled_micros(
+                    _request_receipts(db, row.request_id)
                 )
-                if receipt is None:
-                    # Race: receipt was retracted between classify and
+                if actual_micros is None:
+                    # Race: a receipt changed between classify and
                     # commit. Leave open — the next sweep re-classifies.
                     actions["left_open"] += 1
                     continue
-                actual_micros = int(receipt.calculated_cost_microdollars)
                 actual_cents = actual_micros // 10_000
                 ledger.commit(
                     db=db,

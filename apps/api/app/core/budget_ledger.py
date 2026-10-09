@@ -773,18 +773,25 @@ class BudgetLedger:
         except (ValueError, AttributeError):
             ws_uuid = workspace_id
 
+        from sqlalchemy.orm import aliased
+
+        from app.runtime.accounting.settlement import definitive_receipt_clause
+
+        # P1-B + #2410: only requests whose EVERY attempt is definitive
+        # count as committed (the live/sweep all-or-nothing rule). A
+        # request with any partial/unpriced attempt still has an open
+        # reservation; counting its priced attempts too would double-charge.
+        sibling = aliased(LlmAttemptReceipt)
         q = db.query(
             func.coalesce(func.sum(LlmAttemptReceipt.calculated_cost_microdollars), 0)
         ).filter(
             LlmAttemptReceipt.workspace_id == ws_uuid,
             LlmAttemptReceipt.finalized_at >= period_start,
-            LlmAttemptReceipt.calculated_cost_microdollars.isnot(None),
-            # P1-B: partial/incomplete receipts still have open reservations;
-            # counting them here + the reservation would double-charge.
-            LlmAttemptReceipt.usage_completeness == "complete",
-            LlmAttemptReceipt.pricing_completeness.in_(
-                ("priced", "override_applied")
-            ),
+            definitive_receipt_clause(LlmAttemptReceipt),
+            ~db.query(sibling.request_id).filter(
+                sibling.request_id == LlmAttemptReceipt.request_id,
+                ~definitive_receipt_clause(sibling),
+            ).exists(),
         )
         if ai_tool is not None:
             # R11 fix (reviewer P1) — carries over: transport-scoped

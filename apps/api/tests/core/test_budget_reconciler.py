@@ -95,6 +95,8 @@ class _RoutingDB:
             result = self._audit
         chain = MagicMock()
         chain.filter.return_value.first.return_value = result
+        # #2410: receipts are read per request with ``.all()``.
+        chain.filter.return_value.all.return_value = [result] if result else []
         return chain
 
 
@@ -350,6 +352,8 @@ def test_recovery_sweep_commits_from_settleable_receipt():
                 chain.filter.return_value.all.return_value = result
         else:
             chain.filter.return_value.first.return_value = result
+            # #2410: receipts are read per request with ``.all()``.
+            chain.filter.return_value.all.return_value = [result] if result else []
         return chain
     _first_list_call = {"n": True}
     def _query_results_returned_list_once_only(name):
