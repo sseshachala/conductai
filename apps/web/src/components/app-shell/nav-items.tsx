@@ -3,6 +3,7 @@
 import { useState, type MouseEvent as ReactMouseEvent } from "react"
 import { apiUrl } from "@/lib/auth/runtime"
 import Link from "next/link"
+import { invalidate } from "@/lib/api/sharedCache"
 import { Icons } from "./icons"
 
 // ── EnableGuardButton ─────────────────────────────────────────────────────────
@@ -21,6 +22,7 @@ export function EnableGuardButton({ getToken, workspaceId }: { getToken?: (() =>
         { headers: h }
       )
       if (res.ok) {
+        invalidate(`${apiUrl()}/guard/config`)
         window.dispatchEvent(new CustomEvent("guard-install-changed", { detail: { installed: true } }))
       }
     } catch {}

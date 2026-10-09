@@ -12,7 +12,7 @@ import AgentStatusPill from "@/components/workflows/AgentStatusPill"
 import { formatTrigger, timeAgo, duration, effectiveStatus } from "@/lib/runUtils"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 import { useAuthFetch } from "@/hooks/useAuthFetch"
-import { API } from "@/lib/api"
+import { API, projects as projectsApi } from "@/lib/api"
 
 interface Workflow {
   id: string
@@ -147,9 +147,7 @@ function ProjectContent({ getToken, currentUserId }: {
       setProject(found)
       if (clerkEnabled && currentUserId) {
         // Role lives on the project's workspace, not the project id (my-role 404s/403s otherwise).
-        const ws = found.workspace_id
-        const rRes = await authFetch(`${API}/projects/${ws}/my-role?workspace_id=${ws}`)
-        if (rRes.ok) setIsAdmin(((await rRes.json()) as { role: string }).role === "admin")
+        try { setIsAdmin((await projectsApi.members.myRole(authFetch, found.workspace_id)).role === "admin") } catch { /* non-admin */ }
       }
     } catch {
       setError("Network error while loading project.")

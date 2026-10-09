@@ -8,7 +8,7 @@ import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useAuth } from "@/lib/auth/client"
 import { useAuthFetch } from "@/hooks/useAuthFetch"
-import { API } from "@/lib/api"
+import { projects as projectsApi, organizations as organizationsApi } from "@/lib/api"
 import { SettingsShell, type SettingsTab } from "@/components/SettingsShell"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 import EnvironmentsManager from "@/components/settings/EnvironmentsManager"
@@ -45,9 +45,7 @@ function SettingsPageWithAuth() {
     if (!workspaceId || !userId) return
     async function check() {
       try {
-        const res = await authFetch(`${API}/projects/${workspaceId}/my-role`)
-        if (!res.ok) { setIsAdmin(false); return }
-        const data: { role: string } = await res.json()
+        const data: { role: string } = await projectsApi.members.myRole(authFetch, workspaceId!)
         setIsAdmin(data.role === "admin")
       } catch { setIsAdmin(false) }
     }
@@ -73,9 +71,8 @@ function OrgNameEditor({ getToken }: { getToken: (() => Promise<string | null>) 
     let cancelled = false
     async function load() {
       try {
-        const res = await authFetch(`${API}/organizations`)
-        if (!res.ok || cancelled) return
-        const data = await res.json()
+        const data = await organizationsApi.list(authFetch)
+        if (cancelled) return
         const org = Array.isArray(data) && data.length > 0 ? data[0] : null
         if (!org || cancelled) return
         setOrgId(org.id)
@@ -96,11 +93,7 @@ function OrgNameEditor({ getToken }: { getToken: (() => Promise<string | null>) 
     setStatus("saving")
     setErrorMsg("")
     try {
-      const res = await authFetch(`${API}/organizations/${orgId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: inputValue.trim() }),
-      })
+      const res = await organizationsApi.update(authFetch, orgId, { name: inputValue.trim() })
       if (!res.ok) {
         const body = await res.json().catch(() => ({}))
         setErrorMsg(body?.detail ?? "Could not save — please try again.")

@@ -3,6 +3,7 @@
 import { apiUrl as configuredApiUrl } from "@/lib/auth/runtime"
 
 
+import { cachedGet, invalidating } from "@/lib/api/sharedCache"
 import React, { createContext, useContext, useEffect, useState, useCallback } from "react"
 
 interface Preferences {
@@ -52,9 +53,13 @@ export function PreferencesProvider({
     if (!workspaceId || !apiUrl) { setLoading(false); return }
     ;(async () => {
       try {
-        const h = await headers()
-        const r = await fetch(`${apiUrl}/workspaces/${workspaceId}/preferences`, { headers: h })
-        if (r.ok) setPrefs(await r.json())
+        const url = `${apiUrl}/workspaces/${workspaceId}/preferences`
+        const data = await cachedGet(url, async () => {
+          const r = await fetch(url, { headers: await headers() })
+          if (!r.ok) throw new Error(`preferences ${r.status}`)
+          return (await r.json()) as Preferences
+        })
+        setPrefs(data)
       } catch {}
       setLoading(false)
     })()
@@ -66,11 +71,11 @@ export function PreferencesProvider({
     setPrefs(optimistic)
     try {
       const h = await headers()
-      await fetch(`${apiUrl}/workspaces/${workspaceId}/preferences`, {
+      await invalidating(`${apiUrl}/workspaces/${workspaceId}/preferences`, fetch(`${apiUrl}/workspaces/${workspaceId}/preferences`, {
         method: "PATCH",
         headers: h,
         body: JSON.stringify(patch),
-      })
+      }))
     } catch {
       setPrefs(previous) // rollback to captured snapshot, not stale closure
     }

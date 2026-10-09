@@ -8,6 +8,7 @@ import { useAuth, useSession } from "@/lib/auth/client"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { sessionFetch, type GetSessionToken } from "./sessionFetch"
+import { bindCacheToUser, cachedGet, invalidate } from "./api/sharedCache"
 
 export interface Workspace {
   id: string
@@ -59,7 +60,8 @@ export function WorkspaceProvider({ children, clerkEnabled }: Props) {
 }
 
 function WorkspaceProviderWithAuth({ children }: { children: ReactNode }) {
-  const { getToken, isLoaded, isSignedIn, sessionId } = useAuth()
+  const { getToken, isLoaded, isSignedIn, sessionId, userId } = useAuth()
+  if (isLoaded) bindCacheToUser(`${userId ?? ''}|${sessionId ?? ''}`) // never share cached API data across users/sessions
   const { session } = useSession()
   const pathname = usePathname()
   const authPage = /^\/(sign-in|sign-up|accept-invite)(\/|$)/.test(pathname)
@@ -91,7 +93,7 @@ function WorkspaceProviderInner({
   const [error, setError] = useState<string | null>(null)
   const requestVersion = useRef(0)
 
-  const refresh = useCallback(async () => {
+  const load = useCallback(async (force: boolean) => {
     if (!ready) return
     const version = ++requestVersion.current
     setLoading(true)
@@ -102,13 +104,13 @@ function WorkspaceProviderInner({
         setError("Workspace API is not configured. Set NEXT_PUBLIC_API_URL and restart the web server.")
         return
       }
-      const res = await sessionFetch(`${api}/projects`, {}, getToken)
-      if (version !== requestVersion.current) return
-      if (!res.ok) {
-        setError(`Failed to load workspaces (${res.status})`)
-        return
-      }
-      const data: Workspace[] = await res.json()
+      if (force) invalidate(`${api}/projects`)
+      // Shared with projects.list, so a getToken identity change doesn't refetch.
+      const data: Workspace[] = await cachedGet(`${api}/projects`, async () => {
+        const res = await sessionFetch(`${api}/projects`, {}, getToken)
+        if (!res.ok) throw new Error(`Failed to load workspaces (${res.status})`)
+        return res.json()
+      })
       if (version !== requestVersion.current) return
       if (!Array.isArray(data)) { setError("Unexpected response from workspace API"); return }
       setWorkspaces(data)
@@ -132,12 +134,16 @@ function WorkspaceProviderInner({
     }
   }, [getToken, ready])
 
+  const refresh = useCallback(() => load(true), [load])
+
   useEffect(() => {
-    void refresh()
+    void load(false)
     return () => { requestVersion.current++ }
-  }, [refresh])
+  }, [load])
 
   function setActiveWorkspace(ws: Workspace) {
+    // Permissions are role-per-workspace; re-check after a switch.
+    invalidate(`${apiUrl()}/me/permissions`)
     setActiveWorkspaceState(ws)
     setCookie("delegator_project_id", ws.id)
     setCookie("delegator_project_name", encodeURIComponent(ws.name))

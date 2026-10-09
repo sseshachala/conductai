@@ -1,5 +1,6 @@
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import { clearSharedCache } from "@/lib/api/sharedCache"
 import { WorkspaceProvider, useWorkspace } from './WorkspaceContext'
 
 const auth = vi.hoisted(() => ({
@@ -19,6 +20,7 @@ function Probe() {
 }
 function tree() { return <WorkspaceProvider clerkEnabled><Probe /></WorkspaceProvider> }
 beforeEach(() => {
+  clearSharedCache()
   navigation.pathname = '/theguard/try'
   vi.stubEnv('NEXT_PUBLIC_API_URL', 'https://api.example')
   Object.assign(auth, { isLoaded: false, isSignedIn: false, sessionId: 'session-a', status: 'pending' })

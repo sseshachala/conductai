@@ -1,8 +1,9 @@
 /**
  * CRUD client for /workspaces/{ws}/report-layouts (#1450 PR 2).
- * Thin wrapper — no caching, no reactive state.
+ * Thin wrapper — only `list` is cached (shared cache; writes invalidate it).
  */
 import { API, AuthFetch, del, json, post, put } from "../api/client"
+import { cachedGet, invalidating } from "../api/sharedCache"
 import type { WidgetHint } from "./widgets"
 
 export interface WidgetSpec {
@@ -26,7 +27,7 @@ const base = (workspaceId: string) =>
 
 export const reportLayoutsApi = {
   list: (f: AuthFetch, workspaceId: string) =>
-    json<ReportLayout[]>(f, base(workspaceId)),
+    cachedGet(base(workspaceId), () => json<ReportLayout[]>(f, base(workspaceId))),
 
   get: (f: AuthFetch, workspaceId: string, slug: string) =>
     json<ReportLayout>(f, `${base(workspaceId)}/${slug}`),
@@ -35,15 +36,15 @@ export const reportLayoutsApi = {
     f: AuthFetch,
     workspaceId: string,
     body: { slug: string; name: string; layout_spec: WidgetSpec[] },
-  ) => post(f, base(workspaceId), body),
+  ) => invalidating(base(workspaceId), post(f, base(workspaceId), body)),
 
   update: (
     f: AuthFetch,
     workspaceId: string,
     slug: string,
     body: { name?: string; layout_spec?: WidgetSpec[]; is_pinned?: boolean },
-  ) => put(f, `${base(workspaceId)}/${slug}`, body),
+  ) => invalidating(base(workspaceId), put(f, `${base(workspaceId)}/${slug}`, body)),
 
   remove: (f: AuthFetch, workspaceId: string, slug: string) =>
-    del(f, `${base(workspaceId)}/${slug}`),
+    invalidating(base(workspaceId), del(f, `${base(workspaceId)}/${slug}`)),
 }

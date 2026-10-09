@@ -8,7 +8,7 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth/client"
 import { useAuthFetch } from "@/hooks/useAuthFetch"
-import { API } from "@/lib/api"
+import { API, projects as projectsApi } from "@/lib/api"
 import AppShell from "@/components/AppShell"
 import AgentStatusPill from "@/components/workflows/AgentStatusPill"
 import Toggle from "@/components/workflows/Toggle"
@@ -146,9 +146,7 @@ function WorkflowsContent({ getToken, currentUserId }: { getToken: (() => Promis
 
   async function loadRole(projectId: string) {
     try {
-            const res = await authFetch(`${API}/projects/${projectId}/my-role`)
-      if (!res.ok) return
-      const data: { role: string } = await res.json()
+      const data: { role: string } = await projectsApi.members.myRole(authFetch, projectId)
       setIsAdmin(data.role === "admin")
     } catch { }
   }

@@ -1,3 +1,4 @@
+import { clearSharedCache } from "@/lib/api/sharedCache"
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import { render } from "@testing-library/react"
 import { screen, waitFor } from "@testing-library/dom"
@@ -45,6 +46,7 @@ describe("GuardRoleClerkProvider fetch flow", () => {
   const originalApiUrl = process.env.NEXT_PUBLIC_API_URL
 
   beforeEach(() => {
+    clearSharedCache()
     mocks.auth.getToken = vi.fn().mockResolvedValue("clerk-token-abc")
     mocks.auth.isLoaded = true
     mocks.auth.isSignedIn = true
