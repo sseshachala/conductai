@@ -27,6 +27,7 @@ from app.tools.registry import default_registry
 
 from app.tools.registrations.lens import (
     actor,
+    audit_export,
     capabilities,
     dashboard_kpis,
     discovery,
@@ -66,6 +67,7 @@ _ALL_TOOLS = [
     *gateway_v2.TOOLS,
     *trial_evidence.TOOLS,
     *platform_evidence.TOOLS,
+    *audit_export.TOOLS,
 ]
 
 

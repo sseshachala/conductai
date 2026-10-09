@@ -173,6 +173,16 @@ def _extract_run_started_envelope(final_msgs: list[dict]) -> dict | None:
     return None
 
 
+def _extract_audit_export(final_msgs: list[dict]) -> dict | None:
+    """First ``export_audit_log`` result (``kind == "audit_export"``). Surfaces it on the
+    SSE 'done' event as ``audit_export`` (and persists it) so the UI renders a Download button."""
+    for raw in _iter_tool_results(final_msgs):
+        r = _parse_json_dict(raw)
+        if r and r.get("kind") == "audit_export" and r.get("download_path"):
+            return r
+    return None
+
+
 def _build_drilldown(tool_calls: list[tuple[str, dict]]) -> str | None:
     """Build a grounded drilldown URL from the tool calls the LLM actually made."""
     page = "/logs/guard"
@@ -536,13 +546,14 @@ async def glens_chat_stream(
             drilldown = _build_drilldown(tool_calls) if _has_data(final_msgs) else None
             confirm_envelope = _extract_confirm_envelope(final_msgs)
             run_started_envelope = _extract_run_started_envelope(final_msgs)
+            audit_export = _extract_audit_export(final_msgs)
 
             # #1480 PR 14 — skip prose streaming entirely when we have a
             # run_started envelope. <RunBubble> IS the answer; streaming
             # "Run triggered successfully!" underneath would flash for
             # ~500ms before the frontend replaces it with the bubble.
             if run_started_envelope:
-                await event_q.put({"type": "done", "answer": "", "confirm_envelope": confirm_envelope, "run_started_envelope": run_started_envelope})
+                await event_q.put({"type": "done", "answer": "", "confirm_envelope": confirm_envelope, "run_started_envelope": run_started_envelope, "audit_export": audit_export})
                 return
 
             if early_text:
@@ -557,7 +568,7 @@ async def glens_chat_stream(
                 for i in range(0, len(answer), chunk_size):
                     await event_q.put({"type": "token", "text": answer[i:i + chunk_size]})
                     await asyncio.sleep(0.008)
-                await event_q.put({"type": "done", "answer": answer, "confirm_envelope": confirm_envelope, "run_started_envelope": run_started_envelope})
+                await event_q.put({"type": "done", "answer": answer, "confirm_envelope": confirm_envelope, "run_started_envelope": run_started_envelope, "audit_export": audit_export})
                 return
 
             # Phase 2: stream synthesis (tools already resolved)
@@ -573,7 +584,7 @@ async def glens_chat_stream(
                     await event_q.put({"type": "token", "text": link[i:i + 4]})
                     await asyncio.sleep(0.008)
                 answer += link
-            await event_q.put({"type": "done", "answer": answer, "confirm_envelope": confirm_envelope, "run_started_envelope": run_started_envelope})
+            await event_q.put({"type": "done", "answer": answer, "confirm_envelope": confirm_envelope, "run_started_envelope": run_started_envelope, "audit_export": audit_export})
         except Exception as e:
             # If it's a Guard block, surface the rule_id to logs + telemetry.
             # #1286 wired Lens through the same policy engine as the HTTP
@@ -617,6 +628,8 @@ async def glens_chat_stream(
                         persisted["confirm_envelope"] = evt["confirm_envelope"]
                     if evt.get("run_started_envelope"):
                         persisted["run_started"] = evt["run_started_envelope"]
+                    if evt.get("audit_export"):
+                        persisted["audit_export"] = evt["audit_export"]
                     session_messages.append({
                         "role": "assistant",
                         "content": json.dumps(persisted),
@@ -629,6 +642,8 @@ async def glens_chat_stream(
                         done_payload.update(evt["confirm_envelope"])
                     if evt.get("run_started_envelope"):
                         done_payload["run_started"] = evt["run_started_envelope"]
+                    if evt.get("audit_export"):
+                        done_payload["audit_export"] = evt["audit_export"]
                     yield f"data: {json.dumps(done_payload)}\n\n"
                     break
         except asyncio.TimeoutError:

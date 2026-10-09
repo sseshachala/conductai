@@ -33,8 +33,10 @@ from app.modules.guard.routers.events_unified import list_unified_activity  # no
 from app.modules.guard.routers import events_ingest as _events_ingest
 from app.modules.guard.routers import events_unified as _events_unified
 from app.modules.guard.routers import events_query as _events_query
+from app.modules.guard.routers import events_export as _events_export
 
 router = APIRouter()
 router.include_router(_events_ingest.router)
 router.include_router(_events_unified.router)
+router.include_router(_events_export.router)
 router.include_router(_events_query.router)

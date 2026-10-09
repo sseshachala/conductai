@@ -210,6 +210,8 @@ app.add_middleware(
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
+    # Audit export (#2385): browsers only expose these to cross-origin JS if listed.
+    expose_headers=["Content-Disposition", "X-Conduct-Export-Capped", "X-Conduct-Export-Rows"],
 )
 
 @app.exception_handler(Exception)
