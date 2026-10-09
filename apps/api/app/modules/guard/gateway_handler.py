@@ -22,6 +22,7 @@ from sqlalchemy import text
 
 from app.core.config import settings
 from app.modules.auth.federation.resolver import FederationDenied
+from app.modules.guard.gateway_phase_dispatch import apply_tool_call_gate  # noqa: F401 — re-export
 from app.modules.guard.gateway_request_state import GatewayCall
 from app.modules.guard.gateway_v2_plan import (  # noqa: F401 — re-exports
     _V2_HEADER_ALLOWLIST,
@@ -49,109 +50,6 @@ from app.modules.guard.gateway_v2_stream import (  # noqa: F401 — re-exports
 
 
 log = structlog.get_logger(__name__)
-
-
-def apply_tool_call_gate(
-    response: JSONResponse,
-    routing_meta: dict | None,
-    *,
-    workspace_id: str,
-    provider: str,
-    model: str,
-) -> tuple[JSONResponse, dict | None]:
-    """#2159 PR 2 — tool-call scanner + reason marker.
-
-    Contract:
-      - Parses ``response.body`` as JSON.
-      - Walks ``choices[].message.tool_calls[].function.arguments``,
-        redacting string leaves via ``tools_validator.scan_response_tool_calls``.
-      - On ``RedactionFailure``: returns (502 envelope, routing_meta with
-        ``response_gate_reason=validation_failure`` and empty
-        ``tool_calls_generated``). Upstream cost stays on the audit row
-        because inference already happened; only the tool_call is refused.
-      - Otherwise: returns (response with redacted body substituted,
-        routing_meta with ``tool_calls_generated`` populated).
-
-    Never raises. The existing composed-engine ``_apply_response_gate``
-    runs AFTER this helper — a 502 here short-circuits the gate; a
-    successful scan hands off the sanitised body to the gate for
-    policy evaluation. The gate's own 451 result is marked separately
-    in the caller so the two ``response_gate_reason`` values stay
-    distinct.
-    """
-    import json as _json_tc
-    from app.modules.guard.tools_validator import (
-        ResponseGateReason,
-        scan_response_tool_calls,
-    )
-
-    try:
-        _resp_parsed = _json_tc.loads(response.body or b"{}")
-    except Exception:
-        _resp_parsed = {}
-    scan = scan_response_tool_calls(_resp_parsed)
-    if scan.error is not None:
-        log.warning(
-            "guard.response.tool_args_validation_failed",
-            workspace_id=workspace_id, provider=provider, model=model,
-            source=scan.error.source, reason=scan.error.reason,
-        )
-        routing_meta = {
-            **(routing_meta or {}),
-            "response_gate_reason": ResponseGateReason.VALIDATION_FAILURE,
-            "tool_calls_generated": [],
-        }
-        response = JSONResponse(
-            status_code=502,
-            content={
-                "error": {
-                    "type": "conduct_gateway_tool_arguments_validation_failed",
-                    "message": (
-                        "Tool_call arguments failed validation and cannot "
-                        "be safely delivered. Upstream inference completed "
-                        "and is billed; the tool call is refused."
-                    ),
-                    "detail": scan.error.reason,
-                    "source": scan.error.source,
-                    "gate": "response",
-                }
-            },
-        )
-        return response, routing_meta
-
-    correlation_ids: dict[str, str] = {}
-    if scan.generated_calls:
-        # #2158 — assign a correlation id per generated tool_call.
-        # Runtime executor reads the X-Conduct-Tool-Correlation-Ids
-        # response header and attaches it to its own Flight Recorder
-        # entry so both sides can be joined. Stored alongside
-        # tool_calls_generated in routing_meta for audit-side lookup.
-        from app.modules.guard.tools_validator import (
-            generate_tool_call_correlation_ids as _gen_corr,
-        )
-        correlation_ids = _gen_corr(scan.generated_calls)
-        routing_meta = {
-            **(routing_meta or {}),
-            "tool_calls_generated": scan.generated_calls,
-            "tool_call_correlation_ids": correlation_ids,
-        }
-
-    if scan.scanned_body is not None and scan.scanned_body is not _resp_parsed:
-        response = JSONResponse(
-            status_code=response.status_code,
-            content=scan.scanned_body,
-        )
-
-    if correlation_ids:
-        # Attach correlation header on the outgoing response. Existing
-        # headers preserved by JSONResponse are all defaults (content
-        # type + length), so setting one custom header is safe.
-        from app.modules.guard.tools_validator import (
-            encode_correlation_header as _enc_corr,
-        )
-        response.headers["X-Conduct-Tool-Correlation-Ids"] = _enc_corr(correlation_ids)
-
-    return response, routing_meta
 
 
 async def handle_gateway_request(
@@ -200,6 +98,7 @@ async def handle_gateway_request(
     from app.modules.guard import gateway_phase_policy as _policy
     from app.modules.guard import gateway_phase_upstream as _upstream
     from app.modules.guard import gateway_phase_reserve as _reserve
+    from app.modules.guard import gateway_phase_dispatch as _dispatch
 
     started = time.monotonic()
 
@@ -230,7 +129,7 @@ async def handle_gateway_request(
         workspace_id, clerk_user_id = st.workspace_id, st.clerk_user_id
         _agent_identity_id, _agent_risk_tier = st.agent_identity_id, st.agent_risk_tier
         _federation, _admission_ticket = st.federation, st.admission_ticket
-        from app.modules.auth.federation.gateway import recheck_gateway, delegated_policy_check
+        from app.modules.auth.federation.gateway import recheck_gateway
 
         # 3. Body → model routing → v2 plan (gateway_phase_routing).
         _early = await _routing.parse_and_route(st, build_v2_plan_owned=_build_v2_plan_owned)
@@ -305,45 +204,16 @@ async def handle_gateway_request(
         try:
             if _v2_plan is not None:
                 # #2004 Phase 1 — v2 executes the coordinator + LiteLLM SDK
-                # transport inside the same lifecycle as v1. Same audit row,
-                # same response gate, same finalize path — only the actual
-                # upstream call differs. Finalize is intentionally deferred
-                # to AFTER the response gate below so a blocked response
-                # doesn't land on top of a pre-gate "ok" row.
-                #
-                # PR 2.5 — streaming: pass ``stream`` down so the coordinator +
-                # native_http transport can return a live StreamingResponse.
-                # Non-streaming returns a JSONResponse (same shape as before).
-                #
-                # X1 — per-target policy re-eval. The ingress policy eval
-                # (line ~339) runs against the cond-* alias; the transport
-                # substitutes ``target.model`` before wire. Any rule keyed
-                # on the real target model would be bypassed by the alias
-                # otherwise. Build a closure the coordinator calls per
-                # target; block → skip target (records PolicyBlock attempt);
-                # all blocked → AllAttemptsFailed → 451 to the client.
-                _policy_check = _build_policy_check(
-                    workspace_id=workspace_id,
-                    clerk_user_id=clerk_user_id,
-                    agent_identity_id=(
-                        str(_agent_identity_id) if _agent_identity_id else None
-                    ),
-                    fallback_provider=provider,
-                    body=body,
-                    risk_tier=_agent_risk_tier,
-                    ai_tool=ai_tool,
-                )
-                # X7 — vendor-specific client headers (``anthropic-beta``,
-                # ``openai-organization``, ...) reach v2 targets via a
-                # v2-side allowlist (stricter than v1's blanket forward).
-                _v2_client_headers = _v2_allowlisted_headers(extra_headers)
-                _policy_check = delegated_policy_check(_policy_check, _federation)
+                # transport inside the same lifecycle as v1: same audit row,
+                # same response gate, same finalize path. Finalize is
+                # deferred to AFTER the response gate. PR 2.5 — ``stream``
+                # lets the coordinator return a live StreamingResponse.
+                _policy_check, _v2_client_headers = _dispatch.v2_dispatch_inputs(st)
                 # ── PR-A2b: dispatch boundary ──
                 # Flip BEFORE bytes fly. Any exception past this point
                 # is treated as "may have dispatched" -> settle marks
                 # PENDING_RECONCILER (never releases, reconciler owns
-                # cleanup). This is intentionally over-conservative for
-                # correctness: releasing after real spend would silently
+                # cleanup). Releasing after real spend would silently
                 # drop billed cost.
                 _dispatched = True
                 _response = await _execute_v2(
@@ -354,76 +224,15 @@ async def handle_gateway_request(
                 # Reflect coordinator attempt records back into routing_meta
                 # so the durable audit row lands with the full attempt list.
                 _routing_meta = _merge_routing_meta(_routing_meta, _v2_plan.last_meta)
-                # Snapshot the upstream body BEFORE the response gate runs.
-                # If the gate blocks, `_response` will be replaced with a
-                # 451 error envelope carrying no token usage. Finalize needs
-                # the upstream bytes so cost + token accounting still work
-                # even for a blocked response.
-                #
-                # For streaming: body isn't materialised until the stream
-                # drains, so the pre-gate snapshot is unavailable here.
-                # `_wrap_v2_stream_finalize` collects bytes as they pass
-                # through and calls finalize on stream-close.
-                if isinstance(_response, StreamingResponse):
-                    _v2_upstream_body_bytes: bytes | None = None
-                else:
-                    try:
-                        _v2_upstream_body_bytes = bytes(_v2_plan.upstream_body) or None
-                    except Exception:
-                        _v2_upstream_body_bytes = None
+                _v2_upstream_body_bytes = _dispatch.v2_upstream_snapshot(_response, _v2_plan)
             else:
                 # ── PR-A2b: dispatch boundary (legacy path) ──
                 await run_in_threadpool(recheck_gateway, _federation)
                 _dispatched = True
-                _response = await transport.forward(
-                    sender=_forward,
-                    upstream=upstream,
-                    path=upstream_path,
-                    body=body,
-                    real_key=real_key,
-                    auth_header_out=auth_header_out,
-                    bearer=bearer,
-                    is_stream=is_stream,
-                    extra_headers=extra_headers,
-                    background=background,
-                    audit_args=(
-                        workspace_id,
-                        clerk_user_id,
-                        ai_tool,
-                        provider,
-                        model,
-                        _audit_decision,
-                        _audit_rule_id,
-                        started,
-                        body,
-                        prompt_summary,
-                        _user_email,
-                        _run_id,
-                        _workflow,
-                        _workflow_id,
-                        _hook_session_id,
-                        _routing_meta,
-                        # Phase 0 of #1959 — index 16 = resolved agent identity id. Read by
-                        # router._schedule_audit and forwarded to audit.record so Gateway
-                        # rows carry agent attribution end-to-end.
-                        str(_agent_identity_id) if _agent_identity_id else None,
-                        # Follow-up to #1971 — index 17 = FastAPI request path so
-                        # /proxy/* vs /gateway/v1/* is queryable from audit rows.
-                        request.url.path,
-                        # Phase 2 of #1959 — index 18 = durable row id. When set,
-                        # _schedule_audit dispatches to finalize() instead of record().
-                        _durable_row_id,
-                        _audit_request_id,
-                    ),
-                    upstream_api_key=_upstream_key,
-                    vendor_key=_vault_key_val,
-                    provider=provider,
-                )
-            # #2159 PR 2 — scan tool_call arguments BEFORE the existing
-            # composed-engine gate. See ``apply_tool_call_gate`` for the
-            # full contract (RedactionFailure → 502 terminal, redacted
-            # body substituted otherwise, routing_meta updated with
-            # generated_calls / response_gate_reason).
+                _response = await _dispatch.forward_v1(st)
+            # #2159 PR 2 — scan tool_call arguments BEFORE the composed-
+            # engine gate (RedactionFailure → 502 terminal, redacted body
+            # substituted otherwise, routing_meta updated).
             if (
                 operation == "inference"
                 and not is_stream
@@ -434,138 +243,9 @@ async def handle_gateway_request(
                     _response, _routing_meta,
                     workspace_id=workspace_id, provider=provider, model=model,
                 )
-
-            # #2155 — streaming tool_call gate. Same invariant as
-            # non-streaming (no raw unsafe tool_call arguments reach the
-            # client) but buffered across SSE deltas. Wraps the upstream
-            # body_iterator so tool_call arg fragments are held until
-            # ``finish_reason: "tool_calls"``, run through the same
-            # validator + redactor as ``apply_tool_call_gate``, and
-            # re-emitted as one synthetic frame. Text ``delta.content``
-            # keeps streaming chunk-by-chunk unchanged.
-            #
-            # Runs BEFORE the buffered-text response gate wrap below so
-            # that gate scans what the client will actually see (post-
-            # rewriting). Gate is a no-op when body has no ``tools`` or
-            # the flag is off — the shim'''s 400 rejection is the fallback.
-            if (
-                operation == "inference"
-                and is_stream
-                and isinstance(_response, StreamingResponse)
-                and _response.status_code < 400
-                and body.get("tools")
-                and (settings.guard_gateway_tools_stream_enabled or _v2_plan is not None)
-            ):
-                from app.modules.guard.tools_stream_gate import (
-                    wrap_tool_stream as _wrap_tool_stream_gate,
-                    StreamGateOutcome as _StreamGateOutcome,
-                )
-                # #2173 P1 — shared outcome + composed-engine policy check.
-                # Outcome mutates as the stream drains; _wrap_v2_stream_finalize
-                # reads it below to set decision + execution_status and to
-                # merge correlation_ids into routing_meta.
-                _tool_stream_outcome = _StreamGateOutcome()
-                _stream_operation = (
-                    "openai_chat_completions" if _v2_plan and _v2_plan.needs_anthropic_conversion
-                    else _v2_plan.operation if _v2_plan
-                    else "openai_responses" if request.url.path.endswith("/responses")
-                    else "anthropic_messages" if provider == "anthropic"
-                    else "openai_chat_completions"
-                )
-                _stream_gate = _wrap_tool_stream_gate
-                _stream_gate_args = {}
-                if _stream_operation != "openai_chat_completions":
-                    from app.modules.guard.tools_native_stream_gate import wrap_native_tool_stream
-                    _stream_gate = wrap_native_tool_stream
-                    _stream_gate_args = {"operation": _stream_operation}
-                _stream_policy_check = _build_stream_tool_policy_check(
-                    workspace_id=workspace_id,
-                    clerk_user_id=clerk_user_id,
-                    agent_identity_id=(
-                        str(_agent_identity_id) if _agent_identity_id else None
-                    ),
-                    agent_risk_tier=_agent_risk_tier,
-                    ai_tool=ai_tool,
-                    provider=provider,
-                    model=model,
-                    body=body,
-                    routing_meta=_routing_meta,
-                )
-                _response = StreamingResponse(
-                    _stream_gate(
-                        _response.body_iterator,
-                        outcome=_tool_stream_outcome,
-                        policy_check=_stream_policy_check,
-                        **_stream_gate_args,
-                    ),
-                    media_type=_response.media_type,
-                    headers=dict(_response.headers),
-                    status_code=_response.status_code,
-                )
-                # `_tool_stream_outcome` stays in scope and gets passed
-                # to `_wrap_v2_stream_finalize` below so the audit row's
-                # decision / execution_status reflect the stream-gate
-                # verdict instead of a false-positive "allowed / ok".
-
-            # #1733 PR 4: response gate (non-streaming). Only runs when
-            # the tool-call scanner above didn't already 502.
-            if (
-                operation == "inference"
-                and not is_stream
-                and isinstance(_response, JSONResponse)
-                and _response.status_code < 400
-            ):
-                # PR 2 Commit 3 — response gate policy eval hits DB; offload.
-                import functools as _ft
-                # #2159 PR 2 (#2156) — thread tool-name signals from
-                # routing_meta into the response-gate PolicyContext so
-                # composed-engine rules can select on tool identity.
-                _rm_now = _routing_meta or {}
-                _tng_names = [
-                    tc.get("name", "") for tc in (_rm_now.get("tool_calls_generated") or [])
-                    if isinstance(tc, dict) and tc.get("name")
-                ] or None
-                _response = await run_in_threadpool(
-                    _ft.partial(
-                        _apply_response_gate,
-                        _response,
-                        workspace_id=workspace_id,
-                        provider=provider,
-                        model=model,
-                        clerk_user_id=clerk_user_id,
-                        agent_identity_id=_agent_identity_id,
-                        agent_risk_tier=_agent_risk_tier,
-                        ai_tool=ai_tool,
-                        tool_names_offered=_rm_now.get("tools_offered") or None,
-                        tool_names_generated=_tng_names,
-                        tool_names_supplied=_rm_now.get("tool_names_supplied") or None,
-                    )
-                )
-                # #2159 PR 2 — mark policy-block reason on audit when the
-                # existing composed-engine gate 451'd. The scanner's
-                # ``VALIDATION_FAILURE`` reason (above) is distinct from
-                # this one so ops can tell the two apart.
-                if _response.status_code == 451:
-                    from app.modules.guard.tools_validator import (
-                        ResponseGateReason as _RGR_block,
-                    )
-                    _routing_meta = {
-                        **(_routing_meta or {}),
-                        "response_gate_reason": _RGR_block.POLICY_BLOCK,
-                    }
-            # #1733 PR 5: response gate (streaming, buffered end-of-stream scan).
-            elif (
-                operation == "inference"
-                and is_stream
-                and isinstance(_response, StreamingResponse)
-                and _response.status_code < 400
-            ):
-                _response = _wrap_streaming_response(
-                    _response, workspace_id=workspace_id, provider=provider, model=model,
-                    clerk_user_id=clerk_user_id, agent_identity_id=_agent_identity_id,
-                    agent_risk_tier=_agent_risk_tier,
-                    ai_tool=ai_tool,
-                )
+            # #2155 — streaming tool_call gate, then the #1733 response gate.
+            _response, _tool_stream_outcome = _dispatch.wrap_stream_tool_gate(st, _response, _routing_meta)
+            _response, _routing_meta = await _dispatch.apply_response_gate(st, _response, _routing_meta)
             # v2 finalize — deliberately AFTER the response gate so a
             # gate-blocked response doesn't land on top of a pre-gate "ok"
             # row. v1 gets its finalize inside transport.forward's
