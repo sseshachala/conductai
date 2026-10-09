@@ -18,6 +18,9 @@ from app.runtime.llm_client import (
     LLMToolUseBlock,
     LLMUpstreamError,
 )
+from app.runtime.blocks.brain_guard import (
+    record_runtime_guard_verdict as _record_guard_verdict,
+)
 from app.runtime.model_router import resolve_for_workspace as _router_resolve
 from app.runtime.pricing import freeze_pricing_snapshot, get_model_rates
 
@@ -322,15 +325,6 @@ def _execute_brain(
     from app.runtime.exceptions import ClarificationRequired
     from app.runtime.tool_engine import _resolve_remote_host, _resolve_refs, _summarise_tool_call
 
-    if state.get("__dry_run"):
-        return {
-            "dry_run": True,
-            "note": "Dry run — Brain block would invoke Claude AI with the workflow context",
-            "description": block["data"].get("description", ""),
-            "is_agentic": block["data"].get("isAgentic", False),
-            "remote_host": bool((block.get("data", {}).get("config") or {}).get("remote_host")),
-        }
-
     # PR 4 — every brain_block MUST route through a published Gateway
     # profile pinned on the workflow. Direct-provider clients are gone.
     # Reviewer P2 #2184: validate BEFORE any resource allocation
@@ -367,6 +361,16 @@ def _execute_brain(
             f"{_prof_row.name!r} which has no published revision. "
             f"Fix: publish the profile or pick a different one."
         )
+    # #2401: dry run returns only after the #2170 profile checks above, so a
+    # dry run can't report success for a workflow that would refuse to run.
+    if state.get("__dry_run"):
+        return {
+            "dry_run": True,
+            "note": "Dry run — Brain block would invoke Claude AI with the workflow context",
+            "description": block["data"].get("description", ""),
+            "is_agentic": block["data"].get("isAgentic", False),
+            "remote_host": bool((block.get("data", {}).get("config") or {}).get("remote_host")),
+        }
     _alias = (_prof_row.model_alias or "").strip()
     _profile_cond_key = (
         f"cond-{_prof_row.cond_code}-{_alias}"
@@ -862,6 +866,7 @@ def _execute_brain(
                               cf_ray=_up_err.cf_ray, render_req=_up_err.request_id,
                               attempts=_up_err.attempts,
                               run_id=run_id, block_id=block_id)
+                    _close_session()  # #2401: don't leak the sandbox
                     raise
                 except Exception as _llm_err:
                     _cause = getattr(_llm_err, "__cause__", None) or getattr(_llm_err, "__context__", None)
@@ -869,6 +874,7 @@ def _execute_brain(
                               error=str(_llm_err), cause=str(_cause),
                               base_url=_conduct_proxy_url, turn=turns,
                               run_id=run_id, block_id=block_id)
+                    _close_session()  # #2401: don't leak the sandbox
                     raise
                 _cache_set(run_id, block_id, turns, response.to_cache_dict())
                 _did_actual_llm_call = True
@@ -967,6 +973,7 @@ def _execute_brain(
                         "max_cost_usd": max_cost_usd,
                         "note": "rollback_on_failure=true — full git revert is a follow-up action",
                     })
+                _record_turns(db, run_id, turns, True)  # #2401: same as the turn path
                 _close_session()
                 raise RuntimeError(
                     f"Cost budget exhausted: agent reached ${cost_usd:.4f} with cap ${max_cost_usd:.4f} "
@@ -1058,9 +1065,10 @@ def _execute_brain(
 
                 # mark_complete — structured early exit
                 if tc.name == "mark_complete":
+                    # #2401: capture before close — a closed session has no artifacts.
+                    files_changed, diff_stat = session.capture_artifacts() if session else ([], "")
                     _close_session()
                     _record_turns(db, run_id, turns, False)
-                    files_changed, diff_stat = session.capture_artifacts() if session else ([], "")
                     return {
                         "output": tc.input.get("result", ""),
                         "structured_output": tc.input.get("output"),
@@ -1127,14 +1135,23 @@ def _execute_brain(
                                 if _guard_hit:
                                     _guard_action = _guard_hit.get("action", "audit")
                                     _guard_msg = _guard_hit.get("message", "")
+                                    # _project_rule renames id -> rule_id (#2401).
+                                    _guard_rule_id = _guard_hit.get("rule_id") or _guard_hit.get("id")
                                     if db and run_id:
                                         _emit(db, run_id, block_id, "brain_tool_call", {
                                             "tool": tc.name,
                                             "guard_action": _guard_action,
-                                            "guard_rule": _guard_hit.get("id"),
+                                            "guard_rule": _guard_rule_id,
                                             "guard_message": _guard_msg,
                                             "turn": turns,
                                         })
+                                    _record_guard_verdict(
+                                        db, workspace_id=workspace_id, user_email=user_email,
+                                        tool_name=tc.name, action=_guard_action,
+                                        rule_id=_guard_rule_id, message=_guard_msg,
+                                        input_text=_mcp_inp_text, run_id=run_id,
+                                        playbook_slug=playbook_slug, workflow_id=workflow_id,
+                                    )
                                     if _guard_action == "block":
                                         raw_tool_results.append((tc.id, f"[guard_blocked] {_guard_msg}"))
                                         continue
@@ -1269,60 +1286,14 @@ def _execute_brain(
                                             "guard_message": _guard_msg,
                                             "turn": turns,
                                         })
-                                    # Decision label used in both the audit row and the
-                                    # notification payload — kept as one variable so the
-                                    # two surfaces never disagree.
-                                    _decision_label = (
-                                        "blocked" if _guard_action == "block"
-                                        else "warned" if _guard_action == "warn"
-                                        else "audited"
+                                    # Audit row (flight recorder) + block/warn fan-out.
+                                    _record_guard_verdict(
+                                        db, workspace_id=workspace_id, user_email=user_email,
+                                        tool_name=tc.name, action=_guard_action,
+                                        rule_id=_guard_rule_id, message=_guard_msg,
+                                        input_text=_tool_input_text, run_id=run_id,
+                                        playbook_slug=playbook_slug, workflow_id=workflow_id,
                                     )
-
-                                    # Also write to the Guard audit trail so it appears
-                                    # in the flight recorder (Guard → Activity), same as
-                                    # hook and proxy verdicts.
-                                    try:
-                                        from app.modules.guard.models import GuardAuditEvent
-                                        from datetime import datetime as _dt, timezone as _tz
-                                        db.add(GuardAuditEvent(
-                                            workspace_id=_uuid.UUID(workspace_id),
-                                            user_email=user_email,
-                                            ai_tool="conduct_runtime",
-                                            tool_call=tc.name,
-                                            source="runtime",
-                                            decision=_decision_label,
-                                            rule_id=_guard_rule_id,
-                                            rule_message=_guard_msg,
-                                            input_summary=_tool_input_text[:500],
-                                            conductai_run_id=str(run_id) if run_id else None,
-                                            conductai_workflow=playbook_slug,
-                                            conductai_workflow_id=str(workflow_id) if workflow_id else None,
-                                            ts=_dt.now(_tz.utc),
-                                        ))
-                                        db.commit()
-                                    except Exception as _audit_exc:
-                                        log.warning("brain.non_mcp_guard.audit_write_failed",
-                                                    error=str(_audit_exc))
-                                        db.rollback()
-
-                                    # Fan out block/warn (skip audit — too noisy) to the
-                                    # workspace's configured notification channels
-                                    # (Slack, webhook, PagerDuty, email). Same helper the
-                                    # proxy and MCP surfaces use.
-                                    if _guard_action in ("block", "warn"):
-                                        try:
-                                            from app.modules.guard.routers.events import notify_guard_block
-                                            notify_guard_block(
-                                                db, workspace_id,
-                                                decision=_decision_label,
-                                                rule_id=_guard_rule_id,
-                                                user_email=user_email,
-                                                tool=tc.name,
-                                                source="runtime",
-                                            )
-                                        except Exception as _notify_exc:
-                                            log.warning("brain.non_mcp_guard.notify_failed",
-                                                        error=str(_notify_exc))
 
                                     if _guard_action == "block":
                                         result_content = f"[guard_blocked] {_guard_msg}  [rule: {_guard_rule_id}]"
@@ -1449,7 +1420,7 @@ def _execute_brain(
                 "cost_usd": cost_usd,
                 "note": "rollback_on_failure=true — full git revert is a follow-up action",
             })
-        _record_turns(db, run_id, max_turns, True)
+        _record_turns(db, run_id, turns, True)  # #2401: turns used, not the cap
         _close_session()
         raise RuntimeError(
             f"Turn budget exhausted: agent did not reach end_turn after {max_turns} turns "
@@ -1507,6 +1478,10 @@ def _execute_brain(
                           cf_ray=_up_err.cf_ray, render_req=_up_err.request_id,
                           attempts=_up_err.attempts,
                           run_id=run_id, block_id=block_id)
+                _close_session()  # #2401: don't leak the sandbox
+                raise
+            except Exception:
+                _close_session()  # #2401: don't leak the sandbox
                 raise
             _cache_set(run_id, block_id, 0, response.to_cache_dict())
         text = next((b.text for b in response.content if isinstance(b, LLMTextBlock)), "")
@@ -1545,5 +1520,6 @@ def _execute_brain(
         _extracted = _extract_last_json_object(result.get("output", ""))
         if _extracted:
             result = {**_extracted, **result}
+        _record_turns(db, run_id, 1, False)  # #2401: single call is one turn
         _close_session()
         return result
