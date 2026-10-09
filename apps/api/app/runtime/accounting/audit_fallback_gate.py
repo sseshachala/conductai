@@ -67,7 +67,7 @@ def count_audit_only_requests(
         SELECT COUNT(*) FROM guard_audit_events a
         WHERE a.workspace_id = CAST(:ws AS uuid)
           AND a.ts >= :since
-          AND a.cost_usd_after IS NOT NULL
+          AND a.cost_usd_after IS NOT NULL AND a.tool_call IS DISTINCT FROM 'session_usage'
           AND NOT EXISTS (
             SELECT 1 FROM llm_attempt_receipts r
             WHERE r.workspace_id = a.workspace_id
@@ -92,7 +92,7 @@ def audit_only_by_workspace(
     ``workspace_ids`` filters to a subset; None scans every workspace
     that has audit rows in the window (bounded by the reporting period).
     """
-    where = ["a.ts >= :since", "a.cost_usd_after IS NOT NULL"]
+    where = ["a.ts >= :since", "a.cost_usd_after IS NOT NULL", "a.tool_call IS DISTINCT FROM 'session_usage'"]
     params: dict = {"since": since}
     if workspace_ids is not None:
         ids = [str(w) for w in workspace_ids]

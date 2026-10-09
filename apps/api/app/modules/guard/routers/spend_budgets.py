@@ -248,6 +248,7 @@ def _current_month_cost(
     ).filter(
         GuardAuditEvent.workspace_id == ws_uuid,
         GuardAuditEvent.ts >= period_start,
+        GuardAuditEvent.budget_eligible(),
     )
     if clerk_user_id is not None:
         q = q.filter(GuardAuditEvent.clerk_user_id == clerk_user_id)
@@ -275,6 +276,7 @@ def _month_cost_groups(
     ).filter(
         GuardAuditEvent.workspace_id == ws_uuid,
         GuardAuditEvent.ts >= _current_period_start(),
+        GuardAuditEvent.budget_eligible(),
     ).group_by(
         GuardAuditEvent.clerk_user_id,
         GuardAuditEvent.ai_tool,

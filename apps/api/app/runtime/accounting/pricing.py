@@ -28,6 +28,7 @@ from app.runtime.accounting.contracts import (
     MICRODOLLARS_PER_USD,
     PricingCompleteness,
 )
+from app.runtime.litellm_rates import litellm_rates, litellm_version
 from app.runtime.pricing import (
     UnknownModelPricing,
     freeze_pricing_snapshot,
@@ -143,6 +144,12 @@ class PricingService:
         ) and isinstance(
             providers[(provider or "").lower().strip()].get(model), dict
         )
+        if not exact:
+            listed, version = self.rates_for(provider, model)
+            if listed is not None:  # LiteLLM fills only models our registry lacks
+                return RateCard.from_legacy_rates(
+                    provider, model, listed, version, PricingCompleteness.PRICED
+                )
 
         rates, version = get_model_rates(
             provider, model, pricing_snapshot=self._snapshot, strict=strict
@@ -157,6 +164,21 @@ class PricingService:
                 rates = {**rates, "cache_write_by_tier": raw_model["cache_write_by_tier"]}
         completeness = PricingCompleteness.PRICED if exact else PricingCompleteness.OVERRIDE_APPLIED
         return RateCard.from_legacy_rates(provider, model, rates, version, completeness)
+
+    def rates_for(self, provider: str, model: str) -> tuple[Optional[Mapping[str, Any]], str]:
+        """Raw listed rates (registry first, then LiteLLM) and the version that priced them.
+
+        ``(None, version)`` when neither source lists the model.
+        """
+        providers = self._snapshot.get("providers") or {}
+        listed = providers.get((provider or "").lower().strip()) if isinstance(providers, dict) else None
+        raw = listed.get(model) if isinstance(listed, dict) else None
+        if isinstance(raw, dict):
+            return raw, self._version
+        fallback = litellm_rates(provider, model)
+        if fallback is not None:
+            return fallback, f"{self._version}+litellm-{litellm_version()}"
+        return None, self._version
 
     def price_tokens(
         self,

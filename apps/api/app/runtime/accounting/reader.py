@@ -418,7 +418,7 @@ class AccountingReader:
                   FROM guard_audit_events a
                   WHERE a.workspace_id = CAST(:ws AS uuid)
                     AND a.ts >= :since
-                    AND a.cost_usd_after IS NOT NULL
+                    AND a.cost_usd_after IS NOT NULL AND a.tool_call IS DISTINCT FROM 'session_usage'
                     AND a.clerk_user_id IS NOT NULL
                     AND NOT EXISTS (
                       SELECT 1 FROM llm_attempt_receipts rr
@@ -451,7 +451,7 @@ class AccountingReader:
               FROM guard_audit_events a
               WHERE a.workspace_id = CAST(:ws AS uuid)
                 AND a.ts >= :since
-                AND a.cost_usd_after IS NOT NULL
+                AND a.cost_usd_after IS NOT NULL AND a.tool_call IS DISTINCT FROM 'session_usage'
                 AND NOT EXISTS (
                   SELECT 1 FROM llm_attempt_receipts rr
                   WHERE rr.request_id = a.request_id

@@ -115,7 +115,7 @@ def _enumerate_committed_scopes(db) -> Iterable[tuple[str, str | None, str | Non
             GuardAuditEvent.ai_tool,
         )
         .filter(GuardAuditEvent.ts >= period_start)
-        .filter(GuardAuditEvent.cost_usd_after.isnot(None))
+        .filter(GuardAuditEvent.cost_usd_after.isnot(None), GuardAuditEvent.budget_eligible())
         .distinct()
         .all()
     )

@@ -3,7 +3,7 @@
 import base64
 import structlog
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
-from app.modules.guard.session_usage import usage_evidence
+from app.modules.guard.session_coverage import apply_session_cost
 from sqlalchemy.orm import Session
 from app.core.auth import (
     _resolve_agent_token,
@@ -250,7 +250,7 @@ def ingest_session_usage(
                       "Cache and reasoning tokens are included once. "
                       f"Observed at {body.observed_at.isoformat()}. Client reported; not Gateway usage."),
     )
-    event._session_usage = usage_evidence(body)
+    apply_session_cost(event, body, db, ws_uuid, actor, request)
     return ingest_event(event, request, background, db, auth_context)
 
 

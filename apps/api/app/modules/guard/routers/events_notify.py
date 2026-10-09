@@ -242,6 +242,7 @@ def _check_spend_budget(db: Session, workspace_id: str, config: GuardConfig | No
         .filter(
             GuardAuditEvent.workspace_id == ws_uuid,
             GuardAuditEvent.ts >= period_start,
+            GuardAuditEvent.budget_eligible(),
         )
         .scalar()
     ) or 0.0
