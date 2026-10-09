@@ -15,6 +15,7 @@ import yaml
 
 from conduct_cli import deployment
 from conduct_cli import guard as _guard
+from conduct_cli.commands.audit import cmd_audit, register_audit
 from conduct_cli.commands.auth import (
     cmd_login,
     cmd_sync,
@@ -357,7 +358,6 @@ def main():
         help="Write JSON to FILE (default: stdout).",
     )
 
-    # conduct sync
     sub.add_parser("sync", help="Sync Guard policies (and Security Loop policies if installed)")
 
     # conduct test-guard / verify
@@ -373,13 +373,13 @@ def main():
     sr_p = sub.add_parser("session-report", help="Analyse local AI coding sessions with paxel and send report to admin")
     sr_p.add_argument("--developer", default=None, help="Developer name (defaults to OS username)")
 
-    # conduct memory
     memory_p = sub.add_parser("memory", help="Search team session memories")
     memory_sub = memory_p.add_subparsers(dest="memory_command")
     mem_search_p = memory_sub.add_parser("search", help="Search team memories")
     mem_search_p.add_argument("query", nargs="+", help="Search query")
     mem_search_p.add_argument("--repo", help="Filter by repo (owner/repo)")
     mem_search_p.add_argument("--limit", type=int, default=5, help="Max results")
+    register_audit(sub)
 
     args = parser.parse_args()
 
@@ -486,6 +486,8 @@ def main():
         cmd_session_report(args)
     elif args.command == "memory":
         cmd_memory(args)
+    elif args.command == "audit":
+        cmd_audit(args)
     else:
         parser.print_help()
 
