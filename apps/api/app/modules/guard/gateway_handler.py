@@ -1213,7 +1213,6 @@ async def handle_gateway_request(
                     clerk_user_id=clerk_user_id, agent_identity_id=_agent_identity_id,
                     agent_risk_tier=_agent_risk_tier,
                     ai_tool=ai_tool,
-                    on_close=(_admission_ticket.release if _admission_ticket is not None else None),
                 )
             # v2 finalize — deliberately AFTER the response gate so a
             # gate-blocked response doesn't land on top of a pre-gate "ok"
@@ -1239,7 +1238,6 @@ async def handle_gateway_request(
                 if isinstance(_response, StreamingResponse):
                     _response = _wrap_v2_stream_finalize(
                         _response,
-                        on_close=(_admission_ticket.release if _admission_ticket is not None else None),
                         durable=_durable,
                         row_id=_durable_row_id,
                         workspace_id=workspace_id,
@@ -1314,7 +1312,6 @@ async def handle_gateway_request(
                 if isinstance(_response, StreamingResponse):
                     _response = _wrap_v2_stream_record_legacy(
                         _response,
-                        on_close=(_admission_ticket.release if _admission_ticket is not None else None),
                         background=background,
                         workspace_id=workspace_id,
                         clerk_user_id=clerk_user_id,
@@ -1661,11 +1658,12 @@ async def handle_gateway_request(
             _response = wrap_profile_rate_stream(_response, _profile_rate_admission, _v2_plan)
             _profile_rate_streamed = True
 
-        # Streaming lifecycle: transfer admission ticket ownership so the
-        # outer finally does not release before ASGI drains the response.
-        # v1 wrap already fires on_close in its iterator's finally; v2
-        # wrappers received the same hook in this PR.
+        # Streaming lifecycle: the outermost wrapper is the single owner of
+        # the admission slot and releases it exactly once when the body
+        # ends (drained, disconnect, upstream error) (#2403 item 2).
         if _admission_ticket is not None and isinstance(_response, StreamingResponse):
+            from app.modules.guard.gateway_attempt_outcome import wrap_stream_finally
+            _response = wrap_stream_finally(_response, _admission_ticket.release)
             _admission_streamed = True
             _admission_ticket.defer()
         if _audit_request_id:

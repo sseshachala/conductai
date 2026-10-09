@@ -136,11 +136,8 @@ async def test_allowed_streaming_chunks_then_finalize_and_settle_on_drain(gw):
     assert audit_tasks(background) == []
     # Policy order identical to non-streaming; response gate runs at end-of-stream.
     assert [c.gate for c in gw.policy_ctx] == ["prompt", "prompt", "response"]
-    # SUSPECT: release() is called twice on the admission ticket — once by
-    # ``_wrap_streaming_response(on_close=...)`` and once by
-    # ``_wrap_v2_stream_finalize(on_close=...)``. The real ticket tolerates
-    # it (``released`` guard), but it is a double hand-off.
-    assert gw.ticket.release_calls == 2
+    # #2403 item 2: the outermost stream wrapper releases the slot exactly once.
+    assert gw.ticket.release_calls == 1
 
 
 @pytest.mark.asyncio

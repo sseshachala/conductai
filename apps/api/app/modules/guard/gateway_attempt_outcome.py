@@ -7,10 +7,13 @@ Kept out of ``gateway_handler.py`` (already over the 500-line budget).
   and principal into the server-owned request id. The durable
   acceptance row's unique ``request_id`` index then refuses a repeat
   before any reservation or dispatch.
+- ``wrap_stream_finally``: run one cleanup exactly once when a streaming
+  body ends (drained, client disconnect, or upstream error).
 """
 from __future__ import annotations
 
 import uuid
+from typing import Awaitable, Callable
 
 # Fixed namespace so the same (workspace, principal, key) always maps to
 # the same request id across workers and restarts.
@@ -36,3 +39,29 @@ def idempotent_request_id(
         str(workspace_id), str(clerk_user_id or ""), str(agent_identity_id or ""), client_key,
     ))
     return str(uuid.uuid5(_IDEMPOTENCY_NAMESPACE, scope))
+
+
+def wrap_stream_finally(response, cleanup: Callable[[], Awaitable[None]]):
+    """Run ``cleanup`` exactly once after the streaming body ends.
+
+    Closes the inner iterator first, so inner wrappers (finalize,
+    receipts, settlement) complete before the cleanup fires.
+    """
+    original = response.body_iterator
+
+    async def iterator():
+        try:
+            async for chunk in original:
+                yield chunk
+        finally:
+            import anyio
+            with anyio.CancelScope(shield=True):
+                try:
+                    close = getattr(original, "aclose", None)
+                    if close:
+                        await close()
+                finally:
+                    await cleanup()
+
+    response.body_iterator = iterator()
+    return response
