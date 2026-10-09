@@ -63,9 +63,9 @@ async def test_allowed_non_streaming_happy_path(gw):
     row = gw.finalized[0]
     assert row["row_id"] == "row-1" and row["workspace_id"] == WS
     assert (row["decision"], row["execution_status"], row["rule_id"]) == ("allowed", "ok", None)
-    # Audit model is the cond alias, not the served target model (per-attempt
-    # model lives in routing_meta.attempts).
-    assert row["model"] == COND_MODEL
+    # #2403 item 6: audit model is the served target model; the alias stays
+    # on routing_meta.gateway_profile.
+    assert row["model"] == "gpt-4o"
     assert json.loads(row["response_bytes"]) == CHAT
     # v2 coordinator overwrites routing_meta["operation"] (wire path -> v2 op).
     assert row["routing_meta"] == {**_V2_META, "operation": "openai_chat_completions",
@@ -77,7 +77,8 @@ async def test_allowed_non_streaming_happy_path(gw):
     receipt = gw.receipts[0]
     assert receipt["request_id"] == request_id
     assert receipt["dispatched"] is True
-    assert receipt["model"] == COND_MODEL and receipt["operation"] == PATH
+    assert receipt["model"] == "gpt-4o" and receipt["operation"] == PATH
+    assert receipt["model_alias"] == COND_MODEL
     assert receipt["reserved_microdollars"] == 10_000
     assert receipt["attempts_meta"] == _WINNER
     assert json.loads(receipt["response_bytes"]) == CHAT
@@ -136,11 +137,8 @@ async def test_allowed_streaming_chunks_then_finalize_and_settle_on_drain(gw):
     assert audit_tasks(background) == []
     # Policy order identical to non-streaming; response gate runs at end-of-stream.
     assert [c.gate for c in gw.policy_ctx] == ["prompt", "prompt", "response"]
-    # SUSPECT: release() is called twice on the admission ticket — once by
-    # ``_wrap_streaming_response(on_close=...)`` and once by
-    # ``_wrap_v2_stream_finalize(on_close=...)``. The real ticket tolerates
-    # it (``released`` guard), but it is a double hand-off.
-    assert gw.ticket.release_calls == 2
+    # #2403 item 2: the outermost stream wrapper releases the slot exactly once.
+    assert gw.ticket.release_calls == 1
 
 
 @pytest.mark.asyncio
@@ -156,7 +154,7 @@ async def test_allowed_non_streaming_durable_audit_off_records_legacy_row(gw):
     assert len(tasks) == 1
     task = tasks[0]
     assert task.name == "record"
-    assert task.args[:7] == (WS, MEMBER, "unknown", "openai", COND_MODEL, "allowed", None)
+    assert task.args[:7] == (WS, MEMBER, "unknown", "openai", "gpt-4o", "allowed", None)
     assert task.kwargs["execution_status"] == "ok"
     assert task.kwargs["request_id"] == request_id
     assert task.kwargs["agent_identity_id"] == IDENTITY and task.kwargs["route"] == PATH
@@ -168,27 +166,22 @@ async def test_allowed_non_streaming_durable_audit_off_records_legacy_row(gw):
 
 
 @pytest.mark.asyncio
-async def test_same_client_request_id_is_not_deduplicated(gw):
-    """Idempotent retry: NOT implemented. X-Request-Id is correlation only.
-
-    Two requests with the same ``X-Request-Id`` both dispatch upstream,
-    each gets a fresh server-minted request id, reservation and receipt.
-    The client id is recorded on routing_meta.client_request_id.
+async def test_same_client_request_id_maps_to_one_server_request_id(gw):
+    """Idempotent retry (#2403 item 1): X-Request-Id is hashed with workspace
+    + principal into the server request id, so a repeat collides on the
+    audit row's unique request_id index and is refused with 409 before
+    reserve/dispatch. This harness fakes ``insert_accepted`` without the
+    index, so it only pins the derivation; the refusal itself is covered
+    by ``test_gateway_2403_idempotency``.
     """
     headers = {"x-request-id": "client-retry-1"}
     first, _ = await gw.call(headers=headers)
     second, _ = await gw.call(headers=headers)
 
-    assert first.status_code == second.status_code == 200
-    assert len(gw.sent) == 2
     ids = [first.headers["x-conduct-request-id"], second.headers["x-conduct-request-id"]]
-    assert ids[0] != ids[1] and "client-retry-1" not in ids
+    assert ids[0] == ids[1] and "client-retry-1" not in ids
     assert [i.kwargs["request_id"] for i in gw.inserted] == ids
     assert [i.kwargs["routing_meta"]["client_request_id"] for i in gw.inserted] == ["client-retry-1"] * 2
-    assert [f["routing_meta"]["client_request_id"] for f in gw.finalized] == ["client-retry-1"] * 2
-    assert [r["request_id"] for r in gw.ledger.reserve_calls] == ids
-    assert [r["request_id"] for r in gw.receipts] == ids
-    assert len(gw.ledger.commit_calls) == 2
 
 
 @pytest.mark.asyncio

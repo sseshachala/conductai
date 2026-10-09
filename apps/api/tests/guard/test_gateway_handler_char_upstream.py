@@ -77,37 +77,35 @@ async def test_all_targets_5xx_raises_502_and_finalizes_error(gw):
     assert (row["decision"], row["execution_status"], row["rule_id"]) == ("error", "error", None)
     assert row["result_summary"].startswith("forward/gate exception: HTTPException: 502: All Gateway v2 targets failed")
     assert row["response_bytes"] is None
-    # SUSPECT: the coordinator's attempt list (plan.last_meta) is NOT merged
-    # into routing_meta on the raise path, so the finalized row and the
-    # receipt lose per-attempt records even though two targets were hit.
-    assert "attempts" not in row["routing_meta"]
+    # #2403 item 4: the attempt list reaches the row and the receipt.
+    assert [a["target_id"] for a in row["routing_meta"]["attempts"]] == ["t0", "t1"]
     assert gw.plan.last_meta["attempt_count"] == 2
     assert len(gw.receipts) == 1
     receipt = gw.receipts[0]
-    assert (receipt["dispatched"], receipt["response_bytes"], receipt["attempts_meta"]) == (True, None, None)
+    assert (receipt["dispatched"], receipt["response_bytes"]) == (True, None)
+    assert [a["target_id"] for a in receipt["attempts_meta"]] == ["t0", "t1"]
     # Dispatched with unknown cost -> reservation left for the reconciler.
     assert gw.ledger.commit_calls == [] and gw.ledger.release_calls == []
     assert gw.ticket.release_calls == 1
 
 
 @pytest.mark.asyncio
-async def test_hang_past_profile_deadline_is_502_without_fallback(gw):
-    """A hang consumes the whole profile deadline; the fallback target is never dispatched."""
+async def test_hang_falls_back_within_profile_deadline(gw):
+    """#2403 item 5: each attempt gets a share of the profile deadline, so a
+    hung first target times out early and the fallback is dispatched."""
     async def _hang(request):
         await asyncio.sleep(30)
 
     gw.set_profile(profile("gpt-4o", "gpt-4o-mini", timeout_seconds=1))
     gw.upstream = [lambda request: _hang(request), ok_json]
 
-    exc = await _call_raises(gw)
+    response, _ = await gw.call()
 
-    assert exc.status_code == 502
-    assert "t0=TimeoutError" in exc.detail
-    assert len(gw.sent) == 1
+    assert response.status_code == 200
+    assert len(gw.sent) == 2
     assert [(a["target_id"], a["error_class"]) for a in gw.plan.last_meta["attempts"]] == [
-        ("t0", "TimeoutError"), ("t1", "DeadlineExceeded")]
-    assert gw.finalized[0]["decision"] == "error"
-    assert gw.ledger.commit_calls == [] and gw.ledger.release_calls == []
+        ("t0", "TimeoutError"), ("t1", None)]
+    assert gw.finalized[0]["decision"] == "allowed"
 
 
 @pytest.mark.asyncio

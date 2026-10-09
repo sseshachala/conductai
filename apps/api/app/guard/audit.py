@@ -535,6 +535,7 @@ def finalize(
                 SET lifecycle_state  = 'finalized',
                     finalized_at     = :finalized_at,
                     decision         = :decision,
+                    model            = COALESCE(:model, model),
                     rule_id          = :rule_id,
                     rule_message     = COALESCE(:rule_message, rule_message),
                     duration_ms      = :duration_ms,
@@ -554,6 +555,9 @@ def finalize(
                 "row_id": row_id,
                 "finalized_at": now,
                 "decision": decision,
+                # #2403 item 6: the served model. The accepted row carried
+                # the requested alias; routing_meta.gateway_profile keeps it.
+                "model": model,
                 "rule_id": rule_id,
                 "duration_ms": duration_ms,
                 "tin": in_tokens,

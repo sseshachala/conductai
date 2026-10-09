@@ -254,8 +254,9 @@ class AttemptCoordinator:
         deadline = started + profile.timeout_seconds
         attempts: list[AttemptRecord] = []
         cap = min(profile.max_attempts, len(profile.targets))
+        targets = profile.targets[:cap]
 
-        for target in profile.targets[:cap]:
+        for index, target in enumerate(targets):
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 attempts.append(_deadline_record(target, time.monotonic()))
@@ -314,6 +315,10 @@ class AttemptCoordinator:
                     continue
 
             attempt_start = time.monotonic()
+            # #2403 item 5: split what is left of the profile deadline across
+            # the targets still to try, so a hang leaves time for the
+            # fallback. The last target gets everything that remains.
+            attempt_timeout = remaining / (len(targets) - index)
             try:
                 response = await asyncio.wait_for(
                     self._dispatch(
@@ -325,7 +330,7 @@ class AttemptCoordinator:
                         client_headers=client_headers,
                         vendor_credential_resolver=vendor_credential_resolver,
                     ),
-                    timeout=remaining,
+                    timeout=attempt_timeout,
                 )
             except asyncio.TimeoutError as exc:
                 attempts.append(AttemptRecord(

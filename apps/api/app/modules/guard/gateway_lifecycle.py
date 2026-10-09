@@ -84,30 +84,41 @@ async def open_durable_row(
     conductai_workflow: str | None,
     conductai_workflow_id: str | None,
     request_correlation_id: str | None,
+    idempotency_key: str | None = None,
 ) -> DurableRow:
     """Insert the accepted row and start whole-request lease renewal.
 
     Returns a ``DurableRow`` with ``row_id`` + optional ``renewal_task``
     on success, or ``fail_response`` set on real write failure (503) /
     UUID4 collision (409).
+
+    #2403 / #2057 invariant 4: ``idempotency_key`` (the client's
+    X-Request-Id) derives a deterministic, workspace+principal-scoped
+    request id. A repeat hits ``ux_guard_audit_events_request_id`` and is
+    refused with 409 before any reservation or dispatch. A key opts the
+    request into durable acceptance even when the workspace canary is
+    off: without a durable record there is nothing to dedupe against.
     """
     from sqlalchemy.exc import IntegrityError
+    from app.modules.guard.gateway_attempt_outcome import idempotent_request_id
 
     # Accounting needs a stable identity even when durable audit is disabled.
-    request_id = str(uuid.uuid4())
+    request_id = idempotent_request_id(
+        workspace_id=workspace_id, clerk_user_id=clerk_user_id,
+        agent_identity_id=agent_identity_id, client_key=idempotency_key,
+    ) or str(uuid.uuid4())
 
     # #1995 canary — deterministic per-workspace gate. Global flag is
     # still the kill switch; allowlist + pct control incremental rollout
     # without a code deploy. Same workspace always lands in the same
     # bucket, so a workspace never oscillates between the two writer
     # paths mid-session.
-    if not settings.durable_audit_enabled_for(workspace_id):
+    if not idempotency_key and not settings.durable_audit_enabled_for(workspace_id):
         return DurableRow(request_id=request_id)
 
-    # Server-owned request_id. Client X-Request-Id lives in routing_meta.
-    # client_request_id as correlation metadata only — never a
-    # uniqueness key because a client-supplied value cannot be trusted
-    # for cross-tenant safety.
+    # Server-owned request_id. Client X-Request-Id also lives in
+    # routing_meta as correlation metadata. The raw client value is never
+    # a uniqueness key (cross-tenant safety); only its scoped hash is.
     if request_correlation_id and isinstance(routing_meta, dict):
         routing_meta = {**routing_meta, "client_request_id": request_correlation_id}
     elif request_correlation_id:
@@ -129,6 +140,9 @@ async def open_durable_row(
             conductai_workflow_id=conductai_workflow_id,
         )
     except IntegrityError:
+        if idempotency_key:
+            log.info("guard.gateway.duplicate_request_refused", request_id=request_id)
+            return DurableRow(fail_response=duplicate_request_response(request_id))
         # Server-generated UUID4 collision is astronomically unlikely
         # (2^-122). Return generic 409 with no receipt or state.
         log.warning(
@@ -169,6 +183,24 @@ async def open_durable_row(
         )
 
     return DurableRow(row_id=row_id, request_id=request_id, renewal_task=renewal_task)
+
+
+def duplicate_request_response(request_id: str):
+    """409 for a repeated X-Request-Id. Names the server request that
+    already owns the key so the client can look up its outcome."""
+    from fastapi.responses import JSONResponse
+    return JSONResponse(
+        status_code=409,
+        content={"error": {
+            "type": "conduct_gateway_duplicate_request",
+            "message": (
+                "This X-Request-Id was already accepted; the request was not "
+                "dispatched again. Send a new X-Request-Id to retry."
+            ),
+            "request_id": request_id,
+        }},
+        headers={"X-Conduct-Request-Id": request_id},
+    )
 
 
 # ─── Close ────────────────────────────────────────────────────────────

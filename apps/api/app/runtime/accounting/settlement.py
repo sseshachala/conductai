@@ -152,6 +152,17 @@ def settle_micros_for_attempts(
     Returns None to signal PENDING_RECONCILER so ``settle_reservations``
     leaves the reservation open — never releases and never charges a
     lower bound.
+
+    Success after fallback (#2403 item 3) — deliberate: when a failed
+    attempt's cost is unknown (no captured body, or an error envelope
+    without usage, e.g. a bare 503), the live path does NOT settle even
+    though the winner is priced. Committing the winner alone would charge
+    a lower bound; releasing would drop spend the provider may have
+    billed. The reservation stays open and the recovery sweep
+    (``budget_reconciler._classify_stale_reservation``) resolves it from
+    the per-attempt receipts. When every attempt is priceable the live
+    path commits the sum. Pinned by
+    ``tests/guard/test_gateway_2403_attempts.py``.
     """
     if not attempts_meta:
         return compute_settlement_micros(

@@ -451,6 +451,7 @@ def write_receipts_for_attempts(
     transport: Optional[str] = None,
     attempts_meta: Optional[list[dict]] = None,
     winner_execution_outcome: Optional[str] = None,
+    model_alias: Optional[str] = None,
 ) -> list[uuid.UUID]:
     """Reviewer #3 (#2221): write one receipt per actual upstream attempt.
 
@@ -486,6 +487,7 @@ def write_receipts_for_attempts(
         hook_session_id=hook_session_id,
         source=source,
         client_tool=client_tool,
+        model_alias=model_alias,  # client-facing alias (#2403 item 6)
     )
 
     if not attempts:

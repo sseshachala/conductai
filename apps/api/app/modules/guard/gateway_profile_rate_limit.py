@@ -210,21 +210,5 @@ async def finish_profile_rate_limit(admission: ProfileRateAdmission, plan) -> No
 
 
 def wrap_profile_rate_stream(response, admission: ProfileRateAdmission, plan):
-    original = response.body_iterator
-
-    async def iterator():
-        try:
-            async for chunk in original:
-                yield chunk
-        finally:
-            import anyio
-            with anyio.CancelScope(shield=True):
-                try:
-                    close = getattr(original, "aclose", None)
-                    if close:
-                        await close()
-                finally:
-                    await finish_profile_rate_limit(admission, plan)
-
-    response.body_iterator = iterator()
-    return response
+    from app.modules.guard.gateway_attempt_outcome import wrap_stream_finally
+    return wrap_stream_finally(response, lambda: finish_profile_rate_limit(admission, plan))
