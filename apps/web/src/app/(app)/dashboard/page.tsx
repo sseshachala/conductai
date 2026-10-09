@@ -11,7 +11,7 @@ import AppShell from "@/components/AppShell"
 import { statusStyle as _statusStyle, formatTrigger, timeAgo } from "@/lib/runUtils"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 import { useAuthFetch } from "@/hooks/useAuthFetch"
-import { API } from "@/lib/api"
+import { API, guard } from "@/lib/api"
 import type { DashboardData } from "./_components/types"
 import { KPI, PriorityItem, SectionLabel } from "./_components/widgets"
 import { GuardSnapshotPanel } from "./_components/GuardSnapshotPanel"
@@ -92,11 +92,11 @@ function DashboardContent({ getToken }: { getToken: (() => Promise<string | null
     const workspaceId = buildWorkspaceId()
     if (!workspaceId) { setGuardLoading(false); return }
     try {
-      const [toolsRes, meRes, guardConfigRes] = await Promise.all([
+      const [toolsRes, meRes, guardConfig] = await Promise.all([
         authFetch(`${API}/guard/developer-tools`),
         authFetch(`${API}/guard/developer-tools/me`),
         // #4: fetch Guard config for spend cap
-        authFetch(`${API}/guard/config?workspace_id=${workspaceId}`),
+        guard.config.get(authFetch, workspaceId).catch(() => null),
       ])
       if (toolsRes.ok) {
         const tools = await toolsRes.json()
@@ -107,10 +107,7 @@ function DashboardContent({ getToken }: { getToken: (() => Promise<string | null
         setMySynced(me.synced === true)
       }
       // #4: read spend_limit_usd from Guard config
-      if (guardConfigRes.ok) {
-        const guardConfig = await guardConfigRes.json()
-        setSpendCapUsd(guardConfig?.spend_limit_usd ?? null)
-      }
+      if (guardConfig) setSpendCapUsd(guardConfig.spend_limit_usd ?? null)
     } catch {
       // non-fatal — keep last known state
     } finally {

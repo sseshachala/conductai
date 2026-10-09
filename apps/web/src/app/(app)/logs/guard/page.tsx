@@ -11,7 +11,7 @@ import { useGuardTeam } from "@/hooks/useGuardTeam"
 import { useGuardRole } from "@/hooks/useGuardRole"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 import { useAuthFetch } from "@/hooks/useAuthFetch"
-import { API } from "@/lib/api"
+import { API, guard } from "@/lib/api"
 import { GuardShell } from "@/components/guard/GuardShell"
 import { ActivityRow, ActivityHeader, DecisionBadge, BlastRadiusBadge, type AuditEvent } from "@/components/guard/ActivityRow"
 import {
@@ -110,8 +110,7 @@ function ActivityContent() {
       .then((r: Response) => r.ok ? r.json() : null)
       .then((d: unknown) => d && setChainStatus(d as Parameters<typeof setChainStatus>[0]))
       .catch(() => {})
-    authFetch(`${API}/guard/config?workspace_id=${teamId}`)
-      .then((r: Response) => r.ok ? r.json() : null)
+    guard.config.get(authFetch, teamId)
       .then((d: Record<string, unknown> | null) => d && setAdvisoryMode(d.advisory_mode as boolean ?? false))
       .catch(() => {})
   }, [teamId])
