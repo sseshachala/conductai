@@ -116,7 +116,11 @@ export default function GuardInboxPage() {
       setRows(prev => {
         const incoming = new Map(page.map(r => [r.id, r] as const))
         const known = new Set(prev.map(r => r.id))
-        return [...page.filter(r => !known.has(r.id)), ...prev.map(r => incoming.get(r.id) ?? r)]
+        // Endpoint sorts last_seen_at DESC. A loaded row inside the fresh window (at/after the
+        // oldest row of a full page; everything if the page is short) but absent from it has left the filter.
+        const floor = page.length >= PAGE_SIZE ? Date.parse(page[page.length - 1].last_seen_at) : -Infinity
+        const kept = prev.filter(r => incoming.has(r.id) || Date.parse(r.last_seen_at) < floor)
+        return [...page.filter(r => !known.has(r.id)), ...kept.map(r => incoming.get(r.id) ?? r)]
       })
       setLastFetched(new Date())
     } catch { /* background: keep the current rows */ }
