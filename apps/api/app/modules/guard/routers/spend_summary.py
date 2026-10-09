@@ -1,5 +1,6 @@
 """ConductGuard spend — summary and sessions endpoints (GET /guard/spend, /guard/spend/sessions)."""
 
+import time
 from datetime import timedelta
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, text
@@ -30,6 +31,12 @@ router = APIRouter(prefix="/guard/spend", tags=["guard"])
 
 _log = _structlog.get_logger("app.modules.guard.routers.spend")
 
+# ponytail: per-process TTL cache; each worker warms its own. Move to Redis if
+# workers scale out and the extra cold misses show up.
+_SUMMARY_TTL_S = 60          # current month: numbers move, 60s stale is fine
+_PAST_SUMMARY_TTL_S = 3600   # closed months barely change
+_summary_cache: dict[tuple[str, str], tuple[float, SpendSummary]] = {}
+
 
 @router.get("", response_model=SpendSummary)
 def get_spend_summary(
@@ -38,8 +45,13 @@ def get_spend_summary(
     month: str | None = Query(default=None, description="Period in YYYY-MM format; defaults to current month"),
 ):
     """Spend summary for a workspace for the given month (defaults to current calendar month)."""
+    period = _parse_period_start(month).strftime("%Y-%m")  # normalise so bad input shares the fallback entry
+    key = (workspace_id, period)
+    hit = _summary_cache.get(key)
+    if hit and hit[0] > time.monotonic():
+        return hit[1]
     try:
-        return _get_spend_summary_inner(db, workspace_id, month)
+        summary = _get_spend_summary_inner(db, workspace_id, month)
     except OperationalError as exc:
         _log.error("guard.spend_summary_error", workspace_id=workspace_id, exc=str(exc), exc_info=True)
         return SpendSummary(
@@ -61,6 +73,11 @@ def get_spend_summary(
             by_model=[],
             by_provider=[],
         )
+    if len(_summary_cache) > 1000:
+        _summary_cache.clear()
+    ttl = _SUMMARY_TTL_S if period == _period_label() else _PAST_SUMMARY_TTL_S
+    _summary_cache[key] = (time.monotonic() + ttl, summary)
+    return summary
 
 
 def _get_spend_summary_inner(db: Session, workspace_id: str, month: str | None) -> "SpendSummary":
