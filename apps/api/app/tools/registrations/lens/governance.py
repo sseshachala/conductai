@@ -203,55 +203,54 @@ def get_compliance_status(ctx):
         db.close()
 
 
-def get_governance_kpis(ctx):
+def get_governance_kpis(ctx, db=None):
     """Governance KPIs — events/blocked today, active devs, blocks MTD.
-    Migrated from Executor._tool_get_governance_kpis (epic #1655)."""
-    import uuid as _uuid
+    Migrated from Executor._tool_get_governance_kpis (epic #1655).
+
+    Pass ``db`` to reuse a caller's session (GET /glens/opener); otherwise a
+    short-lived one is opened for the Lens tool path."""
+    if db is None:
+        from app.core.database import SessionLocal
+
+        db = SessionLocal()
+        try:
+            return get_governance_kpis(ctx, db)
+        finally:
+            db.close()
     from datetime import datetime, timezone
     from sqlalchemy import func as sa_func
-    from app.core.database import SessionLocal
     from app.modules.guard.models import GuardAuditEvent
     from app.modules.guard.routers.spend import _org_ws_subquery
 
-    db = SessionLocal()
-    try:
-        ws_uuid = _uuid.UUID(ctx.workspace_id)
-        org_ws = _org_ws_subquery(db, ctx.workspace_id)
-        now = datetime.now(timezone.utc)
-        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    org_ws = _org_ws_subquery(db, ctx.workspace_id)
+    now = datetime.now(timezone.utc)
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
-        base_q = db.query(GuardAuditEvent).filter(GuardAuditEvent.workspace_id.in_(org_ws))
-        events_today = base_q.filter(GuardAuditEvent.ts >= today_start).count()
-        blocked_today = base_q.filter(
-            GuardAuditEvent.ts >= today_start,
-            GuardAuditEvent.decision == "blocked",
-        ).count()
-
-        active_developers_today = (
-            db.query(sa_func.count(sa_func.distinct(GuardAuditEvent.user_email)))
-            .filter(
-                GuardAuditEvent.workspace_id.in_(org_ws),
-                GuardAuditEvent.ts >= today_start,
-                GuardAuditEvent.user_email.isnot(None),
-            )
-            .scalar() or 0
-        )
-        blocks_mtd = base_q.filter(
-            GuardAuditEvent.ts >= month_start,
-            GuardAuditEvent.decision == "blocked",
-        ).count()
-        risk_avoided_usd_mtd = round(blocks_mtd * 0.01, 2)
-
-        return {
-            "events_today": events_today,
-            "blocked_today": blocked_today,
-            "active_developers_today": int(active_developers_today),
-            "blocks_mtd": blocks_mtd,
-            "risk_avoided_usd_mtd": risk_avoided_usd_mtd,
-        }
-    finally:
-        db.close()
+    # Two queries instead of four: blocked rows come from the
+    # (workspace, decision, ts) index; the "today" counts touch only today's rows.
+    blocks_mtd, blocked_today = db.query(
+        sa_func.count(GuardAuditEvent.id),
+        sa_func.count(GuardAuditEvent.id).filter(GuardAuditEvent.ts >= today_start),
+    ).filter(
+        GuardAuditEvent.workspace_id.in_(org_ws),
+        GuardAuditEvent.decision == "blocked",
+        GuardAuditEvent.ts >= month_start,
+    ).one()
+    events_today, active_developers_today = db.query(
+        sa_func.count(GuardAuditEvent.id),
+        sa_func.count(sa_func.distinct(GuardAuditEvent.user_email)),
+    ).filter(
+        GuardAuditEvent.workspace_id.in_(org_ws),
+        GuardAuditEvent.ts >= today_start,
+    ).one()
+    return {
+        "events_today": events_today,
+        "blocked_today": blocked_today,
+        "active_developers_today": int(active_developers_today),
+        "blocks_mtd": blocks_mtd,
+        "risk_avoided_usd_mtd": round(blocks_mtd * 0.01, 2),
+    }
 
 
 def get_framework_coverage(ctx):
