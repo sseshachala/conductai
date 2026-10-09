@@ -16,6 +16,8 @@ import { GuardShell } from "@/components/guard/GuardShell"
 import { ActivityRow, ActivityHeader, DecisionBadge, BlastRadiusBadge, type AuditEvent } from "@/components/guard/ActivityRow"
 import {
   GuardFilterBar,
+  GuardList,
+  GuardSkeletonRows,
   GuardPageHeader,
   GuardToolbar,
   ALL_COLUMNS,
@@ -26,7 +28,7 @@ import {
   type FilterPill,
 } from "@/components/guard/common"
 import { SessionsTable, type GuardSession } from "./_components/SessionsTable"
-import { SessionReportsView, type SessionReport } from "./_components/SessionReportsView"
+import { SessionReportsList } from "./_components/SessionReportsView"
 import { GroupedEvents } from "./_components/GroupedEvents"
 import { exportCsv } from "./_components/exportCsv"
 import { useGuardEventsFeed } from "./useGuardEventsFeed"
@@ -34,8 +36,6 @@ import { useGuardEventsFeed } from "./useGuardEventsFeed"
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 // AuditEvent shape lives in the shared component — keep one definition.
-
-const PAGE_SIZE = 50
 
 // ─── Shared select style ──────────────────────────────────────────────────────
 
@@ -50,6 +50,12 @@ const selectStyle: React.CSSProperties = {
   cursor: "pointer",
 }
 
+const EMPTY = (
+  <div className="card" style={{ padding: "40px 24px", textAlign: "center", fontSize: 13, color: "var(--text-muted)" }}>
+    No activity events found for the selected filters.
+  </div>
+)
+
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function ActivityPage() {
@@ -63,9 +69,6 @@ function ActivityContent() {
   const { activeWorkspace } = useWorkspace()
   const { permissions, loading: permissionsLoading } = useGuardRole(teamId, activeWorkspace?.id ?? null)
   const [activeView, _setActiveView] = useState<"events" | "sessions" | "tools" | "session_reports">("events")
-  const [reports, setReports] = useState<SessionReport[]>([])
-  const [reportsLoading, setReportsLoading] = useState(false)
-  const [reportsError, setReportsError] = useState<string | null>(null)
   // #1990 item D — drift between server clock and browser clock. When a
   // SSE payload carries server_time, we recompute (client_now - server_now).
   // LifecyclePill uses this to correct client-side 'expired' detection so
@@ -162,7 +165,7 @@ function ActivityContent() {
 
   const {
     events, loading, loadingMore, hasMore, error, live, lastUpdated, streaming, setStreaming,
-    serverTimeDrift, loadMore,
+    serverTimeDrift, loadMore, pending, showNew,
   } = useGuardEventsFeed({
     teamId, teamLoading, activeView, effectiveDeveloperFilter,
     filterTool, filterDecision, filterSince, filterUntil, filterRuleId,
@@ -193,32 +196,10 @@ function ActivityContent() {
     }
   }, [authFetch, teamId])
 
-  const loadReports = useCallback(async () => {
-    if (!teamId) return
-    setReportsLoading(true)
-    setReportsError(null)
-    try {
-      const res = await authFetch(`${API}/guard/session-reports?workspace_id=${teamId}`)
-      if (!res.ok) throw new Error(`Failed to load session reports (${res.status})`)
-      const data: SessionReport[] = await res.json()
-      data.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-      setReports(data)
-    } catch (err) {
-      setReportsError(err instanceof Error ? err.message : "Unknown error")
-    } finally {
-      setReportsLoading(false)
-    }
-  }, [authFetch, teamId])
-
   useEffect(() => {
     if (activeView !== "sessions") return
     loadSessions()
   }, [activeView, loadSessions])
-
-  useEffect(() => {
-    if (activeView !== "session_reports") return
-    loadReports()
-  }, [activeView, loadReports])
 
   function toggleGroup(key: string) {
     setCollapsedGroups(prev => ({ ...prev, [key]: !prev[key] }))
@@ -368,7 +349,7 @@ function ActivityContent() {
       )}
 
       {activeView === "session_reports" && (
-        <SessionReportsView reports={reports} reportsLoading={reportsLoading} reportsError={reportsError} />
+        <SessionReportsList workspaceId={teamId} />
       )}
 
       {activeView === "events" && error && (
@@ -387,68 +368,50 @@ function ActivityContent() {
         </div>
       )}
 
-      {/* Events table */}
-      {activeView === "events" && (loading ? (
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {[...Array(6)].map((_, i) => (
-            <div
-              key={i}
-              style={{
-                height: 44,
-                background: "var(--surface-2)",
-                borderRadius: 8,
-                opacity: 0.6,
-              }}
-            />
-          ))}
-        </div>
-      ) : events.length === 0 ? (
-        <div className="card" style={{ padding: "40px 24px", textAlign: "center", fontSize: 13, color: "var(--text-muted)" }}>
-          No activity events found for the selected filters.
-        </div>
-      ) : groupByGoal ? (
-        /* ── Grouped view ─────────────────────────────────────────────────── */
-        <GroupedEvents
-          events={events}
-          collapsedGroups={collapsedGroups}
-          toggleGroup={toggleGroup}
-          visibleColumns={visibleColumns}
-          serverTimeDrift={serverTimeDrift}
-          hasMore={hasMore}
-          loadingMore={loadingMore}
-          loadMore={loadMore}
-        />
-      ) : (
-        /* ── Flat view ────────────────────────────────────────────────────── */
-        <div className="card" style={{ overflow: "hidden" }}>
-          {/* Header driven by <ColumnsMenu> selection — #1982. */}
-          <ActivityHeader visibleColumns={visibleColumns} />
-
-          {/* Table rows */}
-          {events.map((ev, i) => (
-            <ActivityRow key={ev.id} ev={ev} isLast={i === events.length - 1} visibleColumns={visibleColumns} nowOffsetMs={serverTimeDrift} />
-          ))}
-
-          {/* Load more / count */}
-          {hasMore && (
-            <div style={{ borderTop: "1px solid var(--border)", padding: "12px 18px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Showing {events.length} events</span>
-              <button
-                onClick={loadMore}
-                disabled={loadingMore}
-                style={{ fontSize: 12, color: "var(--accent-text)", background: "none", border: "none", cursor: "pointer", fontWeight: 600 }}
-              >
-                {loadingMore ? "Loading…" : "Load more"}
-              </button>
+      {/* Events: grouped view keeps GroupedEvents; flat view renders through GuardList */}
+      {activeView === "events" && groupByGoal && (loading ? <GuardSkeletonRows count={6} gap /> : events.length === 0 ? EMPTY : (
+        <>
+          {pending.length > 0 && (
+            <div style={{ position: "sticky", top: 8, zIndex: 5, display: "flex", justifyContent: "center", marginBottom: 8 }}>
+              <button type="button" className="btn btn-sm" onClick={showNew}>{pending.length} new ↑</button>
             </div>
           )}
-          {!hasMore && events.length > 0 && (
-            <div style={{ borderTop: "1px solid var(--border)", padding: "8px 18px", textAlign: "center", fontSize: 12, color: "var(--text-muted)" }}>
-              {events.length} event{events.length !== 1 ? "s" : ""} total
-            </div>
-          )}
-        </div>
+          <GroupedEvents
+            events={events}
+            collapsedGroups={collapsedGroups}
+            toggleGroup={toggleGroup}
+            visibleColumns={visibleColumns}
+            serverTimeDrift={serverTimeDrift}
+            hasMore={hasMore}
+            loadingMore={loadingMore}
+            loadMore={loadMore}
+          />
+        </>
       ))}
+      {activeView === "events" && !groupByGoal && (
+        <GuardList
+          rows={events}
+          getKey={ev => ev.id}
+          loading={loading}
+          skeletonRows={6}
+          skeletonGap
+          hasMore={hasMore}
+          onLoadMore={loadMore}
+          loadingMore={loadingMore}
+          newCount={pending.length}
+          onShowNew={showNew}
+          emptyState={EMPTY}
+          wrap={rows => (
+            <div className="card" style={{ overflow: "hidden" }}>
+              <ActivityHeader visibleColumns={visibleColumns} />
+              {rows}
+            </div>
+          )}
+          renderRow={(ev, i) => (
+            <ActivityRow ev={ev} isLast={i === events.length - 1} visibleColumns={visibleColumns} nowOffsetMs={serverTimeDrift} />
+          )}
+        />
+      )}
     </GuardShell>
   )
 }

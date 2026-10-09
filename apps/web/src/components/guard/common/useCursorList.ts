@@ -56,5 +56,6 @@ export function useCursorList<T>(fetchPage: (before?: string, offset?: number) =
 
   const loadMore = useCallback(() => { if (hasMore) void run(false) }, [hasMore, run])
   const reload = useCallback(() => run(true), [run])
-  return { rows, loading, loadingMore, error, hasMore, loadMore, reload }
+  /** `setRows` lets callers merge background refreshes / optimistic edits without resetting pages. */
+  return { rows, setRows, loading, loadingMore, error, hasMore, loadMore, reload }
 }
