@@ -7,13 +7,15 @@ Kept out of ``gateway_handler.py`` (already over the 500-line budget).
   and principal into the server-owned request id. The durable
   acceptance row's unique ``request_id`` index then refuses a repeat
   before any reservation or dispatch.
+- ``merge_attempts``: carry the coordinator's attempt list onto
+  ``routing_meta`` on every exit path, including all-targets-failed.
 - ``wrap_stream_finally``: run one cleanup exactly once when a streaming
   body ends (drained, client disconnect, or upstream error).
 """
 from __future__ import annotations
 
 import uuid
-from typing import Awaitable, Callable
+from typing import Any, Awaitable, Callable
 
 # Fixed namespace so the same (workspace, principal, key) always maps to
 # the same request id across workers and restarts.
@@ -39,6 +41,19 @@ def idempotent_request_id(
         str(workspace_id), str(clerk_user_id or ""), str(agent_identity_id or ""), client_key,
     ))
     return str(uuid.uuid5(_IDEMPOTENCY_NAMESPACE, scope))
+
+
+def merge_attempts(routing_meta: dict | None, plan: Any) -> dict | None:
+    """Merge ``plan.last_meta`` (attempt records) into ``routing_meta``.
+
+    ``_execute_v2`` fills ``last_meta`` before raising on all-targets-
+    failed, so the raise path can still land per-attempt records on the
+    audit row and receipts. Idempotent; returns a new dict.
+    """
+    last = getattr(plan, "last_meta", None) if plan is not None else None
+    if not last:
+        return routing_meta
+    return {**(routing_meta or {}), **last}
 
 
 def wrap_stream_finally(response, cleanup: Callable[[], Awaitable[None]]):

@@ -1375,6 +1375,8 @@ async def handle_gateway_request(
                         route=request.url.path,
                     )
         except BaseException as _forward_exc:  # noqa: BLE001 — need CancelledError too
+            from app.modules.guard.gateway_attempt_outcome import merge_attempts as _merge_attempts
+            _routing_meta = _merge_attempts(_routing_meta, _v2_plan)  # #2403 item 4: all-failed attempts
             # Best-effort finalize so the row lands terminated immediately
             # instead of waiting on the reconciler's lease sweep. WHERE
             # lifecycle_state = 'accepted' in audit.finalize means this is
@@ -1478,7 +1480,7 @@ async def handle_gateway_request(
             # not just reserved ones.
             _resp_bytes: bytes | None = None
             _new_engine_micros: int | None = None
-            if _dispatched and _response is not None and not isinstance(_response, StreamingResponse):
+            if _dispatched and not isinstance(_response, StreamingResponse):  # None = all attempts failed
                 _snapshot = locals().get("_v2_upstream_body_bytes")
                 if isinstance(_snapshot, (bytes, bytearray)) and _snapshot:
                     _resp_bytes = bytes(_snapshot)
@@ -1487,7 +1489,7 @@ async def handle_gateway_request(
                         _resp_bytes = _response.body
                     except Exception:
                         _resp_bytes = None
-                if _resp_bytes is not None and (_routing_meta or {}).get("billable", True) is not False:
+                if (_resp_bytes is not None or (_routing_meta or {}).get("attempts")) and (_routing_meta or {}).get("billable", True) is not False:
                     try:
                         from app.runtime.accounting.settlement import (
                             settle_micros_for_attempts,

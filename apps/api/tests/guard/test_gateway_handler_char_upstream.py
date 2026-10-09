@@ -77,14 +77,13 @@ async def test_all_targets_5xx_raises_502_and_finalizes_error(gw):
     assert (row["decision"], row["execution_status"], row["rule_id"]) == ("error", "error", None)
     assert row["result_summary"].startswith("forward/gate exception: HTTPException: 502: All Gateway v2 targets failed")
     assert row["response_bytes"] is None
-    # SUSPECT: the coordinator's attempt list (plan.last_meta) is NOT merged
-    # into routing_meta on the raise path, so the finalized row and the
-    # receipt lose per-attempt records even though two targets were hit.
-    assert "attempts" not in row["routing_meta"]
+    # #2403 item 4: the attempt list reaches the row and the receipt.
+    assert [a["target_id"] for a in row["routing_meta"]["attempts"]] == ["t0", "t1"]
     assert gw.plan.last_meta["attempt_count"] == 2
     assert len(gw.receipts) == 1
     receipt = gw.receipts[0]
-    assert (receipt["dispatched"], receipt["response_bytes"], receipt["attempts_meta"]) == (True, None, None)
+    assert (receipt["dispatched"], receipt["response_bytes"]) == (True, None)
+    assert [a["target_id"] for a in receipt["attempts_meta"]] == ["t0", "t1"]
     # Dispatched with unknown cost -> reservation left for the reconciler.
     assert gw.ledger.commit_calls == [] and gw.ledger.release_calls == []
     assert gw.ticket.release_calls == 1

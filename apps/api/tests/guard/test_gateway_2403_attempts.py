@@ -55,3 +55,45 @@ async def test_fallback_success_with_priced_failed_attempt_settles_live(gw):
     assert response.status_code == 200
     assert len(gw.ledger.commit_calls) == 1
     assert gw.ledger.commit_calls[0]["actual_micros"] > 0
+
+
+# ── item 4: all targets failing ──────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_all_targets_failed_records_attempts_on_audit_and_receipts(gw):
+    gw.set_profile(profile("gpt-4o", "gpt-4o-mini"))
+    gw.upstream = [status(503)]
+    exc = await _raises(gw)
+    assert exc.status_code == 502
+    attempts = gw.finalized[0]["routing_meta"]["attempts"]
+    assert [(a["target_id"], a["model"], a["succeeded"]) for a in attempts] == [
+        ("t0", "gpt-4o", False), ("t1", "gpt-4o-mini", False)]
+    assert gw.finalized[0]["routing_meta"]["attempt_count"] == 2
+    receipt = gw.receipts[0]
+    assert [a["target_id"] for a in receipt["attempts_meta"]] == ["t0", "t1"]
+    # No usage on the error envelopes: unknown cost, reservation stays open.
+    assert gw.ledger.commit_calls == [] and gw.ledger.release_calls == []
+
+
+@pytest.mark.asyncio
+async def test_all_targets_failed_with_billed_usage_is_priced_and_settled(gw):
+    gw.set_profile(profile("gpt-4o", "gpt-4o-mini"))
+    gw.upstream = [_status_with_usage(503)]
+    exc = await _raises(gw)
+    assert exc.status_code == 502
+    assert len(gw.receipts[0]["attempts_meta"]) == 2
+    assert len(gw.ledger.commit_calls) == 1
+    assert gw.ledger.commit_calls[0]["actual_micros"] > 0
+
+
+@pytest.mark.asyncio
+async def test_all_targets_failed_durable_off_record_carries_attempts(gw):
+    gw.durable(False)
+    gw.set_profile(profile("gpt-4o", "gpt-4o-mini"))
+    gw.upstream = [status(503)]
+    recorded = []
+    gw.monkeypatch.setattr("app.guard.audit.record", lambda *a, **k: recorded.append((a, k)))
+    await _raises(gw)
+    assert len(recorded) == 1
+    assert len(recorded[0][1]["routing_meta"]["attempts"]) == 2
