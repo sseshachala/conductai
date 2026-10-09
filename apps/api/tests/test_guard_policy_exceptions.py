@@ -172,15 +172,16 @@ def test_resolve_workspace_pack_uses_latest_when_unpinned():
         pack_slug="conduct-base",
         pinned_version=None,
     )
-    older_pack = MagicMock(version="2.9.0")
     latest_pack = MagicMock(version="2.10.0")
     pack_query = db.query.return_value.filter.return_value
-    pack_query.all.return_value = [older_pack, latest_pack]
+    pack_query.all.return_value = [("2.9.0",), ("2.10.0",)]
+    db.get.return_value = latest_pack
 
     result = _resolve_workspace_pack(db, workspace_pack)
 
     assert result is latest_pack
     pack_query.all.assert_called_once()
+    assert db.get.call_args.args[1] == ("conduct-base", "2.10.0")
 
 
 def _call_pack_patch(body: PolicyPatch, base_action: str):

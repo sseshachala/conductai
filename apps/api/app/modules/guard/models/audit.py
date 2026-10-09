@@ -132,7 +132,15 @@ class GuardAuditEvent(Base):
         ),
         Index("ix_guard_audit_events_ws_ts", "workspace_id", sa.text("ts DESC")),
         Index("ix_guard_audit_events_agent_identity_id", "agent_identity_id"),
-        Index("ix_guard_audit_events_ws_rule_ts", "workspace_id", "rule_id", "ts"),
+        Index(
+            "ix_guard_audit_events_ws_identity_session",
+            "workspace_id", "agent_identity_id", "hook_session_id",
+            postgresql_include=["ts"],
+            postgresql_where=sa.text(
+                "agent_identity_id IS NOT NULL AND hook_session_id IS NOT NULL AND hook_session_id <> ''"
+            ),
+        ),
+        Index("ix_guard_audit_events_ws_rule_ts","workspace_id", "rule_id", "ts"),
         Index("ix_guard_audit_events_ws_decision_ts", "workspace_id", "decision", "ts"),
         Index("ix_guard_audit_events_unarchived", "workspace_id", "ts", "id",
               postgresql_where=sa.text("archive_segment_id IS NULL")),

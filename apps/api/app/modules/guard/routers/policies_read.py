@@ -15,6 +15,7 @@ from app.core.auth import (
     require_permission,
 )
 from app.core.database import get_db
+from app.core.ttl_cache import TTLCache
 from app.modules.guard.models import (
     GuardAuditEvent,
     GuardConfig,
@@ -52,6 +53,21 @@ from app.modules.guard.routers.policies_helpers import (
 router = APIRouter(prefix="/guard/policies", tags=["guard-policies"])
 
 _LAST_HIT_WINDOW_DAYS = 30
+_LAST_HIT_TTL_S = 60  # last-triggered is informational; a minute stale is harmless
+_TTL = TTLCache()
+
+
+def _query_last_hits(db: Session, org_ws) -> dict[str, datetime]:
+    """Last-hit timestamp per rule_id. Bounded to the last 30 days: rules with no hit in that window show none."""
+    hit_cutoff = datetime.now(timezone.utc) - timedelta(days=_LAST_HIT_WINDOW_DAYS)
+    return dict(
+        db.query(GuardAuditEvent.rule_id, func.max(GuardAuditEvent.ts))
+        .filter(GuardAuditEvent.workspace_id.in_(org_ws))
+        .filter(GuardAuditEvent.ts >= hit_cutoff)
+        .filter(GuardAuditEvent.rule_id.isnot(None))
+        .group_by(GuardAuditEvent.rule_id)
+        .all()
+    )
 
 
 @router.post("/generate", response_model=PolicyGenerateOut)
@@ -190,17 +206,7 @@ def list_policies(
 
     out: list[PolicyOut] = []
 
-    # Last-hit timestamp per rule_id, aggregated across org workspaces.
-    # Bounded to the last 30 days: rules with no hit in that window show none.
-    hit_cutoff = datetime.now(timezone.utc) - timedelta(days=_LAST_HIT_WINDOW_DAYS)
-    last_hits: dict[str, datetime] = dict(
-        db.query(GuardAuditEvent.rule_id, func.max(GuardAuditEvent.ts))
-        .filter(GuardAuditEvent.workspace_id.in_(org_ws))
-        .filter(GuardAuditEvent.ts >= hit_cutoff)
-        .filter(GuardAuditEvent.rule_id.isnot(None))
-        .group_by(GuardAuditEvent.rule_id)
-        .all()
-    )
+    last_hits = _TTL.get_or_compute(workspace_id, _LAST_HIT_TTL_S, lambda: _query_last_hits(db, org_ws))
 
     # 1. Custom rules
     customs = (

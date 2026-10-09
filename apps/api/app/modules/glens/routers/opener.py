@@ -9,9 +9,14 @@ from sqlalchemy.orm import Session
 
 from app.core.auth import get_workspace_id, require_permission
 from app.core.database import get_db
+from app.core.ttl_cache import TTLCache
 from app.tools.registrations.lens.governance import get_governance_kpis
 
 router = APIRouter(prefix="/glens", tags=["glens"])
+
+# Chip counts are suggestions; 30s stale is harmless. Failures are not cached.
+_KPI_TTL_S = 30
+_kpi_cache = TTLCache()
 
 
 class _OpenerCtx:
@@ -26,8 +31,11 @@ def glens_opener(
     workspace_id: str = Depends(get_workspace_id),
     db: Session = Depends(get_db),
 ):
+    def _load() -> dict:
+        return get_governance_kpis(_OpenerCtx(workspace_id), db)
+
     try:
-        kpis = get_governance_kpis(_OpenerCtx(workspace_id))
+        kpis = _kpi_cache.get_or_compute(workspace_id, _KPI_TTL_S, _load)
     except Exception:
         kpis = {}
 

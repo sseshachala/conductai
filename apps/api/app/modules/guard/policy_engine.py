@@ -269,12 +269,13 @@ def _build_rules(
 def _get_pack(db: Session, slug: str, pinned_version: str | None) -> SkillPack | None:
     if pinned_version:
         return db.get(SkillPack, (slug, pinned_version))
-    packs = (
-        db.query(SkillPack)
-        .filter(SkillPack.slug == slug)
-        .all()
-    )
-    return max(packs, key=lambda pack: _skill_pack_version_key(pack.version), default=None)
+    # Pick the latest version from the key columns only; loading every
+    # version's rules JSONB (25+ rows for conduct-base) just to discard it was
+    # the bulk of GET /guard/policies row transfer.
+    versions = [v for (v,) in db.query(SkillPack.version).filter(SkillPack.slug == slug).all()]
+    if not versions:
+        return None
+    return db.get(SkillPack, (slug, max(versions, key=_skill_pack_version_key)))
 
 
 def _write_cache(

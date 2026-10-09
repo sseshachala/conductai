@@ -13,6 +13,7 @@ from app.core.auth import (
 )
 from app.core.crypto import encrypt
 from app.core.database import get_db
+from app.modules.agent_identity.activity_stats import identity_activity
 from app.modules.agent_identity.models import AgentCredentialSession, AgentIdentity
 from app.modules.agent_identity.schemas import (
     AgentIdentityCreate,
@@ -122,22 +123,7 @@ def list_agent_identities(
         .limit(500)
         .all()
     )
-    from app.modules.guard.models import GuardAuditEvent as Event
-    cutoff = datetime.now(timezone.utc) - timedelta(days=30)
-    activity = {
-        row.agent_identity_id: row
-        for row in db.query(
-            Event.agent_identity_id,
-            func.count(func.distinct(Event.hook_session_id)).label("session_count"),
-            func.max(Event.ts).label("last_activity"),
-        ).filter(
-            Event.workspace_id == uuid.UUID(workspace_id),
-            Event.ts >= cutoff,
-            Event.agent_identity_id.isnot(None),
-            Event.hook_session_id.isnot(None),
-            Event.hook_session_id != "",
-        ).group_by(Event.agent_identity_id).all()
-    }
+    activity = identity_activity(db, workspace_id)
     return [AgentIdentityOut(
         id=r.id, name=r.name, provider=r.provider, token_prefix=r.token_prefix,
         created_at=r.created_at, last_used_at=r.last_used_at, environment_id=r.environment_id,
