@@ -9,7 +9,11 @@ const state = vi.hoisted(() => ({
 vi.mock("@/hooks/useAuthFetch", () => ({ useAuthFetch: () => ({ workspaceId: state.workspace, authFetch: state.fetch }) }))
 vi.mock("@/components/AppShell", () => ({ default: ({ children }: { children: ReactNode }) => children }))
 vi.mock("@/components/guard/GuardShell", () => ({ GuardShell: ({ children }: { children: ReactNode }) => children }))
-vi.mock("@/components/guard/common", () => ({ GuardPageHeader: ({ title }: { title: string }) => <h1>{title}</h1> }))
+// Keep the real GuardList/useCursorList; only stub the header.
+vi.mock("@/components/guard/common", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/components/guard/common")>()),
+  GuardPageHeader: ({ title }: { title: string }) => <h1>{title}</h1>,
+}))
 vi.mock("@/components/glens/AskLensLink", () => ({ AskLensLink: ({ resourceId }: { resourceId: string }) => <a href={`#${resourceId}`}>Ask Lens</a> }))
 vi.mock("@/lib/api", () => ({ API: "https://api.example", guard: { discover: {
   summary: state.summary, agents: state.agents, scans: state.scans,
@@ -85,7 +89,7 @@ it("clears prior workspace inventory and admin controls when workspace access fa
   state.agents.mockRejectedValueOnce(new Error("denied"))
   state.fetch.mockImplementation(async () => new Response("{}", { status: 403 }))
   view.rerender(<DiscoveryPage />)
-  expect(await screen.findByRole("alert")).toHaveTextContent("Unable to load discovery")
+  expect(await screen.findByText("Unable to load findings. Try again.")).toBeTruthy()
   expect(screen.queryByText("docs")).toBeNull()
   expect(screen.queryByText("device-1 / install-")).toBeNull()
   expect(screen.queryByRole("combobox", { name: "Registration for docs" })).toBeNull()
@@ -131,13 +135,15 @@ describe("discovery evidence", () => {
   it("shows failures rather than an empty success", async () => {
     state.agents.mockRejectedValue(new Error("offline"))
     render(<DiscoveryPage />)
-    expect(await screen.findByRole("alert")).toHaveTextContent("Unable to load discovery")
+    expect(await screen.findByText("Unable to load findings. Try again.")).toBeTruthy()
     expect(screen.queryByText("No discovery findings.")).toBeNull()
   })
 
   it("loads subsequent pages", async () => {
     state.summary.mockResolvedValue({ total: 101, confirmed: 101 })
-    state.agents.mockImplementation((_: unknown, offset: number) => Promise.resolve(offset ? [{ ...agent, id: "two", framework: "cursor" }] : [agent]))
+    // A full first page (100 rows) is what shows "Load more"; a short page ends the list.
+    const firstPage = Array.from({ length: 100 }, (_, i) => ({ ...agent, id: `a${i}`, installation_id: `install-${i}` }))
+    state.agents.mockImplementation((_: unknown, offset: number) => Promise.resolve(offset ? [{ ...agent, id: "two", framework: "cursor" }] : firstPage))
     render(<DiscoveryPage />)
     fireEvent.click(await screen.findByRole("button", { name: "Load more" }))
     await screen.findByText("Cursor")
