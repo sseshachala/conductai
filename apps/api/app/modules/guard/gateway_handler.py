@@ -99,6 +99,7 @@ async def handle_gateway_request(
     from app.modules.guard import gateway_phase_upstream as _upstream
     from app.modules.guard import gateway_phase_reserve as _reserve
     from app.modules.guard import gateway_phase_dispatch as _dispatch
+    from app.modules.guard import gateway_phase_finalize as _finalize
 
     started = time.monotonic()
 
@@ -246,166 +247,15 @@ async def handle_gateway_request(
             # #2155 — streaming tool_call gate, then the #1733 response gate.
             _response, _tool_stream_outcome = _dispatch.wrap_stream_tool_gate(st, _response, _routing_meta)
             _response, _routing_meta = await _dispatch.apply_response_gate(st, _response, _routing_meta)
-            # v2 finalize — deliberately AFTER the response gate so a
-            # gate-blocked response doesn't land on top of a pre-gate "ok"
-            # row. v1 gets its finalize inside transport.forward's
-            # _schedule_audit path (which fires after the response is sent
-            # in a BackgroundTask), so v1 isn't touched here.
-            #
-            # Streaming: finalize can't run synchronously — we haven't seen
-            # the vendor bytes yet. Wrap the stream generator so finalize
-            # fires when the stream drains (or client disconnects). Non-
-            # streaming still finalizes inline.
-            # X4 — streaming lifetime. When v2 wraps a stream, the response
-            # generator (owned by ASGI) is what actually reads the vendor's
-            # bytes AFTER this handler returns. Cancelling the renewal task
-            # in the finally below would kill lease renewal before the body
-            # is consumed — the reconciler would flip the row to orphaned
-            # while it's still live. Transfer renewal ownership to the
-            # stream wrapper: it inherits ``_durable``, keeps renewal
-            # running while chunks flow, and cancels it after finalize
-            # completes. ``_v2_stream_wrapped`` was initialised above the
-            # try block; we only flip it True when a wrap actually happens.
-            if _v2_plan is not None and _durable_row_id:
-                if isinstance(_response, StreamingResponse):
-                    _response = _wrap_v2_stream_finalize(
-                        _response,
-                        durable=_durable,
-                        row_id=_durable_row_id,
-                        workspace_id=workspace_id,
-                        provider=provider,
-                        model=_served_model(_routing_meta, model), model_alias=model,
-                        operation=request.url.path,  # P1-4: real op for normalizer family
-                        body=body,
-                        ingress_decision=_audit_decision,
-                        ingress_rule_id=_audit_rule_id,
-                        routing_meta=_routing_meta,
-                        clerk_user_id=clerk_user_id,
-                        ai_tool=ai_tool,
-                        user_email=_user_email,
-                        started_monotonic=started,
-                        # R4 fix (reviewer P1): transfer reservation
-                        # ownership to the stream wrapper so settle
-                        # fires after the stream drains (not when the
-                        # handler returns and bytes still queued).
-                        reservations=_reservations,
-                        _routing_meta=_routing_meta,
-                        # #2209 Session 6D — attribution.
-                        conductai_run_id=_run_id,
-                        hook_session_id=_hook_session_id,
-                        agent_identity_id=_agent_identity_id,
-                        # Wall-clock deadline for the stream body. The
-                        # coordinator's ``wait_for`` only guarded header
-                        # arrival; the stream body has no timeout of its
-                        # own. Pull the profile's ``timeout_seconds`` as
-                        # the total-request budget.
-                        stream_deadline_seconds=(
-                            _v2_plan.resolved.profile.timeout_seconds
-                            if _v2_plan and _v2_plan.resolved else None
-                        ),
-                        tool_stream_outcome=_tool_stream_outcome,
-                        upstream_capture=_v2_plan.upstream_body,
-                    )
-                    _v2_stream_wrapped = True
-                else:
-                    _v2_finalize = _derive_v2_finalize_args(
-                        post_gate_response=_response,
-                        pre_gate_upstream_body=_v2_upstream_body_bytes,
-                        ingress_decision=_audit_decision,
-                        ingress_rule_id=_audit_rule_id,
-                    )
-                    await _finalize_durable_row(
-                        row_id=_durable_row_id,
-                        workspace_id=workspace_id,
-                        decision=_v2_finalize["decision"],
-                        provider=provider,
-                        model=_served_model(_routing_meta, model),
-                        body=body,
-                        response_bytes=_v2_finalize["response_bytes"],
-                        duration_ms=int((time.monotonic() - started) * 1000),
-                        rule_id=_v2_finalize["rule_id"],
-                        routing_meta=_routing_meta,
-                        execution_status=_v2_finalize["execution_status"],
-                        result_summary=None,
-                        clerk_user_id=clerk_user_id,
-                        ai_tool=ai_tool,
-                        user_email=_user_email,
-                    )
-            elif _v2_plan is not None:
-                # X2 — v2 executed but durable-audit was off (v2 flag +
-                # durable-audit flag are independent). Without this branch
-                # every v2 request skipped audit entirely: durable-audit's
-                # ``_open_durable`` short-circuited to an empty row, the
-                # v2 finalize block above required ``_durable_row_id`` and
-                # was skipped, and v1's ``_record_audit`` never ran because
-                # the v2 branch took the request. Fall back to the legacy
-                # single-phase ``_record_audit`` so v2 traffic always lands
-                # a row while durable-audit stays optional per workspace.
-                if isinstance(_response, StreamingResponse):
-                    _response = _wrap_v2_stream_record_legacy(
-                        _response,
-                        background=background,
-                        workspace_id=workspace_id,
-                        clerk_user_id=clerk_user_id,
-                        ai_tool=ai_tool,
-                        provider=provider,
-                        model=_served_model(_routing_meta, model),
-                        body=body,
-                        prompt_summary=prompt_summary,
-                        user_email=_user_email,
-                        conductai_run_id=_run_id,
-                        conductai_workflow=_workflow,
-                        conductai_workflow_id=_workflow_id,
-                        hook_session_id=_hook_session_id,
-                        routing_meta=_routing_meta,
-                        agent_identity_id=(
-                            str(_agent_identity_id) if _agent_identity_id else None
-                        ),
-                        route=request.url.path,
-                        ingress_decision=_audit_decision,
-                        ingress_rule_id=_audit_rule_id,
-                        started_monotonic=started,
-                        record_audit_fn=_record_audit,
-                        tool_stream_outcome=_tool_stream_outcome,
-                        upstream_capture=_v2_plan.upstream_body,
-                        request_id=_audit_request_id,
-                        # Z2 — deadline enforcement independent of audit
-                        # flag. Same profile timeout the durable-on
-                        # wrapper uses (Y3).
-                        stream_deadline_seconds=(
-                            _v2_plan.resolved.profile.timeout_seconds
-                            if _v2_plan and _v2_plan.resolved else None
-                        ),
-                    )
-                else:
-                    _v2_finalize = _derive_v2_finalize_args(
-                        post_gate_response=_response,
-                        pre_gate_upstream_body=_v2_upstream_body_bytes,
-                        ingress_decision=_audit_decision,
-                        ingress_rule_id=_audit_rule_id,
-                    )
-                    background.add_task(
-                        _record_audit,
-                        workspace_id, clerk_user_id, ai_tool, provider, _served_model(_routing_meta, model),
-                        _v2_finalize["decision"],
-                        _v2_finalize["rule_id"],
-                        int((time.monotonic() - started) * 1000),
-                        body=body,
-                        response_bytes=_v2_finalize["response_bytes"],
-                        prompt_summary=prompt_summary,
-                        user_email=_user_email,
-                        conductai_run_id=_run_id,
-                        conductai_workflow=_workflow,
-                        conductai_workflow_id=_workflow_id,
-                        hook_session_id=_hook_session_id,
-                        routing_meta=_routing_meta,
-                        execution_status=_v2_finalize["execution_status"],
-                        request_id=_audit_request_id,
-                        agent_identity_id=(
-                            str(_agent_identity_id) if _agent_identity_id else None
-                        ),
-                        route=request.url.path,
-                    )
+            # v2 finalize — deliberately AFTER the response gate. A wrapped
+            # v2 stream takes over renewal ownership (``_v2_stream_wrapped``).
+            _response, _v2_stream_wrapped = await _finalize.finalize_v2(
+                st, _response,
+                durable=_durable,
+                _routing_meta=_routing_meta,
+                _tool_stream_outcome=_tool_stream_outcome,
+                _v2_upstream_body_bytes=_v2_upstream_body_bytes,
+            )
         except BaseException as _forward_exc:  # noqa: BLE001 — need CancelledError too
             _routing_meta = _merge_attempts(_routing_meta, _v2_plan)  # #2403 item 4: all-failed attempts
             # Best-effort finalize so the row lands terminated immediately
