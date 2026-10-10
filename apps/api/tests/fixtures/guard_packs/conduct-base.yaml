@@ -164,6 +164,16 @@ cases:
     prompt_text: "# We deprecated the eval function in favour of ast.literal_eval for user-supplied strings."
     expected: allow
 
+  - rule_id: no-eval
+    scenario: "[A] PyTorch model.eval() method call is not builtin eval"
+    prompt_text: "Switch to inference mode with model.eval() before scoring the batch."
+    expected: allow
+
+  - rule_id: no-eval
+    scenario: "[E] prose heading 'Eval (' is not a call"
+    prompt_text: "## Eval (34 queries, origin/main source)"
+    expected: allow
+
   - rule_id: no-slack-token
     scenario: "[E] doc describing Slack token prefix without a token value"
     prompt_text: "Slack bot tokens start with the 'xoxb' prefix; retrieve them from your app config rather than hard-coding."
