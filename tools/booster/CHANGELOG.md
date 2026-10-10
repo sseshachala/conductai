@@ -10,6 +10,8 @@ Language coverage release.
 - File discovery prunes skip dirs (adds `target`, `vendor`) and skips files over 1 MB; test-file detection covers `_test.go`, `*Test.java`, `_test.c[c|pp]`.
 - `eval/`: +10 YAML/shell queries (44 total). On this repo RRF R@5 0.75 → 0.98.
 
+- **Pin `mcp<2`.** `mcp>=1.0` let fresh installs resolve mcp 2.x, which removed `Server.list_tools`, so `booster serve` crashed on import — affected every fresh install of 0.6.9.
+
 **Upgrade:** `pip install -U agent-booster`, then `booster index --embed` to pick up the new files.
 
 ## 0.7.0 — 2026-10-09
