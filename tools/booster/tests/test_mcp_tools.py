@@ -193,3 +193,17 @@ def test_list_tools_schema_keys_sorted():
     for t in tools:
         schema = t.inputSchema
         assert list(schema.keys()) == sorted(schema.keys()), f"{t.name} schema keys not sorted"
+
+
+def test_route_keyword_ignored_for_single_file(tmp_root):
+    _write(tmp_root, "docs/design.py", "def banner(): return 'hi'\n")
+    ix = SymbolIndexer(tmp_root)
+    ix.index_all()
+    result = _route_model(ix, "fix typo in design banner", ["docs/design.py"])
+    assert result["model"] == "haiku"
+
+
+def test_route_keyword_with_multi_file_scope_is_opus(tmp_root):
+    ix = SymbolIndexer(tmp_root)
+    result = _route_model(ix, "refactor auth", ["a.py", "b.py"])
+    assert result["model"] == "opus"

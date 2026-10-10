@@ -1,0 +1,34 @@
+{"q": "pull the workflow YAML from a GitHub repo and validate it", "file": "apps/api/app/dsl/sync.py", "name": "fetch_workflow_yaml_from_repo"}
+{"q": "snapshot which policy version was active when a decision was made", "file": "apps/api/app/modules/guard/models/__init__.py", "name": "get_policy_hash"}
+{"q": "most recent vercel deploy for a project branch", "file": "apps/api/app/runtime/integrations/vercel.py", "name": "get_latest_deployment"}
+{"q": "on first login resolve email invites waiting for the user", "file": "apps/api/app/routers/projects_core.py", "name": "_accept_pending_invites"}
+{"q": "clean up trial artifacts when a trial workspace ends", "file": "apps/api/app/modules/guard/trial_teardown.py", "name": "teardown_trial"}
+{"q": "OAuth protected resource metadata endpoint RFC 9728", "file": "apps/api/app/modules/guard/routers/mcp.py", "name": "oauth_protected_resource"}
+{"q": "check a guard rule's enforcement contract is valid", "file": "apps/api/app/modules/guard/enforcement.py", "name": "validate_enforcement_metadata"}
+{"q": "headline governance metrics compared to the 7 day baseline", "file": "apps/api/app/routers/governance.py", "name": "get_kpis"}
+{"q": "stream all audit events for a workspace in hash chain order", "file": "apps/api/app/modules/guard/routers/events_export.py", "name": "export_events"}
+{"q": "token usage extraction shared by openai compatible providers", "file": "apps/api/app/runtime/accounting/normalizers/base.py", "name": "openai_style_tokens"}
+{"q": "score a tool call's arguments against learned baselines for anomalies", "file": "apps/api/app/modules/behavior/arg_anomaly.py", "name": "observe"}
+{"q": "fail closed response when budget reservation is rejected", "file": "apps/api/app/modules/guard/gateway_budget_reservation.py", "name": "budget_block_response"}
+{"q": "commit a single file change to a github repository", "file": "apps/api/app/runtime/integrations/github.py", "name": "update_file"}
+{"q": "price a tool by exact key or claude/codex prefix", "file": "apps/api/app/modules/guard/routers/events_ingest.py", "name": "_tool_pricing"}
+{"q": "pick which sandbox provider has credentials configured", "file": "apps/api/app/runtime/blocks/sandbox_block.py", "name": "_detect_provider"}
+{"q": "decrypt a vault credential using a retrieval token", "file": "apps/api/app/core/credentials.py", "name": "retrieve_credential"}
+{"q": "FastAPI dependency that checks an RBAC permission", "file": "apps/api/app/core/auth.py", "name": "require_permission"}
+{"q": "validate image content parts in multimodal messages", "file": "apps/api/app/modules/guard/vision_validator.py", "name": "validate_content_parts"}
+{"q": "detect the SSE [DONE] terminator frame", "file": "apps/api/app/modules/guard/tools_stream_gate.py", "name": "is_done_frame"}
+{"q": "save how many turns a brain block actually used", "file": "apps/api/app/runtime/blocks/brain_model.py", "name": "record_turns"}
+{"q": "retry e2b calls on httpx errors and 5xx", "file": "apps/api/app/runtime/e2b_session_runner.py", "name": "_with_retry"}
+{"q": "look up a Clerk user's email and name", "file": "apps/api/app/core/auth_clerk.py", "name": "get_clerk_user_info"}
+{"q": "order DAG nodes for execution using Kahn's algorithm", "file": "apps/api/app/runtime/dag_graph.py", "name": "_topological_sort"}
+{"q": "generate a guard policy rule from plain English with an LLM", "file": "apps/api/app/modules/guard/routers/policies_read.py", "name": "generate_policy"}
+{"q": "warn the customer in slack when the gateway fails open", "file": "apps/api/app/modules/guard/observability/customer_alert.py", "name": "notify_customer_fail_open"}
+{"q": "match client reported session usage to gateway records by protocol ids", "file": "apps/api/app/modules/guard/session_reconciliation.py", "name": "match_reported_usage"}
+{"q": "verify an Okta issued JWT and return claims", "file": "apps/api/app/core/okta_jwt.py", "name": "verify_okta_jwt"}
+{"q": "poll railway until the deploy finishes", "file": "apps/api/app/runtime/integrations/railway.py", "name": "wait_for_deployment"}
+{"q": "run cleanup exactly once after a streaming response ends", "file": "apps/api/app/modules/guard/gateway_attempt_outcome.py", "name": "wrap_stream_finally"}
+{"q": "first instant of next calendar month for spend periods", "file": "apps/api/app/modules/guard/routers/spend_common.py", "name": "_next_period_start"}
+{"q": "turn a workflow name into a safe yaml filename", "file": "apps/web/src/lib/yaml-filename.ts", "name": "slugifyWorkflowName"}
+{"q": "find nodes that form a cycle in the canvas graph", "file": "apps/web/src/lib/auto-layout.ts", "name": "findCycleNodeIds"}
+{"q": "separate sticky note annotations from block nodes on the canvas", "file": "apps/web/src/lib/canvas/annotations.ts", "name": "splitAnnotations"}
+{"q": "bring selected canvas nodes to front or send to back", "file": "apps/web/src/lib/canvas/zOrder.ts", "name": "reorderZ"}

@@ -23,12 +23,14 @@ from pathlib import Path
 
 import numpy as np
 
+from booster.embed import EMBED_MODEL
+from booster.parsing import _SKIP_DIRS
+
 _DEBOUNCE_S = 2.0
 _SOCKET_NAME = "daemon.sock"
 _PID_NAME = "daemon.pid"
 _HEARTBEAT_NAME = "heartbeat"
 _HEARTBEAT_TIMEOUT_S = 300  # exit if no MCP activity for 5 minutes
-_SKIP_DIRS = {"node_modules", ".venv", "__pycache__", ".git", ".booster", "worktrees", ".next", "dist", "build"}
 _WATCH_EXTS = {".py", ".ts", ".tsx", ".js", ".jsx"}
 
 
@@ -54,8 +56,8 @@ class BoosterDaemon:
         self._started_at = time.time()
 
     def _get_model(self):
-        from booster.indexer import _get_embed_model
-        return _get_embed_model()
+        from booster.embed import get_embed_model
+        return get_embed_model()
 
     def _get_indexer(self):
         from booster.indexer import SymbolIndexer
@@ -77,12 +79,12 @@ class BoosterDaemon:
             req = json.loads(raw)
             op = req.get("op")
             if op == "ping":
-                resp = {"ok": True, "pid": os.getpid(),
+                resp = {"ok": True, "pid": os.getpid(), "model": EMBED_MODEL,
                         "uptime": int(time.time() - self._started_at)}
             elif op == "embed":
-                resp = {"vectors": self._embed(req["texts"])}
+                resp = {"vectors": self._embed(req["texts"]), "model": EMBED_MODEL}
             elif op == "status":
-                resp = {"pid": os.getpid(), "model": "all-MiniLM-L6-v2",
+                resp = {"pid": os.getpid(), "model": EMBED_MODEL,
                         "uptime": int(time.time() - self._started_at),
                         "root": str(self.root)}
             else:
@@ -227,7 +229,8 @@ def daemon_embed(texts: list[str], root: Path) -> "np.ndarray | None":
         raw = _recv_line(conn)
         conn.close()
         result = json.loads(raw)
-        if "vectors" in result:
+        # An older daemon still serving a different model must not mix vectors.
+        if "vectors" in result and result.get("model") == EMBED_MODEL:
             return np.array(result["vectors"], dtype=np.float32)
     except Exception:
         pass

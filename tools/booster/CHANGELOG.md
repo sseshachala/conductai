@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.7.0 — 2026-10-09
+
+Search quality release.
+
+- **Keyword search → SQLite FTS5 + bm25.** Any-term match, porter stemming, name column weighted 5×, camelCase/snake_case split into words. Falls back to `LIKE` when sqlite lacks FTS5.
+- **Embeddings cover name + signature + doc snippet** (leading comment + first 10 body lines), not name + signature only.
+- **Model → `BAAI/bge-small-en-v1.5`** with its query instruction. Vectors are stamped with the model name (`.booster/vectors_model.txt`); mismatched vectors and old daemons are ignored, never mixed.
+- **`route_model`:** a complexity keyword no longer forces opus when scope is a single file; scattered search hits can't escalate past sonnet.
+- `indexer.py` split into `parsing`, `git_util`, `schema`, `embed`, `search`, `graph` (old import paths still work).
+- `eval/`: 34-query recall eval. On this repo RRF R@5 0.62 → 0.97, MRR 0.47 → 0.88; keyword R@5 0.00 → 0.91.
+
+**Upgrade:** the schema migrates on first open and marks every file for re-parse. Run `booster index --embed` once (downloads bge-small, ~130 MB) and restart the daemon (`booster stop && booster start`).
+
 ## 0.3.0 — 2026-06-26
 
 Context completeness release. Three new MCP primitives, two free-fold upgrades to existing tools, zero new runtime dependencies.

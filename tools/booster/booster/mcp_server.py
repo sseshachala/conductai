@@ -264,34 +264,28 @@ _OPUS_KEYWORDS = {"refactor", "architect", "design", "migrate", "migration", "se
 
 
 def _route_model(indexer: SymbolIndexer, task: str, files: list[str]) -> dict:
-    task_lower = task.lower()
-    words = set(task_lower.split())
+    """Pick a model tier from task keywords + scope.
 
-    if words & _OPUS_KEYWORDS:
-        matched = words & _OPUS_KEYWORDS
-        return {"model": "opus", "reason": f"complexity keyword(s): {', '.join(sorted(matched))}"}
+    Scope = files the caller passed, else distinct files among the top-5 search hits
+    (0 = unknown). A complexity keyword picks opus unless scope is known to be a
+    single file — "fix the typo in design.md" is not an opus task. Scattered search
+    hits only ever argue for sonnet: they mean search is unsure, not that the task is big.
+    ponytail: keyword + file-count heuristic; no learned signal.
+    """
+    hits = set(task.lower().split()) & _OPUS_KEYWORDS
+    hit_symbols = [] if files else indexer.rrf_search(task, limit=5)
+    scope = len(set(files)) if files else len({r["file"] for r in hit_symbols})
 
-    if files:
-        distinct_files = len(set(files))
-    else:
-        results = indexer.vector_search(task, limit=20)
-        distinct_files = len({r["file"] for r in results})
+    if files and scope >= 5:
+        return {"model": "opus", "reason": f"task spans {scope} files"}
+    if hits and scope != 1:
+        return {"model": "opus", "reason": f"complexity keyword(s): {', '.join(sorted(hits))}"}
+    if scope >= 2:
+        return {"model": "sonnet", "reason": f"task spans {scope} files"}
 
-    if distinct_files >= 5:
-        return {"model": "opus", "reason": f"task spans {distinct_files} files"}
-    if distinct_files >= 2:
-        return {"model": "sonnet", "reason": f"task spans {distinct_files} files"}
-
-    # 1 file — check symbol count
-    if files:
-        symbols = indexer.get_symbols(files[0]) if files else []
-    else:
-        results = indexer.vector_search(task, limit=10)
-        symbols = results
-
+    symbols = indexer.get_symbols(files[0]) if files else hit_symbols
     if len(symbols) < 3:
         return {"model": "haiku", "reason": f"narrow task — {len(symbols)} symbol(s) in 1 file"}
-
     return {"model": "sonnet", "reason": "moderate scope — default"}
 
 
