@@ -35,8 +35,8 @@ jobs:
         target:
           - { name: "api",     path: "apps/api" }
           - { name: "web",     path: "apps/web" }
-          - { name: "cli",     path: "cli" }
-          - { name: "booster", path: "packages/agent-booster" }
+          - { name: "cli",     path: "packages/conduct-cli" }
+          - { name: "booster", path: "tools/booster" }
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
