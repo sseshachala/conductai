@@ -24,6 +24,7 @@ from pathlib import Path
 import numpy as np
 
 from booster.embed import EMBED_MODEL
+from booster.langs import SOURCE_EXTS
 from booster.parsing import _SKIP_DIRS
 
 _DEBOUNCE_S = 2.0
@@ -31,7 +32,6 @@ _SOCKET_NAME = "daemon.sock"
 _PID_NAME = "daemon.pid"
 _HEARTBEAT_NAME = "heartbeat"
 _HEARTBEAT_TIMEOUT_S = 300  # exit if no MCP activity for 5 minutes
-_WATCH_EXTS = {".py", ".ts", ".tsx", ".js", ".jsx"}
 
 
 def _recv_line(conn: socket.socket) -> bytes:
@@ -107,7 +107,7 @@ class BoosterDaemon:
         class _Handler(FileSystemEventHandler):
             def _maybe_queue(self, path_str: str) -> None:
                 p = Path(path_str)
-                if p.suffix not in _WATCH_EXTS:
+                if p.suffix.lower() not in SOURCE_EXTS:
                     return
                 if any(part in _SKIP_DIRS for part in p.parts):
                     return

@@ -6,8 +6,6 @@ import subprocess
 from pathlib import Path
 
 import numpy as np
-from tree_sitter import Parser
-
 from booster.embed import EMBED_MODEL, MODEL_STAMP
 from booster.git_util import (  # noqa: F401 — re-exported for existing importers
     _blame_file,
@@ -16,12 +14,8 @@ from booster.git_util import (  # noqa: F401 — re-exported for existing import
     _symbol_last_modified,
 )
 from booster.graph import GraphMixin
+from booster.langs import iter_source_files, lang_for
 from booster.parsing import (  # noqa: F401 — re-exported for existing importers
-    PY_LANGUAGE,
-    TS_LANGUAGE,
-    TSX_LANGUAGE,
-    _SKIP_DIRS,
-    _TS_EXTENSIONS,
     _attribute_calls,
     _collect_py_calls,
     _collect_py_symbols,
@@ -52,21 +46,11 @@ class SymbolIndexer(SearchMixin, GraphMixin):
         self._conn = sqlite3.connect(str(db_dir / "symbols.db"))
         self._conn.row_factory = sqlite3.Row
         self._has_fts = init_schema(self._conn)
-        self._py_parser = Parser(PY_LANGUAGE)
-        self._ts_parser = Parser(TS_LANGUAGE)
-        self._tsx_parser = Parser(TSX_LANGUAGE)
 
     def _daemon_embed(self, prefixed_texts: list[str]) -> "np.ndarray | None":
         """Try the running daemon for embeddings; return None if unavailable."""
         from booster.daemon import daemon_embed
         return daemon_embed(prefixed_texts, self.root)
-
-    def _parser_for(self, path: Path) -> Parser:
-        if path.suffix == ".tsx" or path.suffix == ".jsx":
-            return self._tsx_parser
-        if path.suffix in _TS_EXTENSIONS:
-            return self._ts_parser
-        return self._py_parser
 
     def _delete_file_rows(self, rel: str) -> None:
         if self._has_fts:
@@ -102,11 +86,13 @@ class SymbolIndexer(SearchMixin, GraphMixin):
         blame = _blame_file(path, self.root)
         lines = source.decode("utf-8", errors="replace").splitlines()
 
-        is_ts = path.suffix in _TS_EXTENSIONS
-        tree = self._parser_for(path).parse(source)
-        collect = _collect_ts_symbols if is_ts else _collect_py_symbols
+        lang = lang_for(path)
+        if lang is None:
+            self._conn.commit()
+            return 0
+        tree = lang.parser().parse(source)
         inserted = 0
-        for name, kind, start_line, end_line, sig in collect(tree.root_node, source):
+        for name, kind, start_line, end_line, sig in lang.symbols(tree.root_node, source):
             sha, ts = _symbol_last_modified(blame, start_line, end_line)
             self._insert_symbol({
                 "file": rel, "name": name, "kind": kind, "start_line": start_line,
@@ -118,7 +104,7 @@ class SymbolIndexer(SearchMixin, GraphMixin):
 
         # Call-edge extraction (v0.3.0). Same-file resolution only at index time;
         # cross-file name resolution happens at expand_calls query time.
-        calls = _collect_ts_calls(tree.root_node, source) if is_ts else _collect_py_calls(tree.root_node, source)
+        calls = lang.calls(tree.root_node, source)
         if calls:
             sym_rows = self._conn.execute(
                 "SELECT id, start_line, end_line, name FROM symbols WHERE file = ?", (rel,)
@@ -156,22 +142,18 @@ class SymbolIndexer(SearchMixin, GraphMixin):
         files = 0
         skipped = 0
         symbols = 0
-        patterns = ["*.py", "*.ts", "*.tsx", "*.js", "*.jsx"]
-        for pattern in patterns:
-            for path in self.root.rglob(pattern):
-                if any(part in _SKIP_DIRS for part in path.parts):
+        for path in iter_source_files(self.root):
+            try:
+                rel = str(path.relative_to(self.root))
+                fmtime = path.stat().st_mtime
+                fhash = _file_hash(path)
+                if not force and self._is_unchanged(rel, fhash, fmtime):
+                    skipped += 1
                     continue
-                try:
-                    rel = str(path.relative_to(self.root))
-                    fmtime = path.stat().st_mtime
-                    fhash = _file_hash(path)
-                    if not force and self._is_unchanged(rel, fhash, fmtime):
-                        skipped += 1
-                        continue
-                    symbols += self.index_file(path, fhash=fhash, fmtime=fmtime)
-                    files += 1
-                except Exception:
-                    pass
+                symbols += self.index_file(path, fhash=fhash, fmtime=fmtime)
+                files += 1
+            except Exception:
+                pass
         if embed:
             self.build_embeddings()
         return files, symbols

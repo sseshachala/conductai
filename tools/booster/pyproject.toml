@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "agent-booster"
-version = "0.7.0"
+version = "0.8.0"
 description = "AST+vector context router for AI coding agents — cut token costs 5-15x"
 readme = "README.md"
 license = { text = "Apache-2.0" }
@@ -25,6 +25,13 @@ dependencies = [
     "tree-sitter>=0.23",
     "tree-sitter-python>=0.23",
     "tree-sitter-typescript>=0.23",
+    "tree-sitter-go>=0.23",
+    "tree-sitter-rust>=0.23",
+    "tree-sitter-java>=0.23",
+    "tree-sitter-c>=0.23",
+    "tree-sitter-cpp>=0.23",
+    "tree-sitter-bash>=0.23",
+    "tree-sitter-yaml>=0.7",
     "click>=8.1",
     "mcp>=1.0",
     "numpy>=1.26",

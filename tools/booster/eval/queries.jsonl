@@ -32,3 +32,13 @@
 {"q": "find nodes that form a cycle in the canvas graph", "file": "apps/web/src/lib/auto-layout.ts", "name": "findCycleNodeIds"}
 {"q": "separate sticky note annotations from block nodes on the canvas", "file": "apps/web/src/lib/canvas/annotations.ts", "name": "splitAnnotations"}
 {"q": "bring selected canvas nodes to front or send to back", "file": "apps/web/src/lib/canvas/zOrder.ts", "name": "reorderZ"}
+{"q": "autopilot step that checks whether the repo is a fork of an upstream", "file": "apps/api/playbooks/autopilot.yaml", "name": "blocks.detect_fork"}
+{"q": "incident responder agent that investigates the alert and forms a root cause hypothesis", "file": "apps/api/playbooks/incident-responder.yaml", "name": "blocks.investigate"}
+{"q": "release approval gate approved or rejected", "file": "apps/api/playbooks/release-gating.yaml", "name": "blocks.approval_gate"}
+{"q": "create the git tag and release notes after approval", "file": "apps/api/playbooks/release-gating.yaml", "name": "blocks.create_tag"}
+{"q": "review a terraform plan for risky changes", "file": "apps/api/playbooks/terraform-reviewer.yaml", "name": "blocks.review_plan"}
+{"q": "scan dependencies and open an update PR", "file": "apps/api/playbooks/dependency-updater.yaml", "name": "blocks.scan_and_update"}
+{"q": "human review of the postmortem draft before publishing", "file": "apps/api/playbooks/postmortem-drafter.yaml", "name": "blocks.human_review"}
+{"q": "post the incident hypothesis to slack", "file": "apps/api/playbooks/incident-responder.yaml", "name": "blocks.notify_incident"}
+{"q": "curl wrapper in the API smoke test that captures status code and body", "file": "apps/api/scripts/smoke_api.sh", "name": "hit"}
+{"q": "proxy smoke test runner for one provider, skip when no key is seeded", "file": "apps/api/scripts/proxy_smoke.sh", "name": "run_one"}
