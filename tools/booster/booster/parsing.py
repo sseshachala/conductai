@@ -12,7 +12,8 @@ PY_LANGUAGE = Language(tspython.language())
 TS_LANGUAGE = Language(tsts.language_typescript())
 TSX_LANGUAGE = Language(tsts.language_tsx())
 
-_SKIP_DIRS = {"node_modules", ".venv", "__pycache__", ".git", ".booster", "worktrees", ".next", "dist", "build"}
+_SKIP_DIRS = {"node_modules", ".venv", "__pycache__", ".git", ".booster", "worktrees", ".next", "dist", "build",
+              "target", "vendor"}  # target: Rust/Java build output; vendor: Go deps
 
 _TS_EXTENSIONS = {".ts", ".tsx", ".js", ".jsx"}
 
@@ -179,7 +180,8 @@ def _is_test_file(rel: str) -> bool:
     for ext in (".ts", ".tsx", ".js", ".jsx"):
         if name.endswith(f".test{ext}") or name.endswith(f".spec{ext}"):
             return True
-    return False
+    # Go, Java, C/C++ conventions (Rust tests live in tests/ or inline).
+    return name.endswith(("_test.go", "Test.java", "Tests.java", "_test.c", "_test.cc", "_test.cpp"))
 
 
 

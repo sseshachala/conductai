@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.8.0 — 2026-10-10
+
+Language coverage release.
+
+- **New languages:** Go, Rust, Java, C, C++, shell, YAML — driven by one table in `booster/langs.py` (extension → grammar, symbol node types, call node types) and a generic tree-sitter walker. Python/TS keep their existing collectors.
+- **YAML:** top-level keys, `section.key` mappings (playbook `blocks.*`, GitHub Actions `jobs.*`, compose `services.*`), and shallow list items with `id:`/`name:`.
+- **Read gate:** `booster smart-read` with no task (the hook path) passes YAML through to a full Read — also fixes already-installed hooks.
+- File discovery prunes skip dirs (adds `target`, `vendor`) and skips files over 1 MB; test-file detection covers `_test.go`, `*Test.java`, `_test.c[c|pp]`.
+- `eval/`: +10 YAML/shell queries (44 total). On this repo RRF R@5 0.75 → 0.98.
+
+**Upgrade:** `pip install -U agent-booster`, then `booster index --embed` to pick up the new files.
+
 ## 0.7.0 — 2026-10-09
 
 Search quality release.

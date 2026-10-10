@@ -1,7 +1,8 @@
 """Call-graph (expand_calls) and test-reference (index_tests) queries."""
 from __future__ import annotations
 
-from booster.parsing import _SKIP_DIRS, _is_test_file
+from booster.langs import iter_source_files
+from booster.parsing import _is_test_file
 
 
 class GraphMixin:
@@ -27,43 +28,39 @@ class GraphMixin:
 
         test_files = 0
         refs = 0
-        patterns = ["*.py", "*.ts", "*.tsx", "*.js", "*.jsx"]
         seen: set[tuple[int, str]] = set()
-        for pattern in patterns:
-            for path in self.root.rglob(pattern):
-                if any(part in _SKIP_DIRS for part in path.parts):
+        for path in iter_source_files(self.root):
+            try:
+                rel = str(path.relative_to(self.root))
+            except ValueError:
+                continue
+            if not _is_test_file(rel):
+                continue
+            try:
+                text = path.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+            test_files += 1
+            # Cheap word-boundary substring check; iterate names that are
+            # >=3 chars to avoid noisy hits on common short tokens.
+            for sym_name, locations in sym_index.items():
+                if len(sym_name) < 3:
                     continue
-                try:
-                    rel = str(path.relative_to(self.root))
-                except ValueError:
+                if sym_name not in text:
                     continue
-                if not _is_test_file(rel):
-                    continue
-                try:
-                    text = path.read_text(encoding="utf-8", errors="replace")
-                except OSError:
-                    continue
-                test_files += 1
-                # Cheap word-boundary substring check; iterate names that are
-                # >=3 chars to avoid noisy hits on common short tokens.
-                for sym_name, locations in sym_index.items():
-                    if len(sym_name) < 3:
+                for sid, sfile in locations:
+                    if sfile == rel:
+                        continue  # don't record a test file's own symbols against itself
+                    key = (sid, rel)
+                    if key in seen:
                         continue
-                    if sym_name not in text:
-                        continue
-                    for sid, sfile in locations:
-                        if sfile == rel:
-                            continue  # don't record a test file's own symbols against itself
-                        key = (sid, rel)
-                        if key in seen:
-                            continue
-                        seen.add(key)
-                        self._conn.execute(
-                            "INSERT INTO symbol_tests (symbol_id, symbol_file, test_file, test_line, source)"
-                            " VALUES (?, ?, ?, ?, ?)",
-                            (sid, sfile, rel, 0, "import"),
-                        )
-                        refs += 1
+                    seen.add(key)
+                    self._conn.execute(
+                        "INSERT INTO symbol_tests (symbol_id, symbol_file, test_file, test_line, source)"
+                        " VALUES (?, ?, ?, ?, ?)",
+                        (sid, sfile, rel, 0, "import"),
+                    )
+                    refs += 1
         self._conn.commit()
         return test_files, refs
 

@@ -22,7 +22,7 @@ Five layers work together:
 
 | Layer | What it does |
 |---|---|
-| **Symbol index** | tree-sitter parses every `.py`, `.ts`, `.tsx`, `.js`, `.jsx` file, extracts functions/classes into SQLite |
+| **Symbol index** | tree-sitter parses Python, TypeScript/JavaScript, Go, Rust, Java, C, C++, shell and YAML (see [Languages](#languages)), extracts functions/classes/types/blocks into SQLite |
 | **Vector embeddings** | sentence-transformers encodes each symbol for semantic search |
 | **Smart read** | given a file + task, runs per-file vector search and returns only matching symbol line ranges |
 | **MCP server** | exposes four tools over stdio — any MCP-compatible agent can call them |
@@ -33,6 +33,24 @@ Five layers work together:
 ## Installation
 
 Requires Python 3.10+.
+
+## Languages
+
+| Language | Extensions | Symbols | Calls (`expand_calls`) |
+|---|---|---|---|
+| Python | `.py` | functions, classes | yes |
+| TypeScript / JavaScript | `.ts .tsx .js .jsx` | functions, arrow functions, classes, methods, interfaces | yes |
+| Go | `.go` | functions, methods, types | yes |
+| Rust | `.rs` | fn, struct, enum, trait, impl, mod | yes |
+| Java | `.java` | classes, interfaces, enums, records, methods, constructors | yes |
+| C | `.c` | function definitions, structs, enums | yes |
+| C++ | `.cpp .cc .cxx .hpp .hh .hxx .h` | functions, classes, structs, enums, namespaces | yes |
+| Shell | `.sh .bash` | functions | yes (commands) |
+| YAML | `.yaml .yml` | top-level keys, `section.key` mappings (playbook `blocks.*`, `jobs.*`), list items with `id:`/`name:` | — |
+
+Not indexed: header prototypes and macros (C/C++), macro calls (Rust), files over 1 MB, and `node_modules`, `target`, `vendor`, `dist`, `build`.
+The Read gate only intercepts code files — YAML always reads in full.
+Adding a language is one entry in `booster/langs.py`.
 
 ```bash
 pip install agent-booster          # symbol index + MCP tools
@@ -300,7 +318,8 @@ tools/booster/
 ├── pyproject.toml
 └── booster/
     ├── cli.py          # click commands: index, embed, search, serve, init, remove, route, gain
-    ├── indexer.py      # tree-sitter parser + SQLite symbol store + vector search
+    ├── indexer.py      # indexing core (SQLite symbol store)
+    ├── langs.py        # language table: extensions → grammar, symbol + call node types
     ├── retriever.py    # smart_read: per-file vector search → relevant line slice
     ├── mcp_server.py   # MCP server: get_symbols, search_context, smart_read, route_model
     └── stats.py        # token savings tracking (booster gain)

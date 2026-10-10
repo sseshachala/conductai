@@ -789,7 +789,12 @@ def cmd_smart_read(file_path: str, task: str) -> None:
     full_text = path.read_text(encoding="utf-8", errors="replace")
 
     if not task:
-        # No task — return full symbol outline so Claude can decide what to read
+        # No task = the Read-gate hook. Config files (YAML) pass through to a full
+        # Read — agents edit them whole. Fixes already-installed hooks too.
+        from booster.langs import is_gated
+        if not is_gated(path):
+            sys.exit(0)
+        # Return full symbol outline so Claude can decide what to read
         symbols = indexer.get_symbols(rel)
         if not symbols:
             sys.exit(0)  # not indexed — let the hook fall through to Read
