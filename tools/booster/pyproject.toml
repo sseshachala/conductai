@@ -33,7 +33,7 @@ dependencies = [
     "tree-sitter-bash>=0.23",
     "tree-sitter-yaml>=0.7",
     "click>=8.1",
-    "mcp>=1.0",
+    "mcp>=1.0,<2",  # mcp 2.x removed the Server.list_tools decorator mcp_server.py uses
     "numpy>=1.26",
     "anthropic>=0.40",
 ]
