@@ -1095,7 +1095,7 @@ def cmd_status() -> None:
     if info:
         uptime = info.get("uptime", 0)
         mins, secs = divmod(uptime, 60)
-        click.echo(f"Daemon running  pid={info['pid']}  uptime={mins}m{secs}s  model=all-MiniLM-L6-v2")
+        click.echo(f"Daemon running  pid={info['pid']}  uptime={mins}m{secs}s  model={info.get('model', '?')}")
         click.echo("File watcher: active (2s debounce)")
     else:
         click.echo("Daemon not running. Start with: booster start")

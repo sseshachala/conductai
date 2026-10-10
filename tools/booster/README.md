@@ -131,7 +131,7 @@ booster index
 
 ### `booster embed`
 
-Builds sentence-transformer vector embeddings for all indexed symbols. Required for semantic `search_context` calls. Uses `all-MiniLM-L6-v2` (local, no data leaves your machine).
+Builds sentence-transformer vector embeddings for all indexed symbols. Required for semantic `search_context` calls. Uses `BAAI/bge-small-en-v1.5` over each symbol's name, signature, docstring and first body lines (local, no data leaves your machine).
 
 ```bash
 booster embed
