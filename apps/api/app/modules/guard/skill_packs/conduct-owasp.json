@@ -1,7 +1,7 @@
 {
   "slug": "conduct-owasp",
   "name": "Conduct OWASP",
-  "version": "2.2.3",
+  "version": "2.2.4",
   "tier": "paid",
   "description": "OWASP Web Top 10 + Agentic Top 10 enforcement rules for AI coding agents, including ASI06 Memory Poisoning (MITRE ATLAS AML.M0031)",
   "ui": {
@@ -175,7 +175,7 @@
       "id": "owasp_eval_guard",
       "description": "Block eval() calls (OWASP Web A03)",
       "match_tool": "edit,write",
-      "match_pattern": "\\beval\\s*\\(",
+      "match_pattern": "(?<![\\w.$])eval\\(",
       "action": "block",
       "message": "eval() enables code injection \u2014 avoid it.",
       "persona_affinity": [

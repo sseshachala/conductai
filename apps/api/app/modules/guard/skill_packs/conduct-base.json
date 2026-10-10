@@ -1,7 +1,7 @@
 {
   "slug": "conduct-base",
   "name": "Conduct Base",
-  "version": "2.17.0",
+  "version": "2.17.1",
   "tier": "free",
   "description": "Core AI governance rules \u2014 proxy interception, agent safety, surface-aware enforcement, workflow governance, and MCP server tool call auditing. 5 proxy + 16 agent + 7 surface + 4 workflow + 2 MCP rules.",
   "ui": {
@@ -1343,7 +1343,7 @@
       "persona": "agent",
       "non_overridable": false,
       "description": "Block use of eval() \u2014 arbitrary code execution risk",
-      "match_pattern": "\\beval\\s*\\(",
+      "match_pattern": "(?<![\\w.$])eval\\(",
       "action": "block",
       "message": "eval() enables arbitrary code execution. Use ast.literal_eval or a parser.",
       "severity": "high",
