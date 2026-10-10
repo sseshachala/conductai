@@ -462,16 +462,20 @@ def _append_verbosity_block(path: Path, mode: str) -> None:
     path.write_text(existing + sep + block + "\n")
 
 
-def _update_mcp_secret(root: Path, token: str) -> None:
-    """Write BOOSTER_SECRET into the agent-booster MCP server env in .mcp.json."""
+def _scrub_mcp_secret(root: Path) -> None:
+    """Remove a literal BOOSTER_SECRET from .mcp.json (older inits wrote it there).
+
+    .mcp.json is often committed; the secret lives in .booster/.secret (0600).
+    mcp_server only compares BOOSTER_SECRET when it is set, so leaving it out of
+    .mcp.json changes nothing at runtime. Set it via the shell env if wanted.
+    """
     mcp_path = root / ".mcp.json"
     if not mcp_path.exists():
         return
     data = json.loads(mcp_path.read_text())
-    server = data.get("mcpServers", {}).get("agent-booster")
-    if server is None:
+    env = data.get("mcpServers", {}).get("agent-booster", {}).get("env", {})
+    if env.pop("BOOSTER_SECRET", None) is None:
         return
-    server["env"] = {"BOOSTER_SECRET": token}
     mcp_path.write_text(json.dumps(data, indent=2) + "\n")
 
 
@@ -572,7 +576,7 @@ def _install_hook(root: Path) -> None:
         secret_file.write_text(token)
         secret_file.chmod(0o600)
         click.echo(f"  generated .booster/.secret (BOOSTER_SECRET)")
-    _update_mcp_secret(root, secret_file.read_text().strip())
+    _scrub_mcp_secret(root)
 
 
 def _remove_hook(root: Path) -> None:
