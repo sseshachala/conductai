@@ -275,13 +275,15 @@ class TestGetInstructionsVersion:
 class TestGetAdoption:
     def _make_adoption_row(
         self,
-        email: str,
+        email: str | None,
         tools: list[str],
         last_synced=None,
         instructions_version: str | None = None,
+        clerk_user_id: str | None = "user_1",
     ):
         r = MagicMock()
         r.email = email
+        r.clerk_user_id = clerk_user_id
         r.tools = tools
         r.last_synced = last_synced
         r.instructions_version = instructions_version
@@ -324,6 +326,26 @@ class TestGetAdoption:
             assert bob["tools"] == []
             assert bob["version"] is None
             assert bob["last_synced"] is None
+        finally:
+            _teardown()
+
+    def test_member_without_email_does_not_fail_the_response(self):
+        rows = [
+            self._make_adoption_row(email="alice@example.com", tools=["cursor"], clerk_user_id="user_a"),
+            self._make_adoption_row(email=None, tools=[], clerk_user_id="user_b"),
+        ]
+        result_mock = MagicMock()
+        result_mock.fetchall.return_value = rows
+        db = MagicMock()
+        db.execute.return_value = result_mock
+
+        client = _make_client(db)
+        try:
+            r = client.get("/team-os/instructions/adoption", headers={"x-workspace-id": WS_ID})
+            assert r.status_code == 200, r.text
+            data = r.json()
+            assert [m["user_id"] for m in data] == ["user_a", "user_b"]
+            assert data[1]["email"] is None
         finally:
             _teardown()
 
