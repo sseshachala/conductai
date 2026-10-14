@@ -2,7 +2,7 @@
 """
 from __future__ import annotations
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -115,6 +115,12 @@ class ProfileOut(BaseModel):
     model_alias: str | None
     cond_code: str
     active_revision_id: UUID | None
+    # draft = never published; published = active revision set;
+    # unpublished = has revisions, active revision cleared.
+    status: Literal["draft", "published", "unpublished"]
+    # working_copy differs from the active (published) / latest (unpublished)
+    # snapshot. Always False for drafts.
+    has_unpublished_changes: bool
     working_copy: dict[str, Any] | None
     revisions: list[RevisionOut] = Field(default_factory=list)
     created_at: datetime

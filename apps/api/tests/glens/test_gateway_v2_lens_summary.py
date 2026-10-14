@@ -11,6 +11,7 @@ def _profile(active):
     return ProfileOut(
         id=uuid4(), workspace_id=uuid4(), name="prod", model_alias="sonnet",
         cond_code="ab12", active_revision_id=active, working_copy=None,
+        status="published" if active else "draft", has_unpublished_changes=False,
         created_at=now, updated_at=now,
     )
 

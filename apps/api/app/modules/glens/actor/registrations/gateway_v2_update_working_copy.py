@@ -41,6 +41,7 @@ def _propose(ctx: ActionCtx, args: dict[str, Any]) -> ProposeResult:
     profile = ctx.db.query(_Row).filter(
         _Row.id == profile_uuid,
         _Row.workspace_id == ctx.workspace_id,
+        _Row.deleted_at.is_(None),
     ).first()
     if profile is None:
         return ProposeResult(rejected=True,
@@ -88,7 +89,7 @@ default_action_registry.register(ActionSpec(
     propose=_propose,
     execute=_execute,
     description=(
-        "Overwrite the working copy of a Gateway Profile v2 draft. "
+        "Overwrite the working copy of a Gateway Profile v2 (any state except deleted). "
         "Two-step: returns a pending action for the user to confirm; "
         "the confirm click writes the new working_copy."
     ),

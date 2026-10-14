@@ -21,47 +21,6 @@ from tests.guard._gateway_profiles_v2_helpers import (  # noqa: F401 — fixture
 )
 
 
-def test_delete_refuses_when_any_historical_revision_exists(client_and_db):
-    """Review-fix: previously delete refused only when a binding was
-    still active. But an unbound-yet-previously-published profile still
-    has publish history — cascade-drop via ``ON DELETE CASCADE`` on the
-    revisions FK would erase it. Contract is now stricter: refuse when
-    any revision exists at all, so rollback remains possible against
-    the history."""
-    client, session_holder, ws = client_and_db
-    profile_id = uuid4()
-    revision_id = uuid4()
-    session_holder["db"] = _make_session_stub(
-        profiles=[
-            SimpleNamespace(
-                id=profile_id, workspace_id=ws, environment_id=None,
-                cond_code="seedcode", active_revision_id=None,
-                name="p", schema_version="2", config={}, working_copy=None,
-                model_alias="coding",
-                created_at=datetime.now(timezone.utc),
-                updated_at=datetime.now(timezone.utc),
-            ),
-        ],
-        revisions=[
-            SimpleNamespace(
-                id=revision_id, profile_id=profile_id, version=1,
-                snapshot=_sample_working_copy(ENV),
-                published_by="admin", published_at=datetime.now(timezone.utc),
-            ),
-        ],
-        # Deliberately NO bindings — the revision alone is enough to
-        # trigger the 409. Old code would have allowed delete here.
-    )
-
-    resp = client.delete(
-        f"/workspaces/{ws}/gateway-profiles-v2/{profile_id}",
-    )
-    assert resp.status_code == 409
-    # v3: either "revision history" or "published" wording is acceptable —
-    # both call sites signal the same intent.
-    assert "revision history" in resp.text.lower() or "published" in resp.text.lower()
-
-
 def test_delete_allowed_on_pure_draft(client_and_db):
     """Complement: a profile with no revisions can still be deleted.
     Locks the "never published, never bound" happy path so the contract

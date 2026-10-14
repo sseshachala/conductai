@@ -52,6 +52,7 @@ def reference_report(
     # Gateway profiles — enumerate config + working_copy + active revision snapshot.
     profile_rows = db.query(GatewayProfile).filter(
         GatewayProfile.workspace_id == workspace_id,
+        GatewayProfile.deleted_at.is_(None),
     ).all()
     active_ids: list[Any] = []
     for p in profile_rows:

@@ -6,6 +6,7 @@ rollback / revisions / test endpoints in gateway_profiles_v2.py import
 ``router`` from here, which keeps the original route registration order.
 """
 from __future__ import annotations
+from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 import structlog
@@ -287,6 +288,7 @@ def list_profiles(
         .filter(
             GatewayProfileRow.workspace_id == workspace_id,
             GatewayProfileRow.schema_version == "2",
+            GatewayProfileRow.deleted_at.is_(None),
         )
         .order_by(GatewayProfileRow.name)
         .all()
@@ -322,9 +324,9 @@ def update_working_copy(
 ):
     """Overwrite the working copy. Save never touches live traffic.
 
-    Refused once ``active_revision_id`` is set (profile is published) —
-    the working_copy is locked in that state. To change a published
-    profile, duplicate it into a fresh draft and edit that.
+    Always allowed while the profile is not deleted (draft, published or
+    unpublished). Edits only change ``working_copy``; the live revision is
+    untouched until the next publish.
 
     Schema validation runs here so the UI catches typos immediately.
     Capability catalog is deferred to publish because presets change
@@ -332,17 +334,12 @@ def update_working_copy(
     in-progress draft mid-migration.
     """
     profile = _load_profile(db, workspace_id, profile_id)
-    if profile.active_revision_id is not None:
-        raise HTTPException(
-            status_code=409,
-            detail=(
-                "Published profile — working_copy is locked. Duplicate "
-                "this profile into a new draft to make changes."
-            ),
-        )
     parsed = _validate_working_copy(body.working_copy, check_capabilities=False)
     profile.working_copy = body.working_copy
-    profile.model_alias = parsed.model_alias
+    # model_alias caches the *live* alias while published (publish/rollback
+    # set it); only track the working copy when nothing is being served.
+    if profile.active_revision_id is None:
+        profile.model_alias = parsed.model_alias
     db.commit()
     db.refresh(profile)
     return _to_output(db, workspace_id, profile)
@@ -367,7 +364,6 @@ def update_profile_rate_limits(
     from app.core.workspace_context import set_workspace_rls
 
     set_workspace_rls(db, workspace_id)
-    # Limits remain mutable even when the routing working copy is locked.
     _load_profile(db, workspace_id, profile_id, for_update=True)
     if body.agent_limits:
         raise HTTPException(400, "Set agent-wide limits under Agent IDs > Rate limits.")
@@ -398,37 +394,33 @@ def delete_profile(
     _ws: str = Depends(_authorized_workspace_id),
     _: str = Depends(require_permission("platform.credentials.manage")),
 ):
-    """Delete a *draft* only. A profile that has ever been published is
-    refused — deleting it would cascade-drop its immutable revision
-    history via the FK ``ON DELETE CASCADE``, contradicting the
-    "revisions are forever" contract. Duplicate the profile if the
-    admin wants a fresh working_copy; contact ops to archive if the
-    published one truly needs to be retired."""
-    profile = _load_profile(db, workspace_id, profile_id)
+    """Delete a profile.
+
+    draft (no revisions) -> hard delete. unpublished (revisions, pointer
+    NULL) -> soft delete (``deleted_at``); revisions and rate-limit rows
+    are kept and the name becomes reusable. published -> 409, unpublish
+    first.
+    """
+    profile = _load_profile(db, workspace_id, profile_id, for_update=True)
 
     if profile.active_revision_id is not None:
-        raise HTTPException(
-            status_code=409,
-            detail=(
-                "Profile is published; deleting it would cascade-drop "
-                "its revision history. Duplicate it if you want a fresh "
-                "draft, or contact ops to archive."
-            ),
-        )
+        raise HTTPException(status_code=409, detail="Unpublish before deleting")
     revision_count = (
         db.query(GatewayProfileRevision)
         .filter(GatewayProfileRevision.profile_id == profile.id)
         .count()
     )
     if revision_count > 0:
-        # active_revision_id is null but there are past revisions —
-        # shouldn't happen under the current model (rollback keeps it
-        # set), but belt-and-braces: revision history is sacred.
-        raise HTTPException(
-            status_code=409,
-            detail=(
-                "Profile has published revision history and can't be deleted."
-            ),
+        profile.deleted_at = datetime.now(timezone.utc)
+        db.commit()
+        _log.info(
+            "gateway.profile.soft_deleted",
+            workspace_id=workspace_id, profile_id=str(profile_id),
         )
+        return
     db.delete(profile)
     db.commit()
+    _log.info(
+        "gateway.profile.deleted",
+        workspace_id=workspace_id, profile_id=str(profile_id),
+    )

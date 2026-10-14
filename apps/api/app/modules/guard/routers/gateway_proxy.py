@@ -114,7 +114,8 @@ def _anthropic_catalog(db: Session, workspace_id: str, limit: int) -> list[dict[
               (GatewayProfileRevision.id == GatewayProfile.active_revision_id)
               & (GatewayProfileRevision.profile_id == GatewayProfile.id))
         .filter(GatewayProfile.workspace_id == workspace_id,
-                GatewayProfile.schema_version == "2")
+                GatewayProfile.schema_version == "2",
+                GatewayProfile.deleted_at.is_(None))
         .order_by(GatewayProfile.cond_code)
         .all()
     )

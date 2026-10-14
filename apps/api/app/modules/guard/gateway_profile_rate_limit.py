@@ -79,6 +79,7 @@ def check_profile_rate_limit(db, *, workspace_id: str, profile_id: UUID | None,
             profile = db.query(GatewayProfile).filter(
                 GatewayProfile.active_revision_id == revision_id,
                 GatewayProfile.workspace_id == UUID(str(workspace_id)),
+                GatewayProfile.deleted_at.is_(None),
             ).first()
             if profile is None:
                 raise ValueError("Profile unavailable")

@@ -196,18 +196,34 @@ def test_publish_rejects_empty_working_copy():
     assert out.rejected and "empty" in (out.reason or "")
 
 
-def test_publish_rejects_already_published():
-    """v3: publishing a profile that already has an active revision is
-    refused. Caller has to duplicate to change a published profile."""
+def test_publish_rejects_when_no_changes_since_active_revision():
+    """A published profile whose working_copy equals the active snapshot
+    has nothing to publish."""
+    spec = default_action_registry.get("gateway_v2_publish")
+    wc = {"model_alias": "coding"}
+    profile = SimpleNamespace(
+        id=uuid.UUID(_PROFILE), name="prod",
+        working_copy=wc, active_revision_id=uuid.UUID(_REV),
+    )
+    active = SimpleNamespace(id=uuid.UUID(_REV), version=3, snapshot=dict(wc))
+    ctx = _ctx(db=_query_returning(profile, active))
+    out = spec.propose(ctx, {"profile_id": _PROFILE})
+    assert out.rejected and "no changes since v3" in (out.reason or "").lower()
+
+
+def test_publish_allows_published_profile_with_changes():
     spec = default_action_registry.get("gateway_v2_publish")
     profile = SimpleNamespace(
         id=uuid.UUID(_PROFILE), name="prod",
-        working_copy={"model_alias": "coding"},
-        active_revision_id=uuid.UUID(_REV),
+        working_copy={"model_alias": "coding", "timeout_seconds": 5},
+        active_revision_id=uuid.UUID(_REV), cond_code="abc12345",
     )
-    ctx = _ctx(db=_query_returning(profile))
+    active = SimpleNamespace(
+        id=uuid.UUID(_REV), version=3, snapshot={"model_alias": "coding"},
+    )
+    ctx = _ctx(db=_query_returning(profile, active))
     out = spec.propose(ctx, {"profile_id": _PROFILE})
-    assert out.rejected and "already published" in (out.reason or "").lower()
+    assert not out.rejected
 
 
 def test_publish_summary_names_alias_and_cond_code():
