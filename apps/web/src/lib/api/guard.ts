@@ -7,6 +7,7 @@ import type {
   GatewayProfileV2ImportOut,
   GatewayProfileV2Out,
   GatewayProfileV2Revision,
+  GatewayProfileV2Status,
   GuardEnforcementCoverage,
   GuardPolicy,
   GuardPolicyPatch,
@@ -27,6 +28,7 @@ export type {
   GatewayProfileV2WorkingCopy,
   GatewayProfileV2Revision,
   GatewayProfileV2Out,
+  GatewayProfileV2Status,
   GatewayProfileV2ImportGap,
   GatewayProfileV2ImportOut,
   GuardPolicyAction,
@@ -247,6 +249,8 @@ export const guard = {
       _mutateJson<GatewayProfileV2Out>(f, "PUT", `${API}/workspaces/${workspaceId}/gateway-profiles-v2/${id}`, { working_copy: workingCopy }),
     publish: (f: AuthFetch, workspaceId: string, id: string) =>
       _mutateJson<GatewayProfileV2Out>(f, "POST", `${API}/workspaces/${workspaceId}/gateway-profiles-v2/${id}/publish`, {}),
+    unpublish: (f: AuthFetch, workspaceId: string, id: string) =>
+      _mutateJson<GatewayProfileV2Out>(f, "POST", `${API}/workspaces/${workspaceId}/gateway-profiles-v2/${id}/unpublish`, {}),
     rollback: (f: AuthFetch, workspaceId: string, id: string, revisionId: string) =>
       _mutateJson<GatewayProfileV2Out>(f, "POST", `${API}/workspaces/${workspaceId}/gateway-profiles-v2/${id}/rollback`, { revision_id: revisionId }),
     revisions: (f: AuthFetch, workspaceId: string, id: string) =>

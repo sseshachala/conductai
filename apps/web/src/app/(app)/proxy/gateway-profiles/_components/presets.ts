@@ -1,4 +1,4 @@
-import type { GatewayProfileV2Out } from "@/lib/api/guard"
+import type { GatewayProfileV2Out, GatewayProfileV2Status } from "@/lib/api/guard"
 
 export type EnvironmentRow = { id: string; name: string }
 
@@ -130,10 +130,24 @@ PRESET_CHIPS.push({
   },
 })
 
+/** Lifecycle status; falls back to active_revision_id for older API builds. */
+export function profileStatus(profile: GatewayProfileV2Out): GatewayProfileV2Status {
+  if (profile.status) return profile.status
+  if (profile.active_revision_id !== null) return "published"
+  return profile.revisions.length > 0 ? "unpublished" : "draft"
+}
+
 export function isPublished(profile: GatewayProfileV2Out): boolean {
-  // v3: served state lives on active_revision_id. Working_copy is
-  // locked whenever this is non-null.
-  return profile.active_revision_id !== null
+  return profileStatus(profile) === "published"
+}
+
+export const STATUS_LABEL: Record<GatewayProfileV2Status, string> = {
+  draft: "Draft", published: "Published", unpublished: "Unpublished",
+}
+
+export function latestRevision(profile: GatewayProfileV2Out) {
+  return profile.revisions.length === 0 ? null
+    : profile.revisions.reduce((a, b) => (a.version >= b.version ? a : b))
 }
 
 export function conditIdentifier(profile: GatewayProfileV2Out): string {

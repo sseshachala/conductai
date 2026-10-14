@@ -23,13 +23,16 @@ import { TargetRow } from "./gateway-profile-v2-editor/TargetRow"
 // hardcoded list that lies about which models the workspace approved).
 
 export default function GatewayProfileV2Editor({
-  workspaceId, profile, envs, isAdmin, onSaved,
+  workspaceId, profile, envs, isAdmin, onSaved, mode = "edit",
 }: {
   workspaceId: string
+  /** In create mode, a stable stub that seeds the form (must be referentially stable). */
   profile: GatewayProfileV2Out
   envs: EnvironmentRow[]
   isAdmin: boolean
-  onSaved: () => void
+  onSaved: (saved?: GatewayProfileV2Out) => void
+  /** "create" POSTs a new draft instead of PUTting the working copy. */
+  mode?: "edit" | "create"
 }) {
   const { authFetch } = useAuthFetch()
   const formId = useId()
@@ -131,11 +134,20 @@ export default function GatewayProfileV2Editor({
     }
     setSaving(true); setErr(""); setMsg("")
     try {
-      await guard.gatewayProfilesV2.updateWorkingCopy(
-        authFetch, workspaceId, profile.id, stateToWorkingCopy(state),
-      )
-      setMsg("Working copy saved")
-      onSaved()
+      const workingCopy = stateToWorkingCopy(state)
+      if (mode === "create") {
+        const created = await guard.gatewayProfilesV2.create(
+          authFetch, workspaceId, { name: state.name.trim(), working_copy: workingCopy },
+        )
+        setMsg("Draft created")
+        onSaved(created)
+      } else {
+        const saved = await guard.gatewayProfilesV2.updateWorkingCopy(
+          authFetch, workspaceId, profile.id, workingCopy,
+        )
+        setMsg("Working copy saved")
+        onSaved(saved)
+      }
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Save failed")
     } finally { setSaving(false) }
@@ -306,7 +318,7 @@ export default function GatewayProfileV2Editor({
                 : undefined)
             }
           >
-            {saving ? "Saving…" : "Save working copy"}
+            {saving ? "Saving…" : mode === "create" ? "Create draft" : "Save working copy"}
           </button>
         </div>
       )}

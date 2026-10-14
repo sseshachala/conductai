@@ -66,6 +66,8 @@ export interface GatewayProfileV2Revision {
   published_at: string
 }
 
+export type GatewayProfileV2Status = "draft" | "published" | "unpublished"
+
 export interface GatewayProfileV2Out {
   id: string
   workspace_id: string
@@ -74,9 +76,13 @@ export interface GatewayProfileV2Out {
   /** Server-generated 8-char alphanumeric. Immutable. Forms the
    *  client-facing routing key `cond-<code>-<alias>`. */
   cond_code: string
-  /** NULL for drafts; points at the currently-served revision when
-   *  published. Working_copy is API-locked whenever this is non-null. */
+  /** NULL unless published; points at the currently-served revision. */
   active_revision_id: string | null
+  /** Lifecycle state. Optional for tolerance of older API builds; use
+   *  `profileStatus()` to read it. */
+  status?: GatewayProfileV2Status
+  /** True when the working copy differs from the active/last revision. */
+  has_unpublished_changes?: boolean
   working_copy: Record<string, unknown> | null
   revisions: GatewayProfileV2Revision[]
   created_at: string

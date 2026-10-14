@@ -187,10 +187,10 @@ export function friendlyError(status: number, raw: string): string {
   return raw || `HTTP ${status}`
 }
 
-export function CopyButton({ value }: { value: string }) {
+export function CopyButton({ value, label = "Copy" }: { value: string; label?: string }) {
   const [copied, setCopied] = useState(false)
   return (
-    <button className="btn btn-ghost btn-sm"
+    <button className="btn btn-ghost btn-sm" aria-label={label}
       style={{ height: 26, fontSize: 11.5 }}
       onClick={async () => {
         try {

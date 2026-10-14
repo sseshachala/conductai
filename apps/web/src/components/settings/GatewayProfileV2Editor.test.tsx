@@ -5,11 +5,11 @@ import { GatewayValidationError } from "@/lib/api/guard"
 import Editor from "./GatewayProfileV2Editor"
 import PublishDialog from "./GatewayProfileV2PublishDialog"
 
-const mocks = vi.hoisted(() => ({ fetch: vi.fn(), update: vi.fn(), publish: vi.fn(), credentials: vi.fn() }))
+const mocks = vi.hoisted(() => ({ fetch: vi.fn(), update: vi.fn(), create: vi.fn(), publish: vi.fn(), credentials: vi.fn() }))
 vi.mock("@/hooks/useAuthFetch", () => ({ useAuthFetch: () => ({ authFetch: mocks.fetch }) }))
 vi.mock("@/lib/api", () => ({
   API: "https://api.example", credentials: { byEnvironment: mocks.credentials },
-  guard: { gatewayProfilesV2: { updateWorkingCopy: mocks.update, publish: mocks.publish } },
+  guard: { gatewayProfilesV2: { updateWorkingCopy: mocks.update, create: mocks.create, publish: mocks.publish } },
 }))
 
 function profile(alias = "coding"): GatewayProfileV2Out {
@@ -87,7 +87,7 @@ it("shows a readable server error and clears it on correction", async () => {
   expect(screen.queryByRole("alert")).toBeNull()
 })
 
-it("does not add editable validation controls to published read-only profiles", () => {
+it("renders read-only (viewer) without validation controls or a save button", () => {
   renderEditor(profile(""), false)
   expect(screen.getByRole("textbox", { name: "Alias" })).toBeDisabled()
   expect(screen.queryByText("Enter an alias.")).toBeNull()
@@ -129,4 +129,37 @@ it("narrows custom operations to the selected protocol", async () => {
   fireEvent.click(screen.getByRole("button", { name: "Save working copy" }))
   await waitFor(() => expect(mocks.update).toHaveBeenCalled())
   expect(mocks.update.mock.calls[0][3].accepts).toEqual(["anthropic_messages", "anthropic_count_tokens"])
+})
+
+it("keeps a published profile editable and saves its working copy in place", async () => {
+  const p = { ...profile(), status: "published" as const, active_revision_id: "r1", has_unpublished_changes: false }
+  const onSaved = vi.fn()
+  render(<Editor workspaceId="workspace" profile={p} isAdmin onSaved={onSaved}
+    envs={[{ id: "bbbbbbbb-0000-4000-8000-000000000001", name: "Production" }]} />)
+  expect(screen.getByRole("textbox", { name: "Alias" })).toBeEnabled()
+  expect(screen.queryByText(/duplicate/i)).toBeNull()
+  fireEvent.change(screen.getByRole("textbox", { name: "Alias" }), { target: { value: "coding-2" } })
+  fireEvent.click(screen.getByRole("button", { name: "Save working copy" }))
+  await waitFor(() => expect(mocks.update).toHaveBeenCalledWith(mocks.fetch, "workspace", "profile",
+    expect.objectContaining({ model_alias: "coding-2" })))
+  await waitFor(() => expect(onSaved).toHaveBeenCalled())
+})
+
+it("create mode POSTs a new draft and hands the created profile to onSaved", async () => {
+  mocks.create.mockResolvedValue({ ...profile(), id: "new-id" })
+  const onSaved = vi.fn()
+  render(<Editor mode="create" workspaceId="workspace" profile={profile()} isAdmin onSaved={onSaved}
+    envs={[{ id: "bbbbbbbb-0000-4000-8000-000000000001", name: "Production" }]} />)
+  expect(screen.queryByRole("button", { name: "Save working copy" })).toBeNull()
+  fireEvent.click(screen.getByRole("button", { name: "Create draft" }))
+  await waitFor(() => expect(mocks.create).toHaveBeenCalledWith(mocks.fetch, "workspace",
+    { name: "Case 3", working_copy: expect.objectContaining({ model_alias: "coding" }) }))
+  expect(mocks.update).not.toHaveBeenCalled()
+  await waitFor(() => expect(onSaved).toHaveBeenCalledWith(expect.objectContaining({ id: "new-id" })))
+})
+
+it("publish dialog names the target version", () => {
+  const p = { ...profile(), revisions: [{ id: "r1", version: 2, published_by: "me", published_at: "2026-10-03" }] }
+  render(<PublishDialog workspaceId="workspace" profile={p} onClose={vi.fn()} onPublished={vi.fn()} />)
+  expect(screen.getByRole("heading", { name: "Publish v3" })).toBeInTheDocument()
 })
