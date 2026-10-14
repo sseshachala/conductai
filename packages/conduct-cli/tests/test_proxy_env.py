@@ -394,3 +394,102 @@ def test_is_anthropic_proxied_false_when_no_env_and_no_file(tmp_path, monkeypatc
     monkeypatch.delenv("ANTHROPIC_BASE_URL", raising=False)
     # No ~/.conduct/env written
     assert guard._is_anthropic_proxied() is False
+
+
+def _isolate_claude(tmp_path: Path, monkeypatch) -> None:
+    # Windows resolves Path.home() from USERPROFILE, not HOME — patch it directly.
+    _redirect_home(tmp_path, monkeypatch)
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
+    monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
+
+
+def _claude_json(tmp_path: Path, monkeypatch, responses=None) -> Path:
+    _isolate_claude(tmp_path, monkeypatch)
+    path = tmp_path / ".claude.json"
+    data = {"oauthAccount": {"emailAddress": "dev@example.com"}, "mcpServers": {"conduct": {}}}
+    if responses is not None:
+        data["customApiKeyResponses"] = responses
+    path.write_text(json.dumps(data))
+    path.chmod(0o600)
+    return path
+
+
+def test_claude_key_approval_moves_rotated_key_out_of_rejected(tmp_path, monkeypatch):
+    _isolate_claude(tmp_path, monkeypatch)
+    token = "cond_agt_s1_" + "x" * 40 + "ROTATEDKEY0123456789"
+    path = _claude_json(tmp_path, monkeypatch, {"approved": ["keep-approved"], "rejected": ["old-rejected", token[-20:]]})
+
+    assert _guard_gateway._approve_claude_api_key(token) is True
+
+    data = json.loads(path.read_text())
+    assert data["customApiKeyResponses"] == {
+        "approved": ["keep-approved", token[-20:]],
+        "rejected": ["old-rejected"],
+    }
+    assert data["oauthAccount"] == {"emailAddress": "dev@example.com"}
+    assert data["mcpServers"] == {"conduct": {}}
+    if sys.platform != "win32":
+        assert path.stat().st_mode & 0o777 == 0o600
+    assert token not in path.read_text()
+    assert _guard_gateway._approve_claude_api_key(token) is False
+
+
+def test_claude_key_approval_adds_section_when_missing(tmp_path, monkeypatch):
+    _isolate_claude(tmp_path, monkeypatch)
+    path = _claude_json(tmp_path, monkeypatch)
+
+    assert _guard_gateway._approve_claude_api_key("cond_agt_" + "y" * 40) is True
+
+    assert json.loads(path.read_text())["customApiKeyResponses"] == {"approved": ["y" * 20], "rejected": []}
+
+
+def test_claude_key_approval_skips_without_claude_config(tmp_path, monkeypatch):
+    _isolate_claude(tmp_path, monkeypatch)
+
+    assert _guard_gateway._approve_claude_api_key("cond_agt_" + "z" * 40) is False
+    assert not (tmp_path / ".claude.json").exists()
+
+
+def test_claude_key_approval_skips_when_claude_code_disabled(tmp_path, monkeypatch):
+    _isolate_claude(tmp_path, monkeypatch)
+    path = _claude_json(tmp_path, monkeypatch, {"approved": [], "rejected": []})
+    before = path.read_text()
+    monkeypatch.setattr("conduct_cli.guard_commands.tool_lifecycle.disabled", lambda tool: tool == "claude-code")
+
+    assert _guard_gateway._approve_claude_api_key("cond_agt_" + "w" * 40) is False
+    assert path.read_text() == before
+
+
+def test_claude_key_approval_leaves_malformed_config_alone(tmp_path, monkeypatch):
+    _isolate_claude(tmp_path, monkeypatch)
+    path = tmp_path / ".claude.json"
+    path.write_text("{not json")
+
+    assert _guard_gateway._approve_claude_api_key("cond_agt_" + "v" * 40) is False
+    assert path.read_text() == "{not json"
+
+
+def test_claude_key_approval_honours_claude_config_dir(tmp_path, monkeypatch):
+    _isolate_claude(tmp_path, monkeypatch)
+    config_dir = tmp_path / "claude-config"
+    config_dir.mkdir()
+    (config_dir / ".claude.json").write_text("{}")
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(config_dir))
+
+    assert _guard_gateway._approve_claude_api_key("cond_agt_" + "u" * 40) is True
+    assert json.loads((config_dir / ".claude.json").read_text())["customApiKeyResponses"]["approved"] == ["u" * 20]
+
+
+@pytestmark_posix
+def test_proxy_env_write_approves_key_for_claude_code(tmp_path, monkeypatch, capsys):
+    _isolate_claude(tmp_path, monkeypatch)
+    monkeypatch.setenv("SHELL", "/bin/zsh")
+    token = "cond_agt_" + "t" * 40
+    path = _claude_json(tmp_path, monkeypatch, {"approved": [], "rejected": [token[-20:]]})
+
+    guard._write_proxy_env(token, "https://gateway.conductai.ai/gateway/v1")
+
+    assert json.loads(path.read_text())["customApiKeyResponses"] == {"approved": [token[-20:]], "rejected": []}
+    out = capsys.readouterr().out
+    assert "gateway key approved" in out
+    assert token not in out

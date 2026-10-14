@@ -11,3 +11,11 @@ import importlib
 for mod in list(sys.modules):
     if mod.startswith("conduct_cli"):
         del sys.modules[mod]
+
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _no_real_claude_config(monkeypatch):
+    # guard sync edits $CLAUDE_CONFIG_DIR/.claude.json; never let a developer's real one leak in.
+    monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)

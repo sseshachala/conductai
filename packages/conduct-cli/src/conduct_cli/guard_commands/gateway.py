@@ -201,6 +201,57 @@ def _remove_legacy_claude_bypass(content: str) -> str:
     )
 
 
+def _claude_config_path() -> Path:
+    config_dir = os.environ.get("CLAUDE_CONFIG_DIR")
+    return Path(config_dir) / ".claude.json" if config_dir else Path.home() / ".claude.json"
+
+
+def _approve_claude_api_key(agent_token: str) -> bool:
+    """Pre-approve the gateway key in Claude Code. Returns True if changed.
+
+    Claude Code remembers each env ANTHROPIC_API_KEY it has seen by its last
+    20 chars under ``customApiKeyResponses``. A rotated (unseen) or rejected
+    key loses to a claude.ai login, which sends an OAuth bearer the gateway
+    rejects with 401 "Missing or malformed Conduct member token".
+    """
+    from .tool_lifecycle import disabled
+    import tempfile
+    path = _claude_config_path()
+    if not agent_token or disabled("claude-code") or not path.is_file() or path.is_symlink():
+        return False
+    try:
+        data = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return False
+    if not isinstance(data, dict):
+        return False
+    fingerprint = agent_token[-20:]
+    responses = data.get("customApiKeyResponses")
+    if not isinstance(responses, dict):
+        responses = {}
+    approved = [k for k in responses.get("approved") or [] if isinstance(k, str)]
+    rejected = [k for k in responses.get("rejected") or [] if isinstance(k, str)]
+    if fingerprint in approved and fingerprint not in rejected:
+        return False
+    responses["approved"] = approved if fingerprint in approved else [*approved, fingerprint]
+    responses["rejected"] = [k for k in rejected if k != fingerprint]
+    data["customApiKeyResponses"] = responses
+    try:
+        mode = path.stat().st_mode & 0o777
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=path.parent, delete=False) as output:
+            temporary = Path(output.name)
+            json.dump(data, output, indent=2)
+        try:
+            temporary.chmod(mode)
+            temporary.replace(path)
+        finally:
+            temporary.unlink(missing_ok=True)
+    except OSError:
+        # Best-effort — never block sync on Claude Code's config.
+        return False
+    return True
+
+
 def _write_proxy_env_windows(agent_token: str, proxy_url: str, *, copilot=True) -> tuple[Path, bool]:
     """Windows equivalent of _write_proxy_env — PowerShell profile + env.ps1."""
     CONDUCT_DIR.mkdir(parents=True, exist_ok=True)
@@ -228,6 +279,8 @@ def _write_proxy_env_windows(agent_token: str, proxy_url: str, *, copilot=True) 
         'if (Test-Path "$HOME/.conduct/env-override.ps1") { . "$HOME/.conduct/env-override.ps1" }',
         "",
     ]))
+    if _approve_claude_api_key(token):
+        print(f"  {_guard_shared.GREEN}Claude Code: gateway key approved{_guard_shared.RESET}")
 
     # ponytail: prefer PS7 profile; fall back to WPS5 only if its file already exists
     ps7_profile = Path.home() / "Documents" / "PowerShell" / "Microsoft.PowerShell_profile.ps1"
@@ -371,6 +424,8 @@ def _write_proxy_env(agent_token: str, proxy_url: str, *, copilot=True) -> tuple
         "[ -f ~/.conduct/env-override ] && . ~/.conduct/env-override",
         "",
     ]))
+    if _approve_claude_api_key(token):
+        print(f"  {_guard_shared.GREEN}Claude Code: gateway key approved{_guard_shared.RESET}")
 
     shell = os.environ.get("SHELL", "").lower()
     if "zsh" in shell:
