@@ -6,6 +6,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ---
 
+## [0.14.21] - 2026-10-14
+
+### Fixed
+- `conduct guard sync` pre-approves the gateway key in Claude Code
+  (`customApiKeyResponses` in `~/.claude.json`, or `$CLAUDE_CONFIG_DIR`).
+  After `conduct login` rotated the agent token, Claude Code treated the new
+  `ANTHROPIC_API_KEY` as unapproved and fell back to the claude.ai login,
+  whose OAuth bearer the gateway rejects with 401 "Missing or malformed
+  Conduct member token". Only the key's last 20 characters are stored, the
+  rest of the file is preserved, and nothing is written when Claude Code is
+  disabled or its config is missing or invalid.
+
 ## [0.14.20] - 2026-10-13
 
 ### Fixed

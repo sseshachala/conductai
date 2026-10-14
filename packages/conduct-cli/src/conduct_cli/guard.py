@@ -102,6 +102,8 @@ from conduct_cli.guard_commands.gateway import (  # noqa: F401
     _post_local_findings,
     _LEGACY_CLAUDE_BYPASSES,
     _remove_legacy_claude_bypass,
+    _claude_config_path,
+    _approve_claude_api_key,
     _write_proxy_env_windows,
     _OLD_GATEWAY_HOST,
     _NEW_GATEWAY_HOST,
