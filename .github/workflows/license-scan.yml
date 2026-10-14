@@ -62,7 +62,7 @@ jobs:
           pip-licenses --fail-on "GPL v2;GPL v3;GNU General Public License v2 (GPLv2);GNU General Public License v3 (GPLv3);GNU Affero General Public License v3;AGPL v3;GNU Affero General Public License v3 or later (AGPLv3+);Server Side Public License;SSPL;Business Source License;BUSL-1.1;Commons Clause;CC-BY-SA-4.0;Elastic License 2.0"
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: python-licenses
@@ -106,7 +106,7 @@ jobs:
             --failOn 'GPL-1.0;GPL-2.0;GPL-3.0;AGPL-1.0;AGPL-3.0;SSPL-1.0;BUSL-1.1;CC-BY-SA-4.0;Elastic-2.0'
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: node-licenses
