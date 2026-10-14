@@ -396,8 +396,15 @@ def test_is_anthropic_proxied_false_when_no_env_and_no_file(tmp_path, monkeypatc
     assert guard._is_anthropic_proxied() is False
 
 
-def _claude_json(tmp_path: Path, monkeypatch, responses=None) -> Path:
+def _isolate_claude(tmp_path: Path, monkeypatch) -> None:
+    # Windows resolves Path.home() from USERPROFILE, not HOME — patch it directly.
+    _redirect_home(tmp_path, monkeypatch)
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
     monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
+
+
+def _claude_json(tmp_path: Path, monkeypatch, responses=None) -> Path:
+    _isolate_claude(tmp_path, monkeypatch)
     path = tmp_path / ".claude.json"
     data = {"oauthAccount": {"emailAddress": "dev@example.com"}, "mcpServers": {"conduct": {}}}
     if responses is not None:
@@ -408,7 +415,7 @@ def _claude_json(tmp_path: Path, monkeypatch, responses=None) -> Path:
 
 
 def test_claude_key_approval_moves_rotated_key_out_of_rejected(tmp_path, monkeypatch):
-    _redirect_home(tmp_path, monkeypatch)
+    _isolate_claude(tmp_path, monkeypatch)
     token = "cond_agt_s1_" + "x" * 40 + "ROTATEDKEY0123456789"
     path = _claude_json(tmp_path, monkeypatch, {"approved": ["keep-approved"], "rejected": ["old-rejected", token[-20:]]})
 
@@ -421,13 +428,14 @@ def test_claude_key_approval_moves_rotated_key_out_of_rejected(tmp_path, monkeyp
     }
     assert data["oauthAccount"] == {"emailAddress": "dev@example.com"}
     assert data["mcpServers"] == {"conduct": {}}
-    assert path.stat().st_mode & 0o777 == 0o600
+    if sys.platform != "win32":
+        assert path.stat().st_mode & 0o777 == 0o600
     assert token not in path.read_text()
     assert _guard_gateway._approve_claude_api_key(token) is False
 
 
 def test_claude_key_approval_adds_section_when_missing(tmp_path, monkeypatch):
-    _redirect_home(tmp_path, monkeypatch)
+    _isolate_claude(tmp_path, monkeypatch)
     path = _claude_json(tmp_path, monkeypatch)
 
     assert _guard_gateway._approve_claude_api_key("cond_agt_" + "y" * 40) is True
@@ -436,15 +444,14 @@ def test_claude_key_approval_adds_section_when_missing(tmp_path, monkeypatch):
 
 
 def test_claude_key_approval_skips_without_claude_config(tmp_path, monkeypatch):
-    _redirect_home(tmp_path, monkeypatch)
-    monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
+    _isolate_claude(tmp_path, monkeypatch)
 
     assert _guard_gateway._approve_claude_api_key("cond_agt_" + "z" * 40) is False
     assert not (tmp_path / ".claude.json").exists()
 
 
 def test_claude_key_approval_skips_when_claude_code_disabled(tmp_path, monkeypatch):
-    _redirect_home(tmp_path, monkeypatch)
+    _isolate_claude(tmp_path, monkeypatch)
     path = _claude_json(tmp_path, monkeypatch, {"approved": [], "rejected": []})
     before = path.read_text()
     monkeypatch.setattr("conduct_cli.guard_commands.tool_lifecycle.disabled", lambda tool: tool == "claude-code")
@@ -454,8 +461,7 @@ def test_claude_key_approval_skips_when_claude_code_disabled(tmp_path, monkeypat
 
 
 def test_claude_key_approval_leaves_malformed_config_alone(tmp_path, monkeypatch):
-    _redirect_home(tmp_path, monkeypatch)
-    monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
+    _isolate_claude(tmp_path, monkeypatch)
     path = tmp_path / ".claude.json"
     path.write_text("{not json")
 
@@ -464,7 +470,7 @@ def test_claude_key_approval_leaves_malformed_config_alone(tmp_path, monkeypatch
 
 
 def test_claude_key_approval_honours_claude_config_dir(tmp_path, monkeypatch):
-    _redirect_home(tmp_path, monkeypatch)
+    _isolate_claude(tmp_path, monkeypatch)
     config_dir = tmp_path / "claude-config"
     config_dir.mkdir()
     (config_dir / ".claude.json").write_text("{}")
@@ -476,7 +482,7 @@ def test_claude_key_approval_honours_claude_config_dir(tmp_path, monkeypatch):
 
 @pytestmark_posix
 def test_proxy_env_write_approves_key_for_claude_code(tmp_path, monkeypatch, capsys):
-    _redirect_home(tmp_path, monkeypatch)
+    _isolate_claude(tmp_path, monkeypatch)
     monkeypatch.setenv("SHELL", "/bin/zsh")
     token = "cond_agt_" + "t" * 40
     path = _claude_json(tmp_path, monkeypatch, {"approved": [], "rejected": [token[-20:]]})
