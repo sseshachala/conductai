@@ -182,6 +182,11 @@ def _make_session_stub(*, profiles=None, revisions=None, bindings=None,
             # Some queries do db.query(func.max(GatewayProfileRevision.version))
             # — treat those specially by returning the version scalar.
             model = getattr(model_or_column, "class_", None) or model_or_column
+            if hasattr(model_or_column, "clauses"):  # func.max(Revision.version)
+                from app.models.gateway_profile import GatewayProfileRevision
+                tbl = getattr(list(model_or_column.clauses)[0], "table", None)
+                if getattr(tbl, "name", None) == GatewayProfileRevision.__tablename__:
+                    model = GatewayProfileRevision
             return _Query(model, self)
 
         def _match_all(self, model, filters):
@@ -211,6 +216,10 @@ def _make_session_stub(*, profiles=None, revisions=None, bindings=None,
                     continue
                 attr = getattr(left, "name", None)
                 if attr is None:
+                    continue
+                from sqlalchemy.sql.elements import Null
+                if isinstance(right, Null):  # ``col IS NULL``
+                    pool = [r for r in pool if getattr(r, attr, None) is None]
                     continue
                 target = getattr(right, "value", right)
                 pool = [
@@ -244,10 +253,13 @@ def _make_session_stub(*, profiles=None, revisions=None, bindings=None,
 
         def delete(self, obj):
             from app.models.gateway_profile import GatewayProfile
-            if isinstance(obj, GatewayProfile):
+            if isinstance(obj, GatewayProfile) or hasattr(obj, "cond_code"):
                 self._storage["profiles"] = [
                     p for p in self._storage["profiles"] if p.id != obj.id
                 ]
+
+        def execute(self, *a, **kw):  # set_workspace_rls etc.
+            return MagicMock()
 
         def commit(self):
             pass

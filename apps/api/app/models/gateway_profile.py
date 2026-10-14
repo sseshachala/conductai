@@ -10,7 +10,10 @@ Two ORM classes live here:
   ``cond-<code>-<alias>``.
 - ``GatewayProfileRevision`` — immutable snapshots, one row per publish.
   Nothing UPDATEs or DELETEs these from application code — rollback
-  points ``active_revision_id`` at an earlier revision instead.
+  points ``active_revision_id`` at an earlier revision instead, and
+  unpublish clears it. Lifecycle: draft (no revisions) / published
+  (``active_revision_id`` set) / unpublished (revisions, pointer NULL) /
+  deleted (``deleted_at`` set; soft delete keeps revisions).
 
 Environment no longer appears at the profile level. Vault refs
 (``vault://<env_id>/<handle>``) live inside each target's
@@ -61,12 +64,22 @@ class GatewayProfile(Base):
         nullable=True,
     )
 
+    # Soft delete (lifecycle): set only for never-live-now profiles that have
+    # revision history (unpublished). Revisions + rate-limit rows are kept.
+    # Every lookup must treat non-NULL rows as non-existent.
+    deleted_at = Column(DateTime(timezone=True), nullable=True)
+
     created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     __table_args__ = (
         UniqueConstraint("id", "workspace_id", name="uq_gateway_profiles_id_workspace"),
-        UniqueConstraint("workspace_id", "environment_id", "name", name="uq_gateway_profiles_workspace_env_name"),
+        Index(
+            "uq_gateway_profiles_workspace_env_name_live",
+            "workspace_id", "environment_id", "name",
+            unique=True,
+            postgresql_where=text("deleted_at IS NULL"),
+        ),
         UniqueConstraint("workspace_id", "cond_code", name="uq_gateway_profiles_workspace_cond_code"),
         Index("ix_gateway_profiles_workspace_id", "workspace_id"),
         Index("ix_gateway_profiles_workspace_environment", "workspace_id", "environment_id"),

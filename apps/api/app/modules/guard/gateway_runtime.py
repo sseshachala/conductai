@@ -130,7 +130,8 @@ class TransportResolver:
         # (workspaces rarely have more than a handful of profiles).
         rows = (
             db.query(GatewayProfileRow)
-            .filter(GatewayProfileRow.workspace_id == workspace_id)
+            .filter(GatewayProfileRow.workspace_id == workspace_id,
+                    GatewayProfileRow.deleted_at.is_(None))
             .order_by(GatewayProfileRow.name)
             .all()
         )
@@ -250,6 +251,7 @@ def resolve_v2(
         .filter(
             GatewayProfileRow.workspace_id == workspace_id,
             GatewayProfileRow.cond_code == cond_code,
+            GatewayProfileRow.deleted_at.is_(None),
         )
         .one_or_none()
     )

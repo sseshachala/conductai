@@ -44,6 +44,7 @@ def _propose(ctx: ActionCtx, args: dict[str, Any]) -> ProposeResult:
     profile = ctx.db.query(_Row).filter(
         _Row.id == profile_uuid,
         _Row.workspace_id == ctx.workspace_id,
+        _Row.deleted_at.is_(None),
     ).first()
     if profile is None:
         return ProposeResult(rejected=True,
@@ -105,7 +106,7 @@ default_action_registry.register(ActionSpec(
         "Revert a Gateway Profile v2 to a historical revision. Two-step: "
         "returns a pending action for the user to confirm; the confirm "
         "click sets ``active_revision_id`` to the chosen revision and "
-        "refreshes the working_copy to match. Working_copy stays locked "
-        "after — duplicate to make changes."
+        "refreshes the working_copy to match. Working_copy stays editable "
+        "after; edits do not affect live traffic until republished."
     ),
 ))

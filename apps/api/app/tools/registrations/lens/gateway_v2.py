@@ -33,6 +33,8 @@ def _profile_summary(profile: Any) -> dict[str, Any]:
         # "cond-<code>-<alias>") to the active revision; None = unpublished.
         "cond_code": profile.cond_code,
         "active_revision_id": str(profile.active_revision_id) if profile.active_revision_id else None,
+        "status": profile.status,
+        "has_unpublished_changes": profile.has_unpublished_changes,
     }
 
 

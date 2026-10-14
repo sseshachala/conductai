@@ -37,6 +37,7 @@ def _propose(ctx: ActionCtx, args: dict[str, Any]) -> ProposeResult:
     existing = ctx.db.query(_Row).filter(
         _Row.workspace_id == ctx.workspace_id,
         _Row.name == name,
+        _Row.deleted_at.is_(None),
     ).first()
     if existing is not None:
         return ProposeResult(

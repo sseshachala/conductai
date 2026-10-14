@@ -11,8 +11,10 @@ Endpoint map:
     GET    /               list profiles in this workspace
     GET    /{profile_id}   read one — working_copy + revisions + active_revision
     PUT    /{profile_id}   update working_copy (schema-validated)
-    DELETE /{profile_id}   drop draft
+    DELETE /{profile_id}   draft: hard delete; unpublished: soft delete;
+                           published: 409 (unpublish first)
     POST   /{profile_id}/publish       atomic: revision + active_revision_id swap
+    POST   /{profile_id}/unpublish     clear active_revision_id (stop routing)
     POST   /{profile_id}/rollback      atomic: active_revision_id → older revision
     GET    /{profile_id}/revisions     list history
 
@@ -26,6 +28,13 @@ Publish is the load-bearing operation:
      ``version = max(existing) + 1``.
    - Swap ``gateway_profiles.active_revision_id`` to the new revision.
    - Cache ``profile.model_alias`` on the parent row for cheap listing.
+
+Lifecycle (derived, no status column): draft = never published; published =
+``active_revision_id`` set; unpublished = has revisions, pointer NULL;
+deleted = ``deleted_at`` set (treated as 404 everywhere). The working copy is
+always editable and never touches live traffic; publish and rollback refuse
+(409) when another live profile in the workspace is published with the same
+model alias.
 
 Rollback is the same atomic pointer-swap without the revision insert;
 history is intact and the previous ``active_revision_id`` is discoverable
@@ -70,6 +79,7 @@ from app.routers.gateway_profiles_v2_schemas import (
 )
 from app.routers.gateway_profiles_v2_helpers import (
     _authorized_workspace_id,
+    _assert_alias_free,
     _extract_test_content,
     _load_profile,
     _mint_test_api_token,
@@ -118,8 +128,10 @@ def publish_profile(
     Reads ``working_copy``, validates against schema + capability
     catalog, verifies vault credentials in the payload actually exist,
     inserts a new revision, and points ``active_revision_id`` at it.
-    Editing the working copy after publish is refused; the caller has
-    to duplicate the profile to make further changes.
+    Allowed for drafts, unpublished profiles, and published profiles whose
+    working copy changed (creates revision N+1). 409 when nothing changed
+    since the active revision, or when another live profile already
+    publishes the same model alias.
 
     Environment is not part of publish — vault refs inside the
     working_copy already scope credentials to an environment.
@@ -135,13 +147,19 @@ def publish_profile(
             detail="working_copy is empty — nothing to publish",
         )
     if profile.active_revision_id is not None:
-        raise HTTPException(
-            status_code=409,
-            detail=(
-                "Profile is already published. Duplicate to create a new "
-                "draft; to revert to an earlier revision, use rollback."
-            ),
+        active = (
+            db.query(GatewayProfileRevision)
+            .filter(
+                GatewayProfileRevision.id == profile.active_revision_id,
+                GatewayProfileRevision.profile_id == profile_id,
+            )
+            .one_or_none()
         )
+        if active is not None and active.snapshot == profile.working_copy:
+            raise HTTPException(
+                status_code=409,
+                detail=f"No changes since v{active.version}",
+            )
 
     # Pin the working-copy snapshot the instant we've validated it.
     # If a concurrent PUT lands mid-publish, we still write the version
@@ -155,6 +173,10 @@ def publish_profile(
     # Credential ownership check — every target's vault ref must
     # resolve to a credential in one of this workspace's environments.
     _verify_credentials_exist(db, workspace_id, parsed)
+
+    # Routing resolves aliases workspace-wide; two published profiles with
+    # one alias would 409 every request. Refuse here instead.
+    _assert_alias_free(db, workspace_id, profile, parsed.model_alias)
 
     # Version allocation with unique-constraint retry. Concurrent
     # publish calls can otherwise race the max(version)+1 read and
@@ -201,6 +223,46 @@ def publish_profile(
     profile.model_alias = parsed.model_alias
     db.commit()
     db.refresh(profile)
+    _log.info(
+        "gateway.profile.published",
+        workspace_id=workspace_id, profile_id=str(profile_id),
+        version=revision.version, caller=caller,
+    )
+    return _to_output(db, workspace_id, profile)
+
+
+@router.post(
+    "/{workspace_id}/gateway-profiles-v2/{profile_id}/unpublish",
+    response_model=ProfileOut,
+)
+def unpublish_profile(
+    workspace_id: str,
+    profile_id: UUID,
+    db: Session = Depends(get_db),
+    _ws: str = Depends(_authorized_workspace_id),
+    caller: str = Depends(require_permission("platform.credentials.manage")),
+):
+    """Stop serving: clear ``active_revision_id``. Revisions and the
+    working copy are kept; the profile becomes ``unpublished`` and can be
+    republished, rolled back, or soft-deleted. 409 unless published."""
+    profile = _load_profile(db, workspace_id, profile_id, for_update=True)
+    if profile.active_revision_id is None:
+        raise HTTPException(status_code=409, detail="Profile is not published")
+    profile.active_revision_id = None
+    # Nothing is served now, so the cached alias tracks the working copy
+    # again (it may carry edits made while published).
+    try:
+        profile.model_alias = _validate_working_copy(
+            profile.working_copy, check_capabilities=False,
+        ).model_alias
+    except HTTPException:
+        pass
+    db.commit()
+    db.refresh(profile)
+    _log.info(
+        "gateway.profile.unpublished",
+        workspace_id=workspace_id, profile_id=str(profile_id), caller=caller,
+    )
     return _to_output(db, workspace_id, profile)
 
 
@@ -214,7 +276,7 @@ def rollback_profile(
     body: RollbackBody,
     db: Session = Depends(get_db),
     _ws: str = Depends(_authorized_workspace_id),
-    caller: str = Depends(require_permission("platform.credentials.manage")),  # noqa: ARG001 — kept in signature for RBAC enforcement
+    caller: str = Depends(require_permission("platform.credentials.manage")),
 ):
     """Point ``active_revision_id`` at a historical revision.
 
@@ -223,10 +285,12 @@ def rollback_profile(
     in the body could otherwise silently repoint one profile at
     another's snapshot.
 
-    The working_copy is refreshed to match the rolled-back revision
-    so the UI shows the shape that's actually being served. It stays
-    locked (active_revision_id remains set) — to change the shape,
-    duplicate the profile.
+    Works for published and unpublished profiles (re-activates the chosen
+    revision). 409 if another live profile publishes the same alias.
+
+    The working_copy is refreshed to match the rolled-back revision so
+    the UI shows the shape that's actually being served. It stays
+    editable; further edits never touch live traffic until republished.
     """
     profile = _load_profile(db, workspace_id, profile_id, for_update=True)
 
@@ -256,11 +320,18 @@ def rollback_profile(
             detail=f"historical revision failed re-validation: {exc}",
         ) from exc
 
+    _assert_alias_free(db, workspace_id, profile, snapshot_parsed.model_alias)
+
     profile.active_revision_id = revision.id
     profile.working_copy = dict(revision.snapshot)
     profile.model_alias = snapshot_parsed.model_alias
     db.commit()
     db.refresh(profile)
+    _log.info(
+        "gateway.profile.rolled_back",
+        workspace_id=workspace_id, profile_id=str(profile_id),
+        version=revision.version, caller=caller,
+    )
     return _to_output(db, workspace_id, profile)
 
 

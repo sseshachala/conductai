@@ -50,7 +50,8 @@ def select_model(db, workspace_id: str, requested: object, operation: str) -> Mo
               (GatewayProfileRevision.id == GatewayProfile.active_revision_id)
               & (GatewayProfileRevision.profile_id == GatewayProfile.id))
         .filter(GatewayProfile.workspace_id == workspace_id,
-                GatewayProfile.schema_version == "2")
+                GatewayProfile.schema_version == "2",
+                GatewayProfile.deleted_at.is_(None))
         .all()
     )
     matches = []

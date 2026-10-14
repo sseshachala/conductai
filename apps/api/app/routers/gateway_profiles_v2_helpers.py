@@ -173,7 +173,9 @@ def _load_profile(
     db: Session, workspace_id: str, profile_id: UUID,
     *, for_update: bool = False,
 ) -> GatewayProfileRow:
-    """Load a profile scoped to the caller's workspace.
+    """Load a live (not soft-deleted) profile scoped to the caller's workspace.
+
+    Soft-deleted rows are indistinguishable from missing rows (404).
 
     Set ``for_update=True`` for publish and rollback so a Postgres
     row-level lock (``SELECT ... FOR UPDATE``) serializes concurrent
@@ -186,6 +188,7 @@ def _load_profile(
     q = db.query(GatewayProfileRow).filter(
         GatewayProfileRow.id == profile_id,
         GatewayProfileRow.workspace_id == workspace_id,
+        GatewayProfileRow.deleted_at.is_(None),
     )
     if for_update:
         q = q.with_for_update()
@@ -193,6 +196,65 @@ def _load_profile(
     if profile is None:
         raise HTTPException(status_code=404, detail="Profile not found")
     return profile
+
+
+def _assert_alias_free(
+    db: Session, workspace_id: str, profile: GatewayProfileRow, alias: str,
+) -> None:
+    """409 if another live profile is currently published with ``alias``.
+
+    Mirrors routing scope (``gateway_model_selection.select_model``): the
+    workspace, v2 profiles, matching the alias of the *active revision
+    snapshot* (not the cached column, which may track unpublished edits).
+    Re-publishing / rolling back the same profile is never a conflict.
+    """
+    others = (
+        db.query(GatewayProfileRow)
+        .filter(
+            GatewayProfileRow.workspace_id == workspace_id,
+            GatewayProfileRow.schema_version == "2",
+            GatewayProfileRow.deleted_at.is_(None),
+        )
+        .all()
+    )
+    for other in others:
+        if other.id == profile.id or other.active_revision_id is None:
+            continue
+        rev = (
+            db.query(GatewayProfileRevision)
+            .filter(
+                GatewayProfileRevision.id == other.active_revision_id,
+                GatewayProfileRevision.profile_id == other.id,
+            )
+            .one_or_none()
+        )
+        snap = rev.snapshot if rev is not None and isinstance(rev.snapshot, dict) else {}
+        if snap.get("model_alias") == alias:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"Model alias {alias!r} is already published by profile "
+                    f"{other.name!r} (cond code {other.cond_code}). Unpublish "
+                    f"it first or use a different model_alias."
+                ),
+            )
+
+
+def _profile_status(
+    profile: GatewayProfileRow, revisions: list[GatewayProfileRevision],
+) -> tuple[str, bool]:
+    """Derive (status, has_unpublished_changes). ``revisions`` is newest first."""
+    if profile.active_revision_id is not None:
+        status = "published"
+        baseline = next(
+            (r.snapshot for r in revisions if r.id == profile.active_revision_id), None,
+        )
+    elif revisions:
+        status = "unpublished"
+        baseline = revisions[0].snapshot
+    else:
+        return "draft", False
+    return status, (profile.working_copy or None) != (baseline or None)
 
 
 def _to_output(
@@ -204,6 +266,7 @@ def _to_output(
         .order_by(GatewayProfileRevision.version.desc())
         .all()
     )
+    status, changed = _profile_status(profile, revisions)
     return ProfileOut(
         id=profile.id,
         workspace_id=profile.workspace_id,
@@ -211,6 +274,8 @@ def _to_output(
         model_alias=profile.model_alias,
         cond_code=profile.cond_code,
         active_revision_id=profile.active_revision_id,
+        status=status,
+        has_unpublished_changes=changed,
         working_copy=profile.working_copy,
         revisions=[
             RevisionOut(

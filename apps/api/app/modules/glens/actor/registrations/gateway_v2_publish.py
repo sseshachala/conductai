@@ -1,4 +1,5 @@
-"""#2012 — Lens actor: publish a Gateway Profile v2 draft.
+"""#2012 — Lens actor: publish a Gateway Profile v2 (draft, unpublished,
+or published with working-copy changes).
 
 Two-step; confirm fires the router's `publish_profile` endpoint, which
 runs the full publish lifecycle: schema validation, capability catalog
@@ -36,6 +37,7 @@ def _propose(ctx: ActionCtx, args: dict[str, Any]) -> ProposeResult:
     profile = ctx.db.query(_Row).filter(
         _Row.id == profile_uuid,
         _Row.workspace_id == ctx.workspace_id,
+        _Row.deleted_at.is_(None),
     ).first()
     if profile is None:
         return ProposeResult(rejected=True,
@@ -51,14 +53,17 @@ def _propose(ctx: ActionCtx, args: dict[str, Any]) -> ProposeResult:
             summary="", resolved_input={},
         )
     if profile.active_revision_id is not None:
-        return ProposeResult(
-            rejected=True,
-            reason=(
-                "Profile is already published. To change it, duplicate "
-                "into a new draft and publish that."
-            ),
-            summary="", resolved_input={},
-        )
+        from app.models.gateway_profile import GatewayProfileRevision as _Rev
+        active = ctx.db.query(_Rev).filter(
+            _Rev.id == profile.active_revision_id,
+            _Rev.profile_id == profile.id,
+        ).first()
+        if active is not None and active.snapshot == profile.working_copy:
+            return ProposeResult(
+                rejected=True,
+                reason=f"No changes since v{active.version}.",
+                summary="", resolved_input={},
+            )
 
     alias = (
         profile.working_copy.get("model_alias")
@@ -104,7 +109,7 @@ default_action_registry.register(ActionSpec(
     propose=_propose,
     execute=_execute,
     description=(
-        "Publish a Gateway Profile v2 draft as a new revision and set it "
+        "Publish a Gateway Profile v2 (draft, unpublished, or published with changes) as a new revision and set it "
         "as the profile's active revision. Two-step: returns a pending "
         "action for the user to confirm; the confirm click runs the full "
         "publish lifecycle (schema validation, capability catalog check, "
