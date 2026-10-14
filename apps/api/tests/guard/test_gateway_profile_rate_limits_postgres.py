@@ -52,7 +52,7 @@ def database():
                 id uuid PRIMARY KEY,workspace_id uuid REFERENCES workspaces(id),environment_id uuid,
                 name varchar(128),schema_version varchar(16),config jsonb NOT NULL DEFAULT '{}',
                 working_copy jsonb,model_alias varchar(128),cond_code varchar(32),active_revision_id uuid,
-                created_at timestamptz DEFAULT now(),updated_at timestamptz DEFAULT now())"""))
+                deleted_at timestamptz,created_at timestamptz DEFAULT now(),updated_at timestamptz DEFAULT now())"""))
             for pid, version in ((profile, "2"), (sibling, "2"), (legacy, "1")):
                 conn.execute(text("""INSERT INTO gateway_profiles
                     (id,workspace_id,name,schema_version,cond_code,active_revision_id)
