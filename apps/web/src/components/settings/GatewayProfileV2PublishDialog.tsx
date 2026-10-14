@@ -30,6 +30,7 @@ export default function GatewayProfileV2PublishDialog({
     return () => document.removeEventListener("keydown", handleKey)
   }, [onClose])
 
+  const nextVersion = profile.revisions.reduce((m, r) => Math.max(m, r.version), 0) + 1
   const wc = (profile.working_copy as { model_alias?: string; targets?: Array<Record<string, unknown>> } | null) ?? null
   const modelAlias = wc?.model_alias ?? profile.model_alias ?? ""
   const targetCount = wc?.targets?.length ?? 0
@@ -56,10 +57,10 @@ export default function GatewayProfileV2PublishDialog({
       style={{ background: "rgba(0,0,0,.35)" }} onClick={onClose}>
       <div className="card card-pad" style={{ width: "100%", maxWidth: 480, margin: "0 16px" }}
         onClick={e => e.stopPropagation()}>
-        <h3 style={{ margin: 0, fontSize: 16, fontWeight: 650 }}>Publish revision</h3>
+        <h3 style={{ margin: 0, fontSize: 16, fontWeight: 650 }}>Publish v{nextVersion}</h3>
         <p style={{ margin: "4px 0 16px", color: "var(--text-3)", fontSize: 12.5 }}>
-          Freezes the working copy as the profile's active revision. Once published,
-          the working copy is locked — duplicate the profile to make further changes.
+          Creates revision v{nextVersion} from the current working copy and starts routing
+          requests to it. You can keep editing the working copy afterwards and publish again.
         </p>
 
         <div style={{ padding: "10px 12px", border: "1px solid var(--border)", borderRadius: 8, background: "var(--surface-2)" }}>

@@ -15,9 +15,9 @@ import type { GatewayProfileV2Out } from "@/lib/api/guard"
  * a deliberate action (no oops-clicks) and matches the same visual
  * shape as the Publish + Rollback dialogs on this page.
  *
- * Only offered for drafts. Published profiles route through
- * ``duplicate`` instead (the API rejects deletion of anything with
- * revision history so admin can't lose audit lineage).
+ * Drafts are permanently deleted; unpublished profiles are archived
+ * (revision history kept for audit). Published profiles must be
+ * unpublished first — the API answers 409.
  */
 export default function GatewayProfileV2DeleteDialog({
   workspaceId, profile, onClose, onDeleted,
@@ -32,6 +32,7 @@ export default function GatewayProfileV2DeleteDialog({
   const [err, setErr] = useState("")
   const [confirmValue, setConfirmValue] = useState("")
 
+  const archive = profile.status === "unpublished"
   const matches = confirmValue === profile.name
 
   useEffect(() => {
@@ -57,11 +58,11 @@ export default function GatewayProfileV2DeleteDialog({
       style={{ background: "rgba(0,0,0,.35)" }} onClick={onClose}>
       <div className="card card-pad" style={{ width: "100%", maxWidth: 480, margin: "0 16px" }}
         onClick={e => e.stopPropagation()}>
-        <h3 style={{ margin: 0, fontSize: 16, fontWeight: 650 }}>Delete draft</h3>
+        <h3 style={{ margin: 0, fontSize: 16, fontWeight: 650 }}>{archive ? "Delete profile" : "Delete draft"}</h3>
         <p style={{ margin: "4px 0 16px", color: "var(--text-3)", fontSize: 12.5 }}>
-          Removes this draft profile. This can't be undone — the draft +
-          any unsaved working-copy edits are gone. Published revisions
-          (if any) stay intact.
+          {archive
+            ? "This profile will be archived and hidden from the list. Its revision history is kept for audit, and the name can be reused."
+            : "This draft will be permanently deleted. This can't be undone."}
         </p>
 
         <div style={{ padding: "10px 12px", border: "1px solid var(--border)", borderRadius: 8, background: "var(--surface-2)" }}>
@@ -99,7 +100,7 @@ export default function GatewayProfileV2DeleteDialog({
         />
 
         {err && (
-          <p style={{ marginTop: 10, color: "var(--err)", fontSize: 12 }}>{err}</p>
+          <p role="alert" style={{ marginTop: 10, color: "var(--err)", fontSize: 12, overflowWrap: "anywhere" }}>{err}</p>
         )}
 
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 16 }}>
@@ -122,7 +123,7 @@ export default function GatewayProfileV2DeleteDialog({
               transition: "opacity 0.15s",
             }}
           >
-            {deleting ? "Deleting…" : "Delete draft"}
+            {deleting ? "Deleting…" : archive ? "Archive profile" : "Delete draft"}
           </button>
         </div>
       </div>

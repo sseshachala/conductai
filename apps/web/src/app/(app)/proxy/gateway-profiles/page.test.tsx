@@ -1,104 +1,86 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { afterEach, beforeEach, expect, it, vi } from "vitest"
 import type { ReactNode } from "react"
 import Page from "./page"
 
 const state = vi.hoisted(() => ({
-  tab: "profiles", role: "admin", workspace: "workspace-a", query: "", fetch: vi.fn(), profiles: vi.fn(), create: vi.fn(), environments: vi.fn(), rates: vi.fn(),
+  role: "admin", workspace: "workspace-a", query: "", fetch: vi.fn(), profiles: vi.fn(),
+  push: vi.fn(), replace: vi.fn(),
 }))
-vi.mock("next/navigation", () => ({ useSearchParams: () => new URLSearchParams(`tab=${state.tab}${state.query}`) }))
+vi.mock("next/navigation", () => ({
+  useSearchParams: () => new URLSearchParams(state.query),
+  useRouter: () => ({ push: state.push, replace: state.replace }),
+}))
 vi.mock("@/components/AppShell", () => ({ default: ({ children }: { children: ReactNode }) => children }))
 vi.mock("@/hooks/useAuthFetch", () => ({ useAuthFetch: () => ({ authFetch: state.fetch }) }))
 vi.mock("@/hooks/useGuardRole", () => ({ useGuardRole: () => ({ role: state.role }) }))
 vi.mock("@/lib/WorkspaceContext", () => ({ useWorkspace: () => ({ activeWorkspace: { id: state.workspace } }) }))
-vi.mock("@/lib/api/client", () => ({ API: "https://api.example" }))
-vi.mock("@/lib/api", () => ({
-  environments: { list: state.environments },
-  guard: { gatewayProfilesV2: { list: state.profiles, create: state.create, rateLimits: { get: state.rates } } },
-}))
-vi.mock("@/components/settings/GatewayProfileV2DeleteDialog", () => ({ default: () => null }))
+vi.mock("@/lib/api", () => ({ guard: { gatewayProfilesV2: { list: state.profiles } } }))
 vi.mock("@/components/settings/GatewayProfileV2ImportDialog", () => ({ default: () => null }))
-vi.mock("@/components/settings/GatewayProfileV2Editor", () => ({ default: () => null }))
-vi.mock("@/components/settings/GatewayProfileV2PublishDialog", () => ({ default: () => null }))
+
+function make(over: Record<string, unknown>) {
+  return { id: "p", workspace_id: "workspace-a", name: "P", model_alias: "alias", cond_code: "abc12345",
+    active_revision_id: null, status: "draft", has_unpublished_changes: false, revisions: [],
+    created_at: "2026-10-02", updated_at: "2026-10-02", working_copy: {}, ...over }
+}
+const rev = { id: "r1", version: 1, published_by: "me", published_at: "2026-10-03T00:00:00Z" }
+const rows = [
+  make({ id: "d", name: "Drafty", model_alias: "drafty" }),
+  make({ id: "pub", name: "Live", model_alias: "live", status: "published", active_revision_id: "r1",
+    has_unpublished_changes: true, revisions: [rev] }),
+  make({ id: "unp", name: "Parked", model_alias: "parked", status: "unpublished", revisions: [rev] }),
+]
+
 beforeEach(() => {
   vi.clearAllMocks()
-  state.tab = "profiles"; state.role = "admin"; state.workspace = "workspace-a"; state.query = ""
-  state.profiles.mockResolvedValue([]); state.environments.mockResolvedValue([])
-  state.create.mockResolvedValue({ id: "created" })
-  state.rates.mockResolvedValue({ rpm: 60, tpm: 100000, agent_limits: [], available_agents: [] })
+  state.role = "admin"; state.workspace = "workspace-a"; state.query = ""
+  state.profiles.mockResolvedValue(rows)
 })
 afterEach(cleanup)
 
-it("does not fetch limits until a profile is selected", async () => {
+it("lists profiles with status, model ID and unpublished-changes indicator", async () => {
   render(<Page />)
-  expect(screen.queryByRole("tab", { name: "Rate limits" })).toBeNull()
-  await waitFor(() => expect(state.profiles).toHaveBeenCalledWith(state.fetch, "workspace-a"))
-  expect(state.rates).not.toHaveBeenCalled()
+  const live = (await screen.findByRole("link", { name: "Live" })).closest("tr") as HTMLElement
+  expect(within(live).getByText("Published")).toBeInTheDocument()
+  expect(within(live).getByText("Unpublished changes")).toBeInTheDocument()
+  expect(within(live).getByText("cond-abc12345-live")).toBeInTheDocument()
+  expect(within(screen.getByRole("link", { name: "Drafty" }).closest("tr") as HTMLElement).getByText("Draft")).toBeInTheDocument()
+  expect(within(screen.getByRole("link", { name: "Parked" }).closest("tr") as HTMLElement).getByText("Unpublished")).toBeInTheDocument()
+  expect(screen.getByRole("link", { name: "New profile" })).toHaveAttribute("href", "/proxy/gateway-profiles/new")
 })
 
-const profile = { id: "profile-id", name: "Production", model_alias: "coding", cond_code: "abc12345",
-  active_revision_id: "revision-id", created_at: "2026-10-02", revisions: [],
-  working_copy: { name: "Production", model_alias: "coding", targets: [{ id: "primary", provider: "openai" }] } }
-
-it("opens old rate-limit bookmarks as profiles, with explicit editing of published-profile limits", async () => {
-  state.tab = "rate_limits"
-  state.profiles.mockResolvedValue([profile])
+it("filters by status", async () => {
   render(<Page />)
-  await waitFor(() => expect(screen.getByRole("spinbutton", { name: "Requests / min (RPM)" })).toHaveValue(60), { timeout: 5000 })
-  expect(state.rates).toHaveBeenCalledWith(state.fetch, "workspace-a", "profile-id")
-  expect(screen.getByRole("spinbutton", { name: "Requests / min (RPM)" })).toHaveAttribute("readonly")
-  fireEvent.click(screen.getByRole("button", { name: "Edit limits" }))
-  expect(screen.getByRole("button", { name: "Save limits" })).toBeEnabled()
+  await screen.findByRole("link", { name: "Live" })
+  fireEvent.click(screen.getByRole("button", { name: "Unpublished" }))
+  expect(screen.getByRole("link", { name: "Parked" })).toBeInTheDocument()
+  expect(screen.queryByRole("link", { name: "Live" })).toBeNull()
+  expect(screen.queryByRole("link", { name: "Drafty" })).toBeNull()
+  fireEvent.click(screen.getByRole("button", { name: "Draft" }))
+  expect(screen.getByRole("link", { name: "Drafty" })).toBeInTheDocument()
+  expect(screen.queryByRole("link", { name: "Parked" })).toBeNull()
+  fireEvent.click(screen.getByRole("button", { name: "All" }))
+  expect(screen.getAllByRole("link", { name: /Live|Parked|Drafty/ })).toHaveLength(3)
 })
 
-it("loads limits only for the selected profile", async () => {
-  state.query = "&select=profile-id"
-  state.profiles.mockResolvedValue([{ ...profile, id: "another-profile" }, profile])
+it("navigates to the detail page on row click", async () => {
   render(<Page />)
-  await waitFor(() => expect(state.rates).toHaveBeenCalledWith(state.fetch, "workspace-a", "profile-id"))
-  expect(state.rates).toHaveBeenCalledTimes(1)
+  const row = (await screen.findByRole("link", { name: "Parked" })).closest("tr") as HTMLElement
+  fireEvent.click(within(row).getByText("cond-abc12345-parked"))
+  expect(state.push).toHaveBeenCalledWith("/proxy/gateway-profiles/unp")
 })
 
-it("does not expose admin limits to viewers through a bookmarked URL", async () => {
-  state.tab = "rate_limits"; state.role = "viewer"
-  state.profiles.mockResolvedValue([profile])
+it("redirects old ?select= deep links to the detail page, keeping the rate-limits tab", async () => {
+  state.query = "tab=rate_limits&select=pub"
   render(<Page />)
-  await screen.findByText("published · locked")
-  expect(screen.queryByRole("tab", { name: "Rate limits" })).toBeNull()
-  expect(state.rates).not.toHaveBeenCalled()
-  expect(screen.queryByRole("spinbutton")).toBeNull()
+  await waitFor(() => expect(state.replace).toHaveBeenCalledWith("/proxy/gateway-profiles/pub?tab=rate-limits"))
+  expect(state.profiles).not.toHaveBeenCalled()
 })
 
-it("clears old rate values immediately when the workspace changes", async () => {
-  state.tab = "rate_limits"
-  state.profiles.mockResolvedValue([profile])
-  const view = render(<Page />)
-  await waitFor(() => expect(screen.getByRole("spinbutton", { name: "Requests / min (RPM)" })).toHaveValue(60), { timeout: 5000 })
-  state.workspace = "workspace-b"
-  state.profiles.mockReturnValue(new Promise(() => {}))
-  view.rerender(<Page />)
-  expect(screen.queryByRole("spinbutton", { name: "Requests / min (RPM)" })).toBeNull()
-  expect(screen.queryByRole("button", { name: "Save limits" })).toBeNull()
-})
-
-it("blocks publishing an invalid saved draft and names the missing alias", async () => {
-  state.profiles.mockResolvedValue([{ id: "draft", name: "Case 3", model_alias: null, cond_code: "abc12345",
-    active_revision_id: null, created_at: "2026-10-02", revisions: [],
-    working_copy: { name: "Case 3", model_alias: "", targets: [{}] } }])
+it("hides create actions from non-admins", async () => {
+  state.role = "viewer"
   render(<Page />)
-  const publish = await screen.findByRole("button", { name: "Publish…" })
-  expect(publish).toBeDisabled()
-  expect(publish).toHaveAttribute("title", "Enter an alias.")
-})
-
-it("creates a mixed Claude/OpenAI SDK fallback profile with common operations", async () => {
-  render(<Page />)
-  fireEvent.click(await screen.findByRole("button", { name: "Claude + OpenAI fallback via LiteLLM" }))
-  await waitFor(() => expect(state.create).toHaveBeenCalled())
-  const workingCopy = state.create.mock.calls[0][2].working_copy
-  expect(workingCopy.accepts).toEqual(["anthropic_messages", "openai_chat_completions"])
-  expect(workingCopy.targets.map((target: { transport: string; provider: string }) => [target.transport, target.provider]))
-    .toEqual([["litellm_sdk", "anthropic"], ["litellm_sdk", "openai"]])
-  expect(workingCopy.max_attempts).toBe(2)
-  expect(workingCopy.model_alias).not.toBe("")
+  await screen.findByRole("link", { name: "Live" })
+  expect(screen.queryByRole("link", { name: "New profile" })).toBeNull()
+  expect(screen.queryByRole("button", { name: "Import JSON" })).toBeNull()
 })
