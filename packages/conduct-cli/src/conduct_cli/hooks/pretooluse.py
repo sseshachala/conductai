@@ -217,6 +217,8 @@ def _fetch_budget_status():
     workspace_id  = cfg.get("workspace_id") or cfg.get("workspace")
     clerk_user_id = cfg.get("clerk_user_id") or ""
     api_url       = deployment_api_url(cfg)
+    # Same token precedence as session_report_push: member token, else agent token.
+    auth_token    = cfg.get("member_token") or cfg.get("agent_token") or ""
     if not workspace_id:
         return False, "unconfigured"
     # ai_tool lets the server scope enforcement per-tool so an overspend in
@@ -232,7 +234,8 @@ def _fetch_budget_status():
     if ai_tool:
         url += f"&ai_tool={urllib.parse.quote(ai_tool, safe='')}"
     try:
-        with urllib.request.urlopen(urllib.request.Request(url), timeout=5) as resp:
+        headers = {"Authorization": f"Bearer {auth_token}"} if auth_token else {}
+        with urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=5) as resp:
             data = json.loads(resp.read())
         hard_blocked = data.get("hard_blocked", False)
         reason       = data.get("reason")

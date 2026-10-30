@@ -6,6 +6,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ---
 
+## [0.14.22] - 2026-10-30
+
+### Changed
+- The PreToolUse hook now sends the member token (falling back to the agent
+  token) as `Authorization: Bearer` on its `/guard/spend/budget-check`
+  request, matching the other hook calls. Older servers ignore the header.
+
 ## [0.14.21] - 2026-10-14
 
 ### Fixed

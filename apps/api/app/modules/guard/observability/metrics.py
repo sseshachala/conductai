@@ -217,3 +217,9 @@ GUARD_PROJECTION_RETENTION_INTENTS_DELETED = Counter(
     'Terminal projection intent rows deleted by projection retention.',
     ['dry_run'],
 )
+
+# Low-cardinality on purpose: workspace_id goes in the log line, not a label.
+BUDGET_CHECK_UNAUTHENTICATED = Counter(
+    "guard_budget_check_unauthenticated_total",
+    "budget-check calls that carried no valid credential.",
+)

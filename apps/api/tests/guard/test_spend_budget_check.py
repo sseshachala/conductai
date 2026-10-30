@@ -17,6 +17,11 @@ import uuid
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+import pytest
+from fastapi import HTTPException
+from fastapi.security import HTTPAuthorizationCredentials
+
+from app.modules.guard.routers import spend_budget_check as sbc
 from app.modules.guard.routers.spend import budget_check
 
 
@@ -73,7 +78,8 @@ class _DB:
         return self._cost_by_scope.pop("next", 0.0)
 
 
-def _run(*, workspace_id=WS_ID, clerk_user_id=None, ai_tool=None, rows=None, costs=None):
+def _run(*, workspace_id=WS_ID, clerk_user_id=None, ai_tool=None, rows=None, costs=None,
+         credentials=None, filters=None):
     """Invoke budget_check with a mocked DB, plus a GuardConfig existence stub."""
     rows = list(rows or [])
     costs = list(costs or [])
@@ -91,7 +97,12 @@ def _run(*, workspace_id=WS_ID, clerk_user_id=None, ai_tool=None, rows=None, cos
         return next(row_iter)
 
     budget_query = MagicMock()
-    budget_query.filter.return_value = budget_query
+    def _record_filter(*conds):
+        if filters is not None:
+            filters.extend(conds)
+        return budget_query
+
+    budget_query.filter.side_effect = _record_filter
     budget_query.first.side_effect = _budget_first
 
     # Cost sums — the endpoint calls db.query(func.coalesce(...)) and then
@@ -125,6 +136,7 @@ def _run(*, workspace_id=WS_ID, clerk_user_id=None, ai_tool=None, rows=None, cos
         workspace_id=workspace_id,
         clerk_user_id=clerk_user_id,
         ai_tool=ai_tool,
+        credentials=credentials,
         db=db,
     )
 
@@ -274,3 +286,68 @@ def test_r12_workspace_off_scoped_off_no_enforcement():
         costs=[999.0],
     )
     assert result.hard_blocked is False
+
+
+# ── Bearer credential handling ──────────────────────────────────────────────
+
+OTHER_WS = "11111111-2222-3333-4444-555555555555"
+
+
+def _creds(token="cond_agt_test"):
+    return HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
+
+
+def test_valid_token_same_workspace_ok(monkeypatch):
+    monkeypatch.setattr(sbc, "resolve_agent_token", lambda tok, db: (WS_ID, USER))
+    result = _run(rows=[_budget(hard_cap_enabled=True, hard_limit_usd=100.0)], costs=[5.0],
+                  credentials=_creds())
+    assert result.hard_blocked is False
+    assert result.monthly_cost_usd == 5.0
+
+
+def test_token_for_other_workspace_is_403(monkeypatch):
+    monkeypatch.setattr(sbc, "resolve_agent_token", lambda tok, db: (OTHER_WS, USER))
+    with pytest.raises(HTTPException) as exc:
+        _run(rows=[_budget()], credentials=_creds())
+    assert exc.value.status_code == 403
+
+
+def test_no_token_still_served_and_warns(monkeypatch):
+    warn = MagicMock()
+    monkeypatch.setattr(sbc.logger, "warning", warn)
+    monkeypatch.setattr(sbc.settings, "budget_check_require_auth", False)
+    before = sbc.BUDGET_CHECK_UNAUTHENTICATED._value.get()
+    result = _run(rows=[_budget(hard_cap_enabled=True, hard_limit_usd=100.0)], costs=[125.0])
+    assert result.hard_blocked is True  # older CLIs keep enforcing budgets
+    assert warn.call_args.args[0] == "guard.budget_check.unauthenticated"
+    assert warn.call_args.kwargs["workspace_id"] == WS_ID
+    assert sbc.BUDGET_CHECK_UNAUTHENTICATED._value.get() == before + 1
+
+
+def test_no_token_with_require_auth_is_401(monkeypatch):
+    monkeypatch.setattr(sbc.settings, "budget_check_require_auth", True)
+    with pytest.raises(HTTPException) as exc:
+        _run(rows=[_budget()])
+    assert exc.value.status_code == 401
+
+
+def test_unresolvable_token_treated_as_unauthenticated(monkeypatch):
+    monkeypatch.setattr(sbc, "resolve_agent_token", lambda tok, db: None)
+    monkeypatch.setattr(sbc.settings, "budget_check_require_auth", True)
+    with pytest.raises(HTTPException) as exc:
+        _run(rows=[_budget()], credentials=_creds("bogus"))
+    assert exc.value.status_code == 401
+
+
+def test_token_user_overrides_query_user(monkeypatch):
+    monkeypatch.setattr(sbc, "resolve_agent_token", lambda tok, db: (WS_ID, USER))
+    filters: list = []
+    _run(
+        clerk_user_id="someone_else",
+        rows=[_budget(hard_cap_enabled=True, hard_limit_usd=None)],
+        credentials=_creds(),
+        filters=filters,
+    )
+    values = {getattr(getattr(c, "right", None), "value", None) for c in filters}
+    assert USER in values
+    assert "someone_else" not in values
