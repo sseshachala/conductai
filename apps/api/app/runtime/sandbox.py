@@ -267,7 +267,7 @@ def dispatch_brain_tool(
         return proc.stdout
 
     from app.core.config import settings
-    if settings.environment == "production":
+    if not settings.is_local_environment:
         raise RuntimeError("Local sandbox execution is disabled in production environments")
     log.debug("sandbox.dispatch", tool=tool_name, backend="local")
     return _dispatch_local(tool_name, tool_input)

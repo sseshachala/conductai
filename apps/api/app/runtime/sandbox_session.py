@@ -61,7 +61,7 @@ class LocalSession:
 
     def __init__(self) -> None:
         from app.core.config import settings
-        if settings.environment == "production":
+        if not settings.is_local_environment:
             raise RuntimeError("LocalSession is disabled in production environments")
         self._tmpdir = tempfile.mkdtemp(prefix="conduct_brain_")
         self.working_dir: str | None = self._tmpdir
@@ -510,7 +510,7 @@ def create_session(
 
     if provider == "local":
         from app.core.config import settings
-        if settings.environment == "production":
+        if not settings.is_local_environment:
             raise RuntimeError(
                 "Sandbox not configured — add Modal or E2B credentials to run agent tools in production. "
                 "LocalSession is disabled in production environments."

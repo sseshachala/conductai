@@ -161,7 +161,7 @@ def _check_credentials(provider: str, credentials: dict, block_id: str, config: 
             )
     elif provider == "local":
         from app.core.config import settings
-        if settings.environment == "production":
+        if not settings.is_local_environment:
             raise RuntimeError(
                 f"sandbox block '{block_id}': provider 'local' is not allowed in production. "
                 f"Use 'e2b' or 'modal'."
