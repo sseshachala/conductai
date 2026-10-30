@@ -95,7 +95,7 @@ ALLOWLIST = {
     "modules/guard/routers/gateway_proxy.py::gateway_completions",  # gateway_auth in handle_gateway_request
     "modules/guard/routers/events_query.py::stream_events",  # get_workspace_id(stream_credentials(request)) in body (SSE)
     "modules/guard/routers/session_reports.py::get_session_report_html",  # Clerk JWT + guard.activity.view_all check_permission, HTML error pages
-    "modules/guard/routers/ws.py::policy_ws",  # websocket; resolve_agent_token via _token_valid before accept
+    "modules/guard/routers/ws.py::policy_ws",  # websocket; resolve_agent_token via _token_workspace; token workspace must equal requested workspace, checked before accept
     "modules/guard/routers/config.py::join_guard",  # invite_code in body
     "modules/guard/routers/blocks.py::get_receipt_public",  # sha256(share_token) in URL must match audit row and workspace on trial plan
     "modules/guard/routers/trial.py::provision_trial",  # public signup: IP rate-limit (5/hr) + email idempotency
@@ -111,7 +111,7 @@ ALLOWLIST = {
     "routers/credentials.py::retrieve_cred",  # X-Cred-Token cond_cred_*
     "routers/projects.py::admin_approve",  # X-Admin-Secret HMAC
     "routers/share.py::resolve_share",  # opaque token in URL path
-    "routers/playbooks.py::submit_playbook",  # Clerk JWT, or reCAPTCHA token for anonymous submissions
+    "routers/playbooks.py::submit_playbook",  # Clerk JWT (X-Workspace-Id honoured only for members) or reCAPTCHA for anonymous (header ignored)
     # --- Deferred --------------------------------------------------------
     "modules/guard/routers/spend_budget_check.py::budget_check",  # auth added in follow-up; CLI compat window
 }

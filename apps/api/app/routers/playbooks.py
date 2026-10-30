@@ -382,7 +382,16 @@ async def submit_playbook(
         claims = _verify_clerk_token(authorization.split(" ", 1)[1])
         if claims:
             is_authenticated = True
-            workspace_id = x_workspace_id or claims.get("org_id")
+            user_id = claims.get("sub")
+            if x_workspace_id:
+                # Header is honoured only for workspace members.
+                from app.core.auth import _assert_workspace_member
+                if not user_id:
+                    raise HTTPException(status_code=403, detail="Not a member of this workspace")
+                _assert_workspace_member(db, x_workspace_id, user_id)
+                workspace_id = x_workspace_id
+            else:
+                workspace_id = claims.get("org_id")
 
     if not is_authenticated:
         # Anonymous path — require a valid reCAPTCHA token
