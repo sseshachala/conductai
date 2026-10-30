@@ -2,8 +2,8 @@
 """
 CI gate: every FastAPI endpoint must declare an auth dependency.
 
-Scans all router files under app/routers/ and app/modules/*/routers/
-and fails if any @router.{method} endpoint has no recognised auth Depends().
+Scans app/routers/, app/modules/, app/main.py and app/mcp/http.py (sync and
+async routes, websockets) and fails if any route decorator endpoint has no recognised auth Depends().
 
 Recognised auth dependencies (from app/core/auth.py):
   get_workspace_id, require_permission, get_current_user,
@@ -34,100 +34,91 @@ AUTH_DEPS = {
     "_require_super_admin",
     "_bearer",
     "_get_optional_user_id",
+    "_gateway_principal",  # gateway_proxy.py: resolve_agent_token on x-api-key / Authorization
 }
+
+SCAN_DIRS = ["app/routers", "app/modules"]
+SCAN_FILES = ["app/main.py", "app/mcp/http.py"]
 
 # Endpoints that are intentionally public — no auth required.
 # Format: "routers/filename.py::function_name"
 ALLOWLIST = {
-    # Server-only exchange: shared proxy secret AND signed Keycloak identity,
-    # followed by an explicit active console identity mapping. No cookie fallback.
-    "modules/auth/console/router.py::exchange_identity",
-    # Health / readiness
-    "routers/health.py::health",
-    "routers/health.py::ready",
-    # OAuth / OIDC discovery (must be public by spec)
-    "routers/oauth.py::oauth_authorize",
-    "routers/oauth.py::oauth_token",
-    "routers/oauth.py::oauth_metadata",
-    "routers/oauth.py::protected_resource_metadata",
-    "routers/oauth.py::protected_resource_metadata_guard",
-    # Clerk webhooks (auth via webhook signature, not Bearer)
-    "routers/webhooks.py::clerk_webhook",
-    "routers/webhooks.py::stripe_webhook",
-    # GitHub webhooks (auth via X-Hub-Signature-256)
-    "routers/github_webhook.py::github_webhook",
-    # Guard MCP (has its own internal auth)
-    "modules/guard/routers/mcp.py::mcp_endpoint",
-    "modules/guard/routers/mcp.py::mcp_sse",
-    "modules/guard/routers/mcp.py::well_known_oauth",
-    "modules/guard/routers/mcp.py::well_known_protected_resource",
-    "modules/guard/routers/mcp.py::well_known_protected_resource_guard",
-    # Guard proxy (has its own internal auth)
-    "modules/guard/routers/proxy.py::proxy_llm",
-    # Credential broker (auth via X-Cred-Token: cond_cred_*)
-    "routers/credentials.py::retrieve_cred",
-    # Token endpoints (auth via X-Api-Key or refresh token)
-    "routers/tokens.py::mint_access_token",
-    "routers/tokens.py::mint_session_token",
-    # CLI token refresh (auth via refresh_token in body — RFC-style rotation)
-    "modules/auth/cli_token.py::refresh_cli_token",
-    # OAuth 2.1 + DCR — all public by spec.
-    # /oauth/register: RFC 7591 Dynamic Client Registration
-    # /oauth/authorize + /confirm: browser round-trip; verify Clerk JWT internally
-    # /oauth/token + /token: PKCE / refresh / RFC 8693 grants — no session auth
-    "modules/auth/oauth/router.py::dcr_register",
-    "modules/auth/oauth/router.py::authorize",
-    "modules/auth/oauth/router.py::authorize_confirm",
-    "modules/auth/oauth/router.py::oauth_token",
-    "modules/auth/oauth/router.py::legacy_token",
-    "modules/auth/oauth/router.py::oauth_metadata",
-    # Guard join (auth via invite_code in body)
-    "modules/guard/routers/config.py::join_guard",
-    # Guard block receipt public read (#1712 — anonymous trial signup flow).
-    # Auth: sha256(share_token) in URL path must match share_token_hash on the
-    # audit row, AND the workspace must still be on the trial plan at read
-    # time. Never returns rows from paid workspaces.
-    "modules/guard/routers/blocks.py::get_receipt_public",
-    # Trial provisioning — public signup endpoint (#1712 Track 1 gap 3).
-    # Unauthenticated (no Clerk session) but email is REQUIRED in the body.
-    # Anti-abuse: IP rate-limit (5/hr) + email idempotency (same email
-    # returns the SAME workspace within the trial window). No Clerk user
-    # created here — email stashed on workspace.owner_id for later
-    # magic-link claim.
-    "modules/guard/routers/trial.py::provision_trial",
-    # Trial redemption — public endpoint (#1790 audit S01 challenge/redeem flow).
-    # Auth: opaque single-use challenge token in the body must match a Redis
-    # entry that was minted by /provision after email format + rate-limit
-    # gates passed. Existing-user challenges NEVER return an agent token.
-    "modules/guard/routers/trial.py::redeem_trial",
-    # Guard budget check (workspace_id validated against guard_config — called pre-tool-use)
-    "modules/guard/routers/spend_budget_check.py::budget_check",
-    # Telemetry ingest (auth via Authorization or X-Workspace-Id header — alternative auth)
-    "modules/telemetry/routes.py::ingest_event",
-    # Playbook catalog (intentionally public — no user data returned)
-    "routers/playbooks.py::list_playbooks",
-    "routers/playbooks.py::get_playbook",
-    # Skill pack catalog (intentionally public — marketplace browsing, no user data)
-    # Registered on two paths (/packs/available + /packs/catalog), single function
-    "routers/compliance.py::list_pack_catalog",
-    # Project templates (intentionally public — no user data)
-    "routers/projects_core.py::list_templates",
-    # Admin approve (auth via X-Admin-Secret HMAC — internal ops endpoint)
-    "routers/projects.py::admin_approve",
-    # Share link resolver (auth via opaque token in URL path)
-    "routers/share.py::resolve_share",
-    # YAML validation / graph conversion — stateless, no DB reads, no user data
-    "routers/workflows_yaml.py::validate_workflow_yaml",
-    "routers/workflows_yaml.py::workflow_yaml_from_graph",
-    # Eval/benchmark endpoints — aggregate report data committed to git, no user data
-    "routers/eval_reports.py::get_eval_summary",
-    "routers/eval_reports.py::get_playbook_eval",
-    "routers/eval_reports.py::list_playbook_evals",
-    "routers/eval.py::list_benchmark_editions",
-    "routers/eval.py::get_benchmark_edition",
+    # --- Public by design -------------------------------------------------
+    # Health / readiness / static assets
+    "main.py::favicon",  # static icon
+    "main.py::health",  # liveness probe, static body
+    "main.py::live",  # liveness probe, static body
+    "main.py::ready",  # readiness probe
+    "main.py::sandbox_health",  # static platform note, no tenant data
+    # OAuth / discovery metadata (public by spec)
+    "mcp/http.py::oauth_resource_metadata",  # RFC 9728 resource metadata
+    "modules/guard/routers/mcp.py::oauth_protected_resource",  # RFC 9728 resource metadata
+    "modules/auth/oauth/router.py::oauth_metadata",  # RFC 8414 server metadata
+    # OAuth 2.1 + DCR - public by spec.
+    "modules/auth/oauth/router.py::dcr_register",  # RFC 7591 dynamic client registration
+    "modules/auth/oauth/router.py::authorize",  # browser round-trip; verifies Clerk JWT internally
+    "modules/auth/oauth/router.py::authorize_confirm",  # browser round-trip; verifies Clerk JWT internally
+    "modules/auth/oauth/router.py::oauth_token",  # PKCE / refresh / RFC 8693 grants
+    "modules/auth/oauth/router.py::legacy_token",  # PKCE / refresh grants
+    # Public catalogs (no tenant data)
+    "routers/playbooks.py::list_playbooks",  # playbook catalog
+    "routers/playbooks.py::get_playbook",  # playbook catalog
+    "routers/compliance.py::list_pack_catalog",  # skill pack catalog (/packs/available + /packs/catalog)
+    "routers/projects_core.py::list_templates",  # project templates
+    "routers/eval_reports.py::get_eval_summary",  # aggregate report data committed to git
+    "routers/eval_reports.py::get_playbook_eval",  # aggregate report data committed to git
+    "routers/eval_reports.py::list_playbook_evals",  # aggregate report data committed to git
+    "routers/eval.py::list_benchmark_editions",  # aggregate report data committed to git
+    "routers/eval.py::get_benchmark_edition",  # aggregate report data committed to git
+    # Static acknowledgements
+    "modules/guard/routers/gateway_proxy.py::gateway_anthropic_hello",  # HEAD probe, static 204
+    "modules/guard/routers/mcp.py::mcp_terminate",  # stateless session-terminate ack, static 204, no data
+    # --- Authenticated in the body ---------------------------------------
+    "main.py::metrics",  # X-Metrics-Token check; fail-closed outside local/development
+    "main.py::cache_stats",  # X-Metrics-Token check; fail-closed outside local/development
+    "mcp/http.py::mcp_endpoint",  # _auth_or_401(request)
+    "mcp/http.py::mcp_stream",  # _auth_or_401(request)
+    "mcp/http.py::mcp_terminate",  # _auth_or_401(request)
+    "modules/auth/console/router.py::exchange_identity",  # shared proxy secret + signed Keycloak identity + active console mapping
+    "modules/guard/routers/mcp.py::mcp_endpoint",  # resolve_agent_token inside handler
+    "modules/guard/routers/mcp.py::mcp_sse",  # resolve_agent_token inside handler
+    "modules/guard/routers/mcp.py::oauth_member_token",  # _verify_clerk_token + _assert_workspace_member
+    "modules/guard/routers/proxy.py::ingest_local_audit",  # resolve_agent_token on member token header
+    "modules/guard/routers/proxy.py::proxy_anthropic",  # resolve_agent_token via gateway_auth in _proxy
+    "modules/guard/routers/proxy.py::proxy_openai",  # resolve_agent_token via gateway_auth in _proxy
+    "modules/guard/routers/proxy.py::proxy_perplexity",  # resolve_agent_token via gateway_auth in _proxy
+    "modules/guard/routers/gateway_proxy.py::gateway_anthropic",  # gateway_auth in handle_gateway_request
+    "modules/guard/routers/gateway_proxy.py::gateway_anthropic_count_tokens",  # gateway_auth in handle_gateway_request
+    "modules/guard/routers/gateway_proxy.py::gateway_openai",  # gateway_auth in handle_gateway_request
+    "modules/guard/routers/gateway_proxy.py::gateway_openai_responses",  # gateway_auth in handle_gateway_request
+    "modules/guard/routers/gateway_proxy.py::gateway_perplexity",  # gateway_auth in handle_gateway_request
+    "modules/guard/routers/gateway_proxy.py::gateway_completions",  # gateway_auth in handle_gateway_request
+    "modules/guard/routers/events_query.py::stream_events",  # get_workspace_id(stream_credentials(request)) in body (SSE)
+    "modules/guard/routers/session_reports.py::get_session_report_html",  # Clerk JWT + guard.activity.view_all check_permission, HTML error pages
+    "modules/guard/routers/ws.py::policy_ws",  # websocket; resolve_agent_token via _token_valid before accept
+    "modules/guard/routers/config.py::join_guard",  # invite_code in body
+    "modules/guard/routers/blocks.py::get_receipt_public",  # sha256(share_token) in URL must match audit row and workspace on trial plan
+    "modules/guard/routers/trial.py::provision_trial",  # public signup: IP rate-limit (5/hr) + email idempotency
+    "modules/guard/routers/trial.py::redeem_trial",  # single-use challenge token in body matched against Redis
+    "modules/telemetry/routes.py::ingest_event",  # Authorization or X-Workspace-Id header alternative auth
+    "modules/auth/cli_token.py::refresh_cli_token",  # refresh_token in body (RFC-style rotation)
+    "routers/webhooks.py::clerk_webhook",  # webhook signature
+    "routers/webhooks.py::github_webhook",  # X-Hub-Signature-256 HMAC vs platform secret, fail-closed
+    "routers/webhooks.py::github_webhook_by_slug",  # X-Hub-Signature-256 HMAC vs per-workflow secret, fail-closed
+    "routers/webhooks_inbound.py::inbound_webhook",  # HMAC / X-Gitlab-Token vs per-workflow secret, fail-closed
+    "routers/webhooks_inbound.py::vercel_webhook",  # x-vercel-signature HMAC, fail-closed
+    "routers/webhooks_slack.py::slack_interactions",  # Slack signing-secret verification (platform or workspace)
+    "routers/credentials.py::retrieve_cred",  # X-Cred-Token cond_cred_*
+    "routers/projects.py::admin_approve",  # X-Admin-Secret HMAC
+    "routers/share.py::resolve_share",  # opaque token in URL path
+    "routers/playbooks.py::submit_playbook",  # Clerk JWT, or reCAPTCHA token for anonymous submissions
+    # --- Deferred --------------------------------------------------------
+    "modules/guard/routers/spend_budget_check.py::budget_check",  # auth added in follow-up; CLI compat window
 }
 
-HTTP_METHODS = {"get", "post", "put", "patch", "delete", "head", "options"}
+HTTP_METHODS = {"get", "post", "put", "patch", "delete", "head", "options", "websocket", "api_route", "api_websocket_route"}
+
+FuncDef = ast.FunctionDef | ast.AsyncFunctionDef
 
 
 def _is_auth_depends(node: ast.expr) -> bool:
@@ -149,7 +140,7 @@ def _is_auth_depends(node: ast.expr) -> bool:
     return False
 
 
-def _has_auth(funcdef: ast.FunctionDef) -> bool:
+def _has_auth(funcdef: FuncDef) -> bool:
     """Return True if any argument has an auth Depends() — in defaults or Annotated[]."""
     # Check plain defaults: foo: str = Depends(get_workspace_id)
     for arg in funcdef.args.defaults + funcdef.args.kw_defaults:
@@ -171,57 +162,75 @@ def _has_auth(funcdef: ast.FunctionDef) -> bool:
     return False
 
 
-def _scan_file(path: Path) -> list[str]:
-    """Return list of 'relative/path.py::func_name' for unprotected endpoints."""
+def _route_keys(path: Path, root: Path) -> list[tuple[str, FuncDef]]:
+    """Return (key, funcdef) for every route-decorated function (sync or async) in path."""
     try:
         tree = ast.parse(path.read_text())
     except SyntaxError:
         return []
-
-    rel = str(path.relative_to(ROOT / "app"))
-    violations = []
-
+    rel = str(path.relative_to(root / "app"))
+    out = []
     for node in ast.walk(tree):
-        if not isinstance(node, ast.FunctionDef):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             continue
-        # Check if decorated with @router.{method}
         for dec in node.decorator_list:
-            is_route = False
-            if isinstance(dec, ast.Call):
-                fn = dec.func
-                if isinstance(fn, ast.Attribute) and fn.attr in HTTP_METHODS:
-                    is_route = True
-            if not is_route:
+            if not isinstance(dec, ast.Call):
                 continue
-            key = f"{rel}::{node.name}"
-            if key in ALLOWLIST:
-                continue
-            if not _has_auth(node):
-                violations.append(key)
+            fn = dec.func
+            if isinstance(fn, ast.Attribute) and fn.attr in HTTP_METHODS:
+                out.append((f"{rel}::{node.name}", node))
+                break
+    return out
 
-    return violations
+
+def _scan_file(path: Path, root: Path = ROOT, allowlist: set[str] | None = None) -> list[str]:
+    """Return list of 'relative/path.py::func_name' for unprotected endpoints."""
+    allow = ALLOWLIST if allowlist is None else allowlist
+    return [
+        key for key, node in _route_keys(path, root)
+        if key not in allow and not _has_auth(node)
+    ]
+
+
+def _scan_files(root: Path) -> list[Path]:
+    files: list[Path] = []
+    for d in SCAN_DIRS:
+        files.extend(sorted((root / d).rglob("*.py")))
+    files.extend(root / f for f in SCAN_FILES if (root / f).exists())
+    return files
+
+
+def find_stale_allowlist(root: Path = ROOT, allowlist: set[str] | None = None) -> list[str]:
+    """Allowlist entries whose file or route no longer exists."""
+    allow = ALLOWLIST if allowlist is None else allowlist
+    existing = {k for f in _scan_files(root) for k, _ in _route_keys(f, root)}
+    return sorted(a for a in allow if a not in existing)
 
 
 def main():
-    scan_dirs = [
-        ROOT / "app" / "routers",
-        ROOT / "app" / "modules",
-    ]
     all_violations = []
-    for d in scan_dirs:
-        for path in sorted(d.rglob("*.py")):
-            all_violations.extend(_scan_file(path))
+    for path in _scan_files(ROOT):
+        all_violations.extend(_scan_file(path))
+    stale = find_stale_allowlist()
 
+    failed = False
     if all_violations:
-        print("AUTH COVERAGE FAILURE — endpoints missing auth dependency:\n")
+        failed = True
+        print("AUTH COVERAGE FAILURE - endpoints missing auth dependency:\n")
         for v in all_violations:
-            print(f"  ✗  {v}")
+            print(f"  x  {v}")
         print(f"\n{len(all_violations)} endpoint(s) unprotected.")
         print("Add auth (Depends(get_workspace_id) / Depends(require_permission(...)))")
-        print("or add to ALLOWLIST in scripts/check_auth_coverage.py if intentionally public.")
+        print("or add to ALLOWLIST in scripts/check_auth_coverage.py with a reason.")
+    if stale:
+        failed = True
+        print("\nSTALE ALLOWLIST ENTRIES - file or route no longer exists:\n")
+        for v in stale:
+            print(f"  x  {v}")
+        print("\nRemove them from ALLOWLIST in scripts/check_auth_coverage.py.")
+    if failed:
         sys.exit(1)
-    else:
-        print(f"Auth coverage OK — all endpoints protected.")
+    print("Auth coverage OK - all endpoints protected, allowlist current.")
 
 
 if __name__ == "__main__":
