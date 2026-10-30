@@ -186,7 +186,10 @@ class GraphToYamlRequest(BaseModel):
 
 
 @router.post("/yaml/from-graph")
-def workflow_yaml_from_graph(body: GraphToYamlRequest):
+def workflow_yaml_from_graph(
+    body: GraphToYamlRequest,
+    _: str = Depends(require_permission("platform.workflows.view")),
+):
     """
     Convert a React Flow ``{nodes, edges}`` payload into the canonical YAML.
     Used by the canvas to serialize its state without reimplementing the DSL

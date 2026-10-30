@@ -346,6 +346,7 @@ def test_every_seeded_permission_is_used_or_allowlisted():
 WRITE_VERB_ALLOWLIST: set[tuple[str, str]] = {
     ("POST", "/workflows/{workflow_id}/validate"),   # dry validation of YAML
     ("POST", "/workflows/yaml/validate"),            # dry validation of unsaved YAML (canvas)
+    ("POST", "/workflows/yaml/from-graph"),          # pure graph-to-YAML conversion, no writes
     ("POST", "/eval/run/{slug}"),                    # eval simulation
     ("POST", "/eval/run"),                           # eval simulation
     ("POST", "/guard/policies/lint"),                # static lint
