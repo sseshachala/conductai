@@ -1,7 +1,9 @@
 from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings
 
-from app.core.auth_deployment import AuthMode, validate_auth_mode
+import os as _os
+
+from app.core.auth_deployment import LOCAL_ENVIRONMENTS, AuthMode, validate_auth_mode
 
 
 def normalize_database_url(url: str) -> str:
@@ -61,6 +63,15 @@ class Settings(BaseSettings):
 
     # Environment — used to gate dev-only defaults (e.g. encryption key check)
     environment: str = "development"
+
+    @property
+    def is_local_environment(self) -> bool:
+        """True only for an explicit local/development value.
+
+        Security gates must use this (not ``environment == "production"``) so
+        an unset, misspelled or new value (``prod``, ``staging``) fails closed.
+        """
+        return self.environment.strip().lower() in LOCAL_ENVIRONMENTS
 
     # Logging
     log_level: str = "INFO"
@@ -449,10 +460,29 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+# A hosted platform (Render sets RENDER; every k8s pod gets
+# KUBERNETES_SERVICE_HOST) must never run with the "development" default —
+# that silently disables the encryption-key, sandbox and metrics gates.
+# Coerce rather than crash so a service that never set ENVIRONMENT (e.g. a
+# worker) keeps running, but with production gates. Escape hatch for a
+# deliberate dev deployment: CONDUCT_ALLOW_LOCAL_ENV_ON_PLATFORM=1.
+if (
+    (_os.environ.get("RENDER") or _os.environ.get("KUBERNETES_SERVICE_HOST"))
+    and settings.is_local_environment
+    and _os.environ.get("CONDUCT_ALLOW_LOCAL_ENV_ON_PLATFORM") != "1"
+):
+    import logging as _boot_logging
+    _boot_logging.getLogger(__name__).error(
+        "SECURITY: ENVIRONMENT=%r on a hosted platform — treating as production. "
+        "Set ENVIRONMENT=production explicitly.", settings.environment,
+    )
+    settings.environment = "production"
+
 validate_auth_mode(settings)
 
 _DEFAULT_ENCRYPTION_KEY = "dev-only-32-byte-key-change-this!"
-if settings.environment not in ("local", "development") and settings.encryption_key == _DEFAULT_ENCRYPTION_KEY:
+if not settings.is_local_environment and settings.encryption_key == _DEFAULT_ENCRYPTION_KEY:
     raise RuntimeError(
         "ENCRYPTION_KEY must be set in non-local environments. Refusing to start."
     )
@@ -464,9 +494,13 @@ if settings.environment == "production":
             "(e.g. 'https://conductai.ai,https://app.conductai.ai')."
         )
 
-# 1.2 — Warn on missing JWT verification vars in all non-dev environments
-# TODO: change to RuntimeError once CLERK_AUDIENCE + CLERK_FRONTEND_API are set on Render
-if settings.environment not in ("local", "development"):
+# 1.2 — Warn on missing JWT verification vars in all non-dev environments.
+# Not a boot failure: services that never verify Clerk JWTs (worker) share
+# this module. CLERK_FRONTEND_API is also the JWKS source (auth._fetch_jwks),
+# so when it is unset no Clerk token verifies at all — the issuer check can't
+# be bypassed. CLERK_AUDIENCE is optional: Clerk session tokens carry no
+# `aud` unless a JWT template adds one.
+if not settings.is_local_environment:
     import logging as _logging
     _env_log = _logging.getLogger(__name__)
     if not settings.clerk_frontend_api:
