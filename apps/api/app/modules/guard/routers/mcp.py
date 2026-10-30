@@ -18,7 +18,7 @@ import os
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Query, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 
 from sqlalchemy import text as _sql
@@ -323,7 +323,7 @@ async def oauth_member_token(request: Request):
     so every MCP call is attributed to the correct user email via GMC join.
     """
     import secrets as _secrets
-    from app.core.auth import _verify_clerk_token
+    from app.core.auth import _assert_workspace_member, _verify_clerk_token
     from app.core.crypto import encrypt as _encrypt
     from app.modules.agent_identity.models import AgentIdentity
 
@@ -350,6 +350,7 @@ async def oauth_member_token(request: Request):
 
     db = SessionLocal()
     try:
+        explicit_workspace = bool(workspace_id)
         if not workspace_id:
             row = db.execute(
                 _sql("""
@@ -368,6 +369,14 @@ async def oauth_member_token(request: Request):
             ws_uuid = uuid.UUID(workspace_id)
         except ValueError:
             return JSONResponse(status_code=422, content={"error": "invalid workspace_id"})
+
+        # Issuance consumes membership, never provisions it (see #1878).
+        # A derived workspace already comes from the caller's active membership.
+        if explicit_workspace:
+            try:
+                _assert_workspace_member(db, str(ws_uuid), clerk_user_id)
+            except HTTPException as exc:
+                return JSONResponse(status_code=exc.status_code, content={"error": exc.detail})
 
         plaintext = _API_PFX + _secrets.token_urlsafe(32)
         prefix = plaintext[:_API_PFX_LEN]

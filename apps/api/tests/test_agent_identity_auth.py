@@ -163,6 +163,8 @@ class TestResolveAgentTokenCondApi:
         token = _api_token()
         ai = _make_ai_row(token, created_by=_USER_ID)
         db = _db_with_ai(ai, member_row=None)
+        # GMC lookup misses, then the creator's workspace membership check hits.
+        db.execute.return_value.fetchone.side_effect = [None, (1,)]
 
         with (
             patch(_AI_PATCH, _AgentIdentityStub),

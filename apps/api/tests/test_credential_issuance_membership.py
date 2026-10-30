@@ -186,3 +186,85 @@ def test_authorize_confirmation_denies_nonmember_without_issuing_code(monkeypatc
     assert row.clerk_user_id is None
     assert row.workspace_id is None
     db.commit.assert_not_called()
+
+
+# --- OAuth member-token endpoint --------------------------------------------
+
+import asyncio
+import json
+import uuid
+from unittest.mock import patch
+
+from app.modules.guard.routers import mcp as guard_mcp
+
+
+def _call_member_token(db, body, monkeypatch):
+    request = MagicMock()
+    request.headers = {"Authorization": "Bearer clerk"}
+
+    async def _json():
+        return body
+
+    request.json = _json
+    monkeypatch.setattr(guard_mcp, "SessionLocal", lambda: db)
+    with patch("app.core.auth._verify_clerk_token", return_value={"sub": "user_1"}):
+        return asyncio.run(guard_mcp.oauth_member_token(request))
+
+
+def test_member_token_denies_nonmember_without_creating_identity(monkeypatch):
+    db = MagicMock()
+    db.execute.return_value = _result(None)
+
+    resp = _call_member_token(
+        db, {"workspace_id": WORKSPACE_ID, "email": "a@example.com"}, monkeypatch
+    )
+
+    assert resp.status_code == 403
+    db.add.assert_not_called()
+    db.commit.assert_not_called()
+    db.query.assert_not_called()
+    db.close.assert_called_once()
+
+
+def test_member_token_issues_for_member(monkeypatch):
+    db = MagicMock()
+    # membership hit, then no existing identity
+    db.execute.side_effect = [_result((1,)), _result(None)]
+
+    resp = _call_member_token(
+        db, {"workspace_id": WORKSPACE_ID, "email": "a@example.com"}, monkeypatch
+    )
+
+    assert resp.status_code == 200
+    assert json.loads(resp.body)["member_token"].startswith("cond_api_")
+    db.add.assert_called_once()
+    db.commit.assert_called_once()
+
+
+def test_member_token_omitted_workspace_uses_active_membership(monkeypatch):
+    db = MagicMock()
+    db.execute.side_effect = [
+        _result(SimpleNamespace(workspace_id=WORKSPACE_ID)),  # gmc lookup
+        _result(None),  # no existing identity
+    ]
+
+    resp = _call_member_token(db, {"email": "a@example.com"}, monkeypatch)
+
+    assert resp.status_code == 200
+    assert db.add.call_args.args[0].workspace_id == uuid.UUID(WORKSPACE_ID)
+
+
+def test_api_token_resolution_rejects_creator_who_is_no_longer_member(monkeypatch):
+    token = "cond_api_test-token"
+    identity = _identity()
+    identity.expires_at = None
+    identity.lifecycle_state = "active"
+    identity.token_type = "api"
+    identity.created_by_clerk_user_id = "outsider"
+    identity.token_name = "claude-ai-oauth"
+    db = MagicMock()
+    db.query.return_value.filter.return_value.all.return_value = [identity]
+    db.execute.side_effect = [_result(None), _result(None)]  # no gmc, no membership
+    monkeypatch.setattr("app.core.crypto.decrypt", lambda _: {"token": token})
+
+    assert auth.resolve_agent_token(token, db) is None

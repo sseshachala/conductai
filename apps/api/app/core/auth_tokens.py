@@ -119,6 +119,24 @@ def _has_workspace_membership(db: Session, workspace_id, clerk_user_id: str) -> 
     ).fetchone() is not None
 
 
+def _is_member_or_owner(db: Session, workspace_id, clerk_user_id: str) -> bool:
+    """Membership incl. legacy ``workspaces.owner_id`` (same rule as
+    ``app.core.auth._assert_workspace_member``)."""
+    from sqlalchemy import text as _text
+
+    return db.execute(
+        _text("""
+            SELECT 1 FROM workspace_users
+            WHERE workspace_id = :ws AND clerk_user_id = :uid
+            UNION
+            SELECT 1 FROM workspaces
+            WHERE id = :ws AND owner_id = :uid
+            LIMIT 1
+        """),
+        {"ws": str(workspace_id), "uid": clerk_user_id},
+    ).fetchone() is not None
+
+
 def resolve_agent_token(token: str, db: Session) -> tuple[str, str] | None:
     """Resolve any Conduct agent token → (workspace_id, clerk_user_id) or None.
 
@@ -192,6 +210,8 @@ def resolve_agent_token(token: str, db: Session) -> tuple[str, str] | None:
             # API tokens: fall back to creator or synthetic label.
             creator = getattr(ai_row, "created_by_clerk_user_id", None)
             if creator:
+                if not _is_member_or_owner(db, ai_row.workspace_id, creator):
+                    return None
                 return (str(ai_row.workspace_id), creator)
 
             label = getattr(ai_row, "token_name", None) or getattr(ai_row, "name", "api-token")
