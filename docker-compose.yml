@@ -77,9 +77,10 @@ services:
     depends_on:
       - api
     volumes:
-      - ./apps/web:/app
+      - ./apps/web:/app/apps/web
       - /app/node_modules
-      - /app/.next
+      - /app/apps/web/node_modules
+      - /app/apps/web/.next
 
 volumes:
   postgres_data:
