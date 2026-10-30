@@ -23,6 +23,7 @@ Marker `migration` — runs by default in per-PR CI. Opt-out with
 from __future__ import annotations
 
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -48,7 +49,7 @@ requires_db = pytest.mark.skipif(not _db_available(), reason="Postgres not reach
 
 def _alembic(*args: str) -> str:
     r = subprocess.run(
-        ["alembic", *args],
+        [sys.executable, "-m", "alembic", *args],
         cwd=API_DIR,
         capture_output=True,
         text=True,
