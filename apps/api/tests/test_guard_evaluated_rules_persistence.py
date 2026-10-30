@@ -1,7 +1,7 @@
 """Persistence and migration tests for the layered verdict envelope (#1150 phase 1).
 
-Runs against the test-suite Postgres. Skipped when no DATABASE_URL is
-configured (matches other DB-touching test modules).
+Runs against the test-suite Postgres. Skipped when it isn't reachable
+(conftest always sets a default DATABASE_URL, so checking it isn't enough).
 """
 from __future__ import annotations
 
@@ -14,10 +14,21 @@ import pytest
 from sqlalchemy import create_engine, text
 
 
-pytestmark = pytest.mark.skipif(
-    not os.getenv("DATABASE_URL"),
-    reason="DATABASE_URL not set — skipping DB-backed persistence tests",
-)
+def _db_available() -> bool:
+    url = os.getenv("DATABASE_URL")
+    if not url:
+        return False
+    try:
+        engine = create_engine(url, connect_args={"connect_timeout": 2})
+        with engine.connect():
+            pass
+        engine.dispose()
+        return True
+    except Exception:
+        return False
+
+
+pytestmark = pytest.mark.skipif(not _db_available(), reason="Postgres not reachable")
 
 
 @pytest.fixture(scope="module")

@@ -6,6 +6,7 @@ import pytest
 from fastapi import HTTPException
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from app.models.workspace import Workspace
@@ -21,8 +22,12 @@ def database():
     url = os.environ.get("DATABASE_URL", "")
     if not url or "test" not in (make_url(url).database or ""):
         pytest.skip("Requires a dedicated test database")
-    engine = create_engine(url)
-    connection = engine.connect()
+    engine = create_engine(url, connect_args={"connect_timeout": 2})
+    try:
+        connection = engine.connect()
+    except OperationalError:
+        engine.dispose()
+        pytest.skip("Postgres not reachable")
     transaction = connection.begin()
     db = Session(bind=connection, join_transaction_mode="create_savepoint")
     ws = Workspace(name="Session evidence test", owner_id="owner")
