@@ -197,7 +197,10 @@ class TestOauthMemberToken:
             patch("app.core.crypto.encrypt", return_value="encrypted-blob"),
         ):
             mock_db = MagicMock()
-            mock_db.execute.return_value = MagicMock(**{"fetchone.return_value": None})
+            mock_db.execute.side_effect = [
+                MagicMock(**{"fetchone.return_value": (1,)}),   # membership check
+                MagicMock(**{"fetchone.return_value": None}),   # existing identity check
+            ]
             mock_db.add = MagicMock()
             mock_db.commit = MagicMock()
             mock_sl.return_value = mock_db

@@ -192,6 +192,8 @@ def resolve_agent_token(token: str, db: Session) -> tuple[str, str] | None:
             # API tokens: fall back to creator or synthetic label.
             creator = getattr(ai_row, "created_by_clerk_user_id", None)
             if creator:
+                if not _has_workspace_membership(db, ai_row.workspace_id, creator):
+                    return None
                 return (str(ai_row.workspace_id), creator)
 
             label = getattr(ai_row, "token_name", None) or getattr(ai_row, "name", "api-token")
