@@ -1,0 +1,8 @@
+# Applies to builds whose context is the repo root (apps/web/Dockerfile).
+# Host node_modules / build output must never leak into the image.
+**/node_modules
+**/.next
+**/test-results
+**/tsconfig.tsbuildinfo
+.git
+.claude
