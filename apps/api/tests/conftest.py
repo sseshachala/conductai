@@ -20,6 +20,17 @@ if str(APPS_API) not in sys.path:
 
 os.environ.setdefault("DATABASE_URL", "postgresql://test:test@localhost:5432/test_marshal")
 os.environ.setdefault("REDIS_URL", "redis://localhost:6379")
+
+# SQLAlchemy 2.1 maps bare postgresql:// to psycopg (v3), which we don't
+# install. Many tests build engines straight from these env vars, so pin
+# them all to psycopg2 once here. Inlined (not imported from app.core.config)
+# so settings aren't loaded before the env defaults below are in place.
+for _key, _val in list(os.environ.items()):
+    if _key.endswith(("DATABASE_URL", "DB_URL")):
+        if _val.startswith("postgres://"):
+            _val = _val.replace("postgres://", "postgresql://", 1)
+        if _val.startswith("postgresql://") and "+psycopg2" not in _val:
+            os.environ[_key] = _val.replace("postgresql://", "postgresql+psycopg2://", 1)
 # CI passes ANTHROPIC_API_KEY as an empty string when the GH secret isn't set,
 # so setdefault() is a no-op — force a non-empty dummy so the LLM client's
 # missing-key check doesn't short-circuit patched tests.
