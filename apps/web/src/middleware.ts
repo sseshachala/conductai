@@ -4,7 +4,11 @@ import { clerkDevelopmentOrigin } from "./lib/clerk-development-origin"
 import { consoleAppOrigin, deploymentConfig } from "./lib/auth/runtime"
 import { apiSecurityOrigin, isLocalHttpOrigin } from "./lib/api-security-origin"
 
-const isPublicRoute = createRouteMatcher(["/", "/sign-in(.*)", "/sign-up(.*)", "/compare", "/privacy", "/terms", "/benchmark(.*)", "/eval(.*)", "/registry", "/playbooks", "/token-guardrails", "/docs(.*)", "/accept-invite(.*)", "/sdd(.*)", "/tools(.*)", "/about(.*)", "/blog(.*)", "/share(.*)", "/solutions(.*)", "/partners(.*)", "/guard", "/evidence", "/mcp-gateway", "/security", "/deployment", "/pricing", "/open-source", "/router", "/team-os", "/frameworks(.*)", "/discovery", "/book-demo", "/use-cases", "/what-is-conduct-ai", "/api/mcp/guard/oauth/(.*)", "/.well-known/(.*)", "/sitemap.xml", "/robots.txt",])
+const isPublicRoute = createRouteMatcher(["/", "/sign-in(.*)", "/sign-up(.*)", "/compare", "/privacy", "/terms", "/benchmark(.*)", "/eval(.*)", "/registry", "/playbooks", "/token-guardrails", "/docs(.*)", "/accept-invite(.*)", "/sdd(.*)", "/tools(.*)", "/about(.*)", "/blog(.*)", "/share(.*)", "/solutions(.*)", "/partners(.*)", "/guard", "/evidence", "/mcp-gateway", "/security", "/deployment", "/pricing", "/open-source", "/router", "/team-os", "/frameworks(.*)", "/discovery", "/book-demo", "/use-cases", "/what-is-conduct-ai", "/api/mcp/guard/oauth/(.*)", "/.well-known/(.*)", "/sitemap.xml", "/robots.txt",
+  // #2010 — `curl -fsSL conductai.ai/install | sh`: the shell installer must
+  // never be redirected to sign-in (the shell would execute the HTML page).
+  "/install", "/install.sh",
+])
 
 // Audit S13 — route-scoped Content Security Policy.
 //
