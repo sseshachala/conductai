@@ -155,7 +155,10 @@ class YamlValidateRequest(BaseModel):
 
 
 @router.post("/yaml/validate")
-def validate_workflow_yaml(body: YamlValidateRequest):
+def validate_workflow_yaml(
+    body: YamlValidateRequest,
+    _: str = Depends(require_permission("platform.workflows.view")),
+):
     """
     Dry-run validation for the canvas / editor — no DB writes. Returns the
     derived graph on success so the canvas can render it immediately.
