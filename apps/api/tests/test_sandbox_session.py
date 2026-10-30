@@ -574,7 +574,7 @@ class TestSandboxFailureIsolation:
         proc.kill.assert_called_once()
 
     def test_local_session_constructor_rejects_production(self):
-        with patch("app.core.config.settings", SimpleNamespace(environment="production")), \
+        with patch("app.core.config.settings", SimpleNamespace(environment="production", is_local_environment=False)), \
              patch("tempfile.mkdtemp") as mkdtemp, \
              pytest.raises(RuntimeError, match="disabled in production"):
             LocalSession()
@@ -583,7 +583,7 @@ class TestSandboxFailureIsolation:
     def test_legacy_dispatcher_rejects_local_execution_in_production(self):
         from app.runtime import sandbox
 
-        with patch("app.core.config.settings", SimpleNamespace(environment="production")), \
+        with patch("app.core.config.settings", SimpleNamespace(environment="production", is_local_environment=False)), \
              patch.object(sandbox, "_dispatch_local") as local_dispatch, \
              pytest.raises(RuntimeError, match="disabled in production"):
             sandbox.dispatch_brain_tool("run_shell", {"command": "printf unsafe"})

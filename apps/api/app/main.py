@@ -1,3 +1,5 @@
+import hmac
+
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
@@ -112,6 +114,18 @@ async def favicon():
     return FileResponse(_STATIC / "favicon.png", media_type="image/png")
 
 
+def _metrics_token_ok(request: Request) -> bool:
+    """True if the caller may read metrics. Constant-time token compare;
+    empty configured token refuses everyone outside local/development."""
+    if settings.environment in ("local", "development"):
+        return True
+    _tok = (settings.metrics_token or "").strip()
+    _hdr = (request.headers.get("x-metrics-token") or "").strip()
+    if not _tok:
+        return False
+    return hmac.compare_digest(_hdr.encode("utf-8"), _tok.encode("utf-8"))
+
+
 @app.get("/metrics", include_in_schema=False)
 async def metrics(request: Request):
     """Prometheus scrape endpoint. Audit O01 — was fully public.
@@ -123,11 +137,8 @@ async def metrics(request: Request):
     from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
     from starlette.responses import Response as _Response
 
-    _tok = (settings.metrics_token or "").strip()
-    _hdr = (request.headers.get("x-metrics-token") or "").strip()
-    if settings.environment not in ("local", "development"):
-        if not _tok or _hdr != _tok:
-            return JSONResponse(status_code=401, content={"detail": "metrics_token_required"})
+    if not _metrics_token_ok(request):
+        return JSONResponse(status_code=401, content={"detail": "metrics_token_required"})
     return _Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
@@ -157,11 +168,8 @@ async def cache_stats(request: Request):
     this worker (usually: the kill switch is off, or the init call
     was skipped on startup for this surface).
     """
-    _tok = (settings.metrics_token or "").strip()
-    _hdr = (request.headers.get("x-metrics-token") or "").strip()
-    if settings.environment not in ("local", "development"):
-        if not _tok or _hdr != _tok:
-            return JSONResponse(status_code=401, content={"detail": "metrics_token_required"})
+    if not _metrics_token_ok(request):
+        return JSONResponse(status_code=401, content={"detail": "metrics_token_required"})
 
     def _safe(fn):
         try:

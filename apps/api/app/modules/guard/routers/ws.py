@@ -39,16 +39,22 @@ def _r() -> _redis_sync.Redis:
 
 # ── Token validation (sync, runs in executor) ─────────────────────────────────
 
-def _token_valid(token: str) -> bool:
+def _token_workspace(token: str) -> str | None:
+    """Return the workspace id the token resolves to, or None if invalid."""
     if not token:
-        return False
+        return None
     db = SessionLocal()
     try:
-        return resolve_agent_token(token, db) is not None
+        resolved = resolve_agent_token(token, db)
+        return str(resolved[0]) if resolved else None
     except Exception:
-        return False
+        return None
     finally:
         db.close()
+
+
+def _token_valid(token: str) -> bool:
+    return _token_workspace(token) is not None
 
 
 # ── Publish (called by invalidate_policy_cache) ───────────────────────────────
@@ -75,8 +81,8 @@ async def policy_ws(
     loop = asyncio.get_event_loop()
 
     # Auth in executor — keeps event loop unblocked
-    valid = await loop.run_in_executor(None, _token_valid, token)
-    if not valid:
+    token_ws = await loop.run_in_executor(None, _token_workspace, token)
+    if token_ws is None:
         await websocket.close(code=4001)
         return
 
@@ -84,6 +90,16 @@ async def policy_ws(
         ws_uuid = uuid.UUID(workspace_id)
     except ValueError:
         await websocket.close(code=4002)
+        return
+
+    # The token must belong to the workspace being subscribed to.
+    try:
+        token_ws_uuid = uuid.UUID(token_ws)
+    except ValueError:
+        await websocket.close(code=1008)
+        return
+    if token_ws_uuid != ws_uuid:
+        await websocket.close(code=1008)
         return
 
     await websocket.accept()

@@ -81,7 +81,7 @@ def validate_outbound_url(url: str, *, allow_unresolvable: bool = False) -> list
     except ValueError as exc:
         raise EgressBlocked(f"outbound URL malformed: {exc}") from exc
     scheme = (parsed.scheme or "").lower()
-    dev = settings.environment in ("local", "development")
+    dev = settings.is_local_environment
     if scheme != "https" and not (scheme == "http" and dev):
         raise EgressBlocked("outbound URL must use https")
     if not host:
