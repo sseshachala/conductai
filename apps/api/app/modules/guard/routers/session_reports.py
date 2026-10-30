@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 
 from app.core.auth import (
     _verify_clerk_token,
+    check_permission,
     get_guard_hook_auth,
     get_workspace_id,
     require_permission,
@@ -298,6 +299,14 @@ _HTML_401_INVALID = HTMLResponse(
     status_code=401,
 )
 
+_HTML_403 = HTMLResponse(
+    "<html><body style='font-family:sans-serif;padding:40px'>"
+    "<h2>403 — Access denied</h2>"
+    "<p>You do not have access to this workspace.</p>"
+    "</body></html>",
+    status_code=403,
+)
+
 _HTML_404 = HTMLResponse(
     "<html><body style='font-family:sans-serif;padding:40px'>"
     "<h2>404 — Report not found</h2>"
@@ -319,8 +328,9 @@ async def get_session_report_html(
     """Return a styled HTML view of a session report.
 
     Auth: accepts ?token= or Authorization: Bearer with a Clerk JWT.
-    Workspace isolation is enforced — the report must belong to the
-    authenticated workspace.
+    The caller must be a member of ?workspace_id= with
+    guard.activity.view_all (same as the JSON endpoint), and the report must
+    belong to that workspace.
     """
     api_key_val = token or (credentials.credentials if credentials else None)
     if not api_key_val:
@@ -341,16 +351,33 @@ async def get_session_report_html(
         )
     ws_id = workspace_id
 
+    try:
+        ws_uuid = uuid.UUID(ws_id)
+    except ValueError:
+        return _HTML_401_INVALID
+
+    # Membership + permission check against the requested workspace.
+    user_id = claims.get("sub")
+    if not user_id:
+        return _HTML_401_INVALID
+    try:
+        check_permission(
+            user_id=user_id,
+            workspace_id=str(ws_uuid),
+            credentials=None,
+            db=db,
+            permission="guard.activity.view_all",
+        )
+    except HTTPException as exc:
+        if exc.status_code == 403:
+            return _HTML_403
+        raise
+
     # Fetch the report, enforcing workspace isolation
     try:
         report_uuid = uuid.UUID(report_id)
     except ValueError:
         return _HTML_404
-
-    try:
-        ws_uuid = uuid.UUID(ws_id)
-    except ValueError:
-        return _HTML_401_INVALID
 
     report = (
         db.query(SessionReport)
