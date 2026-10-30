@@ -22,56 +22,28 @@ profile behind the ``guard_gateway_profile_v2`` flag.
 """
 from __future__ import annotations
 
-import ipaddress
 import re
 from typing import Any, Literal, Union
-from urllib.parse import urlparse
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 def _reject_private_endpoint(url: str) -> None:
-    """Reject endpoints that resolve to loopback / private / link-local
-    literal addresses.
+    """Reject endpoints that are not public https (http allowed in dev).
 
-    The transport HTTPX-forwards ``target.endpoint`` verbatim for
-    integrations with ``allows_endpoint_override=True`` (Azure + Custom).
-    Without this guard a workspace admin can point at any service
-    reachable from the hosted gateway (127.0.0.1, RFC 1918,
-    169.254.169.254 for cloud metadata, ::1). Full network-level egress
-    protection is deployment policy; this schema-level guard blocks the
-    literal-IP cases so a hostile profile can't ship without an
-    operator explicitly disabling the check at the deployment layer.
-
-    Does NOT resolve hostnames — DNS rebinding is deployment policy;
-    this is defense in depth.
+    Delegates to ``app.core.egress.validate_outbound_url`` so the gateway,
+    output webhooks and legacy upstream overrides share one rule set.
+    Hostnames are resolved when DNS is available; an unresolvable name passes
+    here (config-time, possibly offline). DNS rebinding after this check is a
+    residual risk (see app/core/egress.py).
     """
+    from app.core.egress import EgressBlocked, validate_outbound_url
+
     try:
-        parsed = urlparse(url)
-    except Exception as exc:
-        raise ValueError(f"endpoint URL malformed: {exc}") from exc
-    host = (parsed.hostname or "").strip()
-    if not host:
-        raise ValueError("endpoint URL has no hostname")
-    # Literal IP checks (v4 + v6). Not an IP literal → hostname; block
-    # the obvious loopback aliases anyway.
-    try:
-        addr = ipaddress.ip_address(host)
-    except ValueError:
-        if host.lower() in {"localhost", "localhost.localdomain", "ip6-localhost"}:
-            raise ValueError(
-                f"endpoint hostname {host!r} is a loopback alias — refused. "
-                f"Public hostnames only; internal endpoints require a "
-                f"deployment-level egress policy."
-            )
-        return
-    if addr.is_loopback or addr.is_private or addr.is_link_local or addr.is_reserved or addr.is_multicast:
-        raise ValueError(
-            f"endpoint {url!r} resolves to a non-public address "
-            f"({addr}). Refused. Public endpoints only; internal "
-            f"destinations require a deployment-level egress policy."
-        )
+        validate_outbound_url(url, allow_unresolvable=True)
+    except EgressBlocked as exc:
+        raise ValueError(f"endpoint {url!r} refused: {exc}") from exc
 
 
 

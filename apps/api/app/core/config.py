@@ -62,6 +62,12 @@ class Settings(BaseSettings):
     # Environment — used to gate dev-only defaults (e.g. encryption key check)
     environment: str = "development"
 
+    # Hostnames/IPs for which outbound-URL validation (app.core.egress) skips
+    # the public-address check. For self-hosted installs that legitimately
+    # target internal services. Empty by default.
+    # Env: EGRESS_ALLOWED_HOSTS='["llm.corp.internal"]'
+    egress_allowed_hosts: list[str] = []
+
     # Logging
     log_level: str = "INFO"
 
