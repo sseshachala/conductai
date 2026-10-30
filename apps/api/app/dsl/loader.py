@@ -146,6 +146,9 @@ def load_workflow_yaml(yaml_text: str, base_dir: Path | None = None) -> Workflow
 # extends: resolution helpers
 # ---------------------------------------------------------------------------
 
+_BASE_NAME_RE = re.compile(r"[A-Za-z0-9_-]+")
+
+
 def _resolve_extends(data: dict, base_dir: Path) -> dict:
     """Resolve ``extends:`` in *data* in-place and return the expanded dict.
 
@@ -158,7 +161,18 @@ def _resolve_extends(data: dict, base_dir: Path) -> dict:
     4. Delete ``extends`` from the returned dict.
     """
     base_name: str = data["extends"]
-    base_path = base_dir / f"{base_name}.yaml"
+    if not isinstance(base_name, str) or not _BASE_NAME_RE.fullmatch(base_name):
+        raise WorkflowValidationError(
+            "extends: base name must contain only letters, digits, '-' and '_'"
+        )
+    root = base_dir.resolve()
+    base_path = (root / f"{base_name}.yaml").resolve()
+    try:
+        base_path.relative_to(root)
+    except ValueError:
+        raise WorkflowValidationError(
+            "extends: base file must be inside the base directory"
+        )
 
     try:
         base_text = base_path.read_text(encoding="utf-8")
