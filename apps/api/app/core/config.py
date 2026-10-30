@@ -55,6 +55,10 @@ class Settings(BaseSettings):
     # Example: ALLOWED_ORIGINS=https://conductai.ai,https://app.conductai.ai
     allowed_origins: str = ""
 
+    # When true, GET /guard/spend/budget-check rejects calls without a valid
+    # agent/member token (401). Default off so older CLIs keep working.
+    budget_check_require_auth: bool = False
+
     # Environment — used to gate dev-only defaults (e.g. encryption key check)
     environment: str = "development"
 

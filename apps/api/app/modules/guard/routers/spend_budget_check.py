@@ -1,12 +1,18 @@
 """ConductGuard spend — hook budget check and per-request reservation endpoints."""
 
 import uuid
+from typing import Annotated
+
+import structlog
 from fastapi import APIRouter, Depends, Query
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 from fastapi import HTTPException
-from app.core.auth import get_workspace_id
+from app.core.auth import get_workspace_id, resolve_agent_token
+from app.core.config import settings
 from app.core.database import get_db
+from app.modules.guard.observability.metrics import BUDGET_CHECK_UNAUTHENTICATED
 from app.modules.guard.models import BudgetReservation, GuardAuditEvent, GuardConfig, GuardSpendBudget
 from app.modules.guard.routers.spend_common import (
     BudgetCheckOut,
@@ -16,6 +22,49 @@ from app.modules.guard.routers.spend_common import (
 
 router = APIRouter(prefix="/guard/spend", tags=["guard"])
 
+logger = structlog.get_logger(__name__)
+_bearer = HTTPBearer(auto_error=False)
+
+
+def _authenticate_budget_check(
+    credentials: HTTPAuthorizationCredentials | None,
+    workspace_id: str,
+    clerk_user_id: str | None,
+    db: Session,
+) -> str | None:
+    """Return the effective clerk_user_id for the check.
+
+    Auth: this is a hook endpoint authenticated by the caller's agent/member
+    token (``resolve_agent_token``), so it does not use ``require_permission``
+    (no dashboard role applies). The credential is optional so already-installed
+    CLIs, which send none, keep enforcing budgets; ``budget_check_require_auth``
+    makes it mandatory. An unresolvable credential is treated like a missing one.
+    """
+    resolved = None
+    if credentials and credentials.credentials:
+        resolved = resolve_agent_token(credentials.credentials, db)
+
+    if resolved is None:
+        BUDGET_CHECK_UNAUTHENTICATED.inc()
+        logger.warning(
+            "guard.budget_check.unauthenticated",
+            workspace_id=workspace_id,
+            credential_present=bool(credentials and credentials.credentials),
+        )
+        if settings.budget_check_require_auth:
+            raise HTTPException(
+                status_code=401,
+                detail="Authentication required",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        return clerk_user_id
+
+    token_ws, token_user = resolved
+    if str(token_ws).lower() != str(workspace_id).lower():
+        raise HTTPException(status_code=403, detail="Token does not belong to this workspace")
+    # The token's identity wins over the query string.
+    return token_user or clerk_user_id
+
 
 @router.get("/budget-check", response_model=BudgetCheckOut)
 def budget_check(
@@ -23,6 +72,7 @@ def budget_check(
     clerk_user_id: str | None = Query(default=None),
     ai_tool: str | None = Query(default=None),
     transport: str | None = Query(default=None),
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)] = None,
     db: Session = Depends(get_db),
 ):
     """Hard-cap check called by the guard hook before each tool use.
@@ -42,6 +92,8 @@ def budget_check(
     this check aggregates events with ``source='gateway'`` against the
     matching budget row's cap.
     """
+    clerk_user_id = _authenticate_budget_check(credentials, workspace_id, clerk_user_id, db)
+
     try:
         ws_uuid = uuid.UUID(workspace_id)
     except ValueError:
