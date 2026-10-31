@@ -6,6 +6,7 @@
     "https": {"type": "string", "pattern": "^https://[^\\s/@?#]+(/[^\\s?#]*)?$"}
   },
   "properties": {
+    "egress": {"type": "object", "properties": {"allowedHosts": {"type": "array", "items": {"type": "string", "pattern": "^[A-Za-z0-9.-]+$"}}}},
     "hosts": {
       "type": "object",
       "additionalProperties": false,
@@ -32,7 +33,7 @@
           "type": "object",
           "propertyNames": {
             "pattern": "^[A-Z][A-Z0-9_]*$",
-            "not": {"enum": ["AUTH_MODE", "ENVIRONMENT", "APP_URL", "API_BASE_URL", "CONDUCT_WEB_URL", "CONDUCT_OAUTH_ISSUER", "CONDUCT_PROXY_URL", "ALLOWED_ORIGINS", "CONSOLE_OIDC_ISSUER", "CONSOLE_OIDC_CLIENT_ID", "CONSOLE_OIDC_JWKS_URL", "CONSOLE_OIDC_CA_FILE", "SSL_CERT_FILE", "REQUESTS_CA_BUNDLE"]}
+            "not": {"enum": ["AUTH_MODE", "ENVIRONMENT", "APP_URL", "API_BASE_URL", "CONDUCT_WEB_URL", "CONDUCT_OAUTH_ISSUER", "CONDUCT_PROXY_URL", "ALLOWED_ORIGINS", "CONSOLE_OIDC_ISSUER", "CONSOLE_OIDC_CLIENT_ID", "CONSOLE_OIDC_JWKS_URL", "CONSOLE_OIDC_CA_FILE", "SSL_CERT_FILE", "REQUESTS_CA_BUNDLE", "EGRESS_ALLOWED_HOSTS"]}
           }
         }
       }

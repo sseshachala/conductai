@@ -37,6 +37,7 @@ created during startup. Other users need an explicit identity mapping and worksp
 | `bootstrap.workspaceId`, `bootstrap.workspaceName` | Initial workspace UUID and name |
 | `bootstrap.adminSubject`, `bootstrap.adminName` | Administrator's Keycloak user ID and display name |
 | `postgres.storage`, `redis.storage` | Storage size and optional storage class |
+| `egress.allowedHosts` | Internal hostnames Conduct must reach, such as an in-cluster LiteLLM or model server. See [Model endpoints](#model-endpoints-and-outbound-access) |
 | `config.extraEnv` | Additional non-secret backend environment variables |
 | `api.extraEnv`, `gateway.extraEnv`, `worker.extraEnv`, `web.extraEnv` | Per-service Kubernetes environment entries, including `valueFrom` Secret references |
 
@@ -68,6 +69,44 @@ For an existing database or Redis service, set `postgres.enabled=false` or
 
 The chart uses proxy login. Do not include Clerk credentials in the backend Secret.
 Keep TLS verification enabled. Configure your ingress to redirect HTTP to HTTPS.
+
+### Model endpoints and outbound access
+
+Conduct checks every URL it calls on a workspace's behalf: Gateway profile
+endpoints, LLM upstream overrides, and webhook outputs. A URL must use HTTPS
+and resolve to a public address. Private, loopback, link-local, CGNAT and
+cloud-metadata addresses are refused. Redirects are not followed.
+
+Most on-prem installs call models inside the cluster or on a private network.
+List those hosts in `egress.allowedHosts`:
+
+```yaml
+egress:
+  allowedHosts:
+    - litellm.ai-platform.svc.cluster.local
+    - vllm.internal.example.com
+```
+
+- Use exact hostnames, as they appear in the endpoint URL. No scheme, port,
+  path or wildcards.
+- Listed hosts skip the address check and may use HTTP, for example
+  `http://litellm.ai-platform.svc.cluster.local:4000/v1`. Every other host
+  still needs HTTPS and a public address.
+- List only hosts you operate. Each entry lets workspace admins point Gateway
+  profiles and webhooks at that host.
+
+**Upgrading:** add your internal model hosts before upgrading. Without them,
+saving a Gateway profile that points at an internal endpoint fails with
+`outbound host '…' resolves to a non-public address`. A Gateway call through
+an LLM upstream override to an unlisted internal host returns HTTP 502
+(`LLM_UPSTREAM rejected`) instead of falling back to the provider default.
+Existing profiles keep working until they are edited.
+
+To check the value the services received:
+
+```sh
+kubectl -n conduct get configmap conduct -o jsonpath='{.data.EGRESS_ALLOWED_HOSTS}'
+```
 
 ### Audit archives
 

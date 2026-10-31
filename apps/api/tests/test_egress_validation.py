@@ -137,3 +137,14 @@ def test_v2_profile_endpoint_uses_shared_validator(monkeypatch):
         _reject_private_endpoint("https://azure.example.com")
     with pytest.raises(ValueError):
         _reject_private_endpoint("https://[::ffff:127.0.0.1]/v1")
+
+
+def test_allowlisted_host_may_use_http_in_production(monkeypatch):
+    # In-cluster model services (on-prem) are usually plain http.
+    monkeypatch.setattr(socket, "getaddrinfo", _gai("10.42.0.7"))
+    monkeypatch.setattr(egress.settings, "egress_allowed_hosts", ["litellm.ai.svc.cluster.local"])
+    assert validate_outbound_url("http://litellm.ai.svc.cluster.local:4000/v1") == ["10.42.0.7"]
+    # a non-allowlisted public host still needs https
+    monkeypatch.setattr(socket, "getaddrinfo", _gai("93.184.216.34"))
+    with pytest.raises(EgressBlocked, match="https"):
+        validate_outbound_url("http://example.com/v1")

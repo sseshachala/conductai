@@ -41,6 +41,14 @@ bootstrap:
   adminSubject: ""
   adminName: "Administrator"
 
+# Outbound URL validation blocks private/loopback/link-local/metadata addresses
+# for gateway upstreams, profile endpoints and webhook outputs. List internal
+# hostnames Conduct must reach (e.g. an in-cluster LiteLLM or model server).
+# Listed hosts skip the address check and may use http. Exact hostnames only.
+egress:
+  allowedHosts: []
+  # allowedHosts: ["litellm.ai-platform.svc.cluster.local", "vllm.internal.example.com"]
+
 config:
   postgresUser: conduct
   postgresDb: conduct
