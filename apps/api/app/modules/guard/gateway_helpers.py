@@ -488,17 +488,32 @@ def _lookup_workspace_trial(workspace_id: str) -> tuple[str | None, str | None]:
         db.close()
 
 
+class UpstreamURLRejected(ValueError):
+    """Legacy ``LLM_UPSTREAM`` override failed outbound-URL validation."""
+
+
 def _upstream_url(db: Session, workspace_id: str, provider: str, environment_id: str | None = None) -> str:
-    """Return BYO upstream URL from proxy_config for the workflow's environment, else vendor default."""
+    """Return BYO upstream URL from proxy_config for the workflow's environment, else vendor default.
+
+    A configured override that fails outbound-URL validation raises
+    ``UpstreamURLRejected`` (fail closed, no silent fallback to the vendor
+    default). Gateway httpx clients do not follow redirects.
+    """
     if environment_id:
         from app.core.credentials import get_credential
+        override = None
         try:
             creds = get_credential(db, workspace_id, "proxy_config", environment_id)
             override = creds.get("LLM_UPSTREAM")
-            if override:
-                return override.rstrip("/")
         except Exception:
             pass
+        if override:
+            from app.core.egress import EgressBlocked, validate_outbound_url
+            try:
+                validate_outbound_url(override)
+            except EgressBlocked as exc:
+                raise UpstreamURLRejected(f"LLM_UPSTREAM rejected: {exc}") from exc
+            return override.rstrip("/")
     return VENDOR_DEFAULTS[provider]
 
 # ── Body redaction + guidance injection ──────────────────────────────────────

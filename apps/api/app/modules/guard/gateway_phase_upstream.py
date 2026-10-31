@@ -40,11 +40,18 @@ async def resolve_upstream_credentials(st: GatewayCall) -> JSONResponse | None:
     if _v2_plan is None:
         # PR 2 Commit 3 — three sequential DB round-trips run off the
         # event loop in one bounded session.
-        from app.modules.guard.gateway_helpers import _resolve_upstream_credentials
-        upstream, _upstream_key, _vault_key_val = await run_in_threadpool(
+        from app.modules.guard.gateway_helpers import (
+            UpstreamURLRejected,
             _resolve_upstream_credentials,
-            workspace_id, provider, _environment_id,
         )
+        try:
+            upstream, _upstream_key, _vault_key_val = await run_in_threadpool(
+                _resolve_upstream_credentials,
+                workspace_id, provider, _environment_id,
+            )
+        except UpstreamURLRejected as exc:
+            record_failure(st, 502, str(exc), rule_id="upstream-url-rejected")
+            return _fail_closed(502, f"{exc}. Use a public https upstream in Settings → Proxy.")
         transport = get_provider_transport_registry().for_provider(provider)
         if st.canonical_profile:
             # PR 3 fix — canonical-profile TransportResolver runs

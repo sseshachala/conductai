@@ -73,6 +73,12 @@ class Settings(BaseSettings):
         """
         return self.environment.strip().lower() in LOCAL_ENVIRONMENTS
 
+    # Hostnames/IPs for which outbound-URL validation (app.core.egress) skips
+    # the public-address check. For self-hosted installs that legitimately
+    # target internal services. Empty by default.
+    # Env: EGRESS_ALLOWED_HOSTS='["llm.corp.internal"]'
+    egress_allowed_hosts: list[str] = []
+
     # Logging
     log_level: str = "INFO"
 

@@ -281,7 +281,17 @@ def _execute_output(
             # httpx rejects file://, gopher:// etc. by default — safer than urllib
             # for user-supplied webhook URLs (closes bandit B310).
             import httpx
-            resp = httpx.post(webhook_url, content=payload, headers=headers, timeout=15)
+            from app.core.egress import EgressBlocked, validate_outbound_url
+            try:
+                validate_outbound_url(webhook_url)
+            except EgressBlocked as exc:
+                return {"sent": False, "integration": "webhook", "error": f"webhook URL rejected: {exc}"}
+            # Redirects are never followed: a 3xx could point at an address the
+            # check above did not see. Validate-then-connect leaves a small
+            # DNS-rebinding window (see app/core/egress.py).
+            resp = httpx.post(
+                webhook_url, content=payload, headers=headers, timeout=15, follow_redirects=False,
+            )
             return {"sent": True, "integration": "webhook", "status_code": resp.status_code}
         except Exception as e:
             return {"sent": False, "integration": "webhook", "error": str(e)}

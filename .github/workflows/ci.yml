@@ -146,6 +146,9 @@ jobs:
         env:
           DATABASE_URL: postgresql://marshal:marshal@localhost:5432/conduct_federation_test
           REDIS_URL: redis://localhost:6379/0
+          # Harnesses run a local mock upstream / LiteLLM proxy on 127.0.0.1;
+          # outbound URL validation blocks loopback unless explicitly allowed.
+          EGRESS_ALLOWED_HOSTS: '["127.0.0.1", "localhost"]'
           PYTHONPATH: .
         run: |
           export FEDERATION_LITELLM="$RUNNER_TEMP/federation-litellm/bin/litellm"
