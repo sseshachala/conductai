@@ -21,6 +21,11 @@ three hostnames. Use HTTPS redirects at ingress. Network policies require a
 supporting CNI. Set `postgres.enabled=false` / `redis.enabled=false` to use your
 own data services. Keep provider credentials in Kubernetes Secrets or Conduct's vault.
 
+Outbound calls to Gateway endpoints, LLM upstreams and webhook outputs must be
+HTTPS to a public address. List in-cluster or private model hosts in
+`egress.allowedHosts` before upgrading. Listed hosts may also use HTTP. See
+[model endpoints](../../../docs/reference/onprem-deployment.md#model-endpoints-and-outbound-access).
+
 Projection processing ships safe-off through `config.extraEnv`. Rollout order:
 migrate -> worker deployed -> dry-run -> queue enable -> cleanup enable. Keep
 `GUARD_PROJECTION_RETENTION_DRY_RUN=true` until retention metrics and aggregate

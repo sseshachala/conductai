@@ -6,13 +6,13 @@ webhooks, gateway upstream overrides, gateway profile endpoints).
 
 Rules:
 - scheme must be https; http is accepted only in local/development
-  (``settings.environment``), matching the existing dev-only allowances.
+  (``settings.is_local_environment``) or for an allowlisted host.
 - the hostname is resolved and EVERY resolved address must be public. Private,
   loopback, link-local, multicast, reserved, unspecified, CGNAT (100.64/10)
   and cloud-metadata addresses are refused, including IPv4-mapped IPv6 forms.
 - hosts listed in ``settings.egress_allowed_hosts`` skip the address checks
-  (escape hatch for self-hosted installs that target internal services). It is
-  an explicit per-host allowlist, not a global off switch.
+  and may use http (escape hatch for self-hosted installs that target internal
+  services). It is an explicit per-host allowlist, not a global off switch.
 
 Residual risk (DNS rebinding): callers validate and then connect by hostname,
 so a hostname that re-resolves between the check and the connect is not
@@ -81,13 +81,13 @@ def validate_outbound_url(url: str, *, allow_unresolvable: bool = False) -> list
     except ValueError as exc:
         raise EgressBlocked(f"outbound URL malformed: {exc}") from exc
     scheme = (parsed.scheme or "").lower()
-    dev = settings.is_local_environment
-    if scheme != "https" and not (scheme == "http" and dev):
-        raise EgressBlocked("outbound URL must use https")
     if not host:
         raise EgressBlocked("outbound URL has no hostname")
-
     allowlisted = host in _allowed_hosts()
+    # http only in local/dev, or for an explicitly allowlisted host (in-cluster
+    # model services such as http://litellm.<ns>.svc:4000 are usually plain http).
+    if scheme != "https" and not (scheme == "http" and (settings.is_local_environment or allowlisted)):
+        raise EgressBlocked("outbound URL must use https")
 
     try:
         addrs = [ipaddress.ip_address(host)]

@@ -18,6 +18,11 @@ oidc:
 secrets:
   existingSecret: conduct-backend
   proxySecret: conduct-login
+# Internal model endpoints Conduct must reach (gateway profiles, LLM upstream,
+# webhook outputs). Required for in-cluster or private-network hosts.
+egress:
+  allowedHosts: []
+  # allowedHosts: ["litellm.ai-platform.svc.cluster.local"]
 # Safe-off projection rollout; see the chart README before enabling cleanup.
 config:
   extraEnv:

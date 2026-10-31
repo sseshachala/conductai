@@ -28,6 +28,7 @@ data:
   SSL_CERT_FILE: /etc/conduct/ca/ca.crt
   REQUESTS_CA_BUNDLE: /etc/conduct/ca/ca.crt
   {{- end }}
+  EGRESS_ALLOWED_HOSTS: {{ .Values.egress.allowedHosts | default list | toJson | quote }}
   {{- range $key, $value := .Values.config.extraEnv }}
   {{ $key }}: {{ $value | toString | quote }}
   {{- end }}
