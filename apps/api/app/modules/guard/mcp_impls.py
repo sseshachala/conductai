@@ -168,7 +168,10 @@ def guard_check_impl(ctx: GuardCtx, **arguments) -> str:
     _cfg = db.query(GuardConfig).filter(GuardConfig.workspace_id == ws_uuid).first()
     _advisory = _cfg.advisory_mode if _cfg else False
 
-    rule = _match_policy(inner_tool, inner_input, rules, gate=_gate, agent_risk_tier=ctx.agent_risk_tier)
+    rule = _match_policy(
+        inner_tool, inner_input, rules, gate=_gate, agent_risk_tier=ctx.agent_risk_tier,
+        pep="mcp" if _source == "mcp" else None,
+    )
 
     # Record-only argument anomaly observation. Advisory audit events only —
     # the decision below and the string returned to the agent are untouched.

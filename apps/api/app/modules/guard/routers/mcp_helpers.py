@@ -108,6 +108,7 @@ def _match_policy(
     rules: list,
     gate: str | None = "action",
     agent_risk_tier: str | None = None,
+    pep: str | None = None,
 ) -> dict | None:
     """Return the most restrictive matching rule (block > approval > warn > audit).
 
@@ -119,6 +120,12 @@ def _match_policy(
     ``agent_risk_tier`` is the caller identity's tier. Rules with
     ``match_agent_risk_tier`` set only fire for callers whose tier matches
     exactly; null tier never matches a tier-requiring rule.
+
+    ``pep`` names the enforcement point evaluating the rules (e.g. ``"mcp"``).
+    Rules whose enforcement contract marks that PEP ``not_supported`` are
+    skipped: they depend on matchers the PEP cannot evaluate (``match_ai_tool``,
+    ``match_mcp_server``), so applying them would fire surface-scoped rules
+    for every caller.
     """
     from app.modules.guard.enforcement import rule_matches_gate
 
@@ -139,6 +146,8 @@ def _match_policy(
 
     for rule in rules:
         if gate is not None and not rule_matches_gate(rule, gate):
+            continue
+        if pep is not None and (rule.get("enforcement") or {}).get(pep) == "not_supported":
             continue
         required_tier = rule.get("match_agent_risk_tier")
         if required_tier is not None and required_tier != agent_risk_tier:

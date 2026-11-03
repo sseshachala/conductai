@@ -312,7 +312,7 @@ def test_mcp_dispatch_threads_ctx_tier_to_match_policy(monkeypatch):
 
     seen_tier: list = []
 
-    def _fake_match_policy(tool_name, tool_input, rules, gate=None, agent_risk_tier=None):
+    def _fake_match_policy(tool_name, tool_input, rules, gate=None, agent_risk_tier=None, pep=None):
         seen_tier.append(agent_risk_tier)
         return None  # no match → return "ok" path
 
