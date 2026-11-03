@@ -38,6 +38,33 @@ from app.modules.guard.models import GuardConfig, GuardNotificationChannel
 
 log = structlog.get_logger(__name__)
 
+
+def post_webhook(url: str, payload: dict, *, timeout: float = 10.0):
+    """POST a JSON payload to an admin-configured webhook URL.
+
+    The URL is checked with ``validate_outbound_url`` on every send (DNS may
+    have changed since the channel was saved) and redirects are never
+    followed, so a 3xx cannot point the request at an address the check did
+    not see. Raises ``EgressBlocked`` when the URL is refused.
+    """
+    import httpx
+    from app.core.egress import validate_outbound_url
+
+    validate_outbound_url(url)
+    return httpx.post(url, json=payload, timeout=timeout, follow_redirects=False)
+
+
+def _check_webhook_ref(channel_type: str, ref: str) -> None:
+    """Refuse webhook URLs that are not public https at save time (422)."""
+    if channel_type != "webhook":
+        return
+    from app.core.egress import EgressBlocked, validate_outbound_url
+
+    try:
+        validate_outbound_url(ref, allow_unresolvable=True)
+    except EgressBlocked as exc:
+        raise HTTPException(status_code=422, detail=f"webhook URL refused: {exc}")
+
 router = APIRouter(prefix="/guard/notifications", tags=["guard-notifications"])
 
 
@@ -255,6 +282,8 @@ def create_channel(
         except ValueError:
             raise HTTPException(status_code=400, detail="invalid integration_id")
 
+    _check_webhook_ref(body.channel_type, body.channel_ref.strip())
+
     row = GuardNotificationChannel(
         workspace_id=ws,
         action=body.action,
@@ -287,6 +316,7 @@ def update_channel(
     if body.enabled is not None:
         row.enabled = body.enabled
     if body.channel_ref is not None:
+        _check_webhook_ref(row.channel_type, body.channel_ref.strip())
         row.channel_ref = body.channel_ref.strip()
     if body.integration_id is not None:
         try:
@@ -374,14 +404,13 @@ def test_channel(
 
     if row.channel_type == "webhook":
         try:
-            import httpx, json as _json
             payload = {
                 "event": "guard.notification.test",
                 "action": row.action,
                 "rule_id": "test",
                 "message": "synthetic notification from Guard settings",
             }
-            resp = httpx.post(row.channel_ref, json=payload, timeout=10.0)
+            resp = post_webhook(row.channel_ref, payload)
             if resp.status_code >= 400:
                 return TestResult(ok=False, error=f"HTTP {resp.status_code}: {resp.text[:200]}")
             return TestResult(ok=True)
