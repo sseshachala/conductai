@@ -1,4 +1,5 @@
 import json
+import os
 
 import pytest
 
@@ -32,7 +33,8 @@ def test_replaces_old_token_everywhere_it_appears(clients):
     for path in (mcp, claude):
         assert OLD not in path.read_text() and NEW in path.read_text()
     assert unrelated.read_text() == '{"token": "keep"}'
-    assert mcp.stat().st_mode & 0o777 == 0o600
+    if os.name == "posix":
+        assert mcp.stat().st_mode & 0o777 == 0o600
 
 
 @pytest.mark.parametrize("old,new", [(None, NEW), (OLD, None), (OLD, OLD), ("short", NEW)])
