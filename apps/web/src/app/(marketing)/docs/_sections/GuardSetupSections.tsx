@@ -420,6 +420,12 @@ conduct guard status`}</Pre>
             </div>
           ))}
         </div>
+        <p className="text-stone-500 text-sm mb-5 leading-relaxed">
+          The CLI refreshes <Code>cond_agt_*</Code> tokens on its own and writes each new token into every MCP client
+          config it manages. <strong>Kill switch:</strong> set the identity to Deactivated on the Agent Identity page.
+          The gateway, MCP endpoint and API reject its tokens immediately, and CLI hooks (0.14.24+) block every tool call
+          on the developer&apos;s machine, including agents that call the model provider directly.
+        </p>
 
         <SubHeading>RFC 8693 token exchange</SubHeading>
         <Pre>{`POST /oauth/token
