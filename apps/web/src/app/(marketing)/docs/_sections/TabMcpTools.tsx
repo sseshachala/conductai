@@ -251,8 +251,12 @@ Auth: OAuth  (discovered from /.well-known/oauth-protected-resource/mcp)`}</Pre>
             <p className="text-sm text-stone-600 mt-1">For Claude.ai and Claude for Work, make sure you typed <Code>load mcp</Code> in the chat. MCP servers are per-conversation. For Codex / Cursor / Desktop, restart the client after editing config.</p>
           </div>
           <div>
-            <p className="font-semibold">Token revoked or rotated.</p>
-            <p className="text-sm text-stone-600 mt-1">Run <Code>conduct guard init</Code> to generate a fresh token, then re-paste the URL into your client.</p>
+            <p className="font-semibold">MCP returns 401 after the token rotates.</p>
+            <p className="text-sm text-stone-600 mt-1">Session tokens rotate every 8 hours. With <Code>conduct-cli</Code> 0.14.23 or later, the CLI writes the new token into every MCP client config automatically; reconnect the server once (<Code>/mcp</Code> in Claude Code, or restart the client). On older versions, run <Code>conduct guard sync</Code> first.</p>
+          </div>
+          <div>
+            <p className="font-semibold">&quot;This agent identity was deactivated by your workspace admin.&quot;</p>
+            <p className="text-sm text-stone-600 mt-1">An admin used the kill switch on your identity. Every tool call is blocked until access is restored. Once it is, run <Code>conduct login</Code> to get a new token.</p>
           </div>
           <div>
             <p className="font-semibold">Policy isn&apos;t matching what I expect.</p>

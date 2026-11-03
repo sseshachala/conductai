@@ -141,6 +141,7 @@ const CASES: UseCase[] = [
       "Both are scoped to the run, expire when the run ends, and revoke instantly on policy violation.",
       "The executor is the only minter. No fallback path. No user-token reuse. No trigger-time shortcut.",
       "Agent role permits describe what any run in that role can do. Rotation is a config change.",
+      "Kill switch: deactivate an identity and the gateway, MCP and API reject it at once, and its CLI hooks block every tool call on the developer's machine.",
     ],
     scenario:
       "A code-review agent starts. Guard issues a cond_run scoped to the model calls the playbook needs, and a cond_cred scoped to the GitHub PR API for that repo only. The run finishes. Both tokens die. If the run had tried to call the payroll API instead, cond_cred would have refused before GitHub was ever contacted.",

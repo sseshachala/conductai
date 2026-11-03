@@ -6,6 +6,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ---
 
+## [0.14.24] - 2026-11-03
+
+### Added
+- Kill switch reaches the developer's machine. When the server reports that an
+  admin deactivated this agent identity, the PreToolUse hook blocks every tool
+  call (all surfaces) until a different token is stored via `conduct login`.
+  Expired or unknown tokens never trigger it.
+
+## [0.14.23] - 2026-11-03
+
+### Fixed
+- Rotated agent tokens are written into every MCP client config and
+  `~/.conduct/env` that held the old token (Claude Code, Cursor, Windsurf,
+  Copilot, Codex, Claude Desktop). Previously only `~/.conduct/config.json`
+  was updated, so MCP clients failed with 401 after the 8-hour rotation.
+
 ## [0.14.22] - 2026-10-30
 
 ### Changed
