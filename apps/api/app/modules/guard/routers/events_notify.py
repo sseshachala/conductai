@@ -180,18 +180,20 @@ def _fanout_email(db, workspace_id, channels, subject: str, html: str) -> None:
 
 def _fanout_webhook(channels, payload: dict) -> None:
     """POST a JSON payload to every webhook channel. Same fail-soft contract
-    as _fanout_slack — one bad URL does not block the others."""
+    as _fanout_slack — one bad URL does not block the others. URLs that fail
+    the outbound check are skipped and logged."""
     if not channels:
         return
-    try:
-        import httpx
-    except ImportError:
-        return
+    from app.core.egress import EgressBlocked
+    from app.modules.guard.routers.notifications import post_webhook
+
     for ch in channels:
         if ch.channel_type != "webhook":
             continue
         try:
-            httpx.post(ch.channel_ref, json=payload, timeout=10.0)
+            post_webhook(ch.channel_ref, payload)
+        except EgressBlocked as exc:
+            log.warning("guard.notifications.webhook_refused", channel_id=str(getattr(ch, "id", "")), err=str(exc))
         except Exception:
             pass  # per-channel failure must not stop the fan-out
 
