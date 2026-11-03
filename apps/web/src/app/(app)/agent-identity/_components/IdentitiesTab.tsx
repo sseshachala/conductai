@@ -24,7 +24,7 @@ export function IdentitiesTab({ s }: { s: AgentIdentityState }) {
         <div role="tabpanel" id="tabpanel-identities" aria-labelledby="tab-identities" hidden={activeTab !== "identities"} style={{ display: activeTab === "identities" ? "block" : "none" }}>
           <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text)", marginBottom: 4 }}>Agent identities</div>
           <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "0 0 12px" }}>
-            Every agent has an accountable owner, a risk tier, a lifecycle state, and a certification cadence. Lifecycle is enforced immediately — deactivated or expired identities cannot authenticate. Tier is enforced by Cedar rules referencing <code>context.risk_tier</code> — see <code>docs/guard/examples/</code> for a working sample.
+            Every agent has an accountable owner, a risk tier, a lifecycle state, and a certification cadence. Lifecycle is enforced immediately — deactivated or expired identities cannot authenticate. Deactivating is the kill switch: the gateway, MCP and API reject the identity, and its CLI hooks block every tool call on the developer&apos;s machine. Tier is enforced by Cedar rules referencing <code>context.risk_tier</code> — see <code>docs/guard/examples/</code> for a working sample.
           </p>
           {sourceFilter && (
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, fontSize: 12, color: "var(--text-2)" }}>
@@ -129,7 +129,7 @@ export function IdentitiesTab({ s }: { s: AgentIdentityState }) {
                       >
                         <option value="active">Active</option>
                         <option value="pending_review">Pending review</option>
-                        <option value="deactivated">Deactivated</option>
+                        <option value="deactivated">Deactivated (kill switch)</option>
                         <option value="expired">Expired</option>
                       </select>
                     </td>

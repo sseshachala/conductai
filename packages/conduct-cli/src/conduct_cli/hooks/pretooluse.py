@@ -513,6 +513,14 @@ def main() -> None:
 
     _this_file = Path(__file__).resolve()
 
+    # Kill switch: an admin deactivated this identity. Block every tool call,
+    # whatever the local policy says, until a different token is stored.
+    from conduct_cli.revocation import BLOCK_MESSAGE, is_revoked
+    if is_revoked(load_config().get("agent_token")):
+        print(BLOCK_MESSAGE)
+        print(BLOCK_MESSAGE, file=sys.stderr)
+        sys.exit(2)
+
     # Fail-closed gate
     if _get_fail_mode() == "fail_closed" and not active_policy_path().exists():
         tool_name  = (data.get("tool_name") or "").lower()
