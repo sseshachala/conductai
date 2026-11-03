@@ -37,7 +37,7 @@ With the existing `conduct-e2e-api`, `pgvector/pgvector:pg16`, and
 `redis:7-alpine` images available, and the Python dependencies below installed:
 
 ```sh
-rtk proxy scripts/mcp-canary/.venv/bin/python scripts/mcp-canary/local_smoke.py \
+scripts/mcp-canary/.venv/bin/python scripts/mcp-canary/local_smoke.py \
   --agents 2 --output scripts/mcp-canary/results/local-001
 ```
 
@@ -64,8 +64,8 @@ available for inspection. Do not run local smoke instances concurrently.
 Python 3.11+:
 
 ```sh
-rtk proxy python3 -m venv scripts/mcp-canary/.venv
-rtk proxy scripts/mcp-canary/.venv/bin/pip install -r scripts/mcp-canary/requirements.txt
+python3 -m venv scripts/mcp-canary/.venv
+scripts/mcp-canary/.venv/bin/pip install -r scripts/mcp-canary/requirements.txt
 ```
 
 Create a dedicated workspace using the existing admin flow. Mint distinct scoped
@@ -81,7 +81,7 @@ the report fails coverage. Increase duration/request budget to accommodate the
 handshake, ramp, and reconnects. Tokens are only held in process memory.
 
 ```sh
-rtk proxy scripts/mcp-canary/.venv/bin/python scripts/mcp-canary/run.py \
+scripts/mcp-canary/.venv/bin/python scripts/mcp-canary/run.py \
   --config scripts/mcp-canary/local.json \
   --output scripts/mcp-canary/results/baseline-001
 ```
@@ -89,7 +89,7 @@ rtk proxy scripts/mcp-canary/.venv/bin/python scripts/mcp-canary/run.py \
 Remote targets additionally require an explicit origin + workspace approval:
 
 ```sh
-rtk proxy scripts/mcp-canary/.venv/bin/python scripts/mcp-canary/run.py \
+scripts/mcp-canary/.venv/bin/python scripts/mcp-canary/run.py \
   --config scripts/mcp-canary/local-staging.json \
   --output scripts/mcp-canary/results/staging-001 \
   --approve-target 'https://YOUR-STAGING-API|YOUR-CANARY-WORKSPACE-UUID'
@@ -172,8 +172,8 @@ Before claiming full MCP gateway capacity, add separate work for:
 ## Harness tests
 
 ```sh
-rtk proxy scripts/mcp-canary/.venv/bin/pip install pytest
-rtk proxy scripts/mcp-canary/.venv/bin/python -m pytest -q scripts/mcp-canary/test_canary.py
+scripts/mcp-canary/.venv/bin/pip install pytest
+scripts/mcp-canary/.venv/bin/python -m pytest -q scripts/mcp-canary/test_canary.py
 ```
 
 Tests include actual local HTTP fixtures exercising initialization, discovery,

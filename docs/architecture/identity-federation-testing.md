@@ -50,7 +50,7 @@ For the existing unfederated local baseline (requires the dedicated Clerk test
 configuration described in `tools/security-e2e/README.md`):
 
 ```sh
-rtk proxy python3.11 tools/security-e2e/local.py test \
+python3.11 tools/security-e2e/local.py test \
   --credentials-file /path/to/sandbox-credentials --allow-test-users \
   --grep 'owner token lists MCP tools only for its workspace'
 ```

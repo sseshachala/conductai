@@ -11,16 +11,16 @@ Create a disposable loopback database (never reuse a development/production DB):
 rtk docker run --rm -d --name conduct-federation-phase2 \
   -e POSTGRES_HOST_AUTH_METHOD=trust -e POSTGRES_DB=conduct_federation_test \
   -p 127.0.0.1::5432 pgvector/pgvector:pg16
-rtk proxy docker port conduct-federation-phase2 5432
+docker port conduct-federation-phase2 5432
 ```
 
 From `apps/api`, set `DATABASE_URL` to
 `postgresql://postgres@127.0.0.1:<reported-port>/conduct_federation_test` and run:
 
 ```sh
-rtk proxy env PYTHONPATH=. python -m alembic upgrade head
-rtk proxy env PYTHONPATH=. python ../../tools/federation/phase2_harness.py
-rtk proxy env PYTHONPATH=. python -m alembic downgrade 0153
+env PYTHONPATH=. python -m alembic upgrade head
+env PYTHONPATH=. python ../../tools/federation/phase2_harness.py
+env PYTHONPATH=. python -m alembic downgrade 0153
 ```
 
 The final command must fail with the explicit data-preserving rollback message:
@@ -63,7 +63,7 @@ authentication adapter or provider inference test.
 On a fresh disposable `conduct_federation_test` database, migrate to head and run:
 
 ```sh
-rtk proxy env PYTHONPATH=. FEDERATION_RESTRICTED_TEST=1 python ../../tools/federation/phase3_harness.py
+env PYTHONPATH=. FEDERATION_RESTRICTED_TEST=1 python ../../tools/federation/phase3_harness.py
 ```
 
 Run from `apps/api` with `DATABASE_URL` set as above. The harness first reuses the
@@ -84,7 +84,7 @@ missing database prerequisites fail the job, rather than skipping the test.
 After migrating the disposable database above, run from `apps/api`:
 
 ```sh
-rtk proxy env PYTHONPATH=. python ../../tools/federation/console_foundation_harness.py
+env PYTHONPATH=. python ../../tools/federation/console_foundation_harness.py
 ```
 
 This reuses the database safety gate and synthetic credential setup. It checks
@@ -100,7 +100,7 @@ Use a fresh disposable loopback database named `conduct_migration_test`, set
 `DATABASE_URL`, and run from `apps/api`:
 
 ```sh
-rtk proxy env PYTHONPATH=. python ../../tools/federation/migration_lock_harness.py
+env PYTHONPATH=. python ../../tools/federation/migration_lock_harness.py
 ```
 
 The harness migrates to 0153, holds a read transaction on `integrations`, proves

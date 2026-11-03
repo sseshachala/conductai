@@ -96,7 +96,7 @@ Migrate to `0157` first. An administrator with deployment database access can ma
 a Keycloak subject to an existing Conduct workspace:
 
 ```sh
-rtk proxy python -m app.modules.auth.console.bootstrap \
+python -m app.modules.auth.console.bootstrap \
   --subject '<Keycloak user ID>' --workspace-id '<existing workspace UUID>' \
   --role admin --name 'Console administrator'
 ```
@@ -122,7 +122,7 @@ tests, and the web `src/lib/auth/*.test.*` tests. For real PostgreSQL checks, us
 the disposable database procedure in `tools/federation/README.md`, then run:
 
 ```sh
-rtk proxy env PYTHONPATH=. python ../../tools/federation/console_proxy_harness.py
+env PYTHONPATH=. python ../../tools/federation/console_proxy_harness.py
 ```
 
 The harness verifies signed identity exchange, explicit provisioning,

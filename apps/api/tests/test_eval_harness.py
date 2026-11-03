@@ -1,7 +1,7 @@
 """
 Eval harness tests — structural mode only (no LLM calls, no DB).
 
-These run as part of the standard pytest suite (``rtk pytest``).
+These run as part of the standard pytest suite (``pytest``).
 They enforce a minimum quality floor across all 18+ pre-built playbooks.
 
 Grade thresholds:

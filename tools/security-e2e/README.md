@@ -63,20 +63,20 @@ testing token for bot-detection compatibility, not an authorization bypass.
 From the repository root, with credentials injected into the command's process:
 
 ```sh
-rtk proxy python3.11 tools/security-e2e/local.py check
-rtk proxy python3.11 tools/security-e2e/local.py infra
-rtk proxy python3.11 tools/security-e2e/local.py up
-rtk proxy python3.11 tools/security-e2e/local.py test
-rtk proxy python3.11 tools/security-e2e/local.py status
-rtk proxy python3.11 tools/security-e2e/local.py stop
+python3.11 tools/security-e2e/local.py check
+python3.11 tools/security-e2e/local.py infra
+python3.11 tools/security-e2e/local.py up
+python3.11 tools/security-e2e/local.py test
+python3.11 tools/security-e2e/local.py status
+python3.11 tools/security-e2e/local.py stop
 ```
 
 `infra` needs no Clerk configuration and starts only PostgreSQL/Redis.
 For the explicitly authorized, ignored local credentials file, use:
 
 ```sh
-rtk proxy python3.11 tools/security-e2e/local.py up --credentials-file .local_secret --allow-test-users --initialize-local-key
-rtk proxy python3.11 tools/security-e2e/local.py test --credentials-file .local_secret --allow-test-users
+python3.11 tools/security-e2e/local.py up --credentials-file .local_secret --allow-test-users --initialize-local-key
+python3.11 tools/security-e2e/local.py test --credentials-file .local_secret --allow-test-users
 ```
 
 To continue functional testing with table-owner behavior, append
@@ -95,8 +95,8 @@ from the existing-user invitation baseline. `--grep '@smoke'` runs ingress.
 For the current owner-mode baseline:
 
 ```sh
-rtk proxy python3.11 tools/security-e2e/local.py test --credentials-file .local_secret --allow-test-users --database-mode owner --grep '@baseline'
-rtk proxy python3.11 tools/security-e2e/local.py test --credentials-file .local_secret --allow-test-users --database-mode owner --grep '@security'
+python3.11 tools/security-e2e/local.py test --credentials-file .local_secret --allow-test-users --database-mode owner --grep '@baseline'
+python3.11 tools/security-e2e/local.py test --credentials-file .local_secret --allow-test-users --database-mode owner --grep '@security'
 ```
 
 ## Bounded Production Journey
@@ -114,9 +114,9 @@ PROD_E2E_B_PASSWORD=
 Run from the repository root:
 
 ```sh
-rtk proxy python3.11 tools/security-e2e/production.py --authorize-gmail
+python3.11 tools/security-e2e/production.py --authorize-gmail
 
-rtk proxy python3.11 tools/security-e2e/production.py \
+python3.11 tools/security-e2e/production.py \
   --credentials-file ~/.conduct/e2e/production-accounts.env \
   --allow-disposable-workspaces
 ```
@@ -127,7 +127,7 @@ failure. The same preflight and cleanup guards run for targeted selections.
 To diagnose Gateway fixtures without inference or workspace mutations:
 
 ```sh
-rtk proxy python3.11 tools/security-e2e/production.py \
+python3.11 tools/security-e2e/production.py \
   --credentials-file ~/.conduct/e2e/production-accounts.env \
   --gateway-preflight
 ```

@@ -53,7 +53,7 @@ For the running Keycloak console stack, execute just the shared transport stage
 without invoking the local Clerk provisioning suite:
 
 ```sh
-rtk proxy python3.11 tools/security-e2e/local.py transport-test \
+python3.11 tools/security-e2e/local.py transport-test \
   --transport-config /private/tmp/conduct-console-cli-home/.conduct/config.json \
   --transport-ca /private/tmp/conduct-console-test-ca.crt
 ```
@@ -61,7 +61,7 @@ rtk proxy python3.11 tools/security-e2e/local.py transport-test \
 For SaaS, use a dedicated disposable-workspace CLI login:
 
 ```sh
-rtk proxy python3.11 tools/security-e2e/production.py --transport-only \
+python3.11 tools/security-e2e/production.py --transport-only \
   --transport-config /path/to/saas-test-home/.conduct/config.json
 ```
 
