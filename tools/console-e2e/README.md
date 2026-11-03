@@ -28,7 +28,7 @@ After ingress starts, export its **public certificate only**:
 
 ```sh
 rtk docker cp conduct-console-e2e-ingress-1:/data/caddy/pki/authorities/local/root.crt /private/tmp/conduct-console-test-ca.crt
-rtk proxy openssl x509 -in /private/tmp/conduct-console-test-ca.crt -noout -subject -fingerprint -sha256
+openssl x509 -in /private/tmp/conduct-console-test-ca.crt -noout -subject -fingerprint -sha256
 ```
 
 Review and import this dedicated test root into the user login keychain using
@@ -61,7 +61,7 @@ Disable automatic updates to keep testing the checked-out source. Set
 `SSL_CERT_FILE` to the exported public test CA; never disable TLS verification.
 
 ```sh
-rtk proxy env HOME=/private/tmp/conduct-console-cli-home \
+env HOME=/private/tmp/conduct-console-cli-home \
   CONDUCT_NO_AUTOUPDATE=1 SSL_CERT_FILE=/private/tmp/conduct-console-test-ca.crt \
   PYTHONPATH=<worktree>/packages/conduct-cli/src \
   <python-with-cli-dependencies> -m conduct_cli.main login \
@@ -81,7 +81,7 @@ configuration file contents, or bearer tokens in screenshots.
 Keep the existing disposable stack running, trust its CA in the browser, and run:
 
 ```sh
-rtk proxy python3.11 tools/console-e2e/browser.py \
+python3.11 tools/console-e2e/browser.py \
   --ca /private/tmp/conduct-console-test-ca.crt --allow-fixture-mutations
 ```
 

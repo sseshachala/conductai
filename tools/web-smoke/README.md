@@ -25,7 +25,7 @@ fail setup; CI does not fall back to dev-mode admin or omit the role matrix.
 Run the full nightly browser lane on a branch:
 
 ```bash
-rtk proxy gh workflow run nightly.yml --ref <branch> -f only=web-smoke
+gh workflow run nightly.yml --ref <branch> -f only=web-smoke
 ```
 
 Chromium covers all static pages, golden flows, and the four-role matrix.

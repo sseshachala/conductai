@@ -50,9 +50,9 @@ a separate demo-provider adaptation; they are not established by OIDC support.
 Run inside each service's environment; it prints names/problems, never values:
 
 ```sh
-rtk proxy python3 tools/console-e2e/env_check.py --service api
-rtk proxy python3 tools/console-e2e/env_check.py --service web
-rtk proxy python3 tools/console-e2e/env_check.py --service worker
+python3 tools/console-e2e/env_check.py --service api
+python3 tools/console-e2e/env_check.py --service web
+python3 tools/console-e2e/env_check.py --service worker
 ```
 
 This checks the core on-prem profile and known hosted defaults. It is not an

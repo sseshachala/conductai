@@ -15,7 +15,7 @@ def main():
     if url.host not in ("127.0.0.1", "localhost") or url.database != "conduct_migration_test":
         raise SystemExit("Requires disposable loopback database conduct_migration_test")
     api = Path(__file__).resolve().parents[2] / "apps" / "api"
-    command = ["rtk", "proxy", sys.executable, "-m", "alembic"]
+    command = [sys.executable, "-m", "alembic"]
 
     def migrate(*args):
         return subprocess.run(command + list(args), cwd=api, capture_output=True, text=True, timeout=30)

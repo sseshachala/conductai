@@ -132,7 +132,7 @@ PVCs when uninstalling. The bundled PostgreSQL and Redis each use one replica.
 The local Docker setup is also available:
 
 ```sh
-rtk proxy python3.11 tools/console-e2e/local.py \
+python3.11 tools/console-e2e/local.py \
   --issuer https://YOUR-IDP/realms/YOUR-REALM \
   --admin-subject YOUR-ADMIN-USER-ID \
   --viewer-subject YOUR-VIEWER-USER-ID

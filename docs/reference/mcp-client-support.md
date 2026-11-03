@@ -128,7 +128,7 @@ and on-prem; select the deployment and API in the plan. Credentials are environm
 references, not values in the plan.
 
 ```bash
-rtk proxy python3 tools/mcp-acceptance/acceptance.py \
+python3 tools/mcp-acceptance/acceptance.py \
   --plan /private/tmp/mcp-acceptance-plan.json \
   --report /private/tmp/mcp-acceptance-results.json \
   --matrix /private/tmp/mcp-client-support.md \
@@ -209,7 +209,7 @@ loopback database connection supplied through `MCP_ACCEPTANCE_DATABASE_URL`.
 Its snapshot stores UUIDs and timestamps, never tokens or hashes.
 
 ```bash
-rtk proxy python3 tools/mcp-acceptance/fixture.py expire \
+python3 tools/mcp-acceptance/fixture.py expire \
   --workspace WORKSPACE_UUID --identity AGENT_UUID --credential CREDENTIAL_UUID \
   --snapshot /private/tmp/mcp-credential-fixture.json --allow-disposable-fixture
 ```
