@@ -354,6 +354,11 @@ def _rotate_agent_token(cfg: dict) -> bool:
         cfg["token_expires_at"] = (_dt.datetime.now(_dt.timezone.utc) + _dt.timedelta(seconds=expires_in)).isoformat()
         _atomic_write(CONFIG_PATH, cfg)
         return True
+    except urllib.error.HTTPError as exc:
+        from conduct_cli.revocation import is_deactivation, mark_revoked
+        if is_deactivation(exc):
+            mark_revoked(cfg.get("agent_token"))
+        return False
     except Exception:
         return False
 

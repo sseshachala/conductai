@@ -26,3 +26,9 @@ def _no_real_token_propagation(monkeypatch):
     # Token rotation rewrites client configs under $HOME; tests opt in with their own paths.
     from conduct_cli import token_propagation
     monkeypatch.setattr(token_propagation, "_candidate_paths", lambda: [])
+
+
+@pytest.fixture(autouse=True)
+def _isolated_revocation_marker(tmp_path, monkeypatch):
+    from conduct_cli import revocation
+    monkeypatch.setattr(revocation, "MARKER_PATH", tmp_path / "identity-revoked.json")

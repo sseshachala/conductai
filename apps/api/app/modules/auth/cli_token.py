@@ -164,7 +164,7 @@ def rotate_identity_by_refresh(
     if not identity:
         raise HTTPException(status_code=401, detail="Refresh token not found")
     if identity.lifecycle_state in ("deactivated", "expired") or identity.token_type != "cli":
-        raise HTTPException(status_code=401, detail="Agent identity is inactive")
+        raise _inactive_identity(identity)
 
     now = datetime.now(timezone.utc)
     if identity.refresh_token_expires_at and identity.refresh_token_expires_at < now:
@@ -202,6 +202,16 @@ def rotate_identity_by_refresh(
     return identity, agent_raw, refresh_raw
 
 
+# Lets the CLI tell an admin deactivation (kill switch) apart from an expired
+# or unknown token: hooks block all tool calls only on this explicit signal.
+IDENTITY_STATE_HEADER = "X-Conduct-Identity-State"
+
+
+def _inactive_identity(identity: AgentIdentity | None) -> HTTPException:
+    headers = {IDENTITY_STATE_HEADER: "deactivated"} if identity is not None and identity.lifecycle_state == "deactivated" else None
+    return HTTPException(status_code=401, detail="Agent identity is inactive", headers=headers)
+
+
 def _rotate_session(hashed: str, db: Session) -> tuple[AgentIdentity, str, str]:
     session = db.query(AgentCredentialSession).filter(
         AgentCredentialSession.refresh_token_hash == hashed,
@@ -214,7 +224,7 @@ def _rotate_session(hashed: str, db: Session) -> tuple[AgentIdentity, str, str]:
         raise HTTPException(status_code=401, detail="Refresh token expired")
     identity = db.query(AgentIdentity).filter(AgentIdentity.id == session.agent_identity_id).first()
     if identity is None or identity.token_type != "cli" or identity.lifecycle_state in ("deactivated", "expired"):
-        raise HTTPException(status_code=401, detail="Agent identity is inactive")
+        raise _inactive_identity(identity)
     member = db.execute(text(
         "SELECT clerk_user_id FROM guard_member_config "
         "WHERE agent_identity_id = :aid AND workspace_id = :ws AND active = true LIMIT 1"

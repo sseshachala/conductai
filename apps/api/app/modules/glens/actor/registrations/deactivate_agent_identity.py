@@ -88,6 +88,10 @@ def _execute_deactivate(ctx: ActionCtx, resolved: dict[str, Any]) -> dict[str, A
     agent.lifecycle_state = "deactivated"
     agent.deactivated_at = datetime.now(timezone.utc)
     ctx.db.commit()
+    # Drop cached auth for this identity now, as the dashboard PATCH path does,
+    # instead of waiting for the auth-cache TTL.
+    from app.core.auth_events import publish_identity_disabled
+    publish_identity_disabled(str(agent.id))
 
     return {
         "agent_id": agent_id,

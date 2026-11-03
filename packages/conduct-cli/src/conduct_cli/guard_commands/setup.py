@@ -401,7 +401,12 @@ def _proactive_token_refresh() -> None:
             except Exception:
                 pass  # not a member or endpoint missing — keep server default
         _guard_shared._save_guard_config(cfg)
-    except Exception:
+    except Exception as exc:
+        from conduct_cli.revocation import BLOCK_MESSAGE, is_deactivation, mark_revoked
+        if is_deactivation(exc):
+            mark_revoked(cfg.get("agent_token"))
+            print(f"  {_guard_shared.RED}{BLOCK_MESSAGE}{_guard_shared.RESET}")
+            return
         print(f"  {_guard_shared.YELLOW}⚠ Token refresh failed — run `conduct login` if sync fails{_guard_shared.RESET}")
 
 
