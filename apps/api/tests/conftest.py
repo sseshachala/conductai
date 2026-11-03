@@ -64,6 +64,23 @@ _auth_mod.require_permission = _permissive_permission
 
 
 import pytest  # noqa: E402
+import pytest_forked  # noqa: E402
+
+# pytest 9.2 stores TestReport.nodeid as a NodeId object in ``_id``; pytest-forked
+# marshals report dicts out of the child and cannot serialise it, so every
+# forked test exited with status 3. Send the plain nodeid instead.
+_serialize_forked_report = pytest_forked.serialize_report
+
+
+def _serialize_report_with_plain_nodeid(rep):
+    data = _serialize_forked_report(rep)
+    if "_id" in data:
+        del data["_id"]
+        data["nodeid"] = rep.nodeid
+    return data
+
+
+pytest_forked.serialize_report = _serialize_report_with_plain_nodeid
 
 
 @pytest.fixture
