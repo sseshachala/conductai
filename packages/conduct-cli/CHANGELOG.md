@@ -6,6 +6,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ---
 
+## [0.15.0] - 2026-11-03
+
+### Added
+- `conduct audit feed`: continuous pull feed of Guard audit events for a SIEM
+  (Splunk, Sentinel, Falcon LogScale, Fluent Bit). Writes NDJSON to stdout or
+  `--output`, with `--follow` polling every `--interval` seconds (default 60).
+  Uses the agent token over MCP (`get_audit_feed`). The cursor is saved after
+  each page, so a restart resumes without gaps or duplicates. Needs the
+  `platform.audit_log.view` permission. See `docs/reference/siem-feed.md`.
+
 ## [0.14.24] - 2026-11-03
 
 ### Added
