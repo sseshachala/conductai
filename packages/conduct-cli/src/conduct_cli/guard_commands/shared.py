@@ -67,10 +67,13 @@ def _save_guard_config(data: dict, workspace_id: str | None = None):
             existing = json.loads(CONFIG_PATH.read_text())
         except Exception:
             pass
+    previous_token = existing.get("agent_token")
     existing.update(data)
     CONFIG_PATH.write_text(json.dumps(existing, indent=2))
     from conduct_cli.hooks.base import restrict_to_owner
     restrict_to_owner(CONFIG_PATH)
+    from conduct_cli.token_propagation import propagate_agent_token
+    propagate_agent_token(previous_token, existing.get("agent_token"))
 
 
 def _require_guard_config() -> dict:
