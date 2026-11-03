@@ -120,7 +120,7 @@ jobs:
         working-directory: apps/api
       - name: Federation MCP authorization (restricted PostgreSQL role)
         env:
-          DATABASE_URL: postgresql://marshal:marshal@localhost:5432/conduct_federation_test
+          DATABASE_URL: postgresql+psycopg2://marshal:marshal@localhost:5432/conduct_federation_test
           FEDERATION_RESTRICTED_TEST: "1"
           PYTHONPATH: .
         run: |
@@ -144,7 +144,7 @@ jobs:
           "$RUNNER_TEMP/agent-guard/bin/python" -m pytest packages/conduct-agent-guard/tests -q
       - name: Federation LiteLLM, Gateway and workflow HTTP journeys
         env:
-          DATABASE_URL: postgresql://marshal:marshal@localhost:5432/conduct_federation_test
+          DATABASE_URL: postgresql+psycopg2://marshal:marshal@localhost:5432/conduct_federation_test
           REDIS_URL: redis://localhost:6379/0
           # Harnesses run a local mock upstream / LiteLLM proxy on 127.0.0.1;
           # outbound URL validation blocks loopback unless explicitly allowed.
