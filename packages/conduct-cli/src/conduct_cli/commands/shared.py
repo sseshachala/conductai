@@ -179,9 +179,20 @@ def _atomic_write(path: Path, data: dict, *, merge: bool = True) -> None:
             existing = json.loads(path.read_text())
         except Exception:
             pass
+    previous_token = _stored_agent_token(path) if path == CONFIG_PATH else None
     existing.update(data)
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(existing, indent=2))
     os.replace(tmp, path)
     from conduct_cli.hooks.base import restrict_to_owner
     restrict_to_owner(path)
+    if path == CONFIG_PATH:
+        from conduct_cli.token_propagation import propagate_agent_token
+        propagate_agent_token(previous_token, existing.get("agent_token"))
+
+
+def _stored_agent_token(path: Path) -> str | None:
+    try:
+        return json.loads(path.read_text()).get("agent_token")
+    except Exception:
+        return None
