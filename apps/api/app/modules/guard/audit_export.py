@@ -10,6 +10,7 @@ for exactly that reason.
 """
 from __future__ import annotations
 
+import base64
 import csv
 import io
 import json
@@ -18,7 +19,7 @@ from typing import Iterator
 from urllib.parse import urlencode
 from uuid import UUID
 
-from sqlalchemy import func
+from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session
 
 from app.core.database import SessionLocal
@@ -194,3 +195,60 @@ def stream_export(workspace_id: UUID, since, until, decisions, tool, fmt: str,
             yield buf.getvalue()
     finally:
         db.close()
+
+
+# ── Continuous feed (SIEM pull) ────────────────────────────────────────────
+# Pages through events in chain order with an opaque (ts, id) cursor. Rows
+# newer than FEED_LAG are held back: ts is assigned before the per-workspace
+# chain lock, so a slower transaction can commit a slightly older ts after a
+# faster one. Waiting out the lag keeps the cursor from skipping it.
+FEED_LAG = timedelta(seconds=60)
+FEED_DEFAULT_LIMIT = 500
+FEED_MAX_LIMIT = 1000
+FEED_DEFAULT_LOOKBACK = timedelta(hours=24)
+_CURSOR_FLOOR_ID = UUID(int=0)
+
+
+def encode_cursor(ts: datetime, event_id: UUID) -> str:
+    raw = json.dumps({"ts": _utc(ts).isoformat(), "id": str(event_id)}, separators=(",", ":"))
+    return base64.urlsafe_b64encode(raw.encode()).decode().rstrip("=")
+
+
+def decode_cursor(cursor: str) -> tuple[datetime, UUID]:
+    try:
+        padded = cursor + "=" * (-len(cursor) % 4)
+        data = json.loads(base64.urlsafe_b64decode(padded.encode()))
+        return _utc(datetime.fromisoformat(data["ts"])), UUID(data["id"])
+    except Exception as exc:
+        raise ExportRangeError("invalid cursor") from exc
+
+
+def feed_page(db: Session, workspace_id: UUID, *, cursor: str | None = None,
+              since: datetime | None = None, limit: int = FEED_DEFAULT_LIMIT,
+              now: datetime | None = None) -> dict:
+    """One page of events after ``cursor`` (or from ``since``), oldest first."""
+    limit = max(1, min(int(limit), FEED_MAX_LIMIT))
+    now = _utc(now or datetime.now(timezone.utc))
+    if cursor:
+        after_ts, after_id = decode_cursor(cursor)
+    else:
+        after_ts = _utc(since) if since else now - FEED_DEFAULT_LOOKBACK
+        after_id = _CURSOR_FLOOR_ID
+    horizon = now - FEED_LAG
+    rows = (db.query(GuardAuditEvent)
+            .filter(GuardAuditEvent.workspace_id == workspace_id,
+                    GuardAuditEvent.ts <= horizon,
+                    or_(GuardAuditEvent.ts > after_ts,
+                        and_(GuardAuditEvent.ts == after_ts, GuardAuditEvent.id > after_id)))
+            .order_by(GuardAuditEvent.ts.asc(), GuardAuditEvent.id.asc())
+            .limit(limit + 1)
+            .all())
+    has_more = len(rows) > limit
+    rows = rows[:limit]
+    next_cursor = encode_cursor(rows[-1].ts, rows[-1].id) if rows else encode_cursor(after_ts, after_id)
+    return {
+        "events": [serialize_event(e) for e in rows],
+        "next_cursor": next_cursor,
+        "has_more": has_more,
+        "lag_seconds": int(FEED_LAG.total_seconds()),
+    }

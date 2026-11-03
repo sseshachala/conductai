@@ -71,7 +71,67 @@ def export_audit_log(ctx, since: str, until: str, format: str = "ndjson",
     }
 
 
+def get_audit_feed(ctx, cursor: str | None = None, since: str | None = None, limit: int | None = None):
+    """Next page of audit events after ``cursor`` — the pull feed for SIEM collectors."""
+    from app.core.auth import check_permission
+    from app.core.database import SessionLocal
+    from app.core.workspace_context import set_workspace_rls
+    from app.modules.guard import audit_export as ax
+    from app.modules.guard.routers.policies_helpers import _write_audit
+
+    try:
+        start = ax.parse_bound(since) if since and not cursor else None
+        if cursor:
+            ax.decode_cursor(cursor)
+    except (ax.ExportRangeError, ValueError) as exc:
+        return {"error": str(exc)}
+
+    db = SessionLocal()
+    try:
+        try:
+            check_permission(user_id=getattr(ctx, "clerk_user_id", None), workspace_id=str(ctx.workspace_id),
+                             credentials=None, db=db, permission=ax.EXPORT_PERMISSION)
+        except HTTPException as exc:
+            return {"error": f"forbidden: reading the audit feed requires {ax.EXPORT_PERMISSION}",
+                    "status_code": exc.status_code}
+        set_workspace_rls(db, ctx.workspace_id)
+        ws = _uuid.UUID(str(ctx.workspace_id))
+        if not cursor:
+            # Record when a feed starts; follow-up pages are routine polling.
+            _write_audit(db, ws, "audit.feed_start", "audit_feed", "export",
+                         actor_id=getattr(ctx, "clerk_user_id", None),
+                         details=f"since={start.isoformat() if start else 'default'}")
+        page = ax.feed_page(db, ws, cursor=cursor, since=start,
+                            limit=limit or ax.FEED_DEFAULT_LIMIT)
+    finally:
+        db.close()
+    return {"kind": "audit_feed", **page}
+
+
 TOOLS: list[ToolDef] = [ToolDef(
+    name="get_audit_feed",
+    description=(
+        "Continuous pull feed of Guard audit events for SIEM collectors (Splunk, Sentinel, Falcon "
+        "LogScale) via `conduct audit feed`. Returns up to `limit` events (default 500, max 1000) "
+        "after `cursor`, oldest first, with hash-chain fields, plus next_cursor and has_more. Pass "
+        "next_cursor on the next call; omit it on the first call and optionally set `since` "
+        "(default: last 24 hours). Events newer than lag_seconds are held back so none are skipped. "
+        "Needs the platform.audit_log.view permission."
+    ),
+    input_schema={
+        "type": "object",
+        "properties": {
+            "cursor": {"type": "string", "description": "next_cursor from the previous call"},
+            "since": {"type": "string", "description": "ISO-8601 start for the first call (ignored with cursor)"},
+            "limit": {"type": "integer", "minimum": 1, "maximum": 1000, "default": 500},
+        },
+        "required": [],
+    },
+    impl=get_audit_feed,
+    permission="platform.audit_log.view",
+    annotations=_READ_ONLY,
+    tags=_LENS_TAGS,
+), ToolDef(
     name="export_audit_log",
     description=(
         "Export the Guard audit log (every allow/warn/block decision with its hash-chain fields) for a "
