@@ -64,8 +64,13 @@ def verify_lines(lines, *, allow_gaps: bool = False) -> dict:
 
 
 def cmd_audit(args) -> None:
+    if getattr(args, "audit_command", None) == "feed":
+        from conduct_cli.commands.audit_feed import cmd_audit_feed
+        cmd_audit_feed(args)
+        return
     if getattr(args, "audit_command", None) != "verify":
-        print("Usage: conduct audit verify <export.ndjson> [--allow-gaps]", file=sys.stderr)
+        print("Usage: conduct audit verify <export.ndjson> [--allow-gaps]\n"
+              "       conduct audit feed [--since ISO] [--follow] [--output FILE]", file=sys.stderr)
         sys.exit(1)
     try:
         with Path(args.file).open(encoding="utf-8") as fh:
@@ -85,9 +90,11 @@ def cmd_audit(args) -> None:
 
 
 def register_audit(sub) -> None:
-    audit_p = sub.add_parser("audit", help="Audit log tools (offline export verification)")
+    audit_p = sub.add_parser("audit", help="Audit log tools (export verification, SIEM feed)")
     audit_sub = audit_p.add_subparsers(dest="audit_command")
     v = audit_sub.add_parser("verify", help="Verify the hash chain of an NDJSON audit export")
     v.add_argument("file", help="NDJSON file from `GET /guard/events/export` / Lens")
     v.add_argument("--allow-gaps", action="store_true",
                    help="Only recompute each row's hash; skip linkage (for decision/tool-filtered exports)")
+    from conduct_cli.commands.audit_feed import register_feed
+    register_feed(audit_sub)
