@@ -339,6 +339,30 @@ def list_audit_log(
     ]
 
 
+@audit_router.get("/feed-status")
+def audit_feed_status(
+    workspace_id: str,
+    active_workspace_id: str = Depends(get_workspace_id),
+    _: str = Depends(require_permission("platform.audit_log.view")),
+    db: Session = Depends(get_db),
+):
+    """SIEM pull-feed collectors for the Audit page: last pull, lag, stale."""
+    from app.modules.guard.audit_export import feed_status
+
+    _enforce_workspace(workspace_id, active_workspace_id)
+    status = feed_status(workspace_id)
+    actors = [c["actor_id"] for c in status["collectors"]]
+    emails: dict[str, str] = {}
+    if actors:
+        rows = db.execute(
+            text("SELECT clerk_id, email FROM users WHERE clerk_id = ANY(:ids)"), {"ids": actors}
+        ).fetchall()
+        emails = {r.clerk_id: r.email for r in rows}
+    for c in status["collectors"]:
+        c["actor_email"] = emails.get(c["actor_id"])
+    return status
+
+
 # ── Workspace preferences ─────────────────────────────────────────────────────
 
 _PREFERENCE_DEFAULTS = {

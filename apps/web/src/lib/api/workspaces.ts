@@ -1,6 +1,22 @@
 import { API, AuthFetch, del, json, patch, post, put } from "./client"
 import { cachedGet, invalidating } from "./sharedCache"
 
+export interface AuditFeedCollector {
+  actor_id: string
+  actor_email: string | null
+  last_pull_at: string
+  cursor_ts: string
+  lag_seconds: number
+  last_page_events: number
+  stale: boolean
+}
+
+export interface AuditFeedStatus {
+  available: boolean
+  collectors: AuditFeedCollector[]
+  stale_after_seconds: number
+}
+
 const base = (id: string) => `${API}/workspaces/${id}`
 
 export const workspaces = {
@@ -50,6 +66,9 @@ export const workspaces = {
     const qs = q.toString() ? `?${q}` : ""
     return json<any[]>(f, `${base(workspaceId)}/audit-log${qs}`)
   },
+
+  auditFeedStatus: (f: AuthFetch, workspaceId: string) =>
+    json<AuditFeedStatus>(f, `${base(workspaceId)}/audit-log/feed-status`),
 
   agentRunTokens: {
     list: (f: AuthFetch, workspaceId: string) =>

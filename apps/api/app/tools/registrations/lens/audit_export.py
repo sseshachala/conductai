@@ -105,7 +105,27 @@ def get_audit_feed(ctx, cursor: str | None = None, since: str | None = None, lim
                             limit=limit or ax.FEED_DEFAULT_LIMIT)
     finally:
         db.close()
+    ax.record_feed_pull(ws, getattr(ctx, "clerk_user_id", None), page)
     return {"kind": "audit_feed", **page}
+
+
+def get_audit_feed_status(ctx):
+    """Which SIEM collectors are pulling the audit feed, when they last pulled, and their lag."""
+    from app.core.auth import check_permission
+    from app.core.database import SessionLocal
+    from app.modules.guard import audit_export as ax
+
+    db = SessionLocal()
+    try:
+        try:
+            check_permission(user_id=getattr(ctx, "clerk_user_id", None), workspace_id=str(ctx.workspace_id),
+                             credentials=None, db=db, permission=ax.EXPORT_PERMISSION)
+        except HTTPException as exc:
+            return {"error": f"forbidden: feed status requires {ax.EXPORT_PERMISSION}",
+                    "status_code": exc.status_code}
+    finally:
+        db.close()
+    return {"kind": "audit_feed_status", **ax.feed_status(str(ctx.workspace_id))}
 
 
 TOOLS: list[ToolDef] = [ToolDef(
@@ -128,6 +148,19 @@ TOOLS: list[ToolDef] = [ToolDef(
         "required": [],
     },
     impl=get_audit_feed,
+    permission="platform.audit_log.view",
+    annotations=_READ_ONLY,
+    tags=_LENS_TAGS,
+), ToolDef(
+    name="get_audit_feed_status",
+    description=(
+        "Status of the SIEM audit feed: each collector pulling via `conduct audit feed`, when it last "
+        "pulled, how far behind it is (lag_seconds) and whether it is stale (no pull for 15 minutes). "
+        "Call this when the user asks whether their SIEM / Splunk / Sentinel is receiving audit events. "
+        "Needs the platform.audit_log.view permission."
+    ),
+    input_schema={"type": "object", "properties": {}, "required": []},
+    impl=get_audit_feed_status,
     permission="platform.audit_log.view",
     annotations=_READ_ONLY,
     tags=_LENS_TAGS,

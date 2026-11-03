@@ -3,6 +3,7 @@
 import { useAuth } from "@/lib/auth/client"
 import AppShell from "@/components/AppShell"
 import AuditLog from "@/components/settings/AuditLog"
+import SiemFeedCard from "@/components/settings/SiemFeedCard"
 
 export default function AuditPage() {
   const { getToken } = useAuth()
@@ -41,6 +42,7 @@ export default function AuditPage() {
             All workspace activity — credential changes, agent runs, and member events.
           </p>
         </div>
+        <SiemFeedCard />
         <AuditLog workspaceId="" getToken={getToken} />
       </div>
     </AppShell>

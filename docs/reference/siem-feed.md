@@ -44,6 +44,10 @@ offline with `conduct audit verify <file>`.
 Starting a feed (a call without a cursor) is itself recorded in the audit log as
 `audit.feed_start`.
 
+## Check the feed is flowing
+
+The **Audit** page in the app shows a **SIEM feed** card. It lists each collector, when it last pulled, and how far behind it is. A collector is marked **Stale** after 15 minutes with no pull. In Lens or any MCP client, `get_audit_feed_status` returns the same data. Both need `platform.audit_log.view`.
+
 ## Collector examples
 
 ### Splunk Universal Forwarder

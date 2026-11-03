@@ -252,3 +252,71 @@ def feed_page(db: Session, workspace_id: UUID, *, cursor: str | None = None,
         "has_more": has_more,
         "lag_seconds": int(FEED_LAG.total_seconds()),
     }
+
+
+# ── Feed status (last pull per collector) ────────────────────────────────────
+# Each feed page updates one Redis hash field per collector (the calling user),
+# so the Audit page can show whether a SIEM is still pulling and how far behind
+# it is without writing an audit event on every poll. Losing Redis only blanks
+# the status until the next pull.
+
+FEED_STALE_AFTER = timedelta(minutes=15)
+FEED_STATUS_TTL = timedelta(days=30)
+
+
+def _feed_status_key(workspace_id) -> str:
+    return f"audit_feed:status:{workspace_id}"
+
+
+def _status_redis():
+    import redis
+
+    from app.core.config import settings
+    return redis.from_url(settings.redis_url, decode_responses=True)
+
+
+def record_feed_pull(workspace_id, actor: str | None, page: dict, *,
+                     now: datetime | None = None, client=None) -> None:
+    """Remember this collector's last pull. Never raises."""
+    try:
+        cursor_ts, _ = decode_cursor(page["next_cursor"])
+        now = _utc(now or datetime.now(timezone.utc))
+        r = client or _status_redis()
+        key = _feed_status_key(workspace_id)
+        r.hset(key, actor or "unknown", json.dumps({
+            "last_pull_at": now.isoformat(),
+            "cursor_ts": cursor_ts.isoformat(),
+            "last_page_events": len(page.get("events") or []),
+        }))
+        r.expire(key, int(FEED_STATUS_TTL.total_seconds()))
+    except Exception:
+        pass
+
+
+def feed_status(workspace_id, *, now: datetime | None = None, client=None) -> dict:
+    """Collectors that pulled in the last 30 days, most recent first."""
+    now = _utc(now or datetime.now(timezone.utc))
+    try:
+        raw = (client or _status_redis()).hgetall(_feed_status_key(workspace_id)) or {}
+    except Exception:
+        return {"available": False, "collectors": [],
+                "stale_after_seconds": int(FEED_STALE_AFTER.total_seconds())}
+    collectors = []
+    for actor, value in raw.items():
+        try:
+            data = json.loads(value)
+            last = _utc(datetime.fromisoformat(data["last_pull_at"]))
+            cursor_ts = _utc(datetime.fromisoformat(data["cursor_ts"]))
+        except Exception:
+            continue
+        collectors.append({
+            "actor_id": actor,
+            "last_pull_at": last.isoformat(),
+            "cursor_ts": cursor_ts.isoformat(),
+            "lag_seconds": max(0, int((now - cursor_ts).total_seconds())),
+            "last_page_events": int(data.get("last_page_events") or 0),
+            "stale": now - last > FEED_STALE_AFTER,
+        })
+    collectors.sort(key=lambda c: c["last_pull_at"], reverse=True)
+    return {"available": True, "collectors": collectors,
+            "stale_after_seconds": int(FEED_STALE_AFTER.total_seconds())}
