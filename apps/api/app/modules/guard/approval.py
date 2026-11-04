@@ -20,7 +20,7 @@ import structlog
 from sqlalchemy.orm import Session
 
 from app.core.pii import redact_secrets
-from app.modules.guard.models import GuardApprovalRequest, GuardAuditEvent, chain_hash_for_insert, get_policy_hash
+from app.modules.guard.models import GuardApprovalRequest, GuardAuditEvent, chain_next, get_policy_hash
 
 log = structlog.get_logger(__name__)
 
@@ -159,7 +159,7 @@ def create_approval_request(
     # Hash-chained audit trail: mark the pause distinctly from a block/warn so
     # SIEMs can count HITL pauses separately.
     try:
-        prev_h, entry_h = chain_hash_for_insert(db, ws, ts, tool_name or "guard.approval", "approval_pending")
+        _chain_ts, prev_h, entry_h = chain_next(db, ws, tool_name or "guard.approval", "approval_pending")
         pol_h = get_policy_hash(db, ws)
         db.add(GuardAuditEvent(
             workspace_id=ws,
@@ -170,7 +170,7 @@ def create_approval_request(
             decision="approval_pending",
             rule_id=row.rule_id,
             rule_message=row.rule_message,
-            ts=ts,
+            ts=_chain_ts,
             conductai_run_id=str(source_run_id) if source_run_id else None,
             user_email=requester_email,
             previous_hash=prev_h,
@@ -439,9 +439,7 @@ def apply_decision(
     row.latency_ms = _clamp_latency_ms(row.created_at, ts)
 
     try:
-        prev_h, entry_h = chain_hash_for_insert(
-            db, row.workspace_id, ts, row.tool_name or "guard.approval", decision,
-        )
+        _chain_ts, prev_h, entry_h = chain_next(db, row.workspace_id, row.tool_name or "guard.approval", decision)
         pol_h = get_policy_hash(db, row.workspace_id)
         db.add(GuardAuditEvent(
             workspace_id=row.workspace_id,
@@ -452,7 +450,7 @@ def apply_decision(
             decision=decision,
             rule_id=row.rule_id,
             rule_message=row.rule_message,
-            ts=ts,
+            ts=_chain_ts,
             duration_ms=row.latency_ms,
             conductai_run_id=str(row.source_run_id) if row.source_run_id else None,
             user_email=decider_email,

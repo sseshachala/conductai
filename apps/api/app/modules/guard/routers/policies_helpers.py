@@ -261,9 +261,9 @@ def _write_audit(
     """Audit row for policy mutations. Non-fatal by default; ``raise_on_error=True``
     rolls back and re-raises so callers (audit export) can fail closed."""
     try:
-        from app.modules.guard.models import chain_hash_for_insert
+        from app.modules.guard.models import chain_next
         ts = datetime.now(timezone.utc)
-        prev_h, entry_h = chain_hash_for_insert(db, workspace_id, ts, tool_call, "allowed")
+        _chain_ts, prev_h, entry_h = chain_next(db, workspace_id, tool_call, "allowed")
         db.add(GuardAuditEvent(
             workspace_id=workspace_id,
             clerk_user_id=actor_id,
@@ -272,7 +272,7 @@ def _write_audit(
             decision="allowed",
             rule_id=rule_id,
             input_summary=(details or f"rule_id={rule_id} action={action}")[:500],
-            ts=ts,
+            ts=_chain_ts,
             previous_hash=prev_h,
             entry_hash=entry_h,
         ))

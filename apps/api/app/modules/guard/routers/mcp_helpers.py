@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 from sqlalchemy import text as _sql
 from app.core.pii import redact_secrets
-from app.modules.guard.models import GuardAuditEvent, chain_hash_for_insert, get_policy_hash
+from app.modules.guard.models import GuardAuditEvent, chain_next, get_policy_hash
 from app.modules.guard.policy_engine import compute_policy
 from app.modules.guard.tool_groups import tool_matches
 
@@ -275,7 +275,7 @@ def _record_event(
     rule_message: str | None = None,
 ) -> None:
     ts = datetime.now(timezone.utc)
-    prev_hash, entry_hash = chain_hash_for_insert(db, ws_uuid, ts, tool_name, decision)
+    _chain_ts, prev_hash, entry_hash = chain_next(db, ws_uuid, tool_name, decision)
     policy_hash = get_policy_hash(db, ws_uuid)
 
     raw_summary = redact_secrets(json.dumps(tool_input)[:500])[0][:200]
@@ -296,7 +296,7 @@ def _record_event(
         rule_id=rule_id,
         rule_message=rule_message,
         hook_session_id=session_id,
-        ts=ts,
+        ts=_chain_ts,
         conductai_run_id=conductai_run_id,
         conductai_workflow=conductai_workflow,
         previous_hash=prev_hash,

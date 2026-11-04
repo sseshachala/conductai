@@ -263,7 +263,7 @@ def audited_journey(journey, monkeypatch):
         connection.execute(text("CREATE TABLE guard_sessions (id uuid PRIMARY KEY)"))
         GuardAuditArchiveSegment.__table__.create(connection)
         GuardAuditEvent.__table__.create(connection)
-    monkeypatch.setattr(legacy_mcp, "chain_hash_for_insert", lambda *args: (None, "fixture-chain"))
+    monkeypatch.setattr(legacy_mcp, "chain_next", lambda *args: (datetime.now(timezone.utc), None, "fixture-chain"))
     monkeypatch.setattr(legacy_mcp, "get_policy_hash", lambda *args: "fixture-policy")
     registry = ToolRegistry()
     registry.register(ToolDef(name="guard_activity", description="Real activity audit canary",
@@ -297,7 +297,7 @@ def approval_journey(audited_journey, monkeypatch):
             "approval_timeout_sec": 60, "message": "Disposable test action needs peer approval"}
     monkeypatch.setattr(mcp_impls, "_get_rules", lambda *args, **kwargs: [rule])
     monkeypatch.setattr(approval, "dispatch_approval_notifications", lambda *args: None)
-    monkeypatch.setattr(approval, "chain_hash_for_insert", lambda *args: (None, "fixture-chain"))
+    monkeypatch.setattr(approval, "chain_next", lambda *args: (datetime.now(timezone.utc), None, "fixture-chain"))
     monkeypatch.setattr(approval, "get_policy_hash", lambda *args: "fixture-policy")
 
     def protected_mutation(ctx, value):
