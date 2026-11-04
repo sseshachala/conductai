@@ -58,8 +58,12 @@ def _call(sess, **overrides):
         "response_bytes": None,
     }
     kwargs.update(overrides)
+    from datetime import datetime, timezone
     with patch("app.guard.audit.SessionLocal", return_value=sess), \
-         patch("app.guard.audit.set_workspace_rls"):
+         patch("app.guard.audit.set_workspace_rls"), \
+         patch("app.modules.guard.models.get_policy_hash", return_value=None), \
+         patch("app.modules.guard.models.chain_next",
+               return_value=(datetime.now(timezone.utc), "", "entry")):
         record(**kwargs)
 
 
@@ -133,3 +137,10 @@ def test_metrics_counter_bumps_on_swallowed_exception():
         f"GUARD_AUDIT_FAILED did not increment on swallowed exception "
         f"(before={before}, after={after})"
     )
+
+
+def test_gateway_row_carries_chain_hashes():
+    sess = _CapturingSession()
+    _call(sess, agent_identity_id=AGENT_ID)
+    assert "previous_hash, entry_hash, policy_hash" in sess.last_sql
+    assert sess.last_params["entry_hash"] == "entry" and sess.last_params["prev_hash"] == ""

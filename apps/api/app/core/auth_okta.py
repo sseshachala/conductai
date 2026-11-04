@@ -71,11 +71,11 @@ def _resolve_okta_jwt(token: str, db: Session):
             return
         _seen.add(_key)
         try:
-            from app.modules.guard.models import GuardAuditEvent, chain_hash_for_insert
+            from app.modules.guard.models import GuardAuditEvent, chain_next
             from datetime import datetime, timezone as _tz
             _now = datetime.now(_tz.utc)
             _tool = "auth.okta_jwt.verify"
-            prev_hash, entry_hash = chain_hash_for_insert(db, workspace_id, _now, _tool, decision)
+            _chain_ts, prev_hash, entry_hash = chain_next(db, workspace_id, _tool, decision)
             db.add(GuardAuditEvent(
                 workspace_id=workspace_id,
                 user_email=sub or "unknown",
@@ -86,7 +86,7 @@ def _resolve_okta_jwt(token: str, db: Session):
                 decision=decision,
                 rule_id="okta_jwt",
                 rule_message=reason,
-                ts=_now,
+                ts=_chain_ts,
                 duration_ms=int((_time.perf_counter() - _t0) * 1000),
                 previous_hash=prev_hash,
                 entry_hash=entry_hash,

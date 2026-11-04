@@ -295,7 +295,7 @@ def test_write_audit_helper_swallows_by_default_and_raises_on_request():
     from app.modules.guard.routers.policies_helpers import _write_audit
     db = MagicMock()
     db.add.side_effect = RuntimeError("boom")
-    with patch("app.modules.guard.models.chain_hash_for_insert", return_value=("", "h")):
+    with patch("app.modules.guard.models.chain_next", return_value=(datetime.now(timezone.utc), "", "h")):
         _write_audit(db, uuid.UUID(WS), "t", "r", "a")  # default: swallowed
         with pytest.raises(RuntimeError):
             _write_audit(db, uuid.UUID(WS), "t", "r", "a", raise_on_error=True)

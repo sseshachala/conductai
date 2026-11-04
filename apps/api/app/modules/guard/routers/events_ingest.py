@@ -11,7 +11,7 @@ from app.core.auth import (
 from app.core.config import settings
 from app.core.database import SessionLocal, get_db
 from app.core.workspace_context import set_workspace_rls
-from app.modules.guard.models import GuardAuditEvent, GuardConfig, GuardSession, chain_hash_for_insert, get_policy_hash
+from app.modules.guard.models import GuardAuditEvent, GuardConfig, GuardSession, chain_next, get_policy_hash
 from app.modules.guard.routers.events_common import (
     EventOut,
     HookEvent,
@@ -285,7 +285,7 @@ def ingest_event(
     now = _now()
 
     # 1. Compute hash-chain + policy BOM fields before insert
-    prev_hash, entry_hash = chain_hash_for_insert(db, ws_uuid, now, body.tool_call, body.decision)
+    _chain_ts, prev_hash, entry_hash = chain_next(db, ws_uuid, body.tool_call, body.decision)
     policy_hash = get_policy_hash(db, ws_uuid)
 
     # 2. Write the audit event
@@ -319,7 +319,7 @@ def ingest_event(
         tool_use_id=body.tool_use_id,
         hook_session_id=body.hook_session_id,
         blast_radius=body.blast_radius,
-        ts=now,
+        ts=_chain_ts,
         previous_hash=prev_hash,
         entry_hash=entry_hash,
         policy_hash=policy_hash,

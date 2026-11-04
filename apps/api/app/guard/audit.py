@@ -226,7 +226,13 @@ def record(
         # (block path) so the response can reference the row before the
         # background write lands.
         import uuid as _uuid
+        from app.modules.guard.models import chain_next, get_policy_hash
         row_id = receipt_id or str(_uuid.uuid4())
+        ws_uuid = _uuid.UUID(str(workspace_id))
+        # Gateway rows join the workspace hash chain like hook/MCP rows. The
+        # lock is taken last so it is held only for the insert + commit.
+        policy_hash = get_policy_hash(db, ws_uuid)
+        ts, prev_hash, entry_hash = chain_next(db, ws_uuid, None, decision)
         db.execute(
             text("""
                 INSERT INTO guard_audit_events (
@@ -242,7 +248,8 @@ def record(
                   routing_meta,
                   share_token_hash,
                   execution_status, result_summary,
-                  route
+                  route,
+                  previous_hash, entry_hash, policy_hash
                 ) VALUES (
                   CAST(:row_id AS uuid), CAST(:request_id AS uuid),
                   :ws, :uid, CAST(:agent_id AS uuid), :ai, NULL,
@@ -256,7 +263,8 @@ def record(
                   CAST(:routing AS jsonb),
                   :share_token_hash,
                   :execution_status, :result_summary,
-                  :route
+                  :route,
+                  :prev_hash, :entry_hash, :policy_hash
                 )
             """),
             {
@@ -267,7 +275,7 @@ def record(
                 "ai": ai_tool,
                 "prov": provider, "model": model,
                 "dec": decision, "rid": rule_id,
-                "ts": datetime.now(timezone.utc),
+                "ts": ts,
                 "tin": in_tokens, "tout": out_tokens, "dur": duration_ms,
                 "cost": cost_usd,
                 "summary": prompt_summary or upstream or "vendor",
@@ -283,6 +291,7 @@ def record(
                 "execution_status": execution_status,
                 "result_summary": result_summary,
                 "route": route,
+                "prev_hash": prev_hash, "entry_hash": entry_hash, "policy_hash": policy_hash,
             },
         )
         db.commit()

@@ -347,7 +347,7 @@ def test_ingest_event_happy_path_returns_event_out():
     request.client = None
     background = MagicMock()
 
-    with patch("app.modules.guard.routers.events_ingest.chain_hash_for_insert", return_value=(None, "h1")), \
+    with patch("app.modules.guard.routers.events_ingest.chain_next", return_value=(datetime.now(timezone.utc), None, "h1")), \
          patch("app.modules.guard.routers.events_ingest.get_policy_hash", return_value=None), \
          patch("app.modules.guard.routers.events_ingest.GuardAuditEvent", return_value=saved_event), \
          patch("app.modules.guard.routers.events_ingest._event_to_dict",
@@ -378,7 +378,7 @@ def test_ingest_event_blocked_decision_persisted():
     request.client = None
     background = MagicMock()
 
-    with patch("app.modules.guard.routers.events_ingest.chain_hash_for_insert", return_value=(None, "h2")), \
+    with patch("app.modules.guard.routers.events_ingest.chain_next", return_value=(datetime.now(timezone.utc), None, "h2")), \
          patch("app.modules.guard.routers.events_ingest.get_policy_hash", return_value=None), \
          patch("app.modules.guard.routers.events_ingest.GuardAuditEvent", return_value=saved_event), \
          patch("app.modules.guard.routers.events_ingest._event_to_dict",
@@ -434,7 +434,7 @@ def test_ingest_event_decodes_waf_safe_summary():
     db.query.return_value.filter.return_value.first.return_value = config
     saved_event = _make_event("allowed")
 
-    with patch("app.modules.guard.routers.events_ingest.chain_hash_for_insert", return_value=(None, "h1")), \
+    with patch("app.modules.guard.routers.events_ingest.chain_next", return_value=(datetime.now(timezone.utc), None, "h1")), \
          patch("app.modules.guard.routers.events_ingest.get_policy_hash", return_value=None), \
          patch("app.modules.guard.routers.events_ingest.GuardAuditEvent", return_value=saved_event) as event_cls, \
          patch("app.modules.guard.routers.events_ingest._event_to_dict", return_value=_event_dict("allowed")):
@@ -489,7 +489,7 @@ def test_ingest_attributes_only_verified_agent(authenticated):
     if authenticated:
         request.state.guard_hook_identity = (WS_ID, identity_id)
         context = (WS_ID, "user_abc")
-    with patch.object(events, "chain_hash_for_insert", return_value=(None, "h1")), \
+    with patch.object(events, "chain_next", return_value=(datetime.now(timezone.utc), None, "h1")), \
          patch.object(events, "get_policy_hash", return_value=None), \
          patch.object(events, "GuardAuditEvent", return_value=_make_event()) as event_cls, \
          patch.object(events, "_event_to_dict", return_value=_event_dict()):
