@@ -136,6 +136,8 @@ def _register_mcp(workspace_id: str, agent_token: str, api_url: str, dry_run: bo
     if not found_any:
         print(f"  {_guard_shared.GRAY}No AI tool configs found for MCP registration{_guard_shared.RESET}")
 
+    _clean_ancestor_mcp_json()
+
     # Copilot CLI supports HTTP and stdio; use the authenticated central HTTP server.
     _patch_copilot_mcp(agent_token, api_url)
     if ADAPTERS["codex"].root().is_dir() and not disabled("codex"):
@@ -217,6 +219,48 @@ def _patch_copilot_mcp(agent_token: str, api_url: str) -> None:
     local_path = Path.cwd() / ".mcp.json"
     if local_path.exists():
         _write_mcp_file(local_path, CONDUCT_MCP_KEY, sse_entry, booster_entry, "GitHub Copilot (.mcp.json)")
+
+
+def _clean_ancestor_mcp_json() -> list[Path]:
+    """Drop legacy Conduct MCP keys from ``.mcp.json`` files in parent directories.
+
+    Older CLIs registered ``conduct-guard`` with a fixed token. In a parent
+    directory's ``.mcp.json`` nothing renamed it, so the token went stale and
+    the server failed to connect. ``_register_mcp`` has just written the
+    current ``conduct`` entry at user scope, which replaces it. The cwd file
+    is migrated by ``_write_mcp_file``.
+    """
+    import os
+    import tempfile
+
+    from conduct_cli.token_propagation import ancestor_mcp_json
+
+    cleaned = []
+    for path in ancestor_mcp_json()[1:]:
+        if path.is_symlink() or not path.is_file():
+            continue
+        try:
+            cfg = json.loads(path.read_text())
+        except (OSError, ValueError):
+            continue
+        servers = cfg.get("mcpServers") if isinstance(cfg, dict) else None
+        if not isinstance(servers, dict) or not any(k in servers for k in LEGACY_MCP_KEYS):
+            continue
+        for key in LEGACY_MCP_KEYS:
+            servers.pop(key, None)
+        mode = path.stat().st_mode & 0o777
+        fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.")
+        try:
+            with os.fdopen(fd, "w") as fh:
+                fh.write(json.dumps(cfg, indent=2) + "\n")
+            os.chmod(tmp, mode)
+            os.replace(tmp, path)
+        except OSError:
+            Path(tmp).unlink(missing_ok=True)
+            continue
+        cleaned.append(path)
+        print(f"  {_guard_shared.GREEN}Removed legacy Conduct MCP entry from {path}{_guard_shared.RESET}")
+    return cleaned
 
 
 def _write_mcp_file(

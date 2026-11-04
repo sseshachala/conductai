@@ -6,6 +6,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ---
 
+## [0.15.1] - 2026-11-04
+
+### Fixed
+- `.mcp.json` files in parent directories (up to your home folder) are now kept
+  current. Claude Code loads MCP servers from them, but the CLI never touched
+  them, so an old entry there kept a fixed token that went stale after rotation
+  and failed with "invalid token". Token rotation now updates the token in those
+  files too, and `conduct guard sync` removes legacy `conduct-guard` entries from
+  them (the current `conduct` server registered by sync replaces them).
+
 ## [0.15.0] - 2026-11-03
 
 ### Added

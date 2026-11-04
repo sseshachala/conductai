@@ -61,6 +61,7 @@ from conduct_cli.guard_commands.mcp import (  # noqa: F401
     _register_mcp,
     _patch_claude_desktop_proxy,
     _patch_copilot_mcp,
+    _clean_ancestor_mcp_json,
     _write_mcp_file,
 )
 
