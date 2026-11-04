@@ -116,6 +116,55 @@ def test_sync_targets_match_discovery_and_preserve_unowned_entries(isolated, mon
     assert not (isolated / ".windsurf").exists()
 
 
+def _sync_with_project(isolated, monkeypatch, project_entry):
+    from types import SimpleNamespace
+    from conduct_cli.guard_commands import mcp
+    for tool in ("claude-code", "windsurf"):
+        ADAPTERS[tool].root().mkdir(parents=True, exist_ok=True)
+    repo = isolated / "projects" / "repo"
+    repo.mkdir(parents=True, exist_ok=True)
+    (repo / ".mcp.json").write_text(json.dumps({"mcpServers": {"conduct": project_entry}}))
+    monkeypatch.chdir(repo)
+    monkeypatch.setattr(mcp, "_deployment", lambda _: SimpleNamespace(mcp="https://test.invalid/mcp", gateway=None))
+    monkeypatch.setattr(mcp, "_patch_copilot_mcp", lambda *a: None)
+    monkeypatch.setattr(mcp._guard_instructions, "_patch_cursor_global_rules", lambda: None)
+    monkeypatch.setattr(mcp._guard_instructions, "_patch_tool_instruction_files", lambda *a, **kw: None)
+    mcp._register_mcp("workspace", "synthetic-test-only", "https://test.invalid")
+
+    def servers(tool):
+        source = next(s for s in ADAPTERS[tool].mcp_sources() if s.scope == "user")
+        return json.loads(source.path.read_text()).get(source.key, {})
+    return servers
+
+
+def test_sync_skips_claude_user_entry_when_project_uses_oauth(isolated, monkeypatch):
+    servers = _sync_with_project(isolated, monkeypatch, {"type": "http", "url": "https://test.invalid/mcp/"})
+    assert "conduct" not in servers("claude-code")
+    assert "conduct" in servers("windsurf")  # other tools do not read the project file
+
+
+def test_sync_removes_its_own_old_claude_user_entry_but_not_custom_ones(isolated, monkeypatch):
+    claude_root = ADAPTERS["claude-code"].root()
+    claude_root.mkdir(parents=True)
+    source = next(s for s in ADAPTERS["claude-code"].mcp_sources() if s.scope == "user")
+    old = {"command": "npx", "args": ["-y", "mcp-remote", "https://test.invalid/mcp", "--header", "Authorization: Bearer old"]}
+    source.path.write_text(json.dumps({source.key: {"conduct": old, "thirdparty": {"command": "x"}}}))
+    servers = _sync_with_project(isolated, monkeypatch, {"type": "http", "url": "https://test.invalid/mcp"})
+    assert servers("claude-code") == {"thirdparty": {"command": "x"}}
+
+    custom = {"command": "my-proxy"}
+    source.path.write_text(json.dumps({source.key: {"conduct": custom}}))
+    from conduct_cli.guard_commands import mcp
+    mcp._register_mcp("workspace", "synthetic-test-only", "https://test.invalid")
+    assert servers("claude-code")["conduct"] == custom
+
+
+def test_sync_writes_claude_user_entry_when_project_entry_has_a_token(isolated, monkeypatch):
+    servers = _sync_with_project(isolated, monkeypatch, {
+        "type": "http", "url": "https://test.invalid/mcp", "headers": {"Authorization": "Bearer x"}})
+    assert "conduct" in servers("claude-code")
+
+
 def test_codex_mcp_uses_custom_home_without_overwriting_invalid_config(isolated, monkeypatch):
     from conduct_cli.commands.mcp_setup import _write_codex_mcp_config
     root = isolated / "custom-codex"

@@ -6,6 +6,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ---
 
+## [0.15.1] - 2026-11-04
+
+### Fixed
+- `.mcp.json` files in parent directories (up to your home folder) are now kept
+  current. Claude Code loads MCP servers from them, but the CLI never touched
+  them, so an old entry there kept a fixed token that went stale after rotation
+  and failed with "invalid token". Token rotation now updates the token in those
+  files too, and `conduct guard sync` removes legacy `conduct-guard` entries from
+  them (the current `conduct` server registered by sync replaces them).
+- `conduct guard sync` no longer writes a token-bearing `conduct` entry to
+  Claude Code's user config when the project's `.mcp.json` (here or in a parent
+  directory) already has a `conduct` entry that signs in with OAuth. It also
+  removes the one it wrote earlier. This stops Claude Code from warning that
+  `conduct` is defined in two scopes with different endpoints. Entries you
+  wrote yourself are left alone, and other tools are unchanged.
+
 ## [0.15.0] - 2026-11-03
 
 ### Added

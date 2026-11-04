@@ -89,6 +89,7 @@ def _register_mcp(workspace_id: str, agent_token: str, api_url: str, dry_run: bo
     targets.extend(vscode_paths)
     vscode_cfg_paths = {p for p, _ in vscode_paths}
     found_any = False
+    project_oauth = _project_oauth_conduct(_mcp_url)
     for cfg_path, label in targets:
         if cfg_path.is_symlink():
             print(f"  {label} MCP config is a symlink; left unchanged")
@@ -117,6 +118,18 @@ def _register_mcp(workspace_id: str, agent_token: str, api_url: str, dry_run: bo
             mcp.pop("conductguard")
             changed = True
         for name, entry in servers.items():
+            if name == CONDUCT_MCP_KEY and label == "claude-code" and project_oauth:
+                # Claude Code already reaches Conduct through the project's
+                # OAuth entry; a second, token-bearing user entry only makes
+                # Claude warn about two endpoints for one server name.
+                prior = mcp.get(name)
+                if (isinstance(prior, dict) and prior.get("command") == "npx"
+                        and isinstance(prior.get("args"), list) and "mcp-remote" in prior["args"]):
+                    mcp.pop(name)  # our own earlier token-bearing entry
+                    changed = True
+                print(f"  {_guard_shared.GRAY}{name} MCP for Claude Code comes from {project_oauth} (OAuth); "
+                      f"user entry not written{_guard_shared.RESET}")
+                continue
             prior = mcp.get(name)
             if prior is not None and prior != entry and not (
                 isinstance(prior, dict) and prior.get("command") in {"npx", "conductguard-mcp", "conduct-mcp", "booster"}
@@ -135,6 +148,8 @@ def _register_mcp(workspace_id: str, agent_token: str, api_url: str, dry_run: bo
             cfg_path.chmod(0o600)
     if not found_any:
         print(f"  {_guard_shared.GRAY}No AI tool configs found for MCP registration{_guard_shared.RESET}")
+
+    _clean_ancestor_mcp_json()
 
     # Copilot CLI supports HTTP and stdio; use the authenticated central HTTP server.
     _patch_copilot_mcp(agent_token, api_url)
@@ -217,6 +232,70 @@ def _patch_copilot_mcp(agent_token: str, api_url: str) -> None:
     local_path = Path.cwd() / ".mcp.json"
     if local_path.exists():
         _write_mcp_file(local_path, CONDUCT_MCP_KEY, sse_entry, booster_entry, "GitHub Copilot (.mcp.json)")
+
+
+def _project_oauth_conduct(mcp_url: str) -> Path | None:
+    """The project ``.mcp.json`` (cwd or a parent) whose ``conduct`` entry is a
+    headerless remote entry for ``mcp_url``, i.e. one that signs in with OAuth."""
+    from conduct_cli.token_propagation import ancestor_mcp_json
+
+    want = mcp_url.rstrip("/")
+    for path in ancestor_mcp_json():
+        if path.is_symlink() or not path.is_file():
+            continue
+        try:
+            entry = json.loads(path.read_text()).get("mcpServers", {}).get(CONDUCT_MCP_KEY)
+        except (OSError, ValueError, AttributeError):
+            continue
+        if not isinstance(entry, dict) or entry.get("type") not in {"http", "sse", "streamable-http"}:
+            continue
+        headers = entry.get("headers") or {}
+        if (str(entry.get("url", "")).rstrip("/") == want and isinstance(headers, dict)
+                and not any(k.lower() == "authorization" for k in headers)):
+            return path
+    return None
+
+
+def _clean_ancestor_mcp_json() -> list[Path]:
+    """Drop legacy Conduct MCP keys from ``.mcp.json`` files in parent directories.
+
+    Older CLIs registered ``conduct-guard`` with a fixed token. In a parent
+    directory's ``.mcp.json`` nothing renamed it, so the token went stale and
+    the server failed to connect. ``_register_mcp`` has just written the
+    current ``conduct`` entry at user scope, which replaces it. The cwd file
+    is migrated by ``_write_mcp_file``.
+    """
+    import os
+    import tempfile
+
+    from conduct_cli.token_propagation import ancestor_mcp_json
+
+    cleaned = []
+    for path in ancestor_mcp_json()[1:]:
+        if path.is_symlink() or not path.is_file():
+            continue
+        try:
+            cfg = json.loads(path.read_text())
+        except (OSError, ValueError):
+            continue
+        servers = cfg.get("mcpServers") if isinstance(cfg, dict) else None
+        if not isinstance(servers, dict) or not any(k in servers for k in LEGACY_MCP_KEYS):
+            continue
+        for key in LEGACY_MCP_KEYS:
+            servers.pop(key, None)
+        mode = path.stat().st_mode & 0o777
+        fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.")
+        try:
+            with os.fdopen(fd, "w") as fh:
+                fh.write(json.dumps(cfg, indent=2) + "\n")
+            os.chmod(tmp, mode)
+            os.replace(tmp, path)
+        except OSError:
+            Path(tmp).unlink(missing_ok=True)
+            continue
+        cleaned.append(path)
+        print(f"  {_guard_shared.GREEN}Removed legacy Conduct MCP entry from {path}{_guard_shared.RESET}")
+    return cleaned
 
 
 def _write_mcp_file(

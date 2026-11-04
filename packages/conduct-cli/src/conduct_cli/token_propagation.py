@@ -13,6 +13,27 @@ import tempfile
 from pathlib import Path
 
 
+def ancestor_mcp_json(start: Path | None = None) -> list[Path]:
+    """``.mcp.json`` in ``start`` (default cwd) and each parent up to home.
+
+    Claude Code also loads project MCP servers from parent directories, so a
+    stale entry there breaks the session even though the repo's own file is
+    current. Directories outside home are not walked.
+    """
+    home = Path.home().resolve()
+    try:
+        here = (start or Path.cwd()).resolve()
+        here.relative_to(home)
+    except (OSError, ValueError):
+        return []
+    found = []
+    for directory in (here, *here.parents):
+        found.append(directory / ".mcp.json")
+        if directory == home:
+            break
+    return found
+
+
 def _candidate_paths() -> list[Path]:
     home = Path.home()
     paths = [
@@ -22,8 +43,8 @@ def _candidate_paths() -> list[Path]:
         home / "Library" / "Application Support" / "Code" / "User" / "mcp.json",
         home / ".config" / "Code" / "User" / "mcp.json",
         Path(os.environ.get("COPILOT_HOME", str(home / ".copilot"))).expanduser() / "mcp-config.json",
-        Path.cwd() / ".mcp.json",
     ]
+    paths.extend(ancestor_mcp_json())
     try:
         from conduct_cli.tool_adapters import ADAPTERS
         for adapter in ADAPTERS.values():
