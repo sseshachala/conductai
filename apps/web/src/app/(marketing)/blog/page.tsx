@@ -1,6 +1,14 @@
 export default function BlogIndex() {
   const posts = [
     {
+      slug: "your-siem-sees-every-agent-decision",
+      title: "Your SIEM now sees every agent decision.",
+      excerpt: "Conduct's audit log streams to Splunk, Sentinel and Falcon LogScale with one command. Gateway decisions now join the tamper-evident hash chain, and verifying our own production data turned up a concurrency bug that could fork the chain. Here's what we found and fixed.",
+      date: "November 4, 2026",
+      tag: "Product updates",
+      tagColor: "text-emerald-700 bg-emerald-50 border-emerald-200",
+    },
+    {
       slug: "one-policy-five-agent-frameworks",
       title: "One policy, five agent frameworks",
       excerpt: "One Conduct rule in front of agents built with the Claude Agent SDK, OpenAI Agents SDK, LangChain, Google ADK and CrewAI. The same rule blocked the same memory-poisoning attempt in all five, with one line of code per framework and one audit trail.",
