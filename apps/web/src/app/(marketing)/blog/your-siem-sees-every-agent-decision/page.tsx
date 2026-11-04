@@ -4,6 +4,9 @@ export const metadata = {
   title: "Your SIEM now sees every agent decision | Conduct",
   description:
     "Stream Conduct's audit log to Splunk, Sentinel or Falcon LogScale with one command. Gateway decisions now join the tamper-evident hash chain, and verifying our own data turned up a concurrency bug we fixed.",
+  openGraph: {
+    images: [{ url: "/blog/siem-feed-hero.png", width: 1672, height: 941 }],
+  },
 }
 
 export default function BlogPost() {
@@ -28,6 +31,12 @@ export default function BlogPost() {
       </div>
 
       <div className="prose prose-stone max-w-none">
+
+        <img
+          src="/blog/siem-feed-hero.png"
+          alt="Decisions from the CLI, MCP and the LLM gateway flowing into one verified hash chain and on to a live SIEM feed"
+          className="w-full rounded-2xl border border-stone-200 mb-12"
+        />
         <h2 className="text-2xl font-bold text-stone-900 mt-12 mb-4">Why the SIEM matters</h2>
         <p className="text-stone-700 leading-relaxed mb-4">
           Security teams don&apos;t want another console. When a coding
