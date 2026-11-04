@@ -291,15 +291,16 @@ export function SidebarNav({ shell, getToken }: { shell: AppShellState; getToken
               href="/logs/guard"
               label="Logs"
               icon={<Icons.Pulse />}
-              active={pathname.startsWith("/logs") || pathname.startsWith("/runs")}
+              active={pathname.startsWith("/logs") || pathname.startsWith("/runs") || pathname.startsWith("/audit")}
               collapsed={collapsed}
             />
-            {(pathname.startsWith("/logs") || pathname.startsWith("/runs")) && !collapsed && (
+            {(pathname.startsWith("/logs") || pathname.startsWith("/runs") || pathname.startsWith("/audit")) && !collapsed && (
               <div style={{ marginLeft: 28, marginTop: 2, display: "flex", flexDirection: "column", gap: 1 }}>
                 {[
                   { label: "Guard", href: "/logs/guard" },
                   { label: "Runs", href: "/logs/runs" },
                   { label: "Observability", href: "/logs/observability" },
+                  { label: "Audit", href: "/audit" },
                 ].map(sub => {
                   const subActive = pathname.startsWith(sub.href)
                   return (
