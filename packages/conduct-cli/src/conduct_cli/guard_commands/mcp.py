@@ -89,6 +89,7 @@ def _register_mcp(workspace_id: str, agent_token: str, api_url: str, dry_run: bo
     targets.extend(vscode_paths)
     vscode_cfg_paths = {p for p, _ in vscode_paths}
     found_any = False
+    project_oauth = _project_oauth_conduct(_mcp_url)
     for cfg_path, label in targets:
         if cfg_path.is_symlink():
             print(f"  {label} MCP config is a symlink; left unchanged")
@@ -117,6 +118,18 @@ def _register_mcp(workspace_id: str, agent_token: str, api_url: str, dry_run: bo
             mcp.pop("conductguard")
             changed = True
         for name, entry in servers.items():
+            if name == CONDUCT_MCP_KEY and label == "claude-code" and project_oauth:
+                # Claude Code already reaches Conduct through the project's
+                # OAuth entry; a second, token-bearing user entry only makes
+                # Claude warn about two endpoints for one server name.
+                prior = mcp.get(name)
+                if (isinstance(prior, dict) and prior.get("command") == "npx"
+                        and isinstance(prior.get("args"), list) and "mcp-remote" in prior["args"]):
+                    mcp.pop(name)  # our own earlier token-bearing entry
+                    changed = True
+                print(f"  {_guard_shared.GRAY}{name} MCP for Claude Code comes from {project_oauth} (OAuth); "
+                      f"user entry not written{_guard_shared.RESET}")
+                continue
             prior = mcp.get(name)
             if prior is not None and prior != entry and not (
                 isinstance(prior, dict) and prior.get("command") in {"npx", "conductguard-mcp", "conduct-mcp", "booster"}
@@ -219,6 +232,28 @@ def _patch_copilot_mcp(agent_token: str, api_url: str) -> None:
     local_path = Path.cwd() / ".mcp.json"
     if local_path.exists():
         _write_mcp_file(local_path, CONDUCT_MCP_KEY, sse_entry, booster_entry, "GitHub Copilot (.mcp.json)")
+
+
+def _project_oauth_conduct(mcp_url: str) -> Path | None:
+    """The project ``.mcp.json`` (cwd or a parent) whose ``conduct`` entry is a
+    headerless remote entry for ``mcp_url``, i.e. one that signs in with OAuth."""
+    from conduct_cli.token_propagation import ancestor_mcp_json
+
+    want = mcp_url.rstrip("/")
+    for path in ancestor_mcp_json():
+        if path.is_symlink() or not path.is_file():
+            continue
+        try:
+            entry = json.loads(path.read_text()).get("mcpServers", {}).get(CONDUCT_MCP_KEY)
+        except (OSError, ValueError, AttributeError):
+            continue
+        if not isinstance(entry, dict) or entry.get("type") not in {"http", "sse", "streamable-http"}:
+            continue
+        headers = entry.get("headers") or {}
+        if (str(entry.get("url", "")).rstrip("/") == want and isinstance(headers, dict)
+                and not any(k.lower() == "authorization" for k in headers)):
+            return path
+    return None
 
 
 def _clean_ancestor_mcp_json() -> list[Path]:
