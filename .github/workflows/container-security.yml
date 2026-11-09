@@ -62,7 +62,7 @@ jobs:
             ${{ matrix.image.context }}
 
       - name: Trivy scan
-        uses: aquasecurity/trivy-action@6abccf398f78b4c337599c0656f933d91efb91a0 # master
+        uses: aquasecurity/trivy-action@38b337fff0a2f984d5be173c99e3f633438167ec # master
         with:
           image-ref: conduct/${{ matrix.image.name }}:ci-${{ github.sha }}
           format: sarif
