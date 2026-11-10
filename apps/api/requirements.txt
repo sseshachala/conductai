@@ -21,7 +21,7 @@ click>=8.5.0
 pytest==9.2.0
 pytest-xdist==3.8.0
 pytest-forked==1.7.5  # subprocess isolation for tests with sys.modules stubs (#1075)
-pytest-asyncio==1.4.1  # required for @pytest.mark.asyncio tests; pytest 9 compat
+pytest-asyncio==1.4.1.post1  # required for @pytest.mark.asyncio tests; pytest 9 compat
 fakeredis[lua]==2.40.0  # in-process Redis + Lua for atomic reserve/release proofs (PR 6d budget ledger)
 pyyaml==6.0.3
 jsonschema~=4.23
