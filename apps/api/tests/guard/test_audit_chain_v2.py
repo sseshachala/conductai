@@ -28,8 +28,7 @@ def test_hashed_fields_cover_every_stored_column():
     columns = {c.name for c in GuardAuditEvent.__table__.columns}
     classified = set(ac.HASHED_FIELDS) | set(ac.UNHASHED_FIELDS)
     assert columns <= classified, f"unclassified audit column(s): {columns - classified}"
-    # usage_source/usage_status are pre-registered for #2545 (columns land with that PR).
-    assert classified - columns <= {"usage_source", "usage_status"}
+    assert classified <= columns, f"hashed/unhashed field(s) with no column: {classified - columns}"
     assert not set(ac.HASHED_FIELDS) & set(ac.UNHASHED_FIELDS)
 
 
