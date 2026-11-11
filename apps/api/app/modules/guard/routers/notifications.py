@@ -139,7 +139,10 @@ def _autoseed_from_legacy(db: Session, workspace_id: _uuid.UUID) -> None:
     'warn' row so the user's setup carries over."""
     existing = (
         db.query(GuardNotificationChannel)
-        .filter(GuardNotificationChannel.workspace_id == workspace_id)
+        .filter(
+            GuardNotificationChannel.workspace_id == workspace_id,
+            GuardNotificationChannel.source_type == "guard",
+        )
         .first()
     )
     if existing:
@@ -163,7 +166,10 @@ def _autoseed_from_legacy(db: Session, workspace_id: _uuid.UUID) -> None:
 def _rows_by_action(db: Session, workspace_id: _uuid.UUID) -> dict[str, list[GuardNotificationChannel]]:
     rows = (
         db.query(GuardNotificationChannel)
-        .filter(GuardNotificationChannel.workspace_id == workspace_id)
+        .filter(
+            GuardNotificationChannel.workspace_id == workspace_id,
+            GuardNotificationChannel.source_type == "guard",
+        )
         .order_by(GuardNotificationChannel.created_at.asc())
         .all()
     )
@@ -224,6 +230,7 @@ def resolve_channels(
         .filter(
             GuardNotificationChannel.workspace_id == ws,
             GuardNotificationChannel.action == action,
+            GuardNotificationChannel.source_type == "guard",
             GuardNotificationChannel.enabled.is_(True),
         )
         .all()
