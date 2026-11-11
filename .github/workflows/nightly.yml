@@ -198,6 +198,9 @@ jobs:
         working-directory: apps/api
       - name: Build web
         run: npm run build --workspace apps/web
+      - name: Drop unreachable apt mirror
+        # See web-smoke.yml: azure.archive.ubuntu.com fails DNS on runners.
+        run: sudo sed -i '/azure\.archive\.ubuntu\.com/d' /etc/apt/apt-mirrors.txt || true
       - name: Install Playwright browsers
         # WebKit is disabled in playwright.config.ts; install only active engines.
         run: npx playwright install --with-deps chromium firefox
