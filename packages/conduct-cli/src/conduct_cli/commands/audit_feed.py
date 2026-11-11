@@ -1,6 +1,7 @@
 """`conduct audit feed` — stream Guard audit events as NDJSON for SIEM collectors.
 
-Pages through the ``get_audit_feed`` MCP tool with the agent token. Each event
+Pages through the ``get_audit_feed`` MCP tool with a dedicated feed token
+(``--token-file`` / ``CONDUCT_FEED_TOKEN``) or, failing that, the login's agent token. Each event
 is one NDJSON line on stdout (or appended to ``--output``), which Splunk
 Universal Forwarder, Azure Monitor Agent, Falcon LogScale Collector, Fluent Bit
 or Vector can tail. The cursor is checkpointed to ``--state`` after every page
@@ -29,13 +30,36 @@ class FeedError(RuntimeError):
     pass
 
 
-def _call_tool(arguments: dict) -> dict:
-    """One MCP ``tools/call``; refreshes the agent token once on 401."""
+FEED_TOKEN_ENV = "CONDUCT_FEED_TOKEN"
+FEED_TOKEN_PREFIX = "cond_feed_"
+
+
+def resolve_feed_token(token_file: str | None, environ=None) -> str | None:
+    """Dedicated feed token from ``--token-file`` or ``$CONDUCT_FEED_TOKEN``; never from argv."""
+    environ = os.environ if environ is None else environ
+    if token_file:
+        try:
+            token = Path(token_file).expanduser().read_text().strip()
+        except OSError as exc:
+            raise FeedError(f"cannot read --token-file: {exc.strerror or exc}") from exc
+        if not token:
+            raise FeedError("--token-file is empty")
+        return token
+    return (environ.get(FEED_TOKEN_ENV) or "").strip() or None
+
+
+def _call_tool(arguments: dict, feed_token: str | None = None) -> dict:
+    """One MCP ``tools/call``; refreshes the agent token once on 401.
+
+    With ``feed_token`` (a workspace service token) the logged-in user's token
+    is never read, and a 401 means the token was revoked or expired.
+    """
     for attempt in (1, 2):
         cfg = _load_config()
-        token = cfg.get("agent_token")
+        token = feed_token or cfg.get("agent_token")
         if not token:
-            raise FeedError("not logged in; run `conduct login`")
+            raise FeedError("not logged in; run `conduct login` or provide a feed token "
+                            f"(--token-file or ${FEED_TOKEN_ENV})")
         body = json.dumps({"jsonrpc": "2.0", "id": str(uuid.uuid4()), "method": "tools/call",
                            "params": {"name": TOOL_NAME, "arguments": arguments}}).encode()
         req = urllib.request.Request(
@@ -47,6 +71,9 @@ def _call_tool(arguments: dict) -> dict:
             with urllib.request.urlopen(req, timeout=60) as resp:
                 reply = json.loads(resp.read())
         except urllib.error.HTTPError as exc:
+            if exc.code == 401 and feed_token:
+                raise FeedError("feed token rejected (revoked, expired or invalid); "
+                                "issue a new one under Audit > SIEM feed") from exc
             if exc.code == 401 and attempt == 1:
                 from conduct_cli.commands.auth import _refresh_agent_token
                 if _refresh_agent_token(expected_config=cfg):
@@ -81,7 +108,7 @@ def _save_cursor(path: Path, cursor: str) -> None:
 
 
 def run_feed(*, since: str | None, limit: int, follow: bool, interval: float,
-             state: Path, out, sleep=time.sleep) -> int:
+             state: Path, out, sleep=time.sleep, feed_token: str | None = None) -> int:
     """Write events to ``out`` until caught up (or forever with ``follow``). Returns events written."""
     cursor = _read_cursor(state)
     written = 0
@@ -91,7 +118,7 @@ def run_feed(*, since: str | None, limit: int, follow: bool, interval: float,
             args["cursor"] = cursor
         elif since:
             args["since"] = since
-        page = _call_tool(args)
+        page = _call_tool(args, feed_token)
         for event in page.get("events", []):
             out.write(json.dumps(event, separators=(",", ":")) + "\n")
             written += 1
@@ -111,7 +138,8 @@ def cmd_audit_feed(args) -> None:
     out = open(args.output, "a", encoding="utf-8") if args.output else sys.stdout
     try:
         written = run_feed(since=args.since, limit=args.limit, follow=args.follow,
-                           interval=args.interval, state=state, out=out)
+                           interval=args.interval, state=state, out=out,
+                           feed_token=resolve_feed_token(getattr(args, "token_file", None)))
         if args.output:
             print(f"{written} events appended to {args.output}", file=sys.stderr)
     except FeedError as exc:
@@ -131,4 +159,6 @@ def register_feed(audit_sub) -> None:
     f.add_argument("--interval", type=float, default=60.0, help="Seconds between polls with --follow (default: 60)")
     f.add_argument("--limit", type=int, default=500, help="Events per request, 1-1000 (default: 500)")
     f.add_argument("--state", help=f"Cursor checkpoint file (default: {DEFAULT_STATE})")
+    f.add_argument("--token-file", help=f"File holding a workspace feed token (cond_feed_...); alternatively set ${FEED_TOKEN_ENV}. "
+                                        "Without either, the logged-in user's token is used")
     f.add_argument("--output", help="Append NDJSON to this file instead of stdout")

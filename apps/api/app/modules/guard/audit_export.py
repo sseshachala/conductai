@@ -276,7 +276,8 @@ def _status_redis():
 
 
 def record_feed_pull(workspace_id, actor: str | None, page: dict, *,
-                     now: datetime | None = None, client=None) -> None:
+                     now: datetime | None = None, client=None,
+                     service_label: str | None = None) -> None:
     """Remember this collector's last pull. Never raises."""
     try:
         cursor_ts, _ = decode_cursor(page["next_cursor"])
@@ -287,6 +288,7 @@ def record_feed_pull(workspace_id, actor: str | None, page: dict, *,
             "last_pull_at": now.isoformat(),
             "cursor_ts": cursor_ts.isoformat(),
             "last_page_events": len(page.get("events") or []),
+            **({"collector_type": "service_token", "label": service_label} if service_label else {}),
         }))
         r.expire(key, int(FEED_STATUS_TTL.total_seconds()))
     except Exception:
@@ -316,6 +318,8 @@ def feed_status(workspace_id, *, now: datetime | None = None, client=None) -> di
             "lag_seconds": max(0, int((now - cursor_ts).total_seconds())),
             "last_page_events": int(data.get("last_page_events") or 0),
             "stale": now - last > FEED_STALE_AFTER,
+            "collector_type": data.get("collector_type") or "user",
+            "label": data.get("label"),
         })
     collectors.sort(key=lambda c: c["last_pull_at"], reverse=True)
     return {"available": True, "collectors": collectors,
