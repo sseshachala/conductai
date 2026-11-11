@@ -15,6 +15,7 @@ from app.modules.guard.audit_archive import (
     ArchiveIntegrityError, S3ArchiveStore, archive_keys, canonical, digest,
     persist_archive, read_verified_archive, verify_manifest,
 )
+from app.modules.guard.audit_chain import expected_hash
 from app.modules.guard.models import (
     BudgetReservation, GuardAuditArchiveSegment, GuardAuditEvent, GuardAuditRetentionHold,
 )
@@ -111,8 +112,10 @@ def verify_event_rows(rows, previous_hash="") -> str:
     for row in rows:
         if not row["entry_hash"]:
             continue
-        ts = row["ts"] if isinstance(row["ts"], str) else row["ts"].isoformat()
-        expected = digest(f"{ts}|{row['tool_call'] or ''}|{row['decision']}|{previous}".encode())
+        try:
+            expected = expected_hash(row, previous)  # each row under its own hash_version
+        except (ValueError, TypeError, KeyError) as exc:
+            raise ArchiveIntegrityError("Audit source chain is broken") from exc
         if (row["previous_hash"] or "") != previous or row["entry_hash"] != expected:
             raise ArchiveIntegrityError("Audit source chain is broken")
         previous = row["entry_hash"]

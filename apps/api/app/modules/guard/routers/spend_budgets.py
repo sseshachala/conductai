@@ -122,10 +122,10 @@ def _audit_budget_change(
     target rule_id encodes 'workspace' or the clerk_user_id so the activity
     feed can show who the change applied to.
     """
-    from app.modules.guard.models import GuardAuditEvent, chain_next
+    from app.modules.guard.models import GuardAuditEvent, chain_begin, chain_seal
     try:
-        ts, prev_h, entry_h = chain_next(db, workspace_id, action, "allowed")
-        db.add(GuardAuditEvent(
+        ts, prev_h = chain_begin(db, workspace_id)
+        db.add(chain_seal(GuardAuditEvent(
             workspace_id=workspace_id,
             clerk_user_id=None,
             ai_tool="platform",
@@ -135,8 +135,7 @@ def _audit_budget_change(
             input_summary=summary[:500],
             ts=ts,
             previous_hash=prev_h,
-            entry_hash=entry_h,
-        ))
+        )))
         db.commit()
     except Exception:
         db.rollback()

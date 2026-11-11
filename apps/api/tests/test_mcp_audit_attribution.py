@@ -13,7 +13,7 @@ from app.tools.registrations import guard
 def test_canonical_mcp_records_actor_and_agent_separately_from_email(monkeypatch):
     db = MagicMock()
     db.info = {"mcp_actor": {"clerk_user_id": "idp-test-subject", "agent_identity_id": str(uuid4())}}
-    monkeypatch.setattr(mcp, "chain_next", lambda *args: (__import__("datetime").datetime.now(__import__("datetime").timezone.utc), None, "test-entry-hash"))
+    monkeypatch.setattr(mcp, "chain_begin", lambda *args: (__import__("datetime").datetime.now(__import__("datetime").timezone.utc), None))
     monkeypatch.setattr(mcp, "get_policy_hash", lambda *args: "test-policy-hash")
     mcp._record_event(db, uuid4(), "guard_activity", {"summary": "canary"}, "allowed", None,
                       "mcp-test", "synthetic@example.test", "fixture-session")
