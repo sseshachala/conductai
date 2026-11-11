@@ -347,7 +347,7 @@ def audit_feed_status(
     db: Session = Depends(get_db),
 ):
     """SIEM pull-feed collectors for the Audit page: last pull, lag, stale."""
-    from app.modules.guard.audit_export import feed_status
+    from app.modules.guard.audit_export import chain_complete_from, feed_status
 
     _enforce_workspace(workspace_id, active_workspace_id)
     status = feed_status(workspace_id)
@@ -360,6 +360,10 @@ def audit_feed_status(
         emails = {r.clerk_id: r.email for r in rows}
     for c in status["collectors"]:
         c["actor_email"] = emails.get(c["actor_id"])
+    try:
+        status["chain_complete_from"] = chain_complete_from(db, workspace_id)
+    except Exception:  # coverage is informational; never fail the status call
+        status["chain_complete_from"] = None
     return status
 
 

@@ -223,6 +223,16 @@ def run_audit_retention_once(*, session_factory=SessionLocal, settings_obj=setti
 KNOWN_RACE_DETAIL_LIMIT = 50
 
 
+def _complete_from(db, workspace_id):
+    """Derived coverage window start; never lets a lookup failure fail verification."""
+    from app.modules.guard.audit_export import chain_complete_from
+    try:
+        return chain_complete_from(db, workspace_id)
+    except Exception:  # noqa: BLE001
+        log.warning("guard.audit.chain_complete_from_failed")
+        return None
+
+
 def verify_audit_history(db, workspace_id, *, settings_obj=settings) -> dict:
     """Walk the retained chain. ``valid`` is False only for real breaks; pre-#2518
     append-race forks (every entry_hash correct) are reported under
@@ -235,7 +245,8 @@ def verify_audit_history(db, workspace_id, *, settings_obj=settings) -> dict:
 
     def races() -> dict:
         found = walker.known_append_races
-        return {"known_append_races": len(found), "known_append_race_details": found[:KNOWN_RACE_DETAIL_LIMIT]}
+        return {"known_append_races": len(found), "known_append_race_details": found[:KNOWN_RACE_DETAIL_LIMIT],
+                "chain_complete_from": _complete_from(db, workspace_id)}
 
     try:
         _, walker.previous, _ = checkpoint_anchor(db, workspace_id, settings_obj, summary=summary)
