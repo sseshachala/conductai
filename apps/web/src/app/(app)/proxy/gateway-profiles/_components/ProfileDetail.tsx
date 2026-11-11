@@ -54,9 +54,19 @@ export function ProfileDetail({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
-      <Link href={LIST_HREF} style={{ fontSize: 12.5, color: "var(--text-2)" }}>
-        ← Back to gateway profiles
-      </Link>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+        <Link href={LIST_HREF} style={{ fontSize: 12.5, color: "var(--text-2)" }}>
+          ← Back to gateway profiles
+        </Link>
+        {isAdmin && (
+          <Link
+            href={`/theguard/connections/notifications?source=${encodeURIComponent(`gateway:${profile.id}`)}`}
+            style={{ fontSize: 12.5, color: "var(--text-2)" }}
+          >
+            Alerts →
+          </Link>
+        )}
+      </div>
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
         <div style={{ minWidth: 0 }}>

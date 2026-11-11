@@ -25,6 +25,7 @@ from app.modules.guard.routers import rate_limits as guard_rate_limits
 from app.modules.guard.routers import developer_tools as guard_developer_tools
 from app.modules.guard.routers import token_guardrails as guard_token_guardrails
 from app.modules.guard.routers import notifications as guard_notifications
+from app.modules.guard.routers import alerts as guard_alerts
 from app.modules.guard.routers import trial as guard_trial
 from app.modules.guard.routers import inbox as guard_inbox
 from app.modules.guard.routers import approvals as guard_approvals
@@ -276,6 +277,7 @@ app.include_router(guard_rate_limits.router)
 app.include_router(guard_developer_tools.router)
 app.include_router(guard_token_guardrails.router)
 app.include_router(guard_notifications.router)
+app.include_router(guard_alerts.router)
 app.include_router(guard_trial.router)
 app.include_router(guard_inbox.router)
 app.include_router(guard_approvals.router)

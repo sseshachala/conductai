@@ -1,5 +1,6 @@
 """Exercise token bindings in both Flight Recorder audit writers."""
 import json
+from datetime import datetime, timezone
 from unittest.mock import MagicMock
 
 import pytest
@@ -41,6 +42,7 @@ def test_audit_writers_persist_provider_usage(monkeypatch, writer, stream, proto
     db.execute.return_value.rowcount = 1
     monkeypatch.setattr(audit, "SessionLocal", lambda: db)
     monkeypatch.setattr(audit, "set_workspace_rls", lambda *args: None)
+    monkeypatch.setattr("app.modules.guard.models.chain_begin", lambda *args: (datetime.now(timezone.utc), ""))
     kwargs = dict(
         workspace_id="11111111-1111-1111-1111-111111111111",
         provider=provider, model=model, body={}, response_bytes=payload,
@@ -63,6 +65,7 @@ def test_record_uses_route_without_routing_metadata(monkeypatch):
     db = MagicMock()
     monkeypatch.setattr(audit, "SessionLocal", lambda: db)
     monkeypatch.setattr(audit, "set_workspace_rls", lambda *args: None)
+    monkeypatch.setattr("app.modules.guard.models.chain_begin", lambda *args: (datetime.now(timezone.utc), ""))
     audit.record(
         "11111111-1111-1111-1111-111111111111", "user_test", "test",
         "openai", "gpt-4.1", "allowed", None, 10,

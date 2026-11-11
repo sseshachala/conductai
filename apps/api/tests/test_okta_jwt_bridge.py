@@ -309,8 +309,8 @@ def test_audit_deduped_within_same_request(monkeypatch):
     )
     # Stub the hash-chain helper — MagicMock db cannot satisfy its ORM chain.
     monkeypatch.setattr(
-        "app.modules.guard.models.chain_next",
-        lambda *a, **k: (__import__("datetime").datetime.now(__import__("datetime").timezone.utc), "prev", "entry"),
+        "app.modules.guard.models.chain_begin",
+        lambda *a, **k: (__import__("datetime").datetime.now(__import__("datetime").timezone.utc), "prev"),
     )
 
     # Run both calls inside a shared ContextVar copy so they see the same

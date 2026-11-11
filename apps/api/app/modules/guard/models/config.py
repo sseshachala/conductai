@@ -150,10 +150,17 @@ class GuardNotificationChannel(Base):
     channel_ref = Column(String(200), nullable=False)
     enabled = Column(Boolean, nullable=False, default=True)
     dedupe_window_sec = Column(Integer, nullable=False, default=300)
+    # Unified alerts (#2142): 'guard' rows use `action`; other sources use
+    # action='alert' + event_type (+ optional source_id; NULL = all instances).
+    source_type = Column(String(32), nullable=False, default="guard", server_default="guard")
+    source_id = Column(String(64), nullable=True)
+    event_type = Column(String(48), nullable=True)
+    threshold_per_min = Column(Integer, nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
 
     __table_args__ = (
         Index("idx_guard_notif_workspace_action", "workspace_id", "action"),
         Index("idx_guard_notif_workspace_enabled", "workspace_id", "enabled"),
+        Index("idx_guard_notif_workspace_source_event", "workspace_id", "source_type", "event_type"),
     )

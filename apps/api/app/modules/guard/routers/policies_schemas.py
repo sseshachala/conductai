@@ -85,6 +85,8 @@ class PolicySyncRule(BaseModel):
     match_ai_tool: Optional[str] = None
     match_pattern: Optional[str] = None
     match_path_pattern: Optional[str] = None
+    # #2384 - set on tool-result scan rules (match_tool is the pseudo-tool)
+    match_content_source: Optional[list[str]] = None
     action: str
     message: Optional[str] = None
 

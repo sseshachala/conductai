@@ -20,6 +20,7 @@ import uuid
 from pathlib import Path
 
 from conduct_cli import deployment
+from conduct_cli.audit_formats import FORMATS, FORMATTERS
 from conduct_cli.commands.shared import _load_config
 
 DEFAULT_STATE = Path.home() / ".conduct" / "audit-feed.cursor"
@@ -108,10 +109,12 @@ def _save_cursor(path: Path, cursor: str) -> None:
 
 
 def run_feed(*, since: str | None, limit: int, follow: bool, interval: float,
-             state: Path, out, sleep=time.sleep, feed_token: str | None = None) -> int:
+             state: Path, out, sleep=time.sleep, fmt: str = "json", sink=None,
+             feed_token: str | None = None) -> int:
     """Write events to ``out`` until caught up (or forever with ``follow``). Returns events written."""
     cursor = _read_cursor(state)
     written = 0
+    render = FORMATTERS[fmt]
     while True:
         args: dict = {"limit": limit}
         if cursor:
@@ -119,10 +122,15 @@ def run_feed(*, since: str | None, limit: int, follow: bool, interval: float,
         elif since:
             args["since"] = since
         page = _call_tool(args, feed_token)
-        for event in page.get("events", []):
-            out.write(json.dumps(event, separators=(",", ":")) + "\n")
-            written += 1
-        out.flush()
+        events = page.get("events", [])
+        if sink is not None:
+            sink.send(events)  # returns only once every batch is acknowledged
+            written += len(events)
+        else:
+            for event in events:
+                out.write(render(event) + "\n")
+                written += 1
+            out.flush()
         cursor = page.get("next_cursor") or cursor
         if cursor:
             _save_cursor(state, cursor)
@@ -134,15 +142,27 @@ def run_feed(*, since: str | None, limit: int, follow: bool, interval: float,
 
 
 def cmd_audit_feed(args) -> None:
+    from conduct_cli.audit_sinks import SinkError, build_sink
     state = Path(args.state).expanduser() if args.state else DEFAULT_STATE
+    sink_name = getattr(args, "sink", None)
+    try:
+        if sink_name and args.output:
+            raise FeedError("--sink and --output are mutually exclusive")
+        sink = build_sink(args) if sink_name else None
+    except (SinkError, FeedError) as exc:
+        print(f"conduct audit feed: {exc}", file=sys.stderr)
+        sys.exit(1)
     out = open(args.output, "a", encoding="utf-8") if args.output else sys.stdout
     try:
         written = run_feed(since=args.since, limit=args.limit, follow=args.follow,
                            interval=args.interval, state=state, out=out,
+                           fmt=getattr(args, "format", None) or "json", sink=sink,
                            feed_token=resolve_feed_token(getattr(args, "token_file", None)))
         if args.output:
             print(f"{written} events appended to {args.output}", file=sys.stderr)
-    except FeedError as exc:
+        elif sink is not None:
+            print(f"{written} events delivered to {sink_name}", file=sys.stderr)
+    except (FeedError, SinkError) as exc:
         print(f"conduct audit feed: {exc}", file=sys.stderr)
         sys.exit(1)
     except KeyboardInterrupt:
@@ -161,4 +181,19 @@ def register_feed(audit_sub) -> None:
     f.add_argument("--state", help=f"Cursor checkpoint file (default: {DEFAULT_STATE})")
     f.add_argument("--token-file", help=f"File holding a workspace feed token (cond_feed_...); alternatively set ${FEED_TOKEN_ENV}. "
                                         "Without either, the logged-in user's token is used")
+    f.add_argument("--format", choices=FORMATS, default="json",
+                   help="Output format: json (native, default), ocsf (OCSF 1.3 API Activity), ecs (Elastic ECS 8.x), "
+                        "cef (ArcSight CEF). Hash-chain fields are kept in every format")
     f.add_argument("--output", help="Append NDJSON to this file instead of stdout")
+    f.add_argument("--sink", choices=("splunk-hec", "sentinel"),
+                   help="Push events to a SIEM instead of writing a file. The cursor advances only after "
+                        "the destination acknowledges each page (at-least-once; dedupe on event id)")
+    f.add_argument("--hec-url", help="Splunk HEC base URL, e.g. https://splunk.example.com:8088")
+    f.add_argument("--hec-token-file", help="File holding the HEC token (or set $CONDUCT_HEC_TOKEN)")
+    f.add_argument("--hec-index", help="Splunk index for the events")
+    f.add_argument("--dce-url", help="Sentinel data collection endpoint (https://<dce>.<region>.ingest.monitor.azure.com)")
+    f.add_argument("--dcr-id", help="Data collection rule immutable id (dcr-...)")
+    f.add_argument("--stream", help="DCR stream name, e.g. Custom-ConductAudit_CL")
+    f.add_argument("--tenant-id", help="Entra tenant id (or $AZURE_TENANT_ID)")
+    f.add_argument("--client-id", help="Entra app client id (or $AZURE_CLIENT_ID)")
+    f.add_argument("--client-secret-file", help="File holding the Entra client secret (or set $CONDUCT_SENTINEL_CLIENT_SECRET)")

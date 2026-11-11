@@ -492,6 +492,9 @@ def main() -> None:
     durable_audit_alerter = threading.Thread(
         target=durable_audit_alerter_loop, daemon=True, name="durable-audit-alerter"
     )
+    from app.modules.guard.alert_worker import alert_checks_loop
+    alert_checks = threading.Thread(target=alert_checks_loop, daemon=True, name="guard-alert-checks")
+    alert_checks.start()
     guard_inbox_auto_close.start()
     durable_audit_reconciler.start()
     durable_audit_alerter.start()

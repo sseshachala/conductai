@@ -39,8 +39,11 @@ from app.modules.guard.models import GuardConfig, GuardNotificationChannel
 log = structlog.get_logger(__name__)
 
 
-def post_webhook(url: str, payload: dict, *, timeout: float = 10.0):
+def post_webhook(url: str, payload: dict, *, timeout: float = 10.0, signing_secret: str | None = None):
     """POST a JSON payload to an admin-configured webhook URL.
+
+    With ``signing_secret`` the raw body is signed and sent as
+    ``X-Conduct-Signature: t=<ts>,v1=<hex HMAC-SHA256 of "<ts>.<body>">``.
 
     The URL is checked with ``validate_outbound_url`` on every send (DNS may
     have changed since the channel was saved) and redirects are never
@@ -51,7 +54,18 @@ def post_webhook(url: str, payload: dict, *, timeout: float = 10.0):
     from app.core.egress import validate_outbound_url
 
     validate_outbound_url(url)
-    return httpx.post(url, json=payload, timeout=timeout, follow_redirects=False)
+    if not signing_secret:
+        return httpx.post(url, json=payload, timeout=timeout, follow_redirects=False)
+    from app.modules.guard.channel_creds import SIGNATURE_HEADER, json_body, sign_webhook_body
+
+    body = json_body(payload)
+    return httpx.post(
+        url,
+        content=body,
+        headers={"Content-Type": "application/json", SIGNATURE_HEADER: sign_webhook_body(signing_secret, body)},
+        timeout=timeout,
+        follow_redirects=False,
+    )
 
 
 def _check_webhook_ref(channel_type: str, ref: str) -> None:
@@ -79,7 +93,11 @@ class ChannelOut(BaseModel):
     action: str
     channel_type: str
     integration_id: str | None
-    channel_ref: str
+    channel_ref: str  # masked for legacy raw refs; a non-secret label for Vault-backed rows
+    vault_handle: str | None = None
+    environment_id: str | None = None
+    environment_name: str | None = None
+    legacy_ref: bool = False
     enabled: bool
     dedupe_window_sec: int
     created_at: datetime
@@ -92,7 +110,9 @@ class ChannelCreate(BaseModel):
     action: Literal["block", "warn", "audit", "approval", "fail_open", "drift"]
     channel_type: Literal["slack", "webhook", "pagerduty", "email"] = "slack"
     integration_id: str | None = None
-    channel_ref: str = Field(..., min_length=1, max_length=2048)
+    # Slack channel / email recipient. For pagerduty/webhook pick a Vault entry
+    # via integration_id; a raw ref is accepted only for legacy API clients.
+    channel_ref: str = Field(default="", max_length=2048)
     dedupe_window_sec: int = Field(default=300, ge=0, le=86400)
 
 
@@ -120,13 +140,15 @@ class TestResult(BaseModel):
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-def _serialize(row: GuardNotificationChannel) -> ChannelOut:
+def _serialize(row: GuardNotificationChannel, info: dict | None = None) -> ChannelOut:
+    from app.modules.guard.channel_creds import serialize_extras
+
     return ChannelOut(
         id=str(row.id),
         action=row.action,
         channel_type=row.channel_type,
         integration_id=str(row.integration_id) if row.integration_id else None,
-        channel_ref=row.channel_ref,
+        **serialize_extras(row, info or {}),
         enabled=row.enabled,
         dedupe_window_sec=row.dedupe_window_sec,
         created_at=row.created_at,
@@ -139,7 +161,10 @@ def _autoseed_from_legacy(db: Session, workspace_id: _uuid.UUID) -> None:
     'warn' row so the user's setup carries over."""
     existing = (
         db.query(GuardNotificationChannel)
-        .filter(GuardNotificationChannel.workspace_id == workspace_id)
+        .filter(
+            GuardNotificationChannel.workspace_id == workspace_id,
+            GuardNotificationChannel.source_type == "guard",
+        )
         .first()
     )
     if existing:
@@ -160,10 +185,19 @@ def _autoseed_from_legacy(db: Session, workspace_id: _uuid.UUID) -> None:
     log.info("guard.notifications.autoseeded", workspace_id=str(workspace_id))
 
 
+def _serialize_one(db: Session, row: GuardNotificationChannel) -> ChannelOut:
+    from app.modules.guard.channel_creds import vault_info
+
+    return _serialize(row, vault_info(db, [row]))
+
+
 def _rows_by_action(db: Session, workspace_id: _uuid.UUID) -> dict[str, list[GuardNotificationChannel]]:
     rows = (
         db.query(GuardNotificationChannel)
-        .filter(GuardNotificationChannel.workspace_id == workspace_id)
+        .filter(
+            GuardNotificationChannel.workspace_id == workspace_id,
+            GuardNotificationChannel.source_type == "guard",
+        )
         .order_by(GuardNotificationChannel.created_at.asc())
         .all()
     )
@@ -224,6 +258,7 @@ def resolve_channels(
         .filter(
             GuardNotificationChannel.workspace_id == ws,
             GuardNotificationChannel.action == action,
+            GuardNotificationChannel.source_type == "guard",
             GuardNotificationChannel.enabled.is_(True),
         )
         .all()
@@ -253,11 +288,14 @@ def list_channels(
     except ValueError:
         raise HTTPException(status_code=400, detail="invalid workspace_id")
     _autoseed_from_legacy(db, ws)
+    from app.modules.guard.channel_creds import vault_info
+
     grouped = _rows_by_action(db, ws)
+    info = vault_info(db, [r for rows in grouped.values() for r in rows])
     return ListOut(
         workspace_id=workspace_id,
         groups=[
-            ChannelsByAction(action=a, channels=[_serialize(r) for r in grouped.get(a, [])])
+            ChannelsByAction(action=a, channels=[_serialize(r, info) for r in grouped.get(a, [])])
             for a in ACTIONS
         ],
     )
@@ -282,22 +320,25 @@ def create_channel(
         except ValueError:
             raise HTTPException(status_code=400, detail="invalid integration_id")
 
-    _check_webhook_ref(body.channel_type, body.channel_ref.strip())
+    from app.modules.guard.channel_creds import prepare_channel_ref
+
+    ref = prepare_channel_ref(db, ws, body.channel_type, integration_uuid, body.channel_ref)
 
     row = GuardNotificationChannel(
         workspace_id=ws,
         action=body.action,
         channel_type=body.channel_type,
         integration_id=integration_uuid,
-        channel_ref=body.channel_ref.strip(),
+        channel_ref=ref,
         enabled=True,
         dedupe_window_sec=body.dedupe_window_sec,
     )
     db.add(row)
     db.commit()
     db.refresh(row)
-    log.info("guard.notifications.created", workspace_id=workspace_id, action=body.action)
-    return _serialize(row)
+    log.info("guard.notifications.created", workspace_id=workspace_id, action=body.action,
+             channel_type=body.channel_type)
+    return _serialize_one(db, row)
 
 
 @router.patch("/{notif_id}", response_model=ChannelOut)
@@ -315,20 +356,32 @@ def update_channel(
     row = _get_row(db, notif_id, ws)
     if body.enabled is not None:
         row.enabled = body.enabled
-    if body.channel_ref is not None:
-        _check_webhook_ref(row.channel_type, body.channel_ref.strip())
-        row.channel_ref = body.channel_ref.strip()
     if body.integration_id is not None:
         try:
             row.integration_id = _uuid.UUID(body.integration_id) if body.integration_id else None
         except ValueError:
             raise HTTPException(status_code=400, detail="invalid integration_id")
+    if body.channel_ref is not None or body.integration_id is not None:
+        from app.modules.guard.channel_creds import prepare_channel_ref
+
+        # Vault-backed pagerduty/webhook rows keep a label; a typed ref only
+        # applies to slack/email or legacy (no Vault entry) rows.
+        vault_backed = bool(row.integration_id) and row.channel_type in ("pagerduty", "webhook")
+        if vault_backed:
+            typed = ""
+        elif body.channel_ref is not None:
+            typed = body.channel_ref
+        elif row.channel_type in ("pagerduty", "webhook") and row.channel_ref.startswith("vault:"):
+            raise HTTPException(status_code=422, detail="provide channel_ref when unlinking the Vault entry")
+        else:
+            typed = row.channel_ref
+        row.channel_ref = prepare_channel_ref(db, ws, row.channel_type, row.integration_id, typed)
     if body.dedupe_window_sec is not None:
         row.dedupe_window_sec = body.dedupe_window_sec
     row.updated_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(row)
-    return _serialize(row)
+    return _serialize_one(db, row)
 
 
 @router.delete("/{notif_id}")
@@ -362,12 +415,17 @@ def test_channel(
         raise HTTPException(status_code=400, detail="invalid workspace_id")
     row = _get_row(db, notif_id, ws)
     if row.channel_type == "pagerduty":
+        from app.modules.guard.channel_creds import pagerduty_routing_key
+
+        routing_key = pagerduty_routing_key(db, ws, row)
+        if not routing_key:
+            return TestResult(ok=False, error="No PagerDuty routing key: the Vault entry is missing or empty.")
         try:
             import httpx
             resp = httpx.post(
                 "https://events.pagerduty.com/v2/enqueue",
                 json={
-                    "routing_key": row.channel_ref,
+                    "routing_key": routing_key,
                     "event_action": "trigger",
                     "payload": {
                         "summary": f"Guard notification test — action={row.action}",
@@ -394,6 +452,7 @@ def test_channel(
                 html=f"<p>This is a synthetic Guard notification (workspace <code>{ws}</code>, action <code>{row.action}</code>).</p>",
                 workspace_id=str(ws),
                 db=db,
+                integration_id=row.integration_id,
             )
             if not ok:
                 return TestResult(ok=False, error="Email send failed — no Resend/SendGrid credential configured for this workspace or platform.")
@@ -410,7 +469,12 @@ def test_channel(
                 "rule_id": "test",
                 "message": "synthetic notification from Guard settings",
             }
-            resp = post_webhook(row.channel_ref, payload)
+            from app.modules.guard.channel_creds import webhook_target
+
+            url, secret = webhook_target(db, ws, row)
+            if not url:
+                return TestResult(ok=False, error="No webhook URL: the Vault entry is missing or empty.")
+            resp = post_webhook(url, payload, signing_secret=secret)
             if resp.status_code >= 400:
                 return TestResult(ok=False, error=f"HTTP {resp.status_code}: {resp.text[:200]}")
             return TestResult(ok=True)

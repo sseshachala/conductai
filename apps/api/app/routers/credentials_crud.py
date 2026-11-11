@@ -43,6 +43,8 @@ KNOWN_SERVICES = {
     "linear":       {"fields": ["api_key"],      "label": "Linear",       "hint": "Personal API key from Linear settings"},
     "digitalocean": {"fields": ["token"],        "label": "DigitalOcean", "hint": "Personal access token"},
     "vercel":       {"fields": ["token"],        "label": "Vercel",       "hint": "Personal access token"},
+    "pagerduty":    {"fields": ["routing_key"],  "label": "PagerDuty",    "hint": "Events API v2 integration (routing) key"},
+    "webhook":      {"fields": ["url", "signing_secret"], "label": "Webhook", "hint": "HTTPS endpoint + optional signing secret"},
 }
 
 
@@ -84,6 +86,19 @@ def list_credentials(db: Session = Depends(get_db), workspace_id: str = Depends(
 def upsert_credential(body: CredentialUpsert, db: Session = Depends(get_db), workspace_id: str = Depends(get_workspace_id), _: str = Depends(require_permission("platform.credentials.manage"))):
     if not body.credentials:
         raise HTTPException(status_code=422, detail="credentials dict must not be empty")
+
+    if body.service == "webhook":
+        # The URL is reached by notification delivery: refuse non-public/non-https
+        # targets at save time (delivery re-checks on every send).
+        from app.core.egress import EgressBlocked, validate_outbound_url
+
+        url = str(body.credentials.get("url") or "").strip()
+        if not url:
+            raise HTTPException(status_code=422, detail="webhook credential requires a 'url' field")
+        try:
+            validate_outbound_url(url, allow_unresolvable=True)
+        except EgressBlocked as exc:
+            raise HTTPException(status_code=422, detail=f"webhook URL refused: {exc}")
 
     auth_method = "api_key" if "api_key" in body.credentials else "oauth"
 

@@ -11,7 +11,7 @@ from app.core.auth import (
 from app.core.config import settings
 from app.core.database import SessionLocal, get_db
 from app.core.workspace_context import set_workspace_rls
-from app.modules.guard.models import GuardAuditEvent, GuardConfig, GuardSession, chain_next, get_policy_hash
+from app.modules.guard.models import GuardAuditEvent, GuardConfig, GuardSession, chain_begin, chain_seal, get_policy_hash
 from app.modules.guard.routers.events_common import (
     EventOut,
     HookEvent,
@@ -20,6 +20,7 @@ from app.modules.guard.routers.events_common import (
     UsageUpdate,
     _client_ip_from,
     _event_to_dict,
+    client_usage_provenance,
     _now,
 )
 from app.modules.guard.routers.events_notify import (
@@ -285,7 +286,7 @@ def ingest_event(
     now = _now()
 
     # 1. Compute hash-chain + policy BOM fields before insert
-    _chain_ts, prev_hash, entry_hash = chain_next(db, ws_uuid, body.tool_call, body.decision)
+    _chain_ts, prev_hash = chain_begin(db, ws_uuid)
     policy_hash = get_policy_hash(db, ws_uuid)
 
     # 2. Write the audit event
@@ -310,6 +311,8 @@ def ingest_event(
         rule_message=body.rule_message,
         tokens_before=body.tokens_before,
         tokens_after=body.tokens_after,
+        usage_source=client_usage_provenance(body.tokens_before, body.tokens_after)[0],
+        usage_status=client_usage_provenance(body.tokens_before, body.tokens_after)[1],
         tokens_saved=body.tokens_saved,
         cost_usd_before=body.cost_usd_before,
         cost_usd_after=body.cost_usd_after,
@@ -321,15 +324,20 @@ def ingest_event(
         blast_radius=body.blast_radius,
         ts=_chain_ts,
         previous_hash=prev_hash,
-        entry_hash=entry_hash,
         policy_hash=policy_hash,
         goal_id=body.goal_id,
         goal_name=body.goal_name,
-        routing_meta={"session_usage": body._session_usage} if body._session_usage else None,
+        routing_meta=(
+            {
+                **({"session_usage": body._session_usage} if body._session_usage else {}),
+                # #2384 — which content source carried the matched text
+                **({"content_source": body.content_source} if body.content_source else {}),
+            } or None
+        ),
         evaluated_rules=body.evaluated_rules,
         defense_score=body.defense_score,
     )
-    db.add(event)
+    db.add(chain_seal(event))
     db.flush()  # get event.id before commit
 
     # A hook report is evidence for this installation, not universal protection.
@@ -508,6 +516,19 @@ def update_usage(
     if not config:
         raise HTTPException(status_code=404, detail="workspace_id not found in guard_config")
 
+    # #2169 — record the execution outcome for the gateway-audit join view.
+    # Independent of whether a hook audit row is found below.
+    if body.correlation_id or body.tool_use_id:
+        from app.modules.guard.tool_executions import record_tool_execution
+        if record_tool_execution(
+            db, ws_uuid,
+            correlation_id=body.correlation_id, tool_use_id=body.tool_use_id,
+            tool_name=body.tool_name, hook_session_id=body.hook_session_id,
+            clerk_user_id=auth_context[1] if auth_context else None,
+            execution_status=body.execution_status, duration_ms=body.duration_ms,
+        ):
+            db.commit()
+
     try:
         q = (
             db.query(GuardAuditEvent)
@@ -544,6 +565,9 @@ def update_usage(
 
     event.tokens_before   = body.tokens_input
     event.tokens_after    = body.tokens_output
+    # #2069 — hook/CLI reports are client-reported, never provider-verified.
+    # A missing side stays NULL (unknown) and the row is marked partial.
+    event.usage_source, event.usage_status = client_usage_provenance(body.tokens_input, body.tokens_output)
     event.tokens_saved    = tokens_saved
     event.cost_usd_before = cost_before
     event.cost_usd_after  = cost_after

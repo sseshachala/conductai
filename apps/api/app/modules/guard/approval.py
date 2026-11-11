@@ -20,7 +20,7 @@ import structlog
 from sqlalchemy.orm import Session
 
 from app.core.pii import redact_secrets
-from app.modules.guard.models import GuardApprovalRequest, GuardAuditEvent, chain_next, get_policy_hash
+from app.modules.guard.models import GuardApprovalRequest, GuardAuditEvent, chain_begin, chain_seal, get_policy_hash
 
 log = structlog.get_logger(__name__)
 
@@ -159,9 +159,9 @@ def create_approval_request(
     # Hash-chained audit trail: mark the pause distinctly from a block/warn so
     # SIEMs can count HITL pauses separately.
     try:
-        _chain_ts, prev_h, entry_h = chain_next(db, ws, tool_name or "guard.approval", "approval_pending")
+        _chain_ts, prev_h = chain_begin(db, ws)
         pol_h = get_policy_hash(db, ws)
-        db.add(GuardAuditEvent(
+        db.add(chain_seal(GuardAuditEvent(
             workspace_id=ws,
             ai_tool=surface or "unknown",
             tool_call=tool_name,
@@ -174,9 +174,8 @@ def create_approval_request(
             conductai_run_id=str(source_run_id) if source_run_id else None,
             user_email=requester_email,
             previous_hash=prev_h,
-            entry_hash=entry_h,
             policy_hash=pol_h,
-        ))
+        )))
     except Exception as exc:  # audit must never break the pause
         log.warning("guard.approval.audit_failed", err=str(exc))
     db.commit()
@@ -309,9 +308,9 @@ def dispatch_approval_notifications(
         if by_type["slack"]:
             _fanout_slack(db, request.workspace_id, by_type["slack"], slack_text, blocks=slack_blocks)
         if by_type["webhook"]:
-            _fanout_webhook(by_type["webhook"], webhook_payload)
+            _fanout_webhook(by_type["webhook"], webhook_payload, db=db, workspace_id=request.workspace_id)
         if by_type["pagerduty"]:
-            _fanout_pagerduty(by_type["pagerduty"], "approval", rule_id, slack_text)
+            _fanout_pagerduty(by_type["pagerduty"], "approval", rule_id, slack_text, db=db, workspace_id=request.workspace_id)
         if by_type["email"]:
             _fanout_email(
                 db, request.workspace_id, by_type["email"],
@@ -439,9 +438,9 @@ def apply_decision(
     row.latency_ms = _clamp_latency_ms(row.created_at, ts)
 
     try:
-        _chain_ts, prev_h, entry_h = chain_next(db, row.workspace_id, row.tool_name or "guard.approval", decision)
+        _chain_ts, prev_h = chain_begin(db, row.workspace_id)
         pol_h = get_policy_hash(db, row.workspace_id)
-        db.add(GuardAuditEvent(
+        db.add(chain_seal(GuardAuditEvent(
             workspace_id=row.workspace_id,
             ai_tool=row.surface or "unknown",
             tool_call=row.tool_name,
@@ -455,9 +454,8 @@ def apply_decision(
             conductai_run_id=str(row.source_run_id) if row.source_run_id else None,
             user_email=decider_email,
             previous_hash=prev_h,
-            entry_hash=entry_h,
             policy_hash=pol_h,
-        ))
+        )))
     except Exception as exc:
         log.warning("guard.approval.decision_audit_failed", err=str(exc))
     db.commit()

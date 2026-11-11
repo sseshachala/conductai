@@ -62,6 +62,47 @@ def session_reconciliation(
     return session_evidence(db, event)
 
 
+@router.get("/{event_id}/tool-executions")
+def event_tool_executions(
+    event_id: UUID,
+    workspace_id: str = Depends(get_workspace_id),
+    user_id: str = Depends(get_user_id),
+    _permission: str = Depends(require_permission("guard.activity.view_own")),
+    db: Session = Depends(get_db),
+):
+    """Caller-reported tool executions joined to a gateway audit row by correlation id (#2169)."""
+    from app.modules.guard.event_access import restrict_event_query
+    from app.modules.guard.tool_executions import executions_for_event
+
+    event = restrict_event_query(db.query(GuardAuditEvent), db, workspace_id, user_id, event_id).first()
+    if event is None:
+        raise HTTPException(status_code=404, detail="Event not found")
+    return executions_for_event(db, event)
+
+
+@router.get("/{event_id}/usage")
+def event_usage_detail(
+    event_id: UUID,
+    workspace_id: str = Depends(get_workspace_id),
+    user_id: str = Depends(get_user_id),
+    _permission: str = Depends(require_permission("guard.activity.view_own")),
+    db: Session = Depends(get_db),
+):
+    """#2069 — token usage, provenance and per-attempt accounting for one event.
+
+    Null stays null (unknown) and is never presented as zero; attempt totals
+    are labelled complete / partial / unavailable.
+    """
+    from app.modules.guard.event_access import restrict_event_query
+    from app.modules.guard.event_usage import event_usage
+
+    event = restrict_event_query(db.query(GuardAuditEvent), db, workspace_id, user_id,
+                                 event_id).first()
+    if event is None:
+        raise HTTPException(status_code=404, detail="Event not found")
+    return event_usage(db, event)
+
+
 @router.get("", response_model=list[EventOut])
 def list_events(
     db: Session = Depends(get_db),
@@ -378,7 +419,11 @@ def verify_audit_chain(
     """Authenticate archived boundaries, then verify the retained chain."""
     from app.modules.guard.audit_retention import verify_audit_history
     result = verify_audit_history(db, workspace_id)
-    return {key: result[key] for key in ("valid", "total", "verified_from", "broken_at")}
+    return {
+        **{key: result[key] for key in ("valid", "total", "verified_from", "broken_at")},
+        "known_append_races": result.get("known_append_races", 0),
+        "known_append_race_details": result.get("known_append_race_details", []),
+    }
 
 
 @router.get("/correlated", tags=["guard"])

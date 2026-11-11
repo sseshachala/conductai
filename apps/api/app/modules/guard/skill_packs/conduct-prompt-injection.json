@@ -1,7 +1,7 @@
 {
   "slug": "conduct-prompt-injection",
   "name": "Conduct Prompt Injection Defense",
-  "version": "1.0.2",
+  "version": "1.1.0",
   "tier": "free",
   "description": "Dedicated pack of ~100 patterns for detecting prompt injection, jailbreak, role-hijack, delimiter-escape, and system-prompt disclosure attempts across Bash, Edit, Write, and llm_call tool inputs. Covers OWASP LLM A01, MITRE ATLAS AML.M0031, ASI06, and common public jailbreak library entries. Complements the base OWASP pack. ML classifier and indirect-injection tracking are on the roadmap.",
   "ui": {
@@ -1105,6 +1105,102 @@
       "except_paths": [
         "tests/fixtures/guard_packs"
       ]
+    },
+    {
+      "id": "prompt-inject-tool-content-override",
+      "persona": "proxy",
+      "match_content_source": [
+        "tool_result",
+        "tool_description"
+      ],
+      "action": "warn",
+      "severity": "high",
+      "match_pattern": "(?i)(ignore|disregard|forget|override)\\s+(all\\s+)?(previous|prior|above|earlier|your)\\s+(instructions|rules|prompts|guidelines|directives)",
+      "message": "Instruction-override text found in content returned to the model (tool result or tool description) — possible indirect prompt injection.",
+      "recommendation": "Treat tool output and tool descriptions as data, not instructions. Review the source of this content.",
+      "frameworks": [
+        "OWASP:LLM01",
+        "MITRE_ATLAS:AML.M0031"
+      ],
+      "enforcement": {
+        "version": 1,
+        "hook": "not_supported",
+        "mcp": "not_supported",
+        "proxy": "advisory",
+        "runtime": "not_supported",
+        "guarantee": "Records or warns on a matching action on advisory surfaces; it does not claim prevention.",
+        "requires": [
+          "LLM traffic is routed through the Conduct Gateway"
+        ],
+        "known_limitations": [
+          "Pattern-based detection can be evaded by novel obfuscation",
+          "Only the request text exposed to the gateway matcher is inspected; the CLI PostToolUse hook evaluates this rule locally after the tool has already run"
+        ]
+      }
+    },
+    {
+      "id": "prompt-inject-tool-content-concealment",
+      "persona": "proxy",
+      "match_content_source": [
+        "tool_result",
+        "tool_description"
+      ],
+      "action": "warn",
+      "severity": "high",
+      "match_pattern": "(?i)do\\s+not\\s+(tell|mention|reveal|inform|notify)\\s+(this\\s+to\\s+)?the\\s+user",
+      "message": "Concealment instruction found in content returned to the model — a common tool-poisoning marker.",
+      "recommendation": "Treat tool output and tool descriptions as data, not instructions. Review the source of this content.",
+      "frameworks": [
+        "OWASP:LLM01",
+        "MITRE_ATLAS:AML.M0031"
+      ],
+      "enforcement": {
+        "version": 1,
+        "hook": "not_supported",
+        "mcp": "not_supported",
+        "proxy": "advisory",
+        "runtime": "not_supported",
+        "guarantee": "Records or warns on a matching action on advisory surfaces; it does not claim prevention.",
+        "requires": [
+          "LLM traffic is routed through the Conduct Gateway"
+        ],
+        "known_limitations": [
+          "Pattern-based detection can be evaded by novel obfuscation",
+          "Only the request text exposed to the gateway matcher is inspected; the CLI PostToolUse hook evaluates this rule locally after the tool has already run"
+        ]
+      }
+    },
+    {
+      "id": "prompt-inject-tool-content-exfil-instruction",
+      "persona": "proxy",
+      "match_content_source": [
+        "tool_result",
+        "tool_description"
+      ],
+      "action": "warn",
+      "severity": "high",
+      "match_pattern": "(?i)(send|post|upload|exfiltrate|forward)\\s+[^.\\n]{0,80}(\\.ssh|id_rsa|\\.env\\b|credentials|api[_ ]?keys?|secrets?)\\b[^.\\n]{0,80}\\bto\\s+(https?://|\\S+@)",
+      "message": "Instruction to send secrets to an external destination found in content returned to the model.",
+      "recommendation": "Treat tool output and tool descriptions as data, not instructions. Review the source of this content.",
+      "frameworks": [
+        "OWASP:LLM01",
+        "MITRE_ATLAS:AML.M0031"
+      ],
+      "enforcement": {
+        "version": 1,
+        "hook": "not_supported",
+        "mcp": "not_supported",
+        "proxy": "advisory",
+        "runtime": "not_supported",
+        "guarantee": "Records or warns on a matching action on advisory surfaces; it does not claim prevention.",
+        "requires": [
+          "LLM traffic is routed through the Conduct Gateway"
+        ],
+        "known_limitations": [
+          "Pattern-based detection can be evaded by novel obfuscation",
+          "Only the request text exposed to the gateway matcher is inspected; the CLI PostToolUse hook evaluates this rule locally after the tool has already run"
+        ]
+      }
     }
   ]
 }

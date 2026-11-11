@@ -256,10 +256,38 @@ def _send_via_sendgrid(api_key: str, from_name: str, from_email: str, to: str, s
         return False
 
 
-def send_email(*, to: str, subject: str, html: str, workspace_id: str | None = None, db=None) -> bool:
-    """Send a pre-rendered email. Returns True on success."""
+def _integration_credential(workspace_id: str, db, integration_id) -> EmailCredential | None:
+    """Email credential from one specific Vault entry (a notification channel's)."""
+    try:
+        from app.modules.guard.channel_creds import vault_credentials
+
+        creds = vault_credentials(db, workspace_id, integration_id, "email")
+        resend = (creds.get("resend_api_key") or "").strip()
+        sendgrid = (creds.get("sendgrid_api_key") or "").strip()
+        if not resend and not sendgrid:
+            return None
+        return EmailCredential(
+            resend_api_key=resend or None,
+            sendgrid_api_key=sendgrid or None,
+            from_name=(creds.get("from_name") or "").strip() or "Conduct AI",
+            from_email=(creds.get("from_email") or "").strip() or "notifications@conductai.ai",
+        )
+    except Exception as e:
+        log.warning("email.integration_credential_load_failed", error=type(e).__name__)
+        return None
+
+
+def send_email(*, to: str, subject: str, html: str, workspace_id: str | None = None, db=None,
+               integration_id=None) -> bool:
+    """Send a pre-rendered email. Returns True on success.
+
+    ``integration_id`` selects one Vault email entry (e.g. a notification
+    channel's environment); when it is unset or unusable the workspace
+    credential, then the platform one, is used."""
     cred: EmailCredential | None = None
-    if workspace_id and db:
+    if workspace_id and db and integration_id:
+        cred = _integration_credential(workspace_id, db, integration_id)
+    if not cred and workspace_id and db:
         cred = _workspace_credential(workspace_id, db)
     if not cred:
         cred = _platform_credential()

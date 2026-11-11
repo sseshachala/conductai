@@ -115,7 +115,7 @@ jobs:
       group: clerk-sandbox-e2e
       cancel-in-progress: false
     if: ${{ github.event.inputs.only == '' || github.event.inputs.only == 'all' || github.event.inputs.only == 'web-smoke' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04  # Playwright has no Ubuntu 26.04 build yet
     # 45 min: matches web-smoke.yml — Group F expanded runtime past 25.
     timeout-minutes: 45
     services:
@@ -198,6 +198,9 @@ jobs:
         working-directory: apps/api
       - name: Build web
         run: npm run build --workspace apps/web
+      - name: Drop unreachable apt mirror
+        # See web-smoke.yml: azure.archive.ubuntu.com fails DNS on runners.
+        run: sudo sed -i '/azure\.archive\.ubuntu\.com/d' /etc/apt/apt-mirrors.txt || true
       - name: Install Playwright browsers
         # WebKit is disabled in playwright.config.ts; install only active engines.
         run: npx playwright install --with-deps chromium firefox

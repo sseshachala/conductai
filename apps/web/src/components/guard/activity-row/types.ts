@@ -38,6 +38,8 @@ export interface AuditEvent {
     endpoint_provider?: string | null
     reason?: string | null
     resolution_source?: string | null
+    // #2158 — {tool_call_id: correlation_id}; drives the "Tool executions" join (#2169)
+    tool_call_correlation_ids?: Record<string, string> | null
   } | null
   execution_status?: "success" | "error" | "timeout" | null
   result_summary?: string | null

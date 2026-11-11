@@ -1,8 +1,14 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { useAuthFetch } from "@/hooks/useAuthFetch"
 import { guard, environments as environmentsApi, credentials } from "@/lib/api"
+import AlertsCard, { parseSourceFilter } from "./AlertsCard"
+import VaultEntryPicker from "./VaultEntryPicker"
+import {
+  channelVaultLabel, EMPTY_VAULT_ENTRIES, entriesForEnv, slackIntegrationFor,
+  type SlackIntegration, type VaultEntries, type VaultEntry, type VaultEnvironment,
+} from "./vault"
 
 // ─── #1142 Phase 1 — per-action notifications card ────────────────────────────
 
@@ -20,7 +26,11 @@ interface NotifChannel {
   id: string
   action: NotifActionKey
   channel_type: string
+  integration_id?: string | null
   channel_ref: string
+  environment_name?: string | null
+  vault_handle?: string | null
+  legacy_ref?: boolean
   enabled: boolean
 }
 
@@ -29,9 +39,17 @@ interface NotifGroup { action: string; channels: NotifChannel[] }
 function NotificationsCard({
   workspaceId,
   isAdmin,
+  environments,
+  slackIntegrations,
+  vaultEntries = EMPTY_VAULT_ENTRIES,
+  selectedEnvId,
 }: {
   workspaceId: string | null
   isAdmin: boolean
+  environments: VaultEnvironment[]
+  slackIntegrations: SlackIntegration[]
+  vaultEntries?: VaultEntries
+  selectedEnvId: string
 }) {
   const { authFetch } = useAuthFetch()
   const [groups, setGroups] = useState<NotifGroup[]>([])
@@ -41,27 +59,15 @@ function NotificationsCard({
   const [addMenuFor, setAddMenuFor] = useState<string | null>(null)
   const [addType, setAddType] = useState<"slack" | "webhook" | "pagerduty" | "email">("slack")
   const [addChannel, setAddChannel] = useState("")
-  const [selectedEnvId, setSelectedEnvId] = useState<string>("")
-  const [environments, setEnvironments] = useState<Array<{ id: string; name: string }>>([])
-  const [slackIntegrations, setSlackIntegrations] = useState<Array<{ id: string; handle: string; environment_id: string | null; environment_name: string | null }>>([])
+  const [addEntryId, setAddEntryId] = useState("")
   const [testResult, setTestResult] = useState<Record<string, { ok: boolean; err: string | null }>>({})
 
   const load = useCallback(async () => {
     if (!workspaceId) return
     setLoading(true)
     try {
-      const [data, envList, integList] = await Promise.all([
-        guard.notifications.list(authFetch, workspaceId),
-        environmentsApi.list(authFetch).catch(() => []),
-        credentials.slack.integration(authFetch, workspaceId).catch(() => []),
-      ])
+      const data = await guard.notifications.list(authFetch, workspaceId)
       setGroups(data.groups as NotifGroup[])
-      const envs = Array.isArray(envList) ? envList : []
-      setEnvironments(envs)
-      const integs = Array.isArray(integList) ? integList : (integList ? [integList] : [])
-      setSlackIntegrations(integs)
-      // Panel-level env: seed once from the first env if user hasn't picked yet.
-      setSelectedEnvId(prev => prev || envs[0]?.id || "")
       setError(null)
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load notifications")
@@ -72,8 +78,19 @@ function NotificationsCard({
 
   useEffect(() => { void load() }, [load])
 
+  // PagerDuty/Webhook/Email pick a Vault entry from the selected Vault; email
+  // may fall back to the workspace credential (no entry).
+  const vaultType = addType === "slack" ? null : addType
+  const entryOptions: VaultEntry[] = vaultType ? entriesForEnv(vaultEntries[vaultType], selectedEnvId) : []
+  const pickedEntry = vaultType
+    ? (entryOptions.find(e => e.id === addEntryId)?.id ?? (vaultType === "email" ? "" : (entryOptions[0]?.id ?? "")))
+    : ""
+  const canSave = addType === "slack"
+    ? environments.length > 0 && !!addChannel.trim()
+    : addType === "email" ? !!addChannel.trim() : !!pickedEntry
+
   async function handleAdd(action: NotifActionKey) {
-    if (!workspaceId || !addChannel.trim()) return
+    if (!workspaceId || !canSave) return
     try {
       let body: {
         action: typeof action
@@ -81,18 +98,14 @@ function NotificationsCard({
         channel_ref: string
         integration_id: string | null
       }
-      if (addType === "webhook" || addType === "pagerduty" || addType === "email") {
-        body = {
-          action,
-          channel_type: addType,
-          channel_ref: addChannel.trim(),
-          integration_id: null,
-        }
+      if (addType === "email") {
+        body = { action, channel_type: "email", channel_ref: addChannel.trim(), integration_id: pickedEntry || null }
+      } else if (addType === "webhook" || addType === "pagerduty") {
+        // The secret lives in the Vault entry; the channel only references it.
+        body = { action, channel_type: addType, channel_ref: "", integration_id: pickedEntry }
       } else {
-        // Environment → Slack integration lookup: uses the panel-level env picker.
-        const integ = selectedEnvId
-          ? (slackIntegrations.find(i => i.environment_id === selectedEnvId) ?? null)
-          : (slackIntegrations[0] ?? null)
+        // Environment → Slack integration lookup: uses the panel-level Vault picker.
+        const integ = slackIntegrationFor(slackIntegrations, selectedEnvId)
         body = {
           action,
           channel_type: "slack",
@@ -103,6 +116,7 @@ function NotificationsCard({
       await guard.notifications.create(authFetch, workspaceId, body)
       setAddingAction(null)
       setAddChannel("")
+      setAddEntryId("")
       await load()
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to add channel")
@@ -141,26 +155,7 @@ function NotificationsCard({
             <path d="M14.5 2v20M9.5 2v20M2 14.5h20M2 9.5h20" />
           </svg>
         </span>
-        <div style={{ fontWeight: 650, fontSize: 14.5 }}>Notifications</div>
-        {environments.length > 0 && (
-          <label style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-3)" }}>
-            Vault
-            <select
-              value={selectedEnvId}
-              onChange={e => setSelectedEnvId(e.target.value)}
-              style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 4, padding: "3px 8px", fontSize: 12.5, color: "var(--text)" }}
-            >
-              {environments.map(env => {
-                const hasSlack = slackIntegrations.some(i => i.environment_id === env.id)
-                return (
-                  <option key={env.id} value={env.id}>
-                    {env.name}{hasSlack ? "" : " — (no Slack)"}
-                  </option>
-                )
-              })}
-            </select>
-          </label>
-        )}
+        <div style={{ fontWeight: 650, fontSize: 14.5 }}>Guard rules</div>
       </div>
 
       <div style={{ padding: "4px 20px 16px" }}>
@@ -214,6 +209,7 @@ function NotificationsCard({
                                 setAddingAction(a.k)
                                 setAddType(type)
                                 setAddChannel("")
+                                setAddEntryId("")
                                 setAddMenuFor(null)
                               }}
                               style={{
@@ -248,15 +244,11 @@ function NotificationsCard({
               )}
 
               {channels.map(ch => {
-                const chIntegId = (ch as { integration_id?: string | null }).integration_id
-                const integ = chIntegId ? slackIntegrations.find(i => i.id === chIntegId) : null
-                const envLabel = integ?.environment_name ?? (integ ? "(default env)" : null)
+                const entries = vaultEntries[ch.channel_type as keyof VaultEntries] ?? []
+                const envLabel = channelVaultLabel(ch, ch.channel_type === "slack" ? slackIntegrations : entries)
                 const isSlack = ch.channel_type === "slack"
-                const isPd = ch.channel_type === "pagerduty"
-                const displayRef =
-                  isSlack ? `#${ch.channel_ref}` :
-                  isPd    ? `${ch.channel_ref.slice(0, 6)}…${ch.channel_ref.slice(-4)}` :
-                  ch.channel_ref
+                // The API masks typed keys/URLs and returns a non-secret label for Vault-backed rows.
+                const displayRef = isSlack ? `#${ch.channel_ref}` : (ch.vault_handle ?? ch.channel_ref)
                 return (
                 <div key={ch.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0", fontSize: 12.5 }}>
                   <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".04em", color: "var(--text-muted)", background: "var(--surface-2)", borderRadius: 4, padding: "1px 6px", textTransform: "uppercase" }}>
@@ -264,8 +256,13 @@ function NotificationsCard({
                   </span>
                   <span style={{ fontFamily: "var(--font-mono, ui-monospace, monospace)", color: "var(--text)", flex: 1, wordBreak: "break-all" }}>
                     {displayRef}
-                    {isSlack && envLabel && (
+                    {envLabel && (
                       <span style={{ marginLeft: 8, fontSize: 11, color: "var(--text-muted)", fontFamily: "inherit" }}>· {envLabel}</span>
+                    )}
+                    {ch.legacy_ref && (
+                      <span style={{ marginLeft: 8, fontSize: 11, color: "var(--warn, #b45309)", fontFamily: "inherit" }}>
+                        · Typed key — move to Vault
+                      </span>
                     )}
                   </span>
                   {testResult[ch.id] && (
@@ -285,27 +282,35 @@ function NotificationsCard({
 
               {addingAction === a.k && (
                 <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 8, padding: "6px 8px", background: "var(--surface-2)", borderRadius: 6 }}>
+                  {vaultType && (
+                    <VaultEntryPicker
+                      service={vaultType}
+                      entries={vaultEntries[vaultType]}
+                      envId={selectedEnvId}
+                      value={pickedEntry}
+                      onChange={setAddEntryId}
+                      optional={vaultType === "email"}
+                    />
+                  )}
                   {addType === "slack" && <span style={{ color: "var(--text-3)", fontSize: 12 }}>#</span>}
-                  <input
-                    autoFocus
-                    value={addChannel}
-                    onChange={e => setAddChannel(addType === "slack" ? e.target.value.replace(/^#+/, "") : e.target.value)}
-                    placeholder={
-                      addType === "slack"     ? "compliance-hipaa" :
-                      addType === "email"     ? "oncall@company.com" :
-                      addType === "pagerduty" ? "PagerDuty routing key (32-char integration key)" :
-                      "https://example.com/hooks/guard"
-                    }
-                    type={addType === "email" ? "email" : "text"}
-                    style={{ flex: 1, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 4, padding: "4px 8px", fontSize: 12.5, fontFamily: (addType === "webhook" || addType === "pagerduty") ? "var(--font-mono, ui-monospace, monospace)" : undefined }}
-                    onKeyDown={e => { if (e.key === "Enter") void handleAdd(a.k); if (e.key === "Escape") { setAddingAction(null); setAddChannel("") } }}
-                  />
+                  {(addType === "slack" || addType === "email") && (
+                    <input
+                      autoFocus
+                      aria-label={addType === "email" ? "Recipient address" : "Slack channel"}
+                      value={addChannel}
+                      onChange={e => setAddChannel(addType === "slack" ? e.target.value.replace(/^#+/, "") : e.target.value)}
+                      placeholder={addType === "slack" ? "compliance-hipaa" : "oncall@company.com"}
+                      type={addType === "email" ? "email" : "text"}
+                      style={{ flex: 1, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 4, padding: "4px 8px", fontSize: 12.5 }}
+                      onKeyDown={e => { if (e.key === "Enter") void handleAdd(a.k); if (e.key === "Escape") { setAddingAction(null); setAddChannel("") } }}
+                    />
+                  )}
                   <button
                     type="button"
-                    disabled={(addType === "slack" && environments.length === 0) || !addChannel.trim()}
+                    disabled={!canSave}
                     onClick={() => void handleAdd(a.k)}
                     className="btn btn-primary btn-sm"
-                    style={{ fontSize: 11, opacity: (addType === "slack" && environments.length === 0) || !addChannel.trim() ? 0.5 : 1 }}
+                    style={{ fontSize: 11, opacity: canSave ? 1 : 0.5 }}
                   >
                     Save
                   </button>
@@ -330,13 +335,75 @@ function NotificationsCard({
 export default function NotificationsPanel({
   workspaceId,
   isAdmin,
+  source = null,
 }: {
   workspaceId: string | null
   isAdmin: boolean
+  /** `?source=` filter, e.g. `gateway:<profile_id>`. */
+  source?: string | null
 }) {
+  const { authFetch } = useAuthFetch()
+  const filter = useMemo(() => parseSourceFilter(source), [source])
+  const showGuardRules = !filter || filter.sourceType === "guard"
+  const showAlerts = filter?.sourceType !== "guard"
+
+  // One Vault (environment) selection drives the Slack credential for both
+  // Guard-rule channels and alert channels.
+  const [environments, setEnvironments] = useState<VaultEnvironment[]>([])
+  const [slackIntegrations, setSlackIntegrations] = useState<SlackIntegration[]>([])
+  const [vaultEntries, setVaultEntries] = useState<VaultEntries>(EMPTY_VAULT_ENTRIES)
+  const [selectedEnvId, setSelectedEnvId] = useState("")
+
+  useEffect(() => {
+    if (!workspaceId) return
+    let cancelled = false
+    void Promise.all([
+      environmentsApi.list(authFetch).catch(() => []),
+      credentials.slack.integration(authFetch, workspaceId).catch(() => []),
+      credentials.channelEntries(authFetch, workspaceId, "pagerduty").catch(() => []),
+      credentials.channelEntries(authFetch, workspaceId, "webhook").catch(() => []),
+      credentials.channelEntries(authFetch, workspaceId, "email").catch(() => []),
+    ]).then(([envList, integList, pd, wh, em]) => {
+      if (cancelled) return
+      const envs = Array.isArray(envList) ? envList : []
+      setEnvironments(envs)
+      const slack = Array.isArray(integList) ? integList : (integList ? [integList] : [])
+      setSlackIntegrations(slack)
+      setVaultEntries({ slack, pagerduty: Array.isArray(pd) ? pd : [], webhook: Array.isArray(wh) ? wh : [], email: Array.isArray(em) ? em : [] })
+      setSelectedEnvId(prev => prev || envs[0]?.id || "")
+    })
+    return () => { cancelled = true }
+  }, [authFetch, workspaceId])
+
+  const vault = { environments, slackIntegrations, vaultEntries, selectedEnvId }
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-      <NotificationsCard workspaceId={workspaceId} isAdmin={isAdmin} />
+      {environments.length > 0 && (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "var(--text-3)" }}>
+          <label htmlFor="notif-vault" style={{ fontWeight: 600 }}>Vault</label>
+          <select
+            id="notif-vault"
+            value={selectedEnvId}
+            onChange={e => setSelectedEnvId(e.target.value)}
+            style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 4, padding: "3px 8px", fontSize: 12.5, color: "var(--text)" }}
+          >
+            {environments.map(env => {
+              const hasSlack = slackIntegrations.some(i => i.environment_id === env.id)
+              return (
+                <option key={env.id} value={env.id}>
+                  {env.name}{hasSlack ? "" : " — (no Slack)"}
+                </option>
+              )
+            })}
+          </select>
+          <span>Credentials (Slack, PagerDuty, webhook, email) for new channels in both Guard rules and Alerts.</span>
+        </div>
+      )}
+      <div style={{ display: "grid", gridTemplateColumns: showGuardRules && showAlerts ? "repeat(auto-fit, minmax(420px, 1fr))" : "1fr", gap: 20, alignItems: "start" }}>
+        {showGuardRules && <NotificationsCard workspaceId={workspaceId} isAdmin={isAdmin} {...vault} />}
+        {showAlerts && <AlertsCard workspaceId={workspaceId} isAdmin={isAdmin} filter={filter} {...vault} />}
+      </div>
       <div style={{ background: "var(--info-bg)", border: "1px solid var(--info-bd)", borderRadius: 12, padding: "14px 18px" }}>
         <p style={{ fontSize: 12, fontWeight: 600, color: "var(--info)", marginBottom: 6 }}>Setup checklist</p>
         <p style={{ fontSize: 12, color: "var(--info)", marginBottom: 4 }}>
