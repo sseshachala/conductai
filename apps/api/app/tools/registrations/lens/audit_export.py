@@ -123,9 +123,14 @@ def get_audit_feed_status(ctx):
         except HTTPException as exc:
             return {"error": f"forbidden: feed status requires {ax.EXPORT_PERMISSION}",
                     "status_code": exc.status_code}
+        try:
+            complete_from = ax.chain_complete_from(db, ctx.workspace_id)
+        except Exception:  # informational; never fail the status call
+            complete_from = None
     finally:
         db.close()
-    return {"kind": "audit_feed_status", **ax.feed_status(str(ctx.workspace_id))}
+    return {"kind": "audit_feed_status", **ax.feed_status(str(ctx.workspace_id)),
+            "chain_complete_from": complete_from}
 
 
 TOOLS: list[ToolDef] = [ToolDef(
@@ -155,7 +160,7 @@ TOOLS: list[ToolDef] = [ToolDef(
     name="get_audit_feed_status",
     description=(
         "Status of the SIEM audit feed: each collector pulling via `conduct audit feed`, when it last "
-        "pulled, how far behind it is (lag_seconds) and whether it is stale (no pull for 15 minutes). "
+        "pulled, how far behind it is (lag_seconds) and whether it is stale (no pull for 15 minutes), plus chain_complete_from (the instant from which the hash chain fully covers the audit log; earlier gateway rows predate chaining). "
         "Call this when the user asks whether their SIEM / Splunk / Sentinel is receiving audit events. "
         "Needs the platform.audit_log.view permission."
     ),

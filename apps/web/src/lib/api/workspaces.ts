@@ -15,6 +15,8 @@ export interface AuditFeedStatus {
   available: boolean
   collectors: AuditFeedCollector[]
   stale_after_seconds: number
+  /** ISO instant from which the audit hash chain fully covers the log; null when nothing is chained yet. */
+  chain_complete_from?: string | null
 }
 
 const base = (id: string) => `${API}/workspaces/${id}`
