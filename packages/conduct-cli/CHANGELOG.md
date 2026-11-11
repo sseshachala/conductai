@@ -9,6 +9,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 ## [Unreleased]
 
 ### Added
+- `conduct audit feed --sink splunk-hec|sentinel`: push events to Splunk HEC or the Microsoft Sentinel
+  Logs Ingestion API with batching, retry with backoff, and a cursor that advances only after the
+  destination acknowledges. Secrets come from files or env vars only.
 - PostToolUse now scans `tool_response` for indirect prompt injection (#2384)
   with synced rules that declare `match_content_source: tool_result`. A match
   records a warn event (`routing_meta.content_source = tool_result`) and marks
