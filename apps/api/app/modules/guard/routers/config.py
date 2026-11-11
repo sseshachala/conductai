@@ -626,7 +626,9 @@ def join_guard(body: JoinIn, db: Session = Depends(get_db)):
     # compute_policy already filters to enabled packs per WorkspaceSkillPack — a rule
     # from a pack that is not installed will not appear here.
     from app.core.auth import caller_risk_tier
-    from app.modules.guard.enforcement import is_hook_applicable_rule
+    from app.modules.guard.enforcement import (
+        CONTENT_SCAN_PSEUDO_TOOL, is_hook_applicable_rule, tool_result_scan_rules,
+    )
     from app.modules.guard.policy_engine import compute_policy
     persona = (config.persona or "agent")
     computed = compute_policy(db, config.workspace_id, persona)
@@ -638,6 +640,9 @@ def join_guard(body: JoinIn, db: Session = Depends(get_db)):
             "match_ai_tool":     r.get("match_ai_tool"),
             "match_pattern":     r.get("match_pattern"),
             "match_path_pattern": r.get("match_path_pattern"),
+            "match_content_source": (
+                r.get("match_content_source") if r.get("match_tool") == CONTENT_SCAN_PSEUDO_TOOL else None
+            ),
             "action":            r.get("action"),
             "message":           r.get("message"),
             # #1048: propagate except_paths so pack authors can declaratively
@@ -647,8 +652,10 @@ def join_guard(body: JoinIn, db: Session = Depends(get_db)):
             # in my local cache' when diagnosing stale-cache issues.
             "source_pack":       r.get("source_pack") or r.get("_pack_slug"),
         }
-        for r in computed
-        if is_hook_applicable_rule(r, caller_risk_tier=tier)
+        for r in (
+            [x for x in computed if is_hook_applicable_rule(x, caller_risk_tier=tier)]
+            + tool_result_scan_rules(db, config.workspace_id)
+        )
     ]
     policy = {"workspace_id": workspace_id, "version": "1", "rules": rules}
 

@@ -324,7 +324,13 @@ def ingest_event(
         policy_hash=policy_hash,
         goal_id=body.goal_id,
         goal_name=body.goal_name,
-        routing_meta={"session_usage": body._session_usage} if body._session_usage else None,
+        routing_meta=(
+            {
+                **({"session_usage": body._session_usage} if body._session_usage else {}),
+                # #2384 — which content source carried the matched text
+                **({"content_source": body.content_source} if body.content_source else {}),
+            } or None
+        ),
         evaluated_rules=body.evaluated_rules,
         defense_score=body.defense_score,
     )
