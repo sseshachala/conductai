@@ -294,6 +294,36 @@ class ConductGuard(CustomGuardrail):
         )
         return data
 
+    async def async_post_call_success_hook(
+        self,
+        data: dict[str, Any],
+        user_api_key_dict: Any,
+        response: Any,
+    ) -> Any:
+        """Surface Conduct Gateway tool-call correlation IDs (#2168).
+
+        When LiteLLM's upstream is the Conduct Gateway, the response carries
+        ``X-Conduct-Tool-Correlation-Ids``. Log one line per tool call and
+        stash the mapping on ``data["metadata"]`` so downstream callbacks and
+        the executor's own log can join on it. Never raises and never alters
+        the response. No effect when the upstream is not the Gateway.
+        """
+        try:
+            mapping = _correlation_ids_from_response(response)
+            if not mapping:
+                return response
+            data.setdefault("metadata", {})["conduct_tool_correlation_ids"] = mapping
+            for call in _response_tool_calls(response):
+                cid = mapping.get(call["id"])
+                if cid:
+                    log.info(
+                        "conduct_guard: tool_call generated tool=%s tool_call_id=%s correlation_id=%s",
+                        call["name"], call["id"], cid,
+                    )
+        except Exception as e:  # never break the response path
+            log.debug("conduct_guard: correlation read failed %s", type(e).__name__)
+        return response
+
     # ── Public helpers usable outside LiteLLM ─────────────────────────
 
     async def check(self, *, data: dict[str, Any], call_type: str, auth=None) -> GuardDecision:
@@ -373,6 +403,58 @@ class ConductGuard(CustomGuardrail):
         method exists so long-running processes can tear the guardrail
         down cleanly if needed."""
         await self._client.aclose()
+
+
+# ── Tool-call correlation helpers (#2168) ───────────────────────────────
+
+CORRELATION_HEADER = "x-conduct-tool-correlation-ids"
+_CORRELATION_ID_RE = re.compile(r"^[0-9a-f]{16}$")
+
+
+def parse_correlation_header(header_value: str | None) -> dict[str, str]:
+    """Mirror of the server's ``parse_correlation_header``: returns
+    ``{tool_call_id: correlation_id}``; malformed pairs are dropped."""
+    if not header_value or not isinstance(header_value, str):
+        return {}
+    out: dict[str, str] = {}
+    for pair in header_value[:16384].split(","):
+        if "=" not in pair:
+            continue
+        key, val = pair.split("=", 1)
+        key, val = key.strip(), val.strip()
+        if key and _CORRELATION_ID_RE.match(val):
+            out.setdefault(key, val)
+    return out
+
+
+def _correlation_ids_from_response(response: Any) -> dict[str, str]:
+    """Read the gateway header from a LiteLLM response's hidden params.
+
+    LiteLLM exposes upstream headers under ``_hidden_params["additional_headers"]``
+    with an ``llm_provider-`` prefix; accept the bare name too."""
+    hidden = getattr(response, "_hidden_params", None)
+    if not isinstance(hidden, dict):
+        return {}
+    headers = hidden.get("additional_headers") or {}
+    if not isinstance(headers, dict):
+        return {}
+    for k, v in headers.items():
+        name = str(k).lower()
+        if name == CORRELATION_HEADER or name == "llm_provider-" + CORRELATION_HEADER:
+            return parse_correlation_header(v)
+    return {}
+
+
+def _response_tool_calls(response: Any) -> list[dict[str, str]]:
+    calls: list[dict[str, str]] = []
+    for choice in getattr(response, "choices", None) or []:
+        msg = getattr(choice, "message", None)
+        for tc in getattr(msg, "tool_calls", None) or []:
+            tc_id = getattr(tc, "id", None)
+            fn = getattr(tc, "function", None)
+            if tc_id:
+                calls.append({"id": str(tc_id), "name": str(getattr(fn, "name", "") or "")})
+    return calls
 
 
 # ── Session-ID + prompt helpers ────────────────────────────────────────

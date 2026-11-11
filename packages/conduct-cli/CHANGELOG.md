@@ -8,6 +8,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
 
+### Added
+- PostToolUse hook reports the gateway tool-call `correlation_id` (#2168) on
+  `/guard/events/usage` when the surface exposes the
+  `X-Conduct-Tool-Correlation-Ids` header or a `correlation_id`
+  (`conduct_cli/tool_correlation.py`). Claude Code and Codex hooks never see
+  gateway response headers, so on those surfaces the field is omitted and the
+  API resolves the id from `tool_use_id`.
+
 ### Changed
 - `conduct audit verify` now checks each row under its own `hash_version`.
   New (v2) rows hash the full audit record, so editing any field of a v2 row in
