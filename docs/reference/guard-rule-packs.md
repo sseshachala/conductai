@@ -43,7 +43,7 @@ Core AI governance rules — proxy interception, agent safety, surface-aware enf
 | Rule ID | Action | Severity | Frameworks | Description |
 |---|---|---|---|---|
 | `proxy-no-credential-leak` | `block` | critical | SOC2:CC6.1, ISO_42001:6.1 | Block LLM calls containing credentials in the prompt |
-| `proxy-no-prompt-injection` | `block` | critical | OWASP:LLM01, ISO_42001:6.1 | Block prompt injection attempts |
+| `proxy-no-prompt-injection` | `block` (user text); `warn` for tool content | critical | OWASP:LLM01, ISO_42001:6.1 | Block prompt injection attempts |
 | `proxy-no-pii-prompt` | `warn` | high | GDPR:Art32, HIPAA:164.514 | Warn when LLM prompt contains PII |
 | `proxy-audit-vision-input` | `audit` | medium | ISO_42001:6.1, NIST_AI_RMF:GOVERN-1.2 | Audit LLM calls that include inline image data — text-based policy rules cannot inspect image contents |
 | `audit-image-file-read` | `audit` | low | ISO_42001:6.1 | Audit when agent reads image or scanned document files — content is not inspectable by text-based policy rules |

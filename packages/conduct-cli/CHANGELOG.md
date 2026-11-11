@@ -19,7 +19,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
   records a warn event (`routing_meta.content_source = tool_result`) and marks
   the session; when the rule's action is `block`, the next tool call in that
   session is denied once. Hooks cannot intercept the model call or un-run the
-  tool, so this is detect-and-gate-next, not prevention.
+  tool, so this is detect-and-gate-next, not prevention. The effective action
+  for tool output honours `action_by_source.tool_result`; the shipped
+  `proxy-no-prompt-injection` rule warns on tool content (marks the session, no
+  deny) and only user text blocks, so an article quoting an override phrase
+  cannot lock a session.
 
 ---
 - `conduct audit feed --format ocsf|ecs|cef`: emit OCSF 1.3 (API Activity), Elastic ECS or CEF
