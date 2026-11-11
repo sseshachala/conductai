@@ -71,12 +71,12 @@ def _resolve_okta_jwt(token: str, db: Session):
             return
         _seen.add(_key)
         try:
-            from app.modules.guard.models import GuardAuditEvent, chain_next
+            from app.modules.guard.models import GuardAuditEvent, chain_begin, chain_seal
             from datetime import datetime, timezone as _tz
             _now = datetime.now(_tz.utc)
             _tool = "auth.okta_jwt.verify"
-            _chain_ts, prev_hash, entry_hash = chain_next(db, workspace_id, _tool, decision)
-            db.add(GuardAuditEvent(
+            _chain_ts, prev_hash = chain_begin(db, workspace_id)
+            _event = GuardAuditEvent(
                 workspace_id=workspace_id,
                 user_email=sub or "unknown",
                 ai_tool="okta_jwt",
@@ -89,8 +89,8 @@ def _resolve_okta_jwt(token: str, db: Session):
                 ts=_chain_ts,
                 duration_ms=int((_time.perf_counter() - _t0) * 1000),
                 previous_hash=prev_hash,
-                entry_hash=entry_hash,
-            ))
+            )
+            db.add(chain_seal(_event))
             db.commit()
         except Exception as _e:  # never let audit break auth
             log.warning("okta.audit.emit_failed", error=str(_e))

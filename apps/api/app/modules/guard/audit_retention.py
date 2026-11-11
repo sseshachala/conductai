@@ -15,6 +15,7 @@ from app.modules.guard.audit_archive import (
     ArchiveIntegrityError, S3ArchiveStore, archive_keys, canonical, digest,
     persist_archive, read_verified_archive, verify_manifest,
 )
+from app.modules.guard.audit_chain import ChainBroken, ChainWalker
 from app.modules.guard.models import (
     BudgetReservation, GuardAuditArchiveSegment, GuardAuditEvent, GuardAuditRetentionHold,
 )
@@ -106,17 +107,15 @@ def _eligible_prefix(db, workspace_id, cutoff, limit, *, now, for_update=False):
     return selected, blocked
 
 
-def verify_event_rows(rows, previous_hash="") -> str:
-    previous = previous_hash
+def verify_event_rows(rows, previous_hash="", *, walker: ChainWalker | None = None) -> str:
+    """Verify ``rows`` in chain order; pre-#2518 forks pass and are listed on ``walker``."""
+    walker = walker or ChainWalker(previous_hash)
     for row in rows:
-        if not row["entry_hash"]:
-            continue
-        ts = row["ts"] if isinstance(row["ts"], str) else row["ts"].isoformat()
-        expected = digest(f"{ts}|{row['tool_call'] or ''}|{row['decision']}|{previous}".encode())
-        if (row["previous_hash"] or "") != previous or row["entry_hash"] != expected:
-            raise ArchiveIntegrityError("Audit source chain is broken")
-        previous = row["entry_hash"]
-    return previous
+        try:
+            walker.feed(row)
+        except ChainBroken as exc:
+            raise ArchiveIntegrityError("Audit source chain is broken") from exc
+    return walker.previous
 
 
 def _validate_retention_policy(settings_obj):
@@ -221,13 +220,25 @@ def run_audit_retention_once(*, session_factory=SessionLocal, settings_obj=setti
     return aggregate
 
 
+KNOWN_RACE_DETAIL_LIMIT = 50
+
+
 def verify_audit_history(db, workspace_id, *, settings_obj=settings) -> dict:
+    """Walk the retained chain. ``valid`` is False only for real breaks; pre-#2518
+    append-race forks (every entry_hash correct) are reported under
+    ``known_append_races`` and do not invalidate the chain."""
     workspace_id = UUID(str(workspace_id))
     first_ts = last_ts = broken_at = None
     count = 0
     summary = {"total": 0, "first_ts": None, "last_ts": None}
+    walker = ChainWalker()
+
+    def races() -> dict:
+        found = walker.known_append_races
+        return {"known_append_races": len(found), "known_append_race_details": found[:KNOWN_RACE_DETAIL_LIMIT]}
+
     try:
-        _, previous, _ = checkpoint_anchor(db, workspace_id, settings_obj, summary=summary)
+        _, walker.previous, _ = checkpoint_anchor(db, workspace_id, settings_obj, summary=summary)
         count, first_ts, last_ts = summary["total"], summary["first_ts"], summary["last_ts"]
         query = db.query(GuardAuditEvent).filter(
             GuardAuditEvent.workspace_id == workspace_id, GuardAuditEvent.archive_segment_id.is_(None),
@@ -237,9 +248,9 @@ def verify_audit_history(db, workspace_id, *, settings_obj=settings) -> dict:
             first_ts = first_ts or row.ts.isoformat()
             last_ts = row.ts.isoformat()
             broken_at = last_ts
-            previous = verify_event_rows([_snapshot(row)], previous)
+            verify_event_rows([_snapshot(row)], walker=walker)
         return {"valid": True, "total": count, "verified_from": first_ts, "broken_at": None,
-                "last_event": last_ts}
+                "last_event": last_ts, **races()}
     except (ArchiveIntegrityError, KeyError, ValueError):
         return {"valid": False, "total": count, "verified_from": first_ts,
-                "broken_at": broken_at or "archive_checkpoint", "last_event": last_ts}
+                "broken_at": broken_at or "archive_checkpoint", "last_event": last_ts, **races()}
