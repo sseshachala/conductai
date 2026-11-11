@@ -1,0 +1,30 @@
+# Conduct detection content. Table: ConductAudit_CL (see docs/siem/README.md)
+id: f5233025-147e-4d45-bf43-2ef2fb91bc1f
+kind: Scheduled
+name: Conduct - Audit hash chain linkage broken in the feed
+description: A feed event's `previous_hash` does not equal the preceding event's `entry_hash` (events ordered by time then id, per workspace). This indicates a deleted, reordered or altered row. It checks linkage only; run `conduct audit verify` on an export to recompute the hashes.
+severity: High
+status: Available
+requiredDataConnectors: []
+queryFrequency: PT30M
+queryPeriod: PT3H
+triggerOperator: GreaterThan
+triggerThreshold: 0
+tactics:
+- DefenseEvasion
+query: |
+  let settle = 20m;  // ignore the newest rows so late-arriving events do not look like gaps
+  ConductAudit_CL
+  | where TimeGenerated between (ago(3h) .. ago(settle))
+  | summarize arg_min(TimeGenerated, *) by EventId  // the feed is at-least-once: drop duplicates
+  | where isnotempty(EntryHash)
+  | sort by WorkspaceId asc, TimeGenerated asc, EventId asc
+  | serialize
+  | extend PrevEntryHash = prev(EntryHash), PrevWorkspaceId = prev(WorkspaceId), PrevEventId = prev(EventId)
+  | where WorkspaceId == PrevWorkspaceId and PreviousHash != PrevEntryHash
+  | project TimeGenerated, WorkspaceId, EventId, PreviousHash, ExpectedPreviousHash = PrevEntryHash, PrevEventId
+eventGroupingSettings:
+  aggregationKind: SingleAlert
+suppressionDuration: PT1H
+suppressionEnabled: false
+version: 1.0.0

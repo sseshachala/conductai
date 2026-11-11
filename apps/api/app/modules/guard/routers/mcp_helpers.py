@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 from sqlalchemy import text as _sql
 from app.core.pii import redact_secrets
-from app.modules.guard.models import GuardAuditEvent, chain_next, get_policy_hash
+from app.modules.guard.models import GuardAuditEvent, chain_begin, chain_seal, get_policy_hash
 from app.modules.guard.policy_engine import compute_policy
 from app.modules.guard.tool_groups import tool_matches
 
@@ -275,7 +275,7 @@ def _record_event(
     rule_message: str | None = None,
 ) -> None:
     ts = datetime.now(timezone.utc)
-    _chain_ts, prev_hash, entry_hash = chain_next(db, ws_uuid, tool_name, decision)
+    _chain_ts, prev_hash = chain_begin(db, ws_uuid)
     policy_hash = get_policy_hash(db, ws_uuid)
 
     raw_summary = redact_secrets(json.dumps(tool_input)[:500])[0][:200]
@@ -300,12 +300,10 @@ def _record_event(
         conductai_run_id=conductai_run_id,
         conductai_workflow=conductai_workflow,
         previous_hash=prev_hash,
-        entry_hash=entry_hash,
         policy_hash=policy_hash,
     )
     if actor.get("credential_session_id"):
         event.routing_meta = {"credential_session_id": actor["credential_session_id"]}
-    db.add(event)
     identity = db.info.get("federation_identity")
     if identity is not None:
         from app.models.audit_log import AuditLog
@@ -313,6 +311,9 @@ def _record_event(
         from app.modules.auth.federation.mcp_ingress import provenance
         set_workspace_rls(db, ws_uuid)
         event.routing_meta = {**(event.routing_meta or {}), "federation": provenance(identity), "evidence_kind": "policy_check"}
+    # Seal only after every hashed field (routing_meta included) is final.
+    db.add(chain_seal(event))
+    if identity is not None:
         db.flush()
         db.add(AuditLog(workspace_id=ws_uuid, action="federation.guard.decision",
                         resource_type="guard_audit_event", resource_id=str(event.id),

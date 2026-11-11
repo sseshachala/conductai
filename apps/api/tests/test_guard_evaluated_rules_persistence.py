@@ -145,15 +145,13 @@ def test_query_events_where_two_or_more_rules_fired(engine):
 # 5. Hash chain still valid after adding the new column
 # --------------------------------------------------------------------------- #
 
-def test_hash_chain_ignores_evaluated_rules_column(engine):
-    """The hash chain function computes over (ts, tool_call, decision, prev).
-    Adding evaluated_rules to the row must not affect chain integrity."""
-    from app.modules.guard.models import chain_hash_for_insert
+def test_chain_begin_first_event_in_fresh_workspace(engine):
+    """chain_begin on an empty workspace links to the empty previous_hash."""
+    from app.modules.guard.models import chain_begin
     from sqlalchemy.orm import Session
 
     ws = uuid.uuid4()
     now = _now()
     with Session(engine) as db:
-        prev, entry = chain_hash_for_insert(db, ws, now, "test.action", "allowed")
-        assert len(entry) == 64
+        _ts, prev = chain_begin(db, ws)
         assert prev == ""  # first event in a fresh workspace

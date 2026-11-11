@@ -14,6 +14,38 @@ For each workspace sequence ordered by timestamp/insertion order:
 3. `entry_hash[i] == SHA256("{ts_iso}|{tool_call}|{decision}|{prev_hash[i]}")`.
 4. Any missing/reordered/edited row breaks invariant 2 or 3.
 
+## Hash versions (chain v2)
+
+Rows carry `hash_version`. Invariant 3 above is **v1** (rows written before v2;
+never rehashed). New rows are **v2**, which covers the whole record:
+
+```text
+entry_hash = SHA256(canonical_json(record) + prev_hash)
+```
+
+`record` is every stored audit field except `entry_hash` and `archive_segment_id`
+(a retention pointer set when the payload is archived). Canonical JSON: sorted
+keys, no whitespace, UTF-8, every timestamp as `YYYY-MM-DDTHH:MM:SS.ffffffZ`
+(UTC), values normalised by column type (UUIDs lower-case, integers as ints,
+floats as floats, absent = null). The v1 -> v2 boundary row links to the last v1
+`entry_hash` like any other. Exports and the SIEM feed carry `hash_version` and
+every hashed field; `conduct audit verify` verifies each row under its own
+version. A row whose payload was archived (`archive_segment_id` set, payload
+fields null) is verified by linkage only.
+
+## Known append-race forks (before 2026-11-04)
+
+Before #2518 (merged 2026-11-04T01:10:20Z) concurrent appends were not
+serialised, so two rows could share one `previous_hash` (a fork) while every
+`entry_hash` is individually correct. The verifiers (`verify_audit_history`,
+`conduct audit verify`) classify such a fork as a **known append race** when both
+rows' own hashes are valid, the shared `previous_hash` belongs to an earlier row,
+and both rows are older than that instant. They are reported separately
+(`known_append_races`) and do not fail verification. The cutoff is a fixed
+constant so the server and an offline verifier agree. A fork at or after the
+cutoff, a fork with an invalid row hash, or a link to a hash no earlier row
+holds is reported as broken.
+
 ## Independent verification procedure
 
 1. Export audit records for one workspace in deterministic order.

@@ -261,10 +261,10 @@ def _write_audit(
     """Audit row for policy mutations. Non-fatal by default; ``raise_on_error=True``
     rolls back and re-raises so callers (audit export) can fail closed."""
     try:
-        from app.modules.guard.models import chain_next
+        from app.modules.guard.models import chain_begin, chain_seal
         ts = datetime.now(timezone.utc)
-        _chain_ts, prev_h, entry_h = chain_next(db, workspace_id, tool_call, "allowed")
-        db.add(GuardAuditEvent(
+        _chain_ts, prev_h = chain_begin(db, workspace_id)
+        db.add(chain_seal(GuardAuditEvent(
             workspace_id=workspace_id,
             clerk_user_id=actor_id,
             ai_tool="platform",
@@ -274,8 +274,7 @@ def _write_audit(
             input_summary=(details or f"rule_id={rule_id} action={action}")[:500],
             ts=_chain_ts,
             previous_hash=prev_h,
-            entry_hash=entry_h,
-        ))
+        )))
         db.commit()
     except Exception:
         db.rollback()
