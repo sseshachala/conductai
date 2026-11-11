@@ -1,0 +1,39 @@
+# Conduct detection content. Table: ConductAudit_CL (see docs/siem/README.md)
+id: fc60a9ad-cc63-4d8a-a448-c776c7b47b27
+kind: Scheduled
+name: Conduct - Repeated Guard blocks from one agent or user
+description: An agent identity or user was blocked by Guard at least `threshold` times within one window. Repeated blocks usually mean an agent is probing a policy boundary or is stuck in a retry loop.
+severity: Medium
+status: Available
+requiredDataConnectors: []
+queryFrequency: PT10M
+queryPeriod: PT20M
+triggerOperator: GreaterThan
+triggerThreshold: 0
+tactics:
+- DefenseEvasion
+- Discovery
+query: |
+  let threshold = 5;
+  let window = 10m;
+  ConductAudit_CL
+  | where TimeGenerated > ago(20m)
+  | summarize arg_min(TimeGenerated, *) by EventId  // the feed is at-least-once: drop duplicates
+  | where Decision == "blocked"
+  | extend Actor = coalesce(tostring(AgentIdentityId), tostring(UserId), tostring(UserEmail))
+  | where isnotempty(Actor)
+  | summarize Blocks = count(), DistinctTools = dcount(ToolCall), Tools = make_set(ToolCall, 10),
+              Rules = make_set(RuleId, 10), FirstBlock = min(TimeGenerated), LastBlock = max(TimeGenerated),
+              UserEmail = take_any(UserEmail)
+              by Actor, WorkspaceId, bin(TimeGenerated, window)
+  | where Blocks >= threshold
+entityMappings:
+- entityType: Account
+  fieldMappings:
+  - identifier: FullName
+    columnName: UserEmail
+eventGroupingSettings:
+  aggregationKind: SingleAlert
+suppressionDuration: PT1H
+suppressionEnabled: false
+version: 1.0.0

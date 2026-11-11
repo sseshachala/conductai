@@ -1,0 +1,31 @@
+# Conduct detection content. Table: ConductAudit_CL (see docs/siem/README.md)
+id: bd301954-45ee-4d62-a4b4-fa5e1f1b8805
+kind: Scheduled
+name: Conduct - New MCP server first seen
+description: An agent called a tool on an MCP server (tool_call `mcp__<server>__<tool>`) that has no earlier call in the last 14 days. New servers are a supply-chain and data-exfiltration signal.
+severity: Low
+status: Available
+requiredDataConnectors: []
+queryFrequency: PT1H
+queryPeriod: P14D
+triggerOperator: GreaterThan
+triggerThreshold: 0
+tactics:
+- InitialAccess
+- Collection
+query: |
+  let recent = 1h;
+  ConductAudit_CL
+  | where TimeGenerated > ago(14d)
+  | where ToolCall startswith "mcp__"
+  | extend Server = tostring(split(ToolCall, "__")[1])
+  | where isnotempty(Server)
+  | summarize FirstSeen = min(TimeGenerated), LastSeen = max(TimeGenerated), Calls = count(),
+              Tools = make_set(ToolCall, 10), Users = make_set(UserEmail, 10), AiTools = make_set(AiTool, 5)
+              by Server, WorkspaceId
+  | where FirstSeen > ago(recent)
+eventGroupingSettings:
+  aggregationKind: SingleAlert
+suppressionDuration: PT1H
+suppressionEnabled: false
+version: 1.0.0
