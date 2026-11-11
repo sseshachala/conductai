@@ -287,7 +287,7 @@ def main() -> None:
         from .session_usage import handle as collect_usage
         collect_usage(data, surface if surface in {"codex", "codex-cli", "codex-desktop", "claude-code"} else "codex", poll=True)
         _post_usage(session_id, tool_name, None, None, None, blast_radius,
-                    execution_status, result_summary, tool_use_id, correlation_id)
+                    execution_status, result_summary, tool_use_id, correlation_id=correlation_id)
     elif transcript_path:
         tokens_input, tokens_output = _read_tokens_from_transcript(transcript_path, tool_use_id)
         _post_usage(session_id, tool_name, tokens_input, tokens_output, None, blast_radius, execution_status, result_summary,
