@@ -83,7 +83,7 @@ def test_single_phase_writer_persists_request_correlation(monkeypatch):
     db = Mock()
     monkeypatch.setattr(audit, "SessionLocal", lambda: db)
     monkeypatch.setattr(audit, "set_workspace_rls", lambda *args: None)
-    monkeypatch.setattr(audit, "_audit_tokens_and_cost", lambda **kwargs: (1, 2, 0.01))
+    monkeypatch.setattr(audit, "_audit_usage", lambda **kwargs: audit.AuditUsage(1, 2, 0.01, "provider_reported", "complete"))
     from datetime import datetime, timezone
     monkeypatch.setattr("app.modules.guard.models.chain_begin", lambda *args: (datetime.now(timezone.utc), ""))
     request_id = str(uuid4())

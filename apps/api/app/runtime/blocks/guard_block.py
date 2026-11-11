@@ -132,6 +132,8 @@ def _execute_guard(
                 tool_call=block_id,
                 input_summary=context_json[:500],
                 tokens_before=estimated_input_tokens,
+                usage_source="estimated",
+                usage_status="no_upstream",
                 decision=decision,
                 rule_id=policy.get("id") or policy.get("rule_id"),
                 rule_message=policy.get("message"),
