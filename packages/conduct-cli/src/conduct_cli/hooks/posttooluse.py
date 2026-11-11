@@ -18,6 +18,7 @@ from conduct_cli.hooks.base import (
     record_hook_heartbeat,
     run_drain_daemon,
 )
+from conduct_cli.tool_correlation import correlation_id_for_tool_use
 from conduct_cli.hooks.pretooluse import (
     _already_warned_this_session,
     _record_session_warn,
@@ -191,7 +192,7 @@ def _compute_blast_radius(tool_name: str, tool_input: dict, tool_response: str) 
     return {"files": files, "symbols": symbols, "tier": tier, "file_paths": file_paths, "repo": repo, "branch": branch}
 
 
-def _post_usage(session_id, tool_name, tokens_input, tokens_output, duration_ms, blast_radius=None, execution_status=None, result_summary=None, tool_use_id=None) -> None:
+def _post_usage(session_id, tool_name, tokens_input, tokens_output, duration_ms, blast_radius=None, execution_status=None, result_summary=None, tool_use_id=None, correlation_id=None) -> None:
     """Queue a PostToolUse update for the authenticated drain daemon."""
     cfg = load_config()
     workspace_id = cfg.get("workspace_id")
@@ -209,6 +210,8 @@ def _post_usage(session_id, tool_name, tokens_input, tokens_output, duration_ms,
         "blast_radius":     blast_radius,
         "execution_status": execution_status,
         "result_summary":   result_summary,
+        # #2168 — joins this execution to the gateway's tool_call.generated row.
+        "correlation_id":   correlation_id,
     })
     api_url = deployment_api_url(cfg)
     journal_append(payload, api_url, endpoint="/guard/events/usage")
@@ -269,6 +272,7 @@ def main() -> None:
     tool_response = data.get("tool_response") or data.get("output") or ""
     tool_input    = data.get("tool_input") or {}
     blast_radius  = _compute_blast_radius(tool_name, tool_input, str(tool_response))
+    correlation_id = correlation_id_for_tool_use(data)
 
     # Derive execution outcome from hook data
     _resp_str = str(tool_response)
@@ -283,10 +287,11 @@ def main() -> None:
         from .session_usage import handle as collect_usage
         collect_usage(data, surface if surface in {"codex", "codex-cli", "codex-desktop", "claude-code"} else "codex", poll=True)
         _post_usage(session_id, tool_name, None, None, None, blast_radius,
-                    execution_status, result_summary, tool_use_id)
+                    execution_status, result_summary, tool_use_id, correlation_id)
     elif transcript_path:
         tokens_input, tokens_output = _read_tokens_from_transcript(transcript_path, tool_use_id)
-        _post_usage(session_id, tool_name, tokens_input, tokens_output, None, blast_radius, execution_status, result_summary)
+        _post_usage(session_id, tool_name, tokens_input, tokens_output, None, blast_radius, execution_status, result_summary,
+                    correlation_id=correlation_id)
     elif session_id:
         # Some Codex clients omit transcript_path. Still send the PostToolUse
         # update so the pre-tool audit row is correlated and execution status
@@ -300,6 +305,7 @@ def main() -> None:
             blast_radius,
             execution_status,
             result_summary,
+            correlation_id=correlation_id,
         )
 
     if not is_codex and transcript_path:
