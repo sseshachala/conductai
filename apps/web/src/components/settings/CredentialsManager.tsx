@@ -131,6 +131,34 @@ const SERVICES: ServiceDef[] = [
       { key: "from_email", label: "From email address", placeholder: "notifications@yourdomain.com", secret: false, optional: true, tip: "The sender domain must be verified in Resend or SendGrid before emails will deliver." },
     ],
   },
+  {
+    value: "pagerduty", label: "PagerDuty", abbr: "PD",
+    description: "Page on-call from Guard and alert notifications",
+    color: "bg-green-700 text-white",
+    fields: [
+      {
+        key: "routing_key",
+        label: "Routing key",
+        placeholder: "32-character integration key",
+        tip: "PagerDuty service → Integrations → Events API v2 → Integration Key. Pick it as a notification channel in Guard → Connections → Notifications.",
+      },
+    ],
+  },
+  {
+    value: "webhook", label: "Webhook", abbr: "WH",
+    description: "POST Guard and alert notifications to your HTTPS endpoint",
+    color: "bg-sky-700 text-white",
+    fields: [
+      { key: "url", label: "Endpoint URL", placeholder: "https://example.com/hooks/conduct", tip: "Must be a public https URL; it is re-checked on every delivery." },
+      {
+        key: "signing_secret",
+        label: "Signing secret",
+        placeholder: "optional",
+        optional: true,
+        tip: "When set, each request carries X-Conduct-Signature: t=<ts>,v1=<HMAC-SHA256 of \"<ts>.<body>\">.",
+      },
+    ],
+  },
 ]
 
 
