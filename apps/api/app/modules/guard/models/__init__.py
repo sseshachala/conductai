@@ -11,7 +11,8 @@ from app.modules.guard.models.config import (  # noqa: F401 — re-exports
     GuardConfig, GuardMemberConfig, GuardNotificationChannel, GuardSession,
 )
 from app.modules.guard.models.audit import (  # noqa: F401 — re-exports
-    GuardAuditArchiveSegment, GuardAuditEvent, GuardAuditRetentionHold,
+    GuardAuditArchiveSegment, GuardAuditCheckpoint, GuardAuditEvent, GuardAuditRetentionHold,
+    GuardAuditSigningKey,
 )
 from app.modules.guard.models.spend import (  # noqa: F401 — re-exports
     BudgetReservation, GuardDeveloperTools, GuardRateLimit, GuardSavings, GuardSpendBudget,

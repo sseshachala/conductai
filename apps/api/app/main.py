@@ -33,6 +33,7 @@ from app.modules.guard.routers import fixture_approvals as guard_fixture_approva
 from app.modules.guard.routers import blocks as guard_blocks
 from app.modules.guard.routers import session_reports as guard_session_reports
 from app.modules.guard.routers import mcp as guard_mcp
+from app.modules.guard.routers import audit_keys as guard_audit_keys
 from app.modules.guard.routers import proxy as guard_proxy
 from app.modules.guard.routers import gateway_proxy
 from app.modules.guard.routers import ws as guard_ws
@@ -286,6 +287,7 @@ app.include_router(guard_blocks.router)
 app.include_router(guard_session_reports.router)
 app.include_router(guard_mcp.router)
 app.include_router(guard_mcp.well_known_router)
+app.include_router(guard_audit_keys.well_known_router)
 app.include_router(guard_proxy.router)
 app.include_router(guard_proxy.guard_router)
 app.include_router(gateway_proxy.router)

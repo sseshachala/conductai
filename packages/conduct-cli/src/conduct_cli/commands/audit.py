@@ -1,5 +1,11 @@
 """`conduct audit verify <export.ndjson>` — offline hash-chain check for audit exports (#2385, #2421).
 
+Signed chain-head checkpoints (#2524 item 2): an export ends with an
+``{"kind": "audit_checkpoint", checkpoint, keys}`` trailer. The signature is checked
+(``audit_checkpoint.py``) and the export must reach the checkpoint's head and row_count,
+which detects deletion of the chain's tail. Use ``--keys`` with the well-known endpoint
+for keys that do not come from the export.
+
 Each row is verified under its own ``hash_version`` (absent means 1). The API
 writes the same hashes (``apps/api/app/modules/guard/audit_chain.py``)::
 
@@ -110,10 +116,23 @@ def _is_archived(rec: dict) -> bool:
     return bool(rec.get("archive_segment_id")) and all(rec.get(f) is None for f in _PAYLOAD_FIELDS)
 
 
-def verify_lines(lines, *, allow_gaps: bool = False) -> dict:
+def verify_lines(lines, *, allow_gaps: bool = False, checkpoint=None, keys=None,
+                 require_checkpoint: bool = False, bundled_keys=None) -> dict:
     """Walk NDJSON lines. Returns {ok, rows, chained, anchor, versions, linkage_only,
-    known_append_races, broken}; ``broken`` is the first failure."""
+    known_append_races, checkpoint, broken}; ``broken`` is the first failure.
+
+    A signed chain-head checkpoint (export trailer, or ``checkpoint``) is verified
+    after the chain walk: signature, then that the export reaches its head and
+    row_count. ``keys`` (key_id -> {alg, public_key}) are the independently
+    obtained verification keys; without them the keys bundled with the
+    checkpoint are used and reported as untrusted.
+    """
+    from conduct_cli import audit_checkpoint as _checkpoint
+
     previous: str | None = None
+    trailer = None  # (line_no, record) of the export's checkpoint trailer
+    by_hash: dict = {}  # entry_hash -> chain position (None when unknown)
+    first_pos = last_pos = None
     anchor = None
     rows = chained = linkage_only = 0
     versions: dict[int, int] = {}
@@ -136,6 +155,10 @@ def verify_lines(lines, *, allow_gaps: bool = False) -> dict:
                 raise ValueError("not an object")
         except ValueError as exc:
             return broken(line_no, None, f"invalid JSON: {exc}")
+        if rec.get("kind") == _checkpoint.TRAILER_KIND and isinstance(rec.get("checkpoint"), dict):
+            rows -= 1  # trailer, not an event
+            trailer = (line_no, rec)
+            continue
         if not rec.get("entry_hash"):
             continue  # not chained
         missing = [k for k in _REQUIRED if k not in rec]
@@ -178,13 +201,45 @@ def verify_lines(lines, *, allow_gaps: bool = False) -> dict:
         if len(children) > _FORK_WINDOW:
             del children[next(iter(children))]
         versions[version] = versions.get(version, 0) + 1
+        position = rec.get("chain_position")
+        if not isinstance(position, int) or isinstance(position, bool):
+            position = chained + 1 if (anchor == "" and not allow_gaps) else None
+        by_hash[rec["entry_hash"]] = position
+        if position is not None:
+            first_pos = position if first_pos is None else first_pos
+            last_pos = position
         previous = rec["entry_hash"]
         chained += 1
-    return {"ok": True, "rows": rows, "chained": chained, "anchor": anchor, "versions": versions,
-            "linkage_only": linkage_only, "known_append_races": races, "broken": None}
+    result = {"ok": True, "rows": rows, "chained": chained, "anchor": anchor, "versions": versions,
+              "linkage_only": linkage_only, "known_append_races": races, "broken": None,
+              "checkpoint": {"status": "none", "reason": None, "trusted_keys": False}}
+    cp, bundled = checkpoint, {}
+    cp_line = 0
+    if cp is None and trailer is not None:
+        cp_line, cp, bundled = trailer[0], trailer[1]["checkpoint"], trailer[1].get("keys") or {}
+    if cp is None:
+        if require_checkpoint:
+            result.update(ok=False, broken={"line": 0, "id": None, "expected": None, "actual": None,
+                          "reason": "no signed checkpoint in the export (--require-checkpoint)"})
+        return result
+    use_keys = keys if keys is not None else (bundled or bundled_keys or {})
+    result["checkpoint"] = {"status": "invalid", "reason": None, "trusted_keys": keys is not None,
+                            "row_count": cp.get("row_count"), "key_id": cp.get("key_id"), "alg": cp.get("alg"),
+                            "ts": cp.get("ts")}
+    try:
+        outcome = _checkpoint.check(cp, use_keys, by_hash=by_hash, first_pos=first_pos, last_pos=last_pos)
+        result["checkpoint"].update(outcome)
+    except _checkpoint.CheckpointError as exc:
+        result["checkpoint"].update(status=exc.status, reason=exc.reason)
+        if not (exc.status == "unverifiable" and allow_gaps):
+            result.update(ok=False, broken={"line": cp_line, "id": None, "expected": None, "actual": None,
+                                            "reason": "checkpoint: " + exc.reason})
+    return result
 
 
 def cmd_audit(args) -> None:
+    from conduct_cli import audit_checkpoint as _checkpoint
+
     if getattr(args, "audit_command", None) == "feed":
         from conduct_cli.commands.audit_feed import cmd_audit_feed
         cmd_audit_feed(args)
@@ -195,9 +250,19 @@ def cmd_audit(args) -> None:
         sys.exit(1)
     try:
         with Path(args.file).open(encoding="utf-8") as fh:
-            result = verify_lines(fh, allow_gaps=args.allow_gaps)
+            keys, cp, bundled_keys = None, None, None
+            if getattr(args, "keys", None):
+                keys = _checkpoint.load_keys(args.keys)
+            if getattr(args, "checkpoint", None):
+                cp, bundled_keys = _checkpoint.load_bundle(args.checkpoint)
+            result = verify_lines(fh, allow_gaps=args.allow_gaps, checkpoint=cp, keys=keys,
+                                  bundled_keys=bundled_keys,
+                                  require_checkpoint=getattr(args, "require_checkpoint", False))
     except OSError as exc:
         print(f"Cannot read {args.file}: {exc}", file=sys.stderr)
+        sys.exit(1)
+    except (_checkpoint.CheckpointError, ValueError) as exc:
+        print(f"Cannot load checkpoint/keys: {getattr(exc, 'reason', exc)}", file=sys.stderr)
         sys.exit(1)
     if result["ok"]:
         start = "genesis" if result["anchor"] == "" else f"mid-chain (anchor {str(result['anchor'])[:12]}...)"
@@ -206,6 +271,7 @@ def cmd_audit(args) -> None:
         if result["linkage_only"]:
             print(f"Note: {result['linkage_only']} archived row(s) verified by linkage only "
                   "(payload fields were archived and cannot be rehashed offline).")
+        _print_checkpoint(result["checkpoint"], bundled_only=not result["checkpoint"].get("trusted_keys"))
         if result["known_append_races"]:
             ids = ", ".join(str(r["id"]) for r in result["known_append_races"][:10])
             print(f"Note: {len(result['known_append_races'])} known append race fork(s) from before "
@@ -219,6 +285,21 @@ def cmd_audit(args) -> None:
     sys.exit(1)
 
 
+def _print_checkpoint(cp: dict, *, bundled_only: bool) -> None:
+    status = cp.get("status")
+    if status == "none":
+        print("Note: no signed checkpoint in this export, so truncation of the chain tail cannot be "
+              "detected. Pass --require-checkpoint to fail instead.")
+    elif status == "not_covered":
+        print(f"Note: checkpoint not applicable: {cp.get('reason')}")
+    elif status == "valid":
+        print(f"Checkpoint OK: signed {cp.get('alg')} head at row {cp.get('row_count')} "
+              f"({cp.get('ts')}, key {cp.get('key_id')}) is reached by this export.")
+    if status in ("valid", "not_covered") and bundled_only:
+        print("Warning: verification keys came from the export itself. For independent trust pass "
+              "--keys https://<api-host>/.well-known/conduct-audit-keys")
+
+
 def register_audit(sub) -> None:
     audit_p = sub.add_parser("audit", help="Audit log tools (export verification, SIEM feed)")
     audit_sub = audit_p.add_subparsers(dest="audit_command")
@@ -226,5 +307,12 @@ def register_audit(sub) -> None:
     v.add_argument("file", help="NDJSON file from `GET /guard/events/export` / Lens")
     v.add_argument("--allow-gaps", action="store_true",
                    help="Only recompute each row's hash; skip linkage (for decision/tool-filtered exports)")
+    v.add_argument("--keys", help="Verification keys: file or https URL (the API's "
+                   "/.well-known/conduct-audit-keys). Without it, keys bundled with the checkpoint are "
+                   "used and reported as untrusted")
+    v.add_argument("--checkpoint", help="JSON file holding a checkpoint (an audit feed page or "
+                   "{checkpoint, keys}) to check instead of the export's trailer")
+    v.add_argument("--require-checkpoint", action="store_true",
+                   help="Fail when the export carries no signed checkpoint")
     from conduct_cli.commands.audit_feed import register_feed
     register_feed(audit_sub)

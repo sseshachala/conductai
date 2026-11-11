@@ -181,7 +181,9 @@ def stream_export(workspace_id: UUID, since, until, decisions, tool, fmt: str,
         writer = csv.writer(buf) if fmt == "csv" else None
         if writer:
             writer.writerow(EXPORT_FIELDS)
+        emitted = 0
         for e in rows:
+            emitted += 1
             pos = None
             if position is not None and e.entry_hash:
                 position += 1
@@ -195,10 +197,30 @@ def stream_export(workspace_id: UUID, since, until, decisions, tool, fmt: str,
                 yield buf.getvalue()
                 buf.seek(0)
                 buf.truncate()
+        # Signed chain-head checkpoint trailer (#2524 item 2): only for an
+        # unfiltered, uncapped NDJSON export, where the rows are a contiguous
+        # slice and the checkpoint head is guaranteed to be inside the range.
+        if fmt == "ndjson" and not (decisions or tool) and emitted < cap:
+            bundle = _checkpoint_bundle(db, workspace_id, until)
+            if bundle:
+                buf.write(ndjson_line({"kind": CHECKPOINT_TRAILER_KIND, **bundle}))
         if buf.tell():
             yield buf.getvalue()
     finally:
         db.close()
+
+
+CHECKPOINT_TRAILER_KIND = "audit_checkpoint"
+
+
+def _checkpoint_bundle(db: Session, workspace_id: UUID, until) -> dict | None:
+    """Latest checkpoint taken at or before ``until`` plus the public keys. Never raises."""
+    from app.modules.guard.audit_signing import bundle_for
+    try:
+        return bundle_for(db, workspace_id, until=until)
+    except Exception:  # an export must not fail because checkpoints are unavailable
+        db.rollback()
+        return None
 
 
 # ── Continuous feed (SIEM pull) ────────────────────────────────────────────
@@ -250,12 +272,17 @@ def feed_page(db: Session, workspace_id: UUID, *, cursor: str | None = None,
     has_more = len(rows) > limit
     rows = rows[:limit]
     next_cursor = encode_cursor(rows[-1].ts, rows[-1].id) if rows else encode_cursor(after_ts, after_id)
-    return {
+    page = {
         "events": [serialize_event(e) for e in rows],
         "next_cursor": next_cursor,
         "has_more": has_more,
         "lag_seconds": int(FEED_LAG.total_seconds()),
     }
+    # Latest signed chain-head checkpoint + public keys (#2524 item 2); null until one exists.
+    bundle = _checkpoint_bundle(db, workspace_id, None)
+    page["checkpoint"] = bundle["checkpoint"] if bundle else None
+    page["audit_keys"] = bundle["keys"] if bundle else {}
+    return page
 
 
 # ── Feed status (last pull per collector) ────────────────────────────────────

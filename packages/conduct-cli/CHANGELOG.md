@@ -9,6 +9,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 ## [Unreleased]
 
 ### Added
+
+- `conduct audit verify` checks signed chain-head checkpoints (export trailer, `--checkpoint`, `--keys`, `--require-checkpoint`) and fails when an export ends before the checkpoint head, which detects tail truncation (#2524). New dependency: `cryptography>=41`.
 - `conduct audit feed --token-file PATH` (or `CONDUCT_FEED_TOKEN`): authenticate the SIEM feed with a
   workspace-owned, read-only feed token instead of a person's login, so the feed survives staff changes.
 - `conduct audit feed --sink splunk-hec|sentinel`: push events to Splunk HEC or the Microsoft Sentinel

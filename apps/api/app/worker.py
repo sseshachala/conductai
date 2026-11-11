@@ -43,6 +43,7 @@ from app.worker_projection import (
     _projection_loop,
     _projection_reconciliation_loop,
     _start_audit_retention,
+    _start_audit_checkpoints,
     _start_projection_retention,
 )
 
@@ -459,6 +460,7 @@ def main() -> None:
     _start_projection_workers()
     _start_projection_retention()
     _start_audit_retention()
+    _start_audit_checkpoints()
     threading.Thread(
         target=_accounting_gate_loop, daemon=True, name="accounting-coverage-gate"
     ).start()
