@@ -218,7 +218,13 @@ export interface NotificationChannel {
   action: NotificationAction
   channel_type: NotificationChannelType
   integration_id: string | null
+  /** Masked for legacy typed keys; a non-secret label for Vault-backed rows. */
   channel_ref: string
+  vault_handle?: string | null
+  environment_id?: string | null
+  environment_name?: string | null
+  /** True when a typed key/URL is still stored on the channel (no Vault entry). */
+  legacy_ref?: boolean
   enabled: boolean
   dedupe_window_sec: number
   created_at: string
