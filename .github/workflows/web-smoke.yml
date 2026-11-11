@@ -125,6 +125,12 @@ jobs:
       - name: Build web
         run: npm run build --workspace apps/web
 
+      - name: Drop unreachable apt mirror
+        # The runner's apt mirror list leads with azure.archive.ubuntu.com,
+        # which has been failing DNS; --with-deps then retries every package
+        # until the job times out. Fall back to the regular Ubuntu archive.
+        run: sudo sed -i '/azure\.archive\.ubuntu\.com/d' /etc/apt/apt-mirrors.txt || true
+
       - name: Install Playwright browsers
         # Chromium covers the page sweep and role matrix; Firefox covers the
         # focused golden flows.
