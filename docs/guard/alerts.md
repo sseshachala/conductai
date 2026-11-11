@@ -37,6 +37,51 @@ profile; with the filter it covers that profile only.
   refused before a profile is resolved and before an audit row is written.
 - Webhook URLs must be public https and are re-validated on every send.
 
+## Vault-backed channels
+
+PagerDuty, webhook and email channels reference a Vault entry instead of
+holding a secret. Add the entry in Settings -> Vault, then pick it when adding
+the channel (the page-level Vault selector decides which environment's entries
+are offered).
+
+| Channel | Vault service | Fields | `channel_ref` |
+|---|---|---|---|
+| PagerDuty | `pagerduty` | `routing_key` | non-secret label (`vault:<handle>`) |
+| Webhook | `webhook` | `url`, optional `signing_secret` | non-secret label |
+| Email | `email` (Resend/SendGrid) | existing email fields | recipient address |
+
+- The channel stores `integration_id` (the Vault entry) and the credential is
+  decrypted at send time, so rotating it in the Vault updates every channel
+  that uses it. If the entry is deleted the channel is skipped and a warning
+  is logged.
+- Email: a channel with an email `integration_id` sends with that entry's
+  credential. Without one it falls back to the workspace email credential, then
+  the platform one.
+- Webhook URLs saved to the Vault must pass the egress check (public https);
+  every send re-validates and never follows redirects. The Vault "test" for
+  `webhook` only runs that check and sends nothing; for `pagerduty` it only
+  checks the key shape (32 letters/digits) and pages nobody.
+- Rows that still carry a raw key/URL in `channel_ref` with no `integration_id`
+  keep delivering unchanged. API responses mask those values and set
+  `legacy_ref: true`; the UI shows "Typed key - move to Vault". There is no
+  automatic migration of secrets.
+- API responses include `vault_handle`, `environment_id` and `environment_name`
+  for Vault-backed rows and never include credential values.
+  `GET /credentials/integrations/vault?service=pagerduty|webhook|email|slack`
+  lists entries (id, handle, environment) for the pickers.
+
+### Webhook signature
+
+When the Vault entry has a `signing_secret`, each request carries
+
+```
+X-Conduct-Signature: t=<unix seconds>,v1=<hex>
+```
+
+where `v1 = HMAC-SHA256(signing_secret, "<t>." + <raw request body>)`. Verify by
+recomputing over the exact bytes received and rejecting stale `t` values.
+Without a signing secret no header is sent.
+
 ## API
 
 `GET /guard/alerts/registry`, `GET|POST /guard/alerts`,

@@ -170,7 +170,7 @@ def notify_customer_fail_open(
                 "message": text_msg,
             })
         if by_type["pagerduty"]:
-            _fanout_pagerduty(by_type["pagerduty"], "fail_open", "guard.engine_error", text_msg)
+            _fanout_pagerduty(by_type["pagerduty"], "fail_open", "guard.engine_error", text_msg, db=db)
         if by_type["email"]:
             _fanout_email(
                 db, ws_id, by_type["email"],

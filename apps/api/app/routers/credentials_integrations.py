@@ -394,3 +394,46 @@ def list_slack_integrations(
         )
         for r in rows
     ]
+
+
+class VaultEntryOut(BaseModel):
+    id: str
+    handle: str
+    service: str
+    environment_id: str | None
+    environment_name: str | None
+
+
+_CHANNEL_VAULT_SERVICES = ("slack", "pagerduty", "webhook", "email")
+
+
+@router.get("/integrations/vault", response_model=list[VaultEntryOut])
+def list_channel_vault_entries(
+    service: str,
+    db: Session = Depends(get_db),
+    workspace_id: str = Depends(get_workspace_id),
+    _: str = Depends(require_permission("guard.settings.edit")),
+) -> list[VaultEntryOut]:
+    """Vault entries of one notification-capable service (id/handle/environment
+    only, never credential values) — feeds the channel pickers."""
+    if service not in _CHANNEL_VAULT_SERVICES:
+        raise HTTPException(status_code=422, detail=f"service must be one of {', '.join(_CHANNEL_VAULT_SERVICES)}")
+    from app.models.environment import Environment
+    rows = db.query(Integration).filter(
+        Integration.workspace_id == workspace_id,
+        Integration.service == service,
+    ).order_by(Integration.created_at).all()
+    env_ids = [r.environment_id for r in rows if r.environment_id]
+    env_names = {}
+    if env_ids:
+        env_names = {e.id: e.name for e in db.query(Environment).filter(Environment.id.in_(env_ids)).all()}
+    return [
+        VaultEntryOut(
+            id=str(r.id),
+            handle=r.handle,
+            service=r.service,
+            environment_id=str(r.environment_id) if r.environment_id else None,
+            environment_name=env_names.get(r.environment_id) if r.environment_id else None,
+        )
+        for r in rows
+    ]
