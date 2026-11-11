@@ -193,6 +193,9 @@ class EventOut(BaseModel):
     finalized_at: str | None = None
     lease_expires_at: str | None = None
     request_id: str | None = None
+    # #2069 — provenance of tokens_before/after. NULL = legacy row (unknown).
+    usage_source: str | None = None
+    usage_status: str | None = None
 
 
 class RuleFireOut(BaseModel):
@@ -223,6 +226,18 @@ def _end_of_day_if_bare(dt):
     if dt is None or dt.time() != _time(0, 0, 0, 0):
         return dt
     return dt.replace(hour=23, minute=59, second=59, microsecond=999999)
+
+
+def client_usage_provenance(tokens_in: int | None, tokens_out: int | None) -> tuple[str | None, str | None]:
+    """(usage_source, usage_status) for hook/CLI-reported counts (#2069).
+
+    Client-reported counts are never provider-verified. Rows with no counts
+    get (None, None): nothing observed, so no LLM usage is claimed (MCP and
+    tool-call decisions stay this way). A missing side stays NULL.
+    """
+    if tokens_in is None and tokens_out is None:
+        return None, None
+    return "client_reported", ("complete" if None not in (tokens_in, tokens_out) else "partial")
 
 
 def _event_to_dict(e: GuardAuditEvent) -> dict:
@@ -268,6 +283,8 @@ def _event_to_dict(e: GuardAuditEvent) -> dict:
         "finalized_at": getattr(e, "finalized_at", None) and getattr(e, "finalized_at").isoformat(),
         "lease_expires_at": getattr(e, "lease_expires_at", None) and getattr(e, "lease_expires_at").isoformat(),
         "request_id": getattr(e, "request_id", None) and str(getattr(e, "request_id")),
+        "usage_source": getattr(e, "usage_source", None),
+        "usage_status": getattr(e, "usage_status", None),
         "policy_hash": e.policy_hash,
         "goal_id": e.goal_id,
         "goal_name": e.goal_name,

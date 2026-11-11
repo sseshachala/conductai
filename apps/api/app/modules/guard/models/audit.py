@@ -97,6 +97,13 @@ class GuardAuditEvent(Base):
     # single-phase writers and every historical row stay valid.
     request_id = Column(UUID(as_uuid=True), nullable=True)
     lifecycle_state = Column(String(20), nullable=True)  # accepted|finalized|orphaned|expired
+    # Added by revision 0170 (#2069) — provenance of tokens_before/tokens_after.
+    # usage_source: provider_reported | estimated | client_reported | unavailable
+    # usage_status: pending | complete | partial | unavailable | no_upstream
+    # NULL on both = legacy row written before provenance was recorded
+    # (counts are NOT guaranteed provider-reported).
+    usage_source = Column(String(20), nullable=True)
+    usage_status = Column(String(20), nullable=True)
     accepted_at = Column(DateTime(timezone=True), nullable=True)
     finalized_at = Column(DateTime(timezone=True), nullable=True)
     lease_expires_at = Column(DateTime(timezone=True), nullable=True)

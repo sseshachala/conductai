@@ -51,8 +51,7 @@ def chain_db():
 
 def _gateway(factory, ws, decision="allowed"):
     from app.guard import audit
-    with patch.object(audit, "SessionLocal", factory), \
-         patch.object(audit, "_audit_tokens_and_cost", lambda **_: (None, None, None)):
+    with patch.object(audit, "SessionLocal", factory):
         audit.record(str(ws), "user_1", "claude-code", "anthropic", "claude-x", decision, None, 3,
                      body={}, response_bytes=b"{}", agent_identity_id=str(uuid4()))
 

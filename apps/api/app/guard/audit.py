@@ -21,6 +21,7 @@ enforcement, and the Redis rebuild counter now all agree.
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
@@ -60,7 +61,35 @@ def _looks_like_sse(response_bytes: bytes) -> bool:
     return head.startswith((b"event:", b"data:", b":"))
 
 
-def _audit_tokens_and_cost(
+@dataclass(frozen=True)
+class AuditUsage:
+    """Tokens + cost for one audit row, with provenance (#2069).
+
+    ``None`` always means "not known"; it is never coerced to 0. ``source``
+    / ``status`` map to ``guard_audit_events.usage_source`` / ``usage_status``.
+    """
+
+    input_tokens: Optional[int]
+    output_tokens: Optional[int]
+    cost_usd: Optional[float]
+    source: Optional[str]
+    status: str
+
+
+_USAGE_SOURCE = {
+    "provider_reported": "provider_reported",
+    "normalized_stream": "provider_reported",
+    "reconciled": "provider_reported",
+    "estimated": "estimated",
+    "missing": "unavailable",
+}
+
+
+def _estimated_input(body: dict | None) -> Optional[int]:
+    return _estimate_input_tokens_bounded(body) if body else None
+
+
+def _audit_usage(
     *,
     provider: str,
     model: str,
@@ -69,37 +98,36 @@ def _audit_tokens_and_cost(
     routing_meta: dict | None,
     execution_status: str | None,
     operation: str | None = None,
-) -> tuple[Optional[int], Optional[int], Optional[float]]:
-    """Return ``(input_tokens, output_tokens, cost_usd)`` for one audit row.
+    decision: str | None = None,
+) -> AuditUsage:
+    """Usage for one audit row.
 
-    Rules:
-    - ``routing_meta.billable == False`` ⇒ cost is None (still record tokens
-      when known).
-    - Response bytes present ⇒ normalize + price via the accounting engine.
-      ``uncached_input_tokens`` + ``cache_read`` + tier'd ``cache_write``
-      all contribute to the priced total; cache costs no longer silently
-      disappear as they did under legacy audit math.
-    - No response bytes and ``execution_status != 'error'`` ⇒ blocked call
-      that never dispatched. Estimate input from the request body (bounded
-      heuristic). Output is 0.
-    - Otherwise return (None, None, None).
+    - Response bytes present: normalize + price through the accounting
+      engine. Provider zeros stay zeros; absent fields stay ``None``.
+      ``status`` is the normalizer's completeness (complete / partial /
+      unavailable), so an interrupted stream keeps the counts it saw and
+      is labelled partial.
+    - No response bytes, blocked before any upstream attempt (no attempt
+      records in ``routing_meta``): input is a prompt *estimate*, output
+      is a known 0 because nothing was consumed upstream
+      (``status='no_upstream'``).
+    - No response bytes otherwise (upstream error, response lost):
+      upstream consumption is unknown. Input keeps the prompt estimate
+      (source ``estimated``); output is ``None``; ``status='unavailable'``.
 
-    Pricing uses ``strict=False`` — an unknown model returns cost=None but
-    the row still lands so ops can see the event.
+    ``routing_meta.billable == False`` => cost is None. Pricing uses
+    ``strict=False``: an unknown model leaves cost None but the row lands.
     """
-    from app.runtime.accounting.estimator import estimate_tokens
     from app.runtime.accounting.normalizers import normalize_json, normalize_sse
     from app.runtime.accounting.pricing import default_pricing_service
 
-    billable = True
-    if isinstance(routing_meta, dict) and routing_meta.get("billable") is False:
-        billable = False
+    meta = routing_meta if isinstance(routing_meta, dict) else {}
+    billable = meta.get("billable") is not False
 
     if response_bytes:
         try:
             # Durable finalization has no route argument; Gateway carries
             # the operation in routing metadata for both audit writers.
-            meta = routing_meta if isinstance(routing_meta, dict) else {}
             operation = meta.get("operation") or meta.get("v2_operation") or operation
             family = _family_for(provider, operation)
             if _looks_like_sse(response_bytes):
@@ -107,10 +135,18 @@ def _audit_tokens_and_cost(
             else:
                 norm = normalize_json(family, response_bytes)
             tokens = norm.tokens
+            origin = getattr(norm.origin, "value", norm.origin)
+            source = _USAGE_SOURCE.get(origin, "unavailable")
+            status = getattr(norm.completeness, "value", norm.completeness)
             in_tok = tokens.total_input_tokens
             out_tok = tokens.total_output_tokens
+            if status == "unavailable":
+                # Response carried no usage: keep the prompt estimate for
+                # input (labelled as such); output is unknown, not 0.
+                est = _estimated_input(body)
+                return AuditUsage(est, None, None, "estimated" if est is not None else "unavailable", "unavailable")
             if not billable:
-                return in_tok, out_tok, None
+                return AuditUsage(in_tok, out_tok, None, source, status)
             price = default_pricing_service().price_tokens(
                 provider,
                 model,
@@ -127,18 +163,22 @@ def _audit_tokens_and_cost(
                 if price.microdollars is not None
                 else None
             )
-            return in_tok, out_tok, cost_usd
+            return AuditUsage(in_tok, out_tok, cost_usd, source, status)
         except Exception:  # noqa: BLE001 — audit path never raises
-            return None, None, None
+            est = _estimated_input(body)
+            return AuditUsage(est, None, None, "estimated" if est is not None else "unavailable", "unavailable")
 
-    if execution_status != "error":
-        try:
-            est = estimate_tokens(body) if body else None
-            return (est.input_tokens if est else None), 0, None
-        except Exception:
-            return None, 0, None
+    estimate = _estimated_input(body)
+    dispatched = bool(meta.get("attempts"))
+    if decision == "blocked" and not dispatched:
+        return AuditUsage(estimate, 0, None, "estimated", "no_upstream")
+    return AuditUsage(estimate, None, None, "estimated" if estimate is not None else "unavailable", "unavailable")
 
-    return None, None, None
+
+def _audit_tokens_and_cost(**kwargs) -> tuple[Optional[int], Optional[int], Optional[float]]:
+    """Back-compat 3-tuple view of :func:`_audit_usage`."""
+    u = _audit_usage(**kwargs)
+    return u.input_tokens, u.output_tokens, u.cost_usd
 
 
 def _estimate_input_tokens_bounded(body: dict) -> int | None:
@@ -212,7 +252,7 @@ def record(
     db = SessionLocal()
     try:
         set_workspace_rls(db, workspace_id)
-        in_tokens, out_tokens, cost_usd = _audit_tokens_and_cost(
+        usage = _audit_usage(
             provider=provider,
             model=model,
             body=body,
@@ -220,7 +260,9 @@ def record(
             routing_meta=routing_meta,
             execution_status=execution_status,
             operation=route,
+            decision=decision,
         )
+        in_tokens, out_tokens, cost_usd = usage.input_tokens, usage.output_tokens, usage.cost_usd
         # Mint id in Python — pgcrypto/gen_random_uuid isn't guaranteed to be
         # loaded on every deploy, so we don't rely on it. Caller may pre-mint
         # (block path) so the response can reference the row before the
@@ -241,6 +283,7 @@ def record(
                   source, provider, model,
                   decision, rule_id, ts,
                   tokens_before, tokens_after, duration_ms,
+                  usage_source, usage_status,
                   cost_usd_after, input_summary, user_email,
                   conductai_run_id, conductai_workflow, conductai_workflow_id,
                   hook_session_id,
@@ -256,6 +299,7 @@ def record(
                   'gateway', :prov, :model,
                   :dec, :rid, :ts,
                   :tin, :tout, :dur,
+                  :usage_source, :usage_status,
                   :cost, :summary, :email,
                   :run_id, :workflow, :workflow_id,
                   :hook_session_id,
@@ -277,6 +321,7 @@ def record(
                 "dec": decision, "rid": rule_id,
                 "ts": ts,
                 "tin": in_tokens, "tout": out_tokens, "dur": duration_ms,
+                "usage_source": usage.source, "usage_status": usage.status,
                 "cost": cost_usd,
                 "summary": prompt_summary or upstream or "vendor",
                 "email": user_email,
@@ -418,6 +463,7 @@ def insert_accepted(
                   source, provider, model,
                   decision, rule_id, ts,
                   tokens_before,
+                  usage_source, usage_status,
                   input_summary, user_email,
                   hook_session_id,
                   routing_meta,
@@ -437,6 +483,7 @@ def insert_accepted(
                   'gateway', :prov, :model,
                   'accepted', NULL, :ts,
                   :tin,
+                  :usage_source, 'pending',
                   :summary, :email,
                   :hook_session_id,
                   CAST(:routing AS jsonb),
@@ -460,6 +507,8 @@ def insert_accepted(
                 "prov": provider, "model": model,
                 "ts": now,
                 "tin": input_tokens,
+                # Pre-dispatch value is a prompt estimate, not consumption.
+                "usage_source": "estimated" if input_tokens is not None else None,
                 "summary": prompt_summary or "vendor",
                 "email": user_email,
                 "hook_session_id": hook_session_id,
@@ -525,14 +574,16 @@ def finalize(
     the reconciler doesn't treat the row as orphaned; downstream analytics
     read tokens as NULL for those rows.
     """
-    in_tokens, out_tokens, cost_usd = _audit_tokens_and_cost(
+    usage = _audit_usage(
         provider=provider,
         model=model,
         body=body,
         response_bytes=response_bytes,
         routing_meta=routing_meta,
         execution_status=execution_status,
+        decision=decision,
     )
+    in_tokens, out_tokens, cost_usd = usage.input_tokens, usage.output_tokens, usage.cost_usd
 
     now = datetime.now(timezone.utc)
     db = SessionLocal()
@@ -548,8 +599,10 @@ def finalize(
                     rule_id          = :rule_id,
                     rule_message     = COALESCE(:rule_message, rule_message),
                     duration_ms      = :duration_ms,
-                    tokens_before    = COALESCE(:tin, tokens_before),
+                    tokens_before    = :tin,
                     tokens_after     = :tout,
+                    usage_source     = :usage_source,
+                    usage_status     = :usage_status,
                     cost_usd_after   = :cost,
                     routing_meta     = CAST(:routing AS jsonb),
                     execution_status = :execution_status,
@@ -571,6 +624,8 @@ def finalize(
                 "duration_ms": duration_ms,
                 "tin": in_tokens,
                 "tout": out_tokens,
+                "usage_source": usage.source,
+                "usage_status": usage.status,
                 "cost": cost_usd,
                 "routing": json.dumps(routing_meta) if routing_meta else None,
                 "execution_status": execution_status,
