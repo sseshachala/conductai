@@ -17,9 +17,14 @@ from sqlalchemy.schema import CreateSchema, DropSchema
 from app.core.config import settings
 from app.modules.guard import audit_export as ax
 from app.modules.guard import audit_signing as sg
+from app.modules.guard.audit_chain import HASH_VERSION
 from app.modules.guard.audit_retention import verify_audit_history
 from app.modules.guard.models import (
-    GuardAuditCheckpoint, GuardAuditEvent, GuardAuditSigningKey, chain_begin, chain_seal,
+    GuardAuditCheckpoint,
+    GuardAuditEvent,
+    GuardAuditSigningKey,
+    chain_begin,
+    chain_seal,
 )
 
 
@@ -114,7 +119,7 @@ def test_checkpoint_created_verifies_and_skips_without_new_rows(chain_db):
     signer = _signer()
     _append(factory, ws, 3)
     cp = sg.take_checkpoint(ws, signer, session_factory=factory)
-    assert cp and cp["row_count"] == 3 and cp["alg"] == "Ed25519" and cp["hash_version"] == 2
+    assert cp and cp["row_count"] == 3 and cp["alg"] == "Ed25519" and cp["hash_version"] == HASH_VERSION
     sg.verify_checkpoint(cp, _keys(factory))
     assert sg.take_checkpoint(ws, signer, session_factory=factory) is None  # no new rows
     _append(factory, ws, 1)
