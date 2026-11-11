@@ -107,3 +107,17 @@ def test_pretooluse_check_policy_ignores_content_source_rules(tmp_path, monkeypa
     monkeypatch.setattr(pretooluse, "_verify_policy_signature", lambda p: True)
     _, action, rule_id, _msg = pretooluse.check_policy("bash", {"command": MARK})
     assert action == "allow" and rule_id is None
+
+
+def test_effective_action_prefers_tool_result_override():
+    assert content_scan.effective_action(_rule("block", action_by_source={"tool_result": "warn"})) == "warn"
+    assert content_scan.effective_action(_rule("block")) == "block"
+    assert content_scan.effective_action(_rule("block", action_by_source={"user": "warn"})) == "block"
+
+
+def test_posttool_block_rule_with_warn_override_marks_but_does_not_deny(monkeypatch):
+    events = _patch_post(monkeypatch, [_rule("block", action_by_source={"tool_result": "warn"})])
+    posttooluse._scan_tool_output("webfetch", MARK, "s1", None, None)
+    assert len(events) == 1 and events[0][0][2] == "warned"
+    assert content_scan.take_session_block("s1") is None
+    assert content_scan._read_flags()["s1"]["action"] == "warn"

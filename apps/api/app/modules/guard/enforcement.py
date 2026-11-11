@@ -57,9 +57,14 @@ def tool_result_scan_rules(db, workspace_id) -> list[dict[str, Any]]:
             continue
         by_source = r.get("match_pattern_by_source")
         tool_pattern = by_source.get("tool_result") if isinstance(by_source, dict) else None
+        from app.guard.policy import effective_action, effective_message
         out.append({
             **r,
             "match_tool": CONTENT_SCAN_PSEUDO_TOOL,
+            # The hook only scans tool output, so ship the action/message that
+            # apply to ``tool_result`` (warn for tool content, not the user-text block).
+            "action": effective_action(r, "tool_result"),
+            "message": effective_message(r, "tool_result"),
             # The hook only ever scans tool output, so ship the tool-content pattern.
             "match_pattern": tool_pattern or r.get("match_pattern"),
         })
@@ -186,6 +191,42 @@ def derive_surface_status(rule: dict[str, Any], surface: str) -> str:
     return "hard" if pep_gates & rule_gates else "not_supported"
 
 
+def validate_action_by_source(rule: dict[str, Any]) -> None:
+    """``action_by_source`` / ``message_by_source`` may only name content sources
+    the rule declares in ``match_content_source`` and known actions."""
+    rule_id = rule.get("id") or rule.get("rule_id") or "(unknown)"
+    by_source = rule.get("action_by_source")
+    if by_source is None and rule.get("message_by_source") is None:
+        return
+    declared = rule.get("match_content_source")
+    if isinstance(declared, str):
+        declared = [declared]
+    if not isinstance(declared, list):
+        raise EnforcementMetadataError(
+            f"{rule_id}: action_by_source requires match_content_source"
+        )
+    for field, allowed in (
+        ("action_by_source", ("audit", "allow", "warn", "approval", "block")),
+        ("message_by_source", None),
+    ):
+        value = rule.get(field)
+        if value is None:
+            continue
+        if not isinstance(value, dict):
+            raise EnforcementMetadataError(f"{rule_id}: {field} must be an object")
+        for source, item in value.items():
+            if source not in declared:
+                raise EnforcementMetadataError(
+                    f"{rule_id}: {field}.{source} is not in match_content_source"
+                )
+            if allowed is not None and item not in allowed:
+                raise EnforcementMetadataError(
+                    f"{rule_id}: {field}.{source} must be one of {list(allowed)}"
+                )
+            if allowed is None and not (isinstance(item, str) and item.strip()):
+                raise EnforcementMetadataError(f"{rule_id}: {field}.{source} must be nonempty")
+
+
 def validate_enforcement_metadata(rule: dict[str, Any]) -> None:
     """Validate one rule's strict rule-level enforcement contract."""
     rule_id = rule.get("id") or rule.get("rule_id") or "(unknown)"
@@ -196,6 +237,8 @@ def validate_enforcement_metadata(rule: dict[str, Any]) -> None:
         raise EnforcementMetadataError(
             f"{rule_id}: enforcement.version must be {CONTRACT_VERSION}"
         )
+
+    validate_action_by_source(rule)
 
     for surface in SURFACES:
         status = metadata.get(surface)

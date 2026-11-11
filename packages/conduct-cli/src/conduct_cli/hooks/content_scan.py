@@ -49,6 +49,17 @@ def response_text(tool_response: Any) -> str:
     return "\n".join(parts)[:_MAX_SCAN_CHARS]
 
 
+def effective_action(rule: Dict[str, Any]) -> str:
+    """Action for a ``tool_result`` hit: ``action_by_source.tool_result`` when the
+    rule carries one, else ``action``. Tool output stays in the conversation, so
+    rules downgrade it to ``warn`` while keeping ``block`` for user text; the
+    server already ships the resolved action, this also honours the raw field."""
+    by_source = rule.get("action_by_source")
+    if isinstance(by_source, dict) and isinstance(by_source.get(CONTENT_SOURCE), str):
+        return by_source[CONTENT_SOURCE]
+    return rule.get("action") or "warn"
+
+
 def tool_result_rules(rules: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
     out = []
     for rule in rules:
@@ -83,8 +94,8 @@ def scan_tool_response(
         for variant in variants:
             found = pattern.search(variant)
             if found:
-                if best is None or _ACTION_RANK.get(rule.get("action", "warn"), 1) > _ACTION_RANK.get(
-                    best[0].get("action", "warn"), 1
+                if best is None or _ACTION_RANK.get(effective_action(rule), 1) > _ACTION_RANK.get(
+                    effective_action(best[0]), 1
                 ):
                     best = (rule, found.group(0)[:_MAX_EXCERPT])
                 break
