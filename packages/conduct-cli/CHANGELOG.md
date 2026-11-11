@@ -6,6 +6,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ---
 
+## [Unreleased]
+
+### Added
+- `conduct audit feed --format ocsf|ecs|cef`: emit OCSF 1.3 (API Activity), Elastic ECS or CEF
+  instead of the native JSON. Hash-chain fields are preserved in every format.
+
 ## [0.15.1] - 2026-11-04
 
 ### Fixed
