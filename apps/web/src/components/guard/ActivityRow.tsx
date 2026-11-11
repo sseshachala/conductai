@@ -10,6 +10,7 @@ import { AskLensLink } from "@/components/glens/AskLensLink"
 import { AttributionDetails } from "@/components/federation/AttributionDetails"
 import { SessionUsageDetails } from "./SessionUsageDetails"
 import { SessionSpend } from "./SessionSpend"
+import { ToolExecutions } from "./ToolExecutions"
 import { buildGridTemplate, resolveVisible } from "./activity-row/layout"
 import type { AuditEvent } from "./activity-row/types"
 import {
@@ -336,6 +337,9 @@ export function ActivityRow({ ev, compact = false, isLast = false, visibleColumn
           <Link href={`/proxy/gateway-profiles${ev.routing_meta.gateway_profile_id ? `?select=${encodeURIComponent(ev.routing_meta.gateway_profile_id)}` : ""}`}
             className="mono" style={{ color: "var(--text-2)", overflowWrap: "anywhere" }}>{ev.routing_meta.gateway_profile}</Link>
         </div>}
+        {ev.routing_meta?.tool_call_correlation_ids && Object.keys(ev.routing_meta.tool_call_correlation_ids).length > 0 && (
+          <ToolExecutions eventId={ev.id} />
+        )}
         {ev.federation && <AttributionDetails value={ev.federation} />}
         {ev.routing_meta?.session_usage && <>
           <SessionUsageDetails value={ev.routing_meta.session_usage} />

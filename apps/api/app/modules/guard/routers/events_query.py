@@ -62,6 +62,24 @@ def session_reconciliation(
     return session_evidence(db, event)
 
 
+@router.get("/{event_id}/tool-executions")
+def event_tool_executions(
+    event_id: UUID,
+    workspace_id: str = Depends(get_workspace_id),
+    user_id: str = Depends(get_user_id),
+    _permission: str = Depends(require_permission("guard.activity.view_own")),
+    db: Session = Depends(get_db),
+):
+    """Caller-reported tool executions joined to a gateway audit row by correlation id (#2169)."""
+    from app.modules.guard.event_access import restrict_event_query
+    from app.modules.guard.tool_executions import executions_for_event
+
+    event = restrict_event_query(db.query(GuardAuditEvent), db, workspace_id, user_id, event_id).first()
+    if event is None:
+        raise HTTPException(status_code=404, detail="Event not found")
+    return executions_for_event(db, event)
+
+
 @router.get("/{event_id}/usage")
 def event_usage_detail(
     event_id: UUID,
