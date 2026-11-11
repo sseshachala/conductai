@@ -87,7 +87,7 @@ def test_pinned_vector_matches_api():
     }
     from conduct_cli.commands.audit import HASHED_FIELDS
     full = {n: None for n in HASHED_FIELDS} | rec
-    assert compute_entry_hash_v2(full, "abc") == "c36e886ef4cb8365c33f00b47aa0f78253bd894a3902b606d15e08f548817aa7"
+    assert compute_entry_hash_v2(full, "abc") == "8c7cf32855d805256308207bb259902eef36ebc6806c7a9cd634e4f2fa004b9d"
 
 
 @pytest.mark.parametrize("field,value", [

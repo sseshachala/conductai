@@ -45,6 +45,9 @@ TEXT_FIELDS = (
     "conductai_run_id", "conductai_workflow", "conductai_workflow_id", "os_info", "hostname",
     "execution_status", "result_summary", "previous_hash", "policy_hash", "goal_id",
     "goal_name", "share_token_hash", "route", "lifecycle_state",
+    # Track B (#2545, flight-recorder usage provenance): hashed from day one so the
+    # chain covers them the moment the columns exist; NULL (absent) until then.
+    "usage_source", "usage_status",
 )
 HASHED_FIELDS = tuple(sorted(
     TS_FIELDS + UUID_FIELDS + INT_FIELDS + FLOAT_FIELDS + JSON_FIELDS + TEXT_FIELDS))
