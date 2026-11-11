@@ -47,6 +47,9 @@ def db():
             conn.execute(text("CREATE TABLE workspaces (id uuid PRIMARY KEY)"))
             conn.execute(text("INSERT INTO workspaces VALUES (:a), (:b)"), {"a": WS, "b": OTHER_WS})
             conn.execute(text("CREATE TABLE guard_audit_events (LIKE public.guard_audit_events INCLUDING DEFAULTS)"))
+            conn.execute(text("CREATE TABLE workspace_users (workspace_id uuid, clerk_user_id text)"))
+            conn.execute(text("CREATE TABLE agent_identities (LIKE public.agent_identities INCLUDING DEFAULTS)"))
+            conn.execute(text("INSERT INTO workspace_users VALUES (:w, 'alice'), (:w, 'bob'), (:w, 'admin')"), {"w": WS})
             GuardToolExecution.__table__.create(conn)
         session = sessionmaker(bind=engine)()
         yield session
@@ -58,11 +61,11 @@ def db():
         admin.dispose()
 
 
-def _gateway_row(db, mapping, ws=WS, source="gateway"):
+def _gateway_row(db, mapping, ws=WS, source="gateway", user=None):
     from app.modules.guard.models import GuardAuditEvent
 
     row = GuardAuditEvent(
-        id=uuid.uuid4(), workspace_id=ws, ai_tool="gateway", source=source, decision="allowed",
+        id=uuid.uuid4(), workspace_id=ws, ai_tool="gateway", source=source, decision="allowed", clerk_user_id=user,
         routing_meta={"tool_call_correlation_ids": mapping}, ts=datetime.now(timezone.utc),
     )
     db.add(row)
@@ -135,3 +138,63 @@ def test_upsert_updates_outcome(db):
     _record(db, correlation_id=CID_A, execution_status="success", duration_ms=2)
     out = executions_for_event(db, row)["executions"]
     assert len(out) == 1 and out[0]["execution_status"] == "success" and out[0]["duration_ms"] == 2
+
+
+# ── Endpoint auth / scoping ──────────────────────────────────────────────────
+
+def _route():
+    from app.modules.guard.routers.events_query import router
+    return next(r for r in router.routes if getattr(r, "path", "") == "/guard/events/{event_id}/tool-executions")
+
+
+def test_endpoint_declares_permission_and_identity_dependencies():
+    deps = [d.call for d in _route().dependant.dependencies]
+    perms = [getattr(c, "__conduct_permission__", None) for c in deps]
+    assert "guard.activity.view_own" in perms
+    from app.core.auth import get_user_id, get_workspace_id
+    assert get_user_id in deps and get_workspace_id in deps
+
+
+@pytest.fixture
+def perms(monkeypatch):
+    """view_all only for 'admin'; view_own for every workspace member."""
+    from fastapi import HTTPException
+    from app.modules.guard import event_access
+
+    def fake(*, user_id, workspace_id, credentials, db, permission):
+        if permission.endswith("view_all") and user_id != "admin":
+            raise HTTPException(status_code=403, detail="denied")
+        return "role"
+    monkeypatch.setattr(event_access, "check_permission", fake)
+
+
+def _call(db, row, user):
+    from app.modules.guard.routers.events_query import event_tool_executions
+    return event_tool_executions(row.id, workspace_id=str(WS), user_id=user, _permission="x", db=db)
+
+
+def test_endpoint_owner_sees_executions_and_others_get_404(db, perms):
+    from fastapi import HTTPException
+    row = _gateway_row(db, {"call_abc": CID_A}, user="alice")
+    _record(db, correlation_id=CID_A)
+    assert [e["correlation_id"] for e in _call(db, row, "alice")["executions"]] == [CID_A]
+    assert len(_call(db, row, "admin")["executions"]) == 1  # view_all
+    with pytest.raises(HTTPException) as exc:
+        _call(db, row, "bob")  # member without view_all, not the owner
+    assert exc.value.status_code == 404
+
+
+def test_endpoint_non_member_is_forbidden(db, perms):
+    from fastapi import HTTPException
+    row = _gateway_row(db, {"call_abc": CID_A}, user="alice")
+    with pytest.raises(HTTPException) as exc:
+        _call(db, row, "outsider")
+    assert exc.value.status_code == 403
+
+
+def test_endpoint_event_in_other_workspace_is_404(db, perms):
+    from fastapi import HTTPException
+    row = _gateway_row(db, {"call_abc": CID_A}, ws=OTHER_WS, user="alice")
+    with pytest.raises(HTTPException) as exc:
+        _call(db, row, "admin")
+    assert exc.value.status_code == 404

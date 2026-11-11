@@ -123,6 +123,8 @@ class HookEvent(BaseModel):
     # stderr resolves to the row we just wrote. Optional; when absent the
     # row gets its usual server-generated uuid and no receipt is emitted.
     receipt_id: str | None = None
+    # #2384 — set by the CLI PostToolUse scan; stored in routing_meta.content_source.
+    content_source: Literal["user", "tool_result", "tool_description"] | None = None
 
 
 class UsageUpdate(BaseModel):

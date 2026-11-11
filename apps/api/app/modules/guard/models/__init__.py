@@ -63,34 +63,52 @@ def _chain_tail(db, ws_uuid):
     )
 
 
-def _entry_hash(ts: datetime, tool_call, decision: str, prev: str) -> str:
-    return hashlib.sha256(f"{ts.isoformat()}|{tool_call or ''}|{decision}|{prev}".encode()).hexdigest()
-
-
-def chain_hash_for_insert(db, ws_uuid, ts: datetime, tool_call, decision: str):
-    """Returns (previous_hash, entry_hash) for a new GuardAuditEvent row.
-    Holds the per-workspace chain lock until the caller's transaction ends."""
-    _chain_lock(db, ws_uuid)
-    last = _chain_tail(db, ws_uuid)
-    prev = last.entry_hash if last else ""
-    return prev, _entry_hash(ts, tool_call, decision, prev)
-
-
-def chain_next(db, ws_uuid, tool_call, decision: str):
-    """Returns (ts, previous_hash, entry_hash) with ``ts`` stamped under the lock.
-
-    The verifier walks rows in (ts, id) order, so ``ts`` is taken after the
-    lock and never earlier than the current tail (instances' clocks can
-    differ by a few ms). Use the returned ``ts`` for the row.
-    """
+def _tail_ts(db, ws_uuid):
+    """Lock the chain and return ``(tail_row_or_None, ts)`` with ``ts`` stamped under the lock."""
     from datetime import timedelta, timezone
 
     _chain_lock(db, ws_uuid)
     last = _chain_tail(db, ws_uuid)
-    prev = last.entry_hash if last else ""
     ts = datetime.now(timezone.utc)
     if last and isinstance(last.ts, datetime):
         tail_ts = last.ts if last.ts.tzinfo else last.ts.replace(tzinfo=timezone.utc)
         if ts <= tail_ts:
             ts = tail_ts + timedelta(microseconds=1)
-    return ts, prev, _entry_hash(ts, tool_call, decision, prev)
+    return last, ts
+
+
+def chain_begin(db, ws_uuid):
+    """Returns ``(ts, previous_hash)`` for a new chained GuardAuditEvent.
+
+    Takes the per-workspace chain lock (held until the caller's transaction
+    ends). The verifier walks rows in (ts, id) order, so ``ts`` is stamped after
+    the lock and never earlier than the current tail (instances' clocks can
+    differ by a few ms). Use the returned ``ts`` and ``previous_hash`` on the
+    row, then call ``chain_seal`` (ORM rows) or ``chain_seal_values`` (raw
+    INSERT) once every other field is final.
+    """
+    last, ts = _tail_ts(db, ws_uuid)
+    return ts, (last.entry_hash if last else "")
+
+
+def chain_seal_values(values: dict) -> str:
+    """v2 entry_hash for a complete column->value mapping (the only hashing path)."""
+    from app.modules.guard.audit_chain import HASH_VERSION, compute_v2
+
+    return compute_v2({**values, "hash_version": HASH_VERSION})
+
+
+def chain_seal(event: "GuardAuditEvent") -> "GuardAuditEvent":
+    """Stamp ``hash_version`` and ``entry_hash`` on an ORM row. Call last, after all
+    other fields (including ``previous_hash`` from ``chain_begin``) are final."""
+    import uuid as _uuid
+    from app.modules.guard.audit_chain import HASH_VERSION, HASHED_FIELDS
+
+    # Python-side column defaults only materialise at flush; hash what will be stored.
+    if event.id is None:
+        event.id = _uuid.uuid4()
+    if event.source is None:
+        event.source = "hook"
+    event.hash_version = HASH_VERSION
+    event.entry_hash = chain_seal_values({name: getattr(event, name, None) for name in HASHED_FIELDS})
+    return event

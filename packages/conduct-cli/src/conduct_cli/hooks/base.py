@@ -496,6 +496,7 @@ def post_event(
     receipt_id: Optional[str] = None,
     execution_status: Optional[str] = None,
     tool_use_id: Optional[str] = None,
+    content_source: Optional[str] = None,
 ) -> None:
     """Post one guard event via the journal/drain pattern.  Never raises.
 
@@ -542,6 +543,8 @@ def post_event(
         "goal_name":       _gcfg.get("current_goal_name") or None,
         "receipt_id":      receipt_id,
         **({"execution_status": execution_status} if execution_status is not None else {}),
+        # #2384 - which content source carried the matched text (tool_result)
+        **({"content_source": content_source} if content_source else {}),
     })
     api_url = deployment_api_url(cfg)
     journal_append(payload, api_url)

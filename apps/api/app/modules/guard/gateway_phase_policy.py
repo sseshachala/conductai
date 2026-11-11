@@ -80,6 +80,14 @@ async def evaluate_prompt_gate(st: GatewayCall) -> JSONResponse | None:
     _action = _pd.action.value
     st.guidance_text = _pd.guidance if _pd.inject_guidance else None
 
+    # #2384 — record which content source carried the match (user text,
+    # tool_result, tool_description) in routing_meta (JSONB) so the audit row
+    # shows where an indirect injection came from. Set before render_block /
+    # render_approval, which persist st.routing_meta.
+    _content_source = decision.get("content_source") if isinstance(decision, dict) else None
+    if _content_source and _action != "ALLOW":
+        st.routing_meta = {**(st.routing_meta or {}), "content_source": _content_source}
+
     if _pd.blocks:
         from app.modules.guard.routers._proxy_helpers import render_block as _render_block
         return _render_block(

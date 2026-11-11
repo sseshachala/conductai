@@ -226,13 +226,60 @@ def record(
         # (block path) so the response can reference the row before the
         # background write lands.
         import uuid as _uuid
-        from app.modules.guard.models import chain_next, get_policy_hash
+        from app.modules.guard.models import chain_begin, chain_seal_values, get_policy_hash
+        from app.modules.guard.audit_chain import HASH_VERSION
         row_id = receipt_id or str(_uuid.uuid4())
         ws_uuid = _uuid.UUID(str(workspace_id))
         # Gateway rows join the workspace hash chain like hook/MCP rows. The
         # lock is taken last so it is held only for the insert + commit.
         policy_hash = get_policy_hash(db, ws_uuid)
-        ts, prev_hash, entry_hash = chain_next(db, ws_uuid, None, decision)
+        ts, prev_hash = chain_begin(db, ws_uuid)
+
+        params = {
+            "row_id": row_id,
+            "request_id": request_id,
+            "ws": workspace_id, "uid": clerk_user_id,
+            "agent_id": agent_identity_id,
+            "ai": ai_tool,
+            "prov": provider, "model": model,
+            "dec": decision, "rid": rule_id,
+            "ts": ts,
+            "tin": in_tokens, "tout": out_tokens, "dur": duration_ms,
+            "cost": cost_usd,
+            "summary": prompt_summary or upstream or "vendor",
+            "email": user_email,
+            "run_id": conductai_run_id,
+            "workflow": conductai_workflow,
+            "workflow_id": conductai_workflow_id,
+            "hook_session_id": hook_session_id,
+            "eval": json.dumps(evaluated_rules) if evaluated_rules else None,
+            "score": defense_score,
+            "routing": json.dumps(routing_meta) if routing_meta else None,
+            "share_token_hash": share_token_hash,
+            "execution_status": execution_status,
+            "result_summary": result_summary,
+            "route": route,
+            "prev_hash": prev_hash, "policy_hash": policy_hash,
+        }
+        # Hash exactly the values this INSERT stores (same column names as the ORM model).
+        params["entry_hash"] = chain_seal_values({
+            "id": row_id, "request_id": request_id, "workspace_id": workspace_id,
+            "clerk_user_id": clerk_user_id, "agent_identity_id": agent_identity_id,
+            "ai_tool": ai_tool, "tool_call": None, "source": "gateway",
+            "provider": provider, "model": model, "decision": decision, "rule_id": rule_id,
+            "ts": ts, "tokens_before": in_tokens, "tokens_after": out_tokens,
+            "duration_ms": duration_ms, "cost_usd_after": cost_usd,
+            "input_summary": params["summary"], "user_email": user_email,
+            "conductai_run_id": conductai_run_id, "conductai_workflow": conductai_workflow,
+            "conductai_workflow_id": conductai_workflow_id, "hook_session_id": hook_session_id,
+            "evaluated_rules": evaluated_rules if evaluated_rules else None,
+            "defense_score": defense_score,
+            "routing_meta": routing_meta if routing_meta else None,
+            "share_token_hash": share_token_hash, "execution_status": execution_status,
+            "result_summary": result_summary, "route": route,
+            "previous_hash": prev_hash, "policy_hash": policy_hash,
+        })
+        params["hash_version"] = HASH_VERSION
         db.execute(
             text("""
                 INSERT INTO guard_audit_events (
@@ -249,7 +296,7 @@ def record(
                   share_token_hash,
                   execution_status, result_summary,
                   route,
-                  previous_hash, entry_hash, policy_hash
+                  previous_hash, entry_hash, policy_hash, hash_version
                 ) VALUES (
                   CAST(:row_id AS uuid), CAST(:request_id AS uuid),
                   :ws, :uid, CAST(:agent_id AS uuid), :ai, NULL,
@@ -264,35 +311,10 @@ def record(
                   :share_token_hash,
                   :execution_status, :result_summary,
                   :route,
-                  :prev_hash, :entry_hash, :policy_hash
+                  :prev_hash, :entry_hash, :policy_hash, :hash_version
                 )
             """),
-            {
-                "row_id": row_id,
-                "request_id": request_id,
-                "ws": workspace_id, "uid": clerk_user_id,
-                "agent_id": agent_identity_id,
-                "ai": ai_tool,
-                "prov": provider, "model": model,
-                "dec": decision, "rid": rule_id,
-                "ts": ts,
-                "tin": in_tokens, "tout": out_tokens, "dur": duration_ms,
-                "cost": cost_usd,
-                "summary": prompt_summary or upstream or "vendor",
-                "email": user_email,
-                "run_id": conductai_run_id,
-                "workflow": conductai_workflow,
-                "workflow_id": conductai_workflow_id,
-                "hook_session_id": hook_session_id,
-                "eval": json.dumps(evaluated_rules) if evaluated_rules else None,
-                "score": defense_score,
-                "routing": json.dumps(routing_meta) if routing_meta else None,
-                "share_token_hash": share_token_hash,
-                "execution_status": execution_status,
-                "result_summary": result_summary,
-                "route": route,
-                "prev_hash": prev_hash, "entry_hash": entry_hash, "policy_hash": policy_hash,
-            },
+            params,
         )
         db.commit()
 

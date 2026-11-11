@@ -319,7 +319,59 @@ def main() -> None:
                     _record_session_warn(session_id, rule_id)
                 post_event(tool_name, {}, decision, rule_id, message, session_id, drain_via=_this_file, blast_radius=blast_radius)
 
+    _scan_tool_output(tool_name, tool_response, session_id, tool_use_id, _this_file)
+
     sys.exit(0)
+
+
+def _load_policy_rules() -> list:
+    """Rules from the locally cached, signature-verified policy. [] on any problem."""
+    try:
+        from conduct_cli.hooks.base import active_policy_path
+        from conduct_cli.hooks.pretooluse import _verify_policy_signature
+        path = active_policy_path()
+        if not path.exists():
+            return []
+        policy = json.loads(path.read_text())
+        if not _verify_policy_signature(policy):
+            return []
+        rules = policy.get("rules", [])
+        return rules if isinstance(rules, list) else []
+    except Exception:
+        return []
+
+
+def _scan_tool_output(tool_name, tool_response, session_id, tool_use_id, this_file) -> None:
+    """#2384 — scan what the tool returned to the model for indirect prompt
+    injection. Warn event + session marker; the next tool call is denied once
+    when the matching rule's action is block. Never raises."""
+    try:
+        from conduct_cli.hooks.content_scan import CONTENT_SOURCE, mark_session, scan_tool_response
+        from conduct_cli.hooks.pretooluse import _get_advisory_mode
+        hit = scan_tool_response(_load_policy_rules(), tool_response)
+        if hit is None:
+            return
+        rule, excerpt = hit
+        rule_id = rule.get("rule_id") or "unknown"
+        action = rule.get("action") or "warn"
+        message = f"[{rule_id}] {rule.get('message') or 'Possible indirect prompt injection in tool output.'}"
+        if action == "block" and not _get_advisory_mode():
+            message += " The next tool call in this session will be blocked once."
+            mark_session(session_id, rule_id, "block", message, tool_name)
+        elif action == "warn" and session_id and _already_warned_this_session(session_id, rule_id):
+            return
+        else:
+            if action == "warn" and session_id:
+                _record_session_warn(session_id, rule_id)
+            mark_session(session_id, rule_id, action, message, tool_name)
+        post_event(
+            tool_name,
+            {"content_source": CONTENT_SOURCE, "matched_excerpt": excerpt},
+            "warned", rule_id, message, session_id,
+            drain_via=this_file, tool_use_id=tool_use_id, content_source=CONTENT_SOURCE,
+        )
+    except Exception:
+        pass
 
 
 if __name__ == "__main__":

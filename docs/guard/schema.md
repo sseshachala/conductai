@@ -93,6 +93,8 @@ when {
 | `match_tool_name_offered` | regex string | Matches a function name offered to the model in the Gateway request. |
 | `match_tool_name_generated` | regex string | Matches a function name returned by the model. Requires the `response` gate. |
 | `match_tool_name_supplied` | regex string | Matches a function name resolved from a supplied tool result and its assistant tool call. |
+| `match_content_source` | string[] | `user` \| `tool_result` \| `tool_description`. Which Gateway request text `match_pattern` is matched against (prompt gate). Omitted = `user` only (the default). `tool_result` = `role:"tool"` / `tool_result` blocks / `function_call_output` items; `tool_description` = `tools[].description` plus parameter descriptions. The matching source is recorded in the audit row's `routing_meta.content_source`. Rules that include `tool_result` are also synced to the CLI, whose PostToolUse hook scans `tool_response` (warn event + marks the session; a `block` action denies the next tool call once). |
+| `match_pattern_by_source` | object | Optional per-source override of `match_pattern`, e.g. `{"tool_result": "..."}`. Lets a rule use a narrower pattern for tool content, where phrases like "you are now" are routine. |
 | `message` | string | Shown to user on match. Cedar `@message`. |
 | `recommendation` | string | Remediation guidance. Cedar `@recommendation`. |
 | `severity` | enum | `low` \| `medium` \| `high` \| `critical`. Cedar `@severity`. |

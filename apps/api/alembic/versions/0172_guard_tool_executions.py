@@ -1,7 +1,7 @@
 """guard_tool_executions: caller-reported tool executions keyed by correlation id (#2169)
 
-Revision ID: 0170
-Revises: 0169
+Revision ID: 0172
+Revises: 0171
 Create Date: 2026-11-11
 """
 from __future__ import annotations
@@ -11,8 +11,8 @@ from alembic import op
 from sqlalchemy.dialects import postgresql
 
 
-revision = "0170"
-down_revision = "0169"
+revision = "0172"
+down_revision = "0171"
 branch_labels = None
 depends_on = None
 

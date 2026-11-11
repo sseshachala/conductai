@@ -11,7 +11,7 @@ from app.core.auth import (
 from app.core.config import settings
 from app.core.database import SessionLocal, get_db
 from app.core.workspace_context import set_workspace_rls
-from app.modules.guard.models import GuardAuditEvent, GuardConfig, GuardSession, chain_next, get_policy_hash
+from app.modules.guard.models import GuardAuditEvent, GuardConfig, GuardSession, chain_begin, chain_seal, get_policy_hash
 from app.modules.guard.routers.events_common import (
     EventOut,
     HookEvent,
@@ -285,7 +285,7 @@ def ingest_event(
     now = _now()
 
     # 1. Compute hash-chain + policy BOM fields before insert
-    _chain_ts, prev_hash, entry_hash = chain_next(db, ws_uuid, body.tool_call, body.decision)
+    _chain_ts, prev_hash = chain_begin(db, ws_uuid)
     policy_hash = get_policy_hash(db, ws_uuid)
 
     # 2. Write the audit event
@@ -321,15 +321,20 @@ def ingest_event(
         blast_radius=body.blast_radius,
         ts=_chain_ts,
         previous_hash=prev_hash,
-        entry_hash=entry_hash,
         policy_hash=policy_hash,
         goal_id=body.goal_id,
         goal_name=body.goal_name,
-        routing_meta={"session_usage": body._session_usage} if body._session_usage else None,
+        routing_meta=(
+            {
+                **({"session_usage": body._session_usage} if body._session_usage else {}),
+                # #2384 — which content source carried the matched text
+                **({"content_source": body.content_source} if body.content_source else {}),
+            } or None
+        ),
         evaluated_rules=body.evaluated_rules,
         defense_score=body.defense_score,
     )
-    db.add(event)
+    db.add(chain_seal(event))
     db.flush()  # get event.id before commit
 
     # A hook report is evidence for this installation, not universal protection.
