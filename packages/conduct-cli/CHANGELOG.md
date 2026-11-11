@@ -9,6 +9,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 ## [Unreleased]
 
 ### Added
+- `conduct audit feed --format ocsf|ecs|cef`: emit OCSF 1.3 (API Activity), Elastic ECS or CEF
+  instead of the native JSON. Hash-chain fields are preserved in every format.
 - PostToolUse hook reports the gateway tool-call `correlation_id` (#2168) on
   `/guard/events/usage` when the surface exposes the
   `X-Conduct-Tool-Correlation-Ids` header or a `correlation_id`
