@@ -5,11 +5,13 @@ import { useAuthFetch } from "@/hooks/useAuthFetch"
 import { guard } from "@/lib/api"
 import type { AlertChannel, AlertRegistry, AlertSourceDef } from "@/lib/api/guard"
 import type { NotificationChannelType } from "@/lib/api/guard-types"
+import { slackIntegrationFor, type SlackIntegration, type VaultEnvironment } from "./vault"
 
 // ─── Unified alerts table (#2142): source → event → channels ──────────────────
 // Rendered from the API registry, so a new source/event needs no UI change.
-// Guard-rule channels stay in the card above (they are managed on
-// /guard/notifications); this table covers every other registered source.
+// Guard-rule channels stay in their own card (managed on /guard/notifications);
+// this table covers every other registered source. Slack channels use the
+// credential of the Vault selected at the top of the page.
 
 export interface AlertFilter {
   sourceType: string
@@ -42,10 +44,16 @@ export default function AlertsCard({
   workspaceId,
   isAdmin,
   filter,
+  environments = [],
+  slackIntegrations = [],
+  selectedEnvId = "",
 }: {
   workspaceId: string | null
   isAdmin: boolean
   filter: AlertFilter | null
+  environments?: VaultEnvironment[]
+  slackIntegrations?: SlackIntegration[]
+  selectedEnvId?: string
 }) {
   const { authFetch } = useAuthFetch()
   const [registry, setRegistry] = useState<AlertRegistry | null>(null)
@@ -94,6 +102,7 @@ export default function AlertsCard({
         source_id: src.scoped ? filter?.sourceId ?? null : null,
         event_type: eventType,
         channel_type: addType,
+        integration_id: addType === "slack" ? (slackIntegrationFor(slackIntegrations, selectedEnvId)?.id ?? null) : null,
         channel_ref: addType === "slack" ? addRef.trim().replace(/^#+/, "") : addRef.trim(),
         threshold_per_min: threshold,
       })
@@ -175,6 +184,13 @@ export default function AlertsCard({
                       </span>
                       <span style={{ fontFamily: "var(--font-mono, ui-monospace, monospace)", flex: 1, wordBreak: "break-all" }}>
                         {maskRef(ch)}
+                        {ch.channel_type === "slack" && (() => {
+                          const integ = ch.integration_id ? slackIntegrations.find(i => i.id === ch.integration_id) : null
+                          const envLabel = integ?.environment_name ?? (integ ? "(default env)" : null)
+                          return envLabel ? (
+                            <span style={{ marginLeft: 8, fontSize: 11, color: "var(--text-muted)", fontFamily: "inherit" }}>· {envLabel}</span>
+                          ) : null
+                        })()}
                         {src.scoped && !filter?.sourceId && (
                           <span style={{ marginLeft: 8, fontSize: 11, color: "var(--text-muted)", fontFamily: "inherit" }}>
                             · {ch.source_id ? `profile ${ch.source_id.slice(0, 8)}…` : "all profiles"}
@@ -231,8 +247,9 @@ export default function AlertsCard({
                           style={{ width: 120, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 4, padding: "4px 8px", fontSize: 12.5 }}
                         />
                       )}
-                      <button type="button" className="btn btn-primary btn-sm" style={{ fontSize: 11, opacity: addRef.trim() ? 1 : 0.5 }}
-                        disabled={!addRef.trim()} onClick={() => void handleAdd(src, ev.event_type, ev.supports_threshold)}>
+                      <button type="button" className="btn btn-primary btn-sm"
+                        style={{ fontSize: 11, opacity: !addRef.trim() || (addType === "slack" && environments.length === 0) ? 0.5 : 1 }}
+                        disabled={!addRef.trim() || (addType === "slack" && environments.length === 0)} onClick={() => void handleAdd(src, ev.event_type, ev.supports_threshold)}>
                         Save
                       </button>
                       <button type="button" className="btn btn-ghost btn-sm" style={{ fontSize: 11 }} onClick={() => setAdding(null)}>Cancel</button>

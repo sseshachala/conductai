@@ -34,7 +34,17 @@ const REG = {
   ],
 }
 
+const VAULT = {
+  environments: [{ id: "env-prod", name: "Production" }, { id: "env-staging", name: "Staging" }],
+  slackIntegrations: [
+    { id: "int-prod", handle: "conduct", environment_id: "env-prod", environment_name: "Production" },
+    { id: "int-staging", handle: "conduct", environment_id: "env-staging", environment_name: "Staging" },
+  ],
+  selectedEnvId: "env-prod",
+}
+
 beforeEach(() => {
+  vi.clearAllMocks()
   registry.mockResolvedValue(REG)
   list.mockResolvedValue({ workspace_id: "w", channels: [] })
   create.mockResolvedValue({})
@@ -57,7 +67,7 @@ describe("AlertsCard", () => {
   })
 
   it("filters to one profile and scopes new channels to it", async () => {
-    render(<AlertsCard workspaceId="w" isAdmin filter={{ sourceType: "gateway", sourceId: "p-1" }} />)
+    render(<AlertsCard workspaceId="w" isAdmin filter={{ sourceType: "gateway", sourceId: "p-1" }} {...VAULT} />)
     expect(await screen.findByText("Upstream 5xx")).toBeTruthy()
     expect(screen.queryByText("Collector stale")).toBeNull()
     expect(list).toHaveBeenCalledWith(expect.anything(), "w", { source_type: "gateway", source_id: "p-1" })
@@ -70,7 +80,24 @@ describe("AlertsCard", () => {
     expect(create.mock.calls[0][2]).toMatchObject({
       source_type: "gateway", source_id: "p-1", event_type: "upstream_5xx",
       channel_type: "slack", channel_ref: "ops", threshold_per_min: 10,
+      integration_id: "int-prod",
     })
+  })
+
+  it("uses the Slack credential of the Vault selected on the page", async () => {
+    render(<AlertsCard workspaceId="w" isAdmin filter={{ sourceType: "audit_feed", sourceId: null }} {...VAULT} selectedEnvId="env-staging" />)
+    fireEvent.click(await screen.findByText("+ Add channel"))
+    fireEvent.change(screen.getByLabelText("Channel target"), { target: { value: "#sec-alerts" } })
+    fireEvent.click(screen.getByText("Save"))
+    await waitFor(() => expect(create).toHaveBeenCalled())
+    expect(create.mock.calls[0][2]).toMatchObject({ channel_type: "slack", channel_ref: "sec-alerts", integration_id: "int-staging" })
+  })
+
+  it("blocks Slack channels until a Vault exists", async () => {
+    render(<AlertsCard workspaceId="w" isAdmin filter={{ sourceType: "audit_feed", sourceId: null }} />)
+    fireEvent.click(await screen.findByText("+ Add channel"))
+    fireEvent.change(screen.getByLabelText("Channel target"), { target: { value: "ops" } })
+    expect((screen.getByText("Save") as HTMLButtonElement).disabled).toBe(true)
   })
 
   it("hides add controls for non-admins", async () => {

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { useAuthFetch } from "@/hooks/useAuthFetch"
 import { guard, environments as environmentsApi, credentials } from "@/lib/api"
 import AlertsCard, { parseSourceFilter } from "./AlertsCard"
+import { slackIntegrationFor, type SlackIntegration, type VaultEnvironment } from "./vault"
 
 // ─── #1142 Phase 1 — per-action notifications card ────────────────────────────
 
@@ -30,9 +31,15 @@ interface NotifGroup { action: string; channels: NotifChannel[] }
 function NotificationsCard({
   workspaceId,
   isAdmin,
+  environments,
+  slackIntegrations,
+  selectedEnvId,
 }: {
   workspaceId: string | null
   isAdmin: boolean
+  environments: VaultEnvironment[]
+  slackIntegrations: SlackIntegration[]
+  selectedEnvId: string
 }) {
   const { authFetch } = useAuthFetch()
   const [groups, setGroups] = useState<NotifGroup[]>([])
@@ -42,27 +49,14 @@ function NotificationsCard({
   const [addMenuFor, setAddMenuFor] = useState<string | null>(null)
   const [addType, setAddType] = useState<"slack" | "webhook" | "pagerduty" | "email">("slack")
   const [addChannel, setAddChannel] = useState("")
-  const [selectedEnvId, setSelectedEnvId] = useState<string>("")
-  const [environments, setEnvironments] = useState<Array<{ id: string; name: string }>>([])
-  const [slackIntegrations, setSlackIntegrations] = useState<Array<{ id: string; handle: string; environment_id: string | null; environment_name: string | null }>>([])
   const [testResult, setTestResult] = useState<Record<string, { ok: boolean; err: string | null }>>({})
 
   const load = useCallback(async () => {
     if (!workspaceId) return
     setLoading(true)
     try {
-      const [data, envList, integList] = await Promise.all([
-        guard.notifications.list(authFetch, workspaceId),
-        environmentsApi.list(authFetch).catch(() => []),
-        credentials.slack.integration(authFetch, workspaceId).catch(() => []),
-      ])
+      const data = await guard.notifications.list(authFetch, workspaceId)
       setGroups(data.groups as NotifGroup[])
-      const envs = Array.isArray(envList) ? envList : []
-      setEnvironments(envs)
-      const integs = Array.isArray(integList) ? integList : (integList ? [integList] : [])
-      setSlackIntegrations(integs)
-      // Panel-level env: seed once from the first env if user hasn't picked yet.
-      setSelectedEnvId(prev => prev || envs[0]?.id || "")
       setError(null)
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load notifications")
@@ -90,10 +84,8 @@ function NotificationsCard({
           integration_id: null,
         }
       } else {
-        // Environment → Slack integration lookup: uses the panel-level env picker.
-        const integ = selectedEnvId
-          ? (slackIntegrations.find(i => i.environment_id === selectedEnvId) ?? null)
-          : (slackIntegrations[0] ?? null)
+        // Environment → Slack integration lookup: uses the panel-level Vault picker.
+        const integ = slackIntegrationFor(slackIntegrations, selectedEnvId)
         body = {
           action,
           channel_type: "slack",
@@ -143,25 +135,6 @@ function NotificationsCard({
           </svg>
         </span>
         <div style={{ fontWeight: 650, fontSize: 14.5 }}>Guard rules</div>
-        {environments.length > 0 && (
-          <label style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-3)" }}>
-            Vault
-            <select
-              value={selectedEnvId}
-              onChange={e => setSelectedEnvId(e.target.value)}
-              style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 4, padding: "3px 8px", fontSize: 12.5, color: "var(--text)" }}
-            >
-              {environments.map(env => {
-                const hasSlack = slackIntegrations.some(i => i.environment_id === env.id)
-                return (
-                  <option key={env.id} value={env.id}>
-                    {env.name}{hasSlack ? "" : " — (no Slack)"}
-                  </option>
-                )
-              })}
-            </select>
-          </label>
-        )}
       </div>
 
       <div style={{ padding: "4px 20px 16px" }}>
@@ -338,14 +311,62 @@ export default function NotificationsPanel({
   /** `?source=` filter, e.g. `gateway:<profile_id>`. */
   source?: string | null
 }) {
+  const { authFetch } = useAuthFetch()
   const filter = useMemo(() => parseSourceFilter(source), [source])
   const showGuardRules = !filter || filter.sourceType === "guard"
+  const showAlerts = filter?.sourceType !== "guard"
+
+  // One Vault (environment) selection drives the Slack credential for both
+  // Guard-rule channels and alert channels.
+  const [environments, setEnvironments] = useState<VaultEnvironment[]>([])
+  const [slackIntegrations, setSlackIntegrations] = useState<SlackIntegration[]>([])
+  const [selectedEnvId, setSelectedEnvId] = useState("")
+
+  useEffect(() => {
+    if (!workspaceId) return
+    let cancelled = false
+    void Promise.all([
+      environmentsApi.list(authFetch).catch(() => []),
+      credentials.slack.integration(authFetch, workspaceId).catch(() => []),
+    ]).then(([envList, integList]) => {
+      if (cancelled) return
+      const envs = Array.isArray(envList) ? envList : []
+      setEnvironments(envs)
+      setSlackIntegrations(Array.isArray(integList) ? integList : (integList ? [integList] : []))
+      setSelectedEnvId(prev => prev || envs[0]?.id || "")
+    })
+    return () => { cancelled = true }
+  }, [authFetch, workspaceId])
+
+  const vault = { environments, slackIntegrations, selectedEnvId }
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-      {filter?.sourceType !== "guard" && (
-        <AlertsCard workspaceId={workspaceId} isAdmin={isAdmin} filter={filter} />
+      {environments.length > 0 && (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "var(--text-3)" }}>
+          <label htmlFor="notif-vault" style={{ fontWeight: 600 }}>Vault</label>
+          <select
+            id="notif-vault"
+            value={selectedEnvId}
+            onChange={e => setSelectedEnvId(e.target.value)}
+            style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 4, padding: "3px 8px", fontSize: 12.5, color: "var(--text)" }}
+          >
+            {environments.map(env => {
+              const hasSlack = slackIntegrations.some(i => i.environment_id === env.id)
+              return (
+                <option key={env.id} value={env.id}>
+                  {env.name}{hasSlack ? "" : " — (no Slack)"}
+                </option>
+              )
+            })}
+          </select>
+          <span>Slack credentials for new channels in both Guard rules and Alerts.</span>
+        </div>
       )}
-      {showGuardRules && <NotificationsCard workspaceId={workspaceId} isAdmin={isAdmin} />}
+      <div style={{ display: "grid", gridTemplateColumns: showGuardRules && showAlerts ? "repeat(auto-fit, minmax(420px, 1fr))" : "1fr", gap: 20, alignItems: "start" }}>
+        {showGuardRules && <NotificationsCard workspaceId={workspaceId} isAdmin={isAdmin} {...vault} />}
+        {showAlerts && <AlertsCard workspaceId={workspaceId} isAdmin={isAdmin} filter={filter} {...vault} />}
+      </div>
       <div style={{ background: "var(--info-bg)", border: "1px solid var(--info-bd)", borderRadius: 12, padding: "14px 18px" }}>
         <p style={{ fontSize: 12, fontWeight: 600, color: "var(--info)", marginBottom: 6 }}>Setup checklist</p>
         <p style={{ fontSize: 12, color: "var(--info)", marginBottom: 4 }}>
