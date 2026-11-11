@@ -65,9 +65,9 @@ def notify_guard_block(
                 "provider": provider,
                 "source": source,
                 "message": text_msg,
-            })
+            }, db=db, workspace_id=ws)
         if by_type["pagerduty"]:
-            _fanout_pagerduty(by_type["pagerduty"], action, rule_id, text_msg)
+            _fanout_pagerduty(by_type["pagerduty"], action, rule_id, text_msg, db=db, workspace_id=ws)
         if by_type["email"]:
             _fanout_email(
                 db, ws, by_type["email"],
@@ -124,9 +124,11 @@ def _pd_severity(action: str) -> str:
     return {"block": "error", "approval": "error", "warn": "warning", "audit": "info"}.get(action, "info")
 
 
-def _fanout_pagerduty(channels, action: str, rule_id, message: str) -> None:
+def _fanout_pagerduty(channels, action: str, rule_id, message: str, *, db=None, workspace_id=None) -> None:
     """POST a PagerDuty Events API v2 trigger for each channel.
-    channel_ref is the routing key (integration key from a PD service)."""
+
+    The routing key is resolved at send time from the channel's Vault entry
+    (``integration_id``); legacy rows without one use the raw ``channel_ref``."""
     if not channels:
         return
     try:
@@ -142,12 +144,18 @@ def _fanout_pagerduty(channels, action: str, rule_id, message: str) -> None:
             "custom_details": {"message": message},
         },
     }
+    from app.modules.guard.channel_creds import pagerduty_routing_key
+
     for ch in channels:
         if ch.channel_type != "pagerduty":
             continue
         try:
+            routing_key = pagerduty_routing_key(db, workspace_id, ch)
+            if not routing_key:
+                log.warning("guard.notifications.pagerduty_no_key", channel_id=str(getattr(ch, "id", "")))
+                continue
             payload = dict(body_template)
-            payload["routing_key"] = ch.channel_ref
+            payload["routing_key"] = routing_key
             payload["dedup_key"] = f"conduct-guard-{ch.id}-{rule_id or 'noid'}"
             httpx.post("https://events.pagerduty.com/v2/enqueue", json=payload, timeout=10.0)
         except Exception:
@@ -173,25 +181,31 @@ def _fanout_email(db, workspace_id, channels, subject: str, html: str) -> None:
                 html=html,
                 workspace_id=str(workspace_id),
                 db=db,
+                integration_id=getattr(ch, "integration_id", None),
             )
         except Exception:
             pass
 
 
-def _fanout_webhook(channels, payload: dict) -> None:
+def _fanout_webhook(channels, payload: dict, *, db=None, workspace_id=None) -> None:
     """POST a JSON payload to every webhook channel. Same fail-soft contract
     as _fanout_slack — one bad URL does not block the others. URLs that fail
     the outbound check are skipped and logged."""
     if not channels:
         return
     from app.core.egress import EgressBlocked
+    from app.modules.guard.channel_creds import webhook_target
     from app.modules.guard.routers.notifications import post_webhook
 
     for ch in channels:
         if ch.channel_type != "webhook":
             continue
         try:
-            post_webhook(ch.channel_ref, payload)
+            url, secret = webhook_target(db, workspace_id, ch)
+            if not url:
+                log.warning("guard.notifications.webhook_no_url", channel_id=str(getattr(ch, "id", "")))
+                continue
+            post_webhook(url, payload, signing_secret=secret)
         except EgressBlocked as exc:
             log.warning("guard.notifications.webhook_refused", channel_id=str(getattr(ch, "id", "")), err=str(exc))
         except Exception:

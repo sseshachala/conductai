@@ -166,12 +166,36 @@ def test_credential(
                 return {"ok": True}
             return {"ok": False, "error": f"Perplexity returned {r.status_code}: {r.text[:200]}"}
 
+        elif svc == "pagerduty":
+            # Shape check only — never sends an event, so nobody is paged.
+            from app.modules.guard.channel_creds import pagerduty_key_shape_ok
+
+            key = str(creds.get("routing_key") or "").strip()
+            if not key:
+                return {"ok": False, "error": "Missing 'routing_key' field"}
+            if not pagerduty_key_shape_ok(key):
+                return {"ok": False, "error": "Routing key must be 32 letters/digits (Events API v2 integration key)"}
+            return {"ok": True}
+
+        elif svc == "webhook":
+            # Egress check only — no request is sent to the endpoint.
+            from app.core.egress import EgressBlocked, validate_outbound_url
+
+            url = str(creds.get("url") or "").strip()
+            if not url:
+                return {"ok": False, "error": "Missing 'url' field"}
+            try:
+                validate_outbound_url(url, allow_unresolvable=True)
+            except EgressBlocked as exc:
+                return {"ok": False, "error": f"URL refused: {exc}"}
+            return {"ok": True}
+
         else:
             return {
                 "ok": False,
                 "error": (
                     f"Unknown service '{svc}'. "
-                    "Supported: github, slack, anthropic, linear, digitalocean, email, perplexity"
+                    "Supported: github, slack, anthropic, linear, digitalocean, email, perplexity, pagerduty, webhook"
                 ),
             }
 

@@ -35,7 +35,7 @@ from app.modules.guard.notification_registry import (
     get_source,
     list_sources,
 )
-from app.modules.guard.routers.notifications import _check_webhook_ref
+from app.modules.guard.channel_creds import prepare_channel_ref, serialize_extras, vault_info
 
 log = structlog.get_logger(__name__)
 
@@ -71,7 +71,11 @@ class AlertChannelOut(BaseModel):
     event_type: str
     channel_type: str
     integration_id: str | None
-    channel_ref: str
+    channel_ref: str  # masked for legacy raw refs; a non-secret label for Vault-backed rows
+    vault_handle: str | None = None
+    environment_id: str | None = None
+    environment_name: str | None = None
+    legacy_ref: bool = False
     enabled: bool
     dedupe_window_sec: int
     threshold_per_min: int | None
@@ -92,7 +96,9 @@ class AlertCreate(BaseModel):
     event_type: str = Field(..., min_length=1, max_length=48)
     channel_type: Literal["slack", "webhook", "pagerduty", "email"] = "slack"
     integration_id: str | None = None
-    channel_ref: str = Field(..., min_length=1, max_length=2048)
+    # Slack channel / email recipient; pagerduty/webhook pick a Vault entry via
+    # integration_id (a raw ref is accepted only for legacy API clients).
+    channel_ref: str = Field(default="", max_length=2048)
     dedupe_window_sec: int | None = Field(default=None, ge=0, le=86400)
     threshold_per_min: int | None = Field(default=None, ge=1, le=100000)
 
@@ -114,7 +120,7 @@ def _ws_uuid(workspace_id: str) -> _uuid.UUID:
         raise HTTPException(status_code=400, detail="invalid workspace_id")
 
 
-def _serialize(row: GuardNotificationChannel) -> AlertChannelOut:
+def _serialize(row: GuardNotificationChannel, info: dict | None = None) -> AlertChannelOut:
     is_guard = (row.source_type or GUARD_SOURCE) == GUARD_SOURCE
     return AlertChannelOut(
         id=str(row.id),
@@ -123,7 +129,7 @@ def _serialize(row: GuardNotificationChannel) -> AlertChannelOut:
         event_type=row.action if is_guard else (row.event_type or ""),
         channel_type=row.channel_type,
         integration_id=str(row.integration_id) if row.integration_id else None,
-        channel_ref=row.channel_ref,
+        **serialize_extras(row, info or {}),
         enabled=row.enabled,
         dedupe_window_sec=row.dedupe_window_sec,
         threshold_per_min=row.threshold_per_min,
@@ -221,7 +227,8 @@ def list_alerts(
             | (GuardNotificationChannel.source_id.is_(None))
         )
     rows = q.order_by(GuardNotificationChannel.created_at.asc()).all()
-    return AlertsOut(workspace_id=workspace_id, channels=[_serialize(r) for r in rows])
+    info = vault_info(db, rows)
+    return AlertsOut(workspace_id=workspace_id, channels=[_serialize(r, info) for r in rows])
 
 
 @router.post("", response_model=AlertChannelOut, status_code=201)
@@ -240,8 +247,8 @@ def create_alert(
     if body.threshold_per_min is not None and not event.supports_threshold:
         raise HTTPException(status_code=422, detail="this event does not support a threshold")
     _validate_source_id(db, ws, body.source_type, body.source_id)
-    ref = body.channel_ref.strip()
-    _check_webhook_ref(body.channel_type, ref)
+    integration_uuid = _parse_integration(body.integration_id)
+    ref = prepare_channel_ref(db, ws, body.channel_type, integration_uuid, body.channel_ref)
 
     row = GuardNotificationChannel(
         workspace_id=ws,
@@ -250,7 +257,7 @@ def create_alert(
         source_id=body.source_id,
         event_type=body.event_type,
         channel_type=body.channel_type,
-        integration_id=_parse_integration(body.integration_id),
+        integration_id=integration_uuid,
         channel_ref=ref,
         enabled=True,
         dedupe_window_sec=(
@@ -264,7 +271,7 @@ def create_alert(
     log.info("guard.alerts.created", workspace_id=workspace_id,
              source_type=body.source_type, event_type=body.event_type,
              channel_type=body.channel_type)
-    return _serialize(row)
+    return _serialize(row, vault_info(db, [row]))
 
 
 @router.patch("/{alert_id}", response_model=AlertChannelOut)
@@ -279,12 +286,21 @@ def update_alert(
     row = _get_alert_row(db, alert_id, ws)
     if body.enabled is not None:
         row.enabled = body.enabled
-    if body.channel_ref is not None:
-        ref = body.channel_ref.strip()
-        _check_webhook_ref(row.channel_type, ref)
-        row.channel_ref = ref
     if body.integration_id is not None:
         row.integration_id = _parse_integration(body.integration_id)
+    if body.channel_ref is not None or body.integration_id is not None:
+        # Vault-backed pagerduty/webhook rows keep a label; a typed ref only
+        # applies to slack/email or legacy (no Vault entry) rows.
+        vault_backed = bool(row.integration_id) and row.channel_type in ("pagerduty", "webhook")
+        if vault_backed:
+            typed = ""
+        elif body.channel_ref is not None:
+            typed = body.channel_ref
+        elif row.channel_type in ("pagerduty", "webhook") and row.channel_ref.startswith("vault:"):
+            raise HTTPException(status_code=422, detail="provide channel_ref when unlinking the Vault entry")
+        else:
+            typed = row.channel_ref
+        row.channel_ref = prepare_channel_ref(db, ws, row.channel_type, row.integration_id, typed)
     if body.dedupe_window_sec is not None:
         row.dedupe_window_sec = body.dedupe_window_sec
     if body.threshold_per_min is not None:
@@ -295,7 +311,7 @@ def update_alert(
     row.updated_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(row)
-    return _serialize(row)
+    return _serialize(row, vault_info(db, [row]))
 
 
 @router.delete("/{alert_id}")

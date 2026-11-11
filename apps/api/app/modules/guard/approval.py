@@ -308,9 +308,9 @@ def dispatch_approval_notifications(
         if by_type["slack"]:
             _fanout_slack(db, request.workspace_id, by_type["slack"], slack_text, blocks=slack_blocks)
         if by_type["webhook"]:
-            _fanout_webhook(by_type["webhook"], webhook_payload)
+            _fanout_webhook(by_type["webhook"], webhook_payload, db=db, workspace_id=request.workspace_id)
         if by_type["pagerduty"]:
-            _fanout_pagerduty(by_type["pagerduty"], "approval", rule_id, slack_text)
+            _fanout_pagerduty(by_type["pagerduty"], "approval", rule_id, slack_text, db=db, workspace_id=request.workspace_id)
         if by_type["email"]:
             _fanout_email(
                 db, request.workspace_id, by_type["email"],
