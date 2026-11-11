@@ -1,6 +1,6 @@
 """#2385 — audit export endpoint (GET /guard/events/export), SQLite-backed so the
 real query/ordering/streaming code runs; chain hashes come from the real
-``chain_hash_for_insert``."""
+the chain helpers (``chain_seal`` / ``audit_chain``)."""
 from __future__ import annotations
 
 import csv
@@ -25,7 +25,7 @@ from app.core.auth import get_user_id, get_workspace_id
 from app.core.database import get_db
 from app.main import app
 from app.modules.guard import audit_export as ax
-from app.modules.guard.models import GuardAuditEvent, chain_hash_for_insert
+from app.modules.guard.models import GuardAuditEvent
 
 FIXTURE = (Path(__file__).resolve().parents[3] / "packages" / "conduct-cli" / "tests"
            / "fixtures" / "audit_export_chain.ndjson")
@@ -39,31 +39,29 @@ def _jsonb_sqlite(*_a, **_k):
     return "JSON"
 
 
+V1_ROWS = 2  # the committed fixture starts as legacy v1 history, then switches to v2
+
+
 def _chain_rows(ws: str, specs, start=T0):
-    """Build transient ORM rows chained with the real hash function."""
-    prev_hash = {"v": None}
+    """Build transient ORM rows: the first V1_ROWS use the legacy v1 hash, the rest are sealed v2."""
+    from app.modules.guard.audit_chain import compute_v1
+    from app.modules.guard.models import chain_seal
 
-    class _Q:  # stands in for the db.query(...) chain chain_hash_for_insert uses
-        def __getattr__(self, _n):
-            return lambda *a, **k: self
-
-        def first(self):
-            return MagicMock(entry_hash=prev_hash["v"]) if prev_hash["v"] is not None else None
-
-    class _Db:
-        def query(self, *_a):
-            return _Q()
-
-    rows = []
+    rows, prev = [], ""
     for i, (tool, decision) in enumerate(specs):
         ts = start + timedelta(minutes=i)
-        prev, entry = chain_hash_for_insert(_Db(), uuid.UUID(ws), ts, tool, decision)
-        prev_hash["v"] = entry
-        rows.append(GuardAuditEvent(
+        row = GuardAuditEvent(
             id=uuid.UUID(int=1000 + i), workspace_id=uuid.UUID(ws), ai_tool="claude_code",
             tool_call=tool, decision=decision, source="hook", ts=ts, previous_hash=prev,
-            entry_hash=entry, input_summary=f"call {i}", rule_id="r1" if decision == "blocked" else None,
-        ))
+            input_summary=f"call {i}", rule_id="r1" if decision == "blocked" else None,
+        )
+        if i < V1_ROWS:
+            row.hash_version = 1
+            row.entry_hash = compute_v1(ts, tool, decision, prev)
+        else:
+            chain_seal(row)
+        prev = row.entry_hash
+        rows.append(row)
     return rows
 
 
@@ -295,7 +293,7 @@ def test_write_audit_helper_swallows_by_default_and_raises_on_request():
     from app.modules.guard.routers.policies_helpers import _write_audit
     db = MagicMock()
     db.add.side_effect = RuntimeError("boom")
-    with patch("app.modules.guard.models.chain_next", return_value=(datetime.now(timezone.utc), "", "h")):
+    with patch("app.modules.guard.models.chain_begin", return_value=(datetime.now(timezone.utc), "")):
         _write_audit(db, uuid.UUID(WS), "t", "r", "a")  # default: swallowed
         with pytest.raises(RuntimeError):
             _write_audit(db, uuid.UUID(WS), "t", "r", "a", raise_on_error=True)

@@ -1,0 +1,30 @@
+# Conduct detection content. Table: ConductAudit_CL (see docs/siem/README.md)
+id: ae5bd685-df00-4532-b9c1-350ad89809a8
+kind: Scheduled
+name: Conduct - Agent identity kill switch activated
+description: 'The `deactivate_agent_identity` action (the security kill switch) was called. Treat as an incident signal: someone suspected an agent was compromised or misbehaving.'
+severity: High
+status: Available
+requiredDataConnectors: []
+queryFrequency: PT5M
+queryPeriod: PT15M
+triggerOperator: GreaterThan
+triggerThreshold: 0
+tactics:
+- Impact
+query: |
+  ConductAudit_CL
+  | where TimeGenerated > ago(15m)
+  | summarize arg_min(TimeGenerated, *) by EventId  // the feed is at-least-once: drop duplicates
+  | where ToolCall endswith "deactivate_agent_identity"
+  | project TimeGenerated, WorkspaceId, ToolCall, Decision, AiTool, UserEmail, UserId, SessionId, RuleMessage, EventId
+entityMappings:
+- entityType: Account
+  fieldMappings:
+  - identifier: FullName
+    columnName: UserEmail
+eventGroupingSettings:
+  aggregationKind: SingleAlert
+suppressionDuration: PT1H
+suppressionEnabled: false
+version: 1.0.0

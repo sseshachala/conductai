@@ -17,6 +17,25 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
   tool, so this is detect-and-gate-next, not prevention.
 
 ---
+- `conduct audit feed --format ocsf|ecs|cef`: emit OCSF 1.3 (API Activity), Elastic ECS or CEF
+  instead of the native JSON. Hash-chain fields are preserved in every format.
+- PostToolUse hook reports the gateway tool-call `correlation_id` (#2168) on
+  `/guard/events/usage` when the surface exposes the
+  `X-Conduct-Tool-Correlation-Ids` header or a `correlation_id`
+  (`conduct_cli/tool_correlation.py`). Claude Code and Codex hooks never see
+  gateway response headers, so on those surfaces the field is omitted and the
+  API resolves the id from `tool_use_id`.
+
+### Changed
+- `conduct audit verify` now checks each row under its own `hash_version`.
+  New (v2) rows hash the full audit record, so editing any field of a v2 row in
+  an export is detected, not only `ts`, `tool_call` and `decision`. Existing v1
+  history and mixed v1/v2 exports still verify. Rows whose payload was archived
+  are verified by linkage only and reported as such.
+- `conduct audit verify` no longer reports forks from before the 2026-11-04
+  audit-append fix as tampering. Two rows that share one `previous_hash`, both
+  with valid hashes and both older than the fix, are listed as "known append
+  race" and the chain continues. Any other break is still reported.
 
 ## [0.15.1] - 2026-11-04
 

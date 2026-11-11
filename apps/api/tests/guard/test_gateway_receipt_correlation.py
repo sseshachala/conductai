@@ -84,6 +84,8 @@ def test_single_phase_writer_persists_request_correlation(monkeypatch):
     monkeypatch.setattr(audit, "SessionLocal", lambda: db)
     monkeypatch.setattr(audit, "set_workspace_rls", lambda *args: None)
     monkeypatch.setattr(audit, "_audit_tokens_and_cost", lambda **kwargs: (1, 2, 0.01))
+    from datetime import datetime, timezone
+    monkeypatch.setattr("app.modules.guard.models.chain_begin", lambda *args: (datetime.now(timezone.utc), ""))
     request_id = str(uuid4())
     audit.record(str(uuid4()), "user", "codex", "openai", "test", "allowed", None, 1,
                  body={}, response_bytes=b"{}", agent_identity_id=str(uuid4()), request_id=request_id)
