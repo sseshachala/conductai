@@ -1,8 +1,9 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { useAuthFetch } from "@/hooks/useAuthFetch"
 import { guard, environments as environmentsApi, credentials } from "@/lib/api"
+import AlertsCard, { parseSourceFilter } from "./AlertsCard"
 
 // ─── #1142 Phase 1 — per-action notifications card ────────────────────────────
 
@@ -141,7 +142,7 @@ function NotificationsCard({
             <path d="M14.5 2v20M9.5 2v20M2 14.5h20M2 9.5h20" />
           </svg>
         </span>
-        <div style={{ fontWeight: 650, fontSize: 14.5 }}>Notifications</div>
+        <div style={{ fontWeight: 650, fontSize: 14.5 }}>Guard rules</div>
         {environments.length > 0 && (
           <label style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-3)" }}>
             Vault
@@ -330,13 +331,21 @@ function NotificationsCard({
 export default function NotificationsPanel({
   workspaceId,
   isAdmin,
+  source = null,
 }: {
   workspaceId: string | null
   isAdmin: boolean
+  /** `?source=` filter, e.g. `gateway:<profile_id>`. */
+  source?: string | null
 }) {
+  const filter = useMemo(() => parseSourceFilter(source), [source])
+  const showGuardRules = !filter || filter.sourceType === "guard"
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-      <NotificationsCard workspaceId={workspaceId} isAdmin={isAdmin} />
+      {filter?.sourceType !== "guard" && (
+        <AlertsCard workspaceId={workspaceId} isAdmin={isAdmin} filter={filter} />
+      )}
+      {showGuardRules && <NotificationsCard workspaceId={workspaceId} isAdmin={isAdmin} />}
       <div style={{ background: "var(--info-bg)", border: "1px solid var(--info-bd)", borderRadius: 12, padding: "14px 18px" }}>
         <p style={{ fontSize: 12, fontWeight: 600, color: "var(--info)", marginBottom: 6 }}>Setup checklist</p>
         <p style={{ fontSize: 12, color: "var(--info)", marginBottom: 4 }}>
