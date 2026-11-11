@@ -5,6 +5,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
+pytestmark = pytest.mark.usefixtures("stub_audit_chain")
+
 from app.guard import audit
 
 

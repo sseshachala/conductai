@@ -61,6 +61,8 @@ _TEXT_FIELDS = (
 )
 HASHED_FIELDS = tuple(sorted(
     _TS_FIELDS + _UUID_FIELDS + _INT_FIELDS + _FLOAT_FIELDS + _JSON_FIELDS + _TEXT_FIELDS))
+# v3 = v2 minus share_token_hash (written after sealing by the receipt-share flow).
+HASHED_FIELDS_V3 = tuple(n for n in HASHED_FIELDS if n != "share_token_hash")
 _PAYLOAD_FIELDS = ("input_summary", "result_summary", "blast_radius")
 # Must match audit_chain.APPEND_RACE_FIXED_AT in the API.
 APPEND_RACE_FIXED_AT = "2026-11-04T01:10:20.000000Z"
@@ -101,12 +103,13 @@ def _normalise(name: str, value):
     return value if isinstance(value, str) else str(value)
 
 
-def compute_entry_hash_v2(rec: dict, previous_hash: str) -> str:
-    """v2 hash. Raises KeyError(<names>) if the export lacks a hashed field."""
-    missing = [n for n in HASHED_FIELDS if n not in rec]
+def compute_entry_hash_v2(rec: dict, previous_hash: str, version: int = 2) -> str:
+    """v2/v3 hash. Raises KeyError(<names>) if the export lacks a hashed field."""
+    fields = HASHED_FIELDS_V3 if version >= 3 else HASHED_FIELDS
+    missing = [n for n in fields if n not in rec]
     if missing:
         raise KeyError(", ".join(missing))
-    record = {n: _normalise(n, rec[n]) for n in HASHED_FIELDS}
+    record = {n: _normalise(n, rec[n]) for n in fields}
     record["previous_hash"] = previous_hash or ""
     body = json.dumps(record, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False)
     return hashlib.sha256((body + (previous_hash or "")).encode("utf-8")).hexdigest()
@@ -171,13 +174,13 @@ def verify_lines(lines, *, allow_gaps: bool = False, checkpoint=None, keys=None,
             return broken(line_no, rec, f"invalid hash_version: {rec.get('hash_version')!r}")
         if version == 1:
             expected = compute_entry_hash(rec["ts"], rec.get("tool_call"), rec["decision"], prev)
-        elif version == 2:
+        elif version in (2, 3):
             if _is_archived(rec):
                 expected = None  # payload archived: cannot rehash; linkage is checked below
                 linkage_only += 1
             else:
                 try:
-                    expected = compute_entry_hash_v2(rec, prev)
+                    expected = compute_entry_hash_v2(rec, prev, version)
                 except KeyError as exc:
                     return broken(line_no, rec, f"export lacks hashed field(s): {exc.args[0]}")
                 except (ValueError, TypeError) as exc:

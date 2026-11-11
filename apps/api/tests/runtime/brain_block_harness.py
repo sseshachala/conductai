@@ -31,6 +31,7 @@ from collections.abc import Iterator
 from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass, field
 from typing import Any
+from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
 from app.runtime.llm_client import (
@@ -322,6 +323,9 @@ def brain_harness(script: list, *, raw_rules: list[dict] | None = None,
         patch("app.runtime.integrations.mcp_client.call_tool", _mcp_call),
         patch("app.modules.guard.routers.mcp_helpers.compute_policy", _policy),
         patch("app.modules.guard.routers.events.notify_guard_block", _notify),
+        # The db is a MagicMock: stub the chain tail lookup (covered against PostgreSQL elsewhere).
+        patch("app.modules.guard.models.chain_begin",
+              lambda db, ws: (datetime.now(timezone.utc), "")),
         patch("app.runtime.blocks.memory_block._execute_memory", _mem),
         patch("app.runtime.blocks.memory_block._execute_memory_inner", _mem),
     ]

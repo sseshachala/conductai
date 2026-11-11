@@ -41,12 +41,12 @@ def record_runtime_guard_verdict(
     """Write the Guard audit row and notify on block/warn. Never raises."""
     label = decision_label(action)
     try:
-        from datetime import datetime, timezone
+        from app.modules.guard.models import GuardAuditEvent, chain_begin, chain_seal
 
-        from app.modules.guard.models import GuardAuditEvent
-
-        db.add(GuardAuditEvent(
-            workspace_id=uuid.UUID(workspace_id),
+        ws_uuid = uuid.UUID(workspace_id)
+        chain_ts, previous_hash = chain_begin(db, ws_uuid)
+        db.add(chain_seal(GuardAuditEvent(
+            workspace_id=ws_uuid,
             user_email=user_email,
             ai_tool="conduct_runtime",
             tool_call=tool_name,
@@ -58,8 +58,9 @@ def record_runtime_guard_verdict(
             conductai_run_id=str(run_id) if run_id else None,
             conductai_workflow=playbook_slug,
             conductai_workflow_id=str(workflow_id) if workflow_id else None,
-            ts=datetime.now(timezone.utc),
-        ))
+            ts=chain_ts,
+            previous_hash=previous_hash,
+        )))
         db.commit()
     except Exception as exc:
         log.warning("brain.guard.audit_write_failed", tool=tool_name, error=str(exc))

@@ -70,9 +70,9 @@ def test_missing_file_exits_1(tmp_path, capsys):
 
 # ── chain v2 (#2421) ──────────────────────────────────────────────────────────
 
-def test_fixture_is_mixed_v1_v2():
+def test_fixture_is_mixed_v1_v2_v3():
     res = verify_lines(_lines())
-    assert res["ok"] and res["versions"] == {1: 2, 2: 3}
+    assert res["ok"] and res["versions"] == {1: 2, 2: 1, 3: 2}
 
 
 def test_pinned_vector_matches_api():
@@ -94,10 +94,10 @@ def test_pinned_vector_matches_api():
     ("input_summary", "tampered"), ("rule_id", "other"), ("user_email", "a@b.c"),
     ("policy_hash", "ff"), ("hostname", "h"), ("tokens_before", 9), ("routing_meta", {"a": 1}),
 ])
-def test_tampering_any_v2_field_fails_at_that_row(field, value):
+def test_tampering_any_v3_field_fails_at_that_row(field, value):
     lines = _lines()
-    rec = json.loads(lines[3])  # a v2 row
-    assert rec["hash_version"] == 2 and rec[field] != value
+    rec = json.loads(lines[3])  # a v3 row
+    assert rec["hash_version"] == 3 and rec[field] != value
     rec[field] = value
     lines[3] = json.dumps(rec)
     res = verify_lines(lines)

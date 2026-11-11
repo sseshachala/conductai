@@ -143,4 +143,4 @@ def test_gateway_row_carries_chain_hashes():
     sess = _CapturingSession()
     _call(sess, agent_identity_id=AGENT_ID)
     assert "previous_hash, entry_hash, policy_hash, hash_version" in sess.last_sql
-    assert len(sess.last_params["entry_hash"]) == 64 and sess.last_params["hash_version"] == 2 and sess.last_params["prev_hash"] == ""
+    assert len(sess.last_params["entry_hash"]) == 64 and sess.last_params["hash_version"] == 3 and sess.last_params["prev_hash"] == ""

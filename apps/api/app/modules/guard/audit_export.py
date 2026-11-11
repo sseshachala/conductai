@@ -364,9 +364,9 @@ def feed_status(workspace_id, *, now: datetime | None = None, client=None) -> di
 # the first chained row after the last unchained row older than the #2518 merge
 # instant: from there on, every row written by a chaining writer is in the chain.
 # With no such gap it is simply the first chained row. Derived from the rows, no
-# schema change. Unchained rows written after the cutoff (a few writers still do
-# not chain, e.g. the two-phase "accepted" gateway row, which is updated in
-# place) are not counted as a gap: they are not a legacy backlog.
+# schema change. Unchained rows written after the cutoff (only in-flight two-phase
+# "accepted" gateway rows, sealed at finalize or by the reconciler) are not
+# counted as a gap: they are not a legacy backlog.
 #
 # Both inputs are immutable once found (nothing is backfilled and history is
 # append-only), so the answer is cached per workspace; a miss is not cached

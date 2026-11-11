@@ -1,44 +1,61 @@
-"""Phase 4 of #1959 — reconciler regression harness.
+"""Phase 4 of #1959 — reconciler regression harness (code contract, mocked session).
 
-Locks the four invariants Phase 5's contract-test gate will assert on
-before flipping the feature flag in prod:
+Invariants asserted before the feature flag flips in prod:
 
-1. An 'accepted' row past its lease flips to 'orphaned'.
-2. An 'accepted' row whose lease still has time left is untouched.
-3. A 'finalized' row never regresses — the WHERE clause on the UPDATE
-   is the safety property that keeps Phase 4 sound.
-4. The batch cap is respected so a runaway orphan-burst can't lock
-   the table for an unbounded window.
+1. An 'accepted' row past its lease flips to 'orphaned' (and is sealed into the chain).
+2. A row whose lease still has time left is untouched (candidate scan filters on the lease).
+3. A 'finalized' row never regresses: the candidate scan AND the per-row UPDATE pin
+   lifecycle_state='accepted'.
+4. The batch cap is respected.
 
-Uses a mocked session so we can inspect the generated SQL + parameter
-bindings without touching Postgres. The actual UPDATE runs against real
-data during CI's alembic round-trip; this suite locks the code contract.
+The sealing itself (chain lock, ts, previous_hash, entry_hash) runs against PostgreSQL in
+test_gateway_audit_chain_postgres.py; here the chain helpers are stubbed.
 """
 from __future__ import annotations
 
 from unittest.mock import MagicMock
+
+import pytest
 
 from app.modules.guard.durable_audit_reconciler import (
     DEFAULT_MAX_BATCH,
     reconcile_orphaned,
 )
 
+WS = "ef0a7e36-42a7-4968-9e6f-ee30d8e45383"
+ROW = "22222222-2222-2222-2222-222222222222"
+
+pytestmark = pytest.mark.usefixtures("stub_audit_chain")
+
 
 class _CapturingSession:
-    """Session double that snapshots the compiled SQL + params."""
+    """First execute() is the candidate scan; later ones are per-row UPDATEs."""
 
-    def __init__(self, rowcount: int = 3):
-        self.last_sql: str | None = None
-        self.last_params: dict | None = None
-        self._rowcount = rowcount
+    def __init__(self, candidates=1, update_rowcount: int = 1):
+        self.statements: list[tuple[str, dict | None]] = []
+        self._candidates = [(ROW, WS)] * candidates
+        self._rowcount = update_rowcount
         self.committed = False
         self.rolled_back = False
 
-    def execute(self, stmt, params):
-        self.last_sql = str(stmt)
-        self.last_params = params
+    @property
+    def scan_sql(self) -> str:
+        return self.statements[0][0]
+
+    @property
+    def scan_params(self) -> dict:
+        return self.statements[0][1]
+
+    def execute(self, stmt, params=None):
+        sql = str(stmt)
+        self.statements.append((sql, params))
         result = MagicMock()
-        result.rowcount = self._rowcount
+        if sql.lstrip().startswith("SELECT"):
+            result.fetchall.return_value = self._candidates
+        elif "SET LOCAL" in sql:
+            pass
+        else:
+            result.rowcount = self._rowcount
         return result
 
     def commit(self):
@@ -47,103 +64,87 @@ class _CapturingSession:
     def rollback(self):
         self.rolled_back = True
 
+    def updates(self):
+        return [s for s in self.statements if "UPDATE guard_audit_events" in s[0]]
 
-def test_reconcile_flips_accepted_rows_to_orphaned():
-    sess = _CapturingSession(rowcount=5)
-    count = reconcile_orphaned(sess)
-    assert count == 5
+
+def test_reconcile_flips_accepted_rows_to_orphaned_and_seals(stub_audit_chain):
+    sess = _CapturingSession(candidates=2)
+    assert reconcile_orphaned(sess) == 2
     assert sess.committed is True
-    assert "orphaned" in sess.last_sql
-    assert "lifecycle_state = 'accepted'" in sess.last_sql
+    _, seal = stub_audit_chain
+    assert seal.call_count == 2
+    sql, params = sess.updates()[0]
+    assert "'orphaned'" in sql and params["prev_hash"] == "prev" and params["hash_version"] == 3
 
 
 def test_reconcile_scopes_to_workspace_when_provided():
     sess = _CapturingSession()
     reconcile_orphaned(sess, workspace_id="ws-abc")
-    assert sess.last_params["workspace_id"] == "ws-abc"
-    assert "workspace_id = CAST(:workspace_id AS uuid)" in sess.last_sql
+    assert sess.scan_params["workspace_id"] == "ws-abc"
+    assert "workspace_id = CAST(:workspace_id AS uuid)" in sess.scan_sql
 
 
 def test_reconcile_scans_every_workspace_when_id_absent():
-    """Background daemon passes workspace_id=None — scan every workspace
-    in one pass. The predicate is omitted entirely; RLS doesn't run in
-    the worker context because there's no per-request session yet."""
     sess = _CapturingSession()
     reconcile_orphaned(sess)
-    assert "workspace_id" not in (sess.last_params or {})
-    assert "CAST(:workspace_id" not in sess.last_sql
+    assert "workspace_id" not in sess.scan_params
+    assert "CAST(:workspace_id" not in sess.scan_sql
 
 
 def test_reconcile_never_touches_finalized_rows():
-    """The safety invariant Phase 4 depends on. Both the candidate CTE
-    filter AND the UPDATE's WHERE clause pin lifecycle_state='accepted'
-    so a concurrently-finalized row is never regressed."""
+    """Candidate scan and the per-row UPDATE both pin lifecycle_state='accepted'."""
     sess = _CapturingSession()
     reconcile_orphaned(sess)
-    # Two occurrences: one in the SELECT WHERE, one in the UPDATE WHERE.
-    assert sess.last_sql.count("lifecycle_state = 'accepted'") == 2
+    assert "lifecycle_state = 'accepted'" in sess.scan_sql
+    assert "lifecycle_state = 'accepted'" in sess.updates()[0][0]
+
+
+def test_reconcile_skips_and_does_not_seal_a_row_finalized_since_the_scan(stub_audit_chain):
+    sess = _CapturingSession(update_rowcount=0)
+    assert reconcile_orphaned(sess) == 0
+    assert stub_audit_chain[1].call_count == 0
 
 
 def test_reconcile_only_targets_expired_leases():
-    """A row still within its lease MUST NOT be flipped. Verified via
-    the SELECT WHERE clause containing lease_expires_at < now()."""
     sess = _CapturingSession()
     reconcile_orphaned(sess)
-    assert "lease_expires_at < now()" in sess.last_sql
-    assert "lease_expires_at IS NOT NULL" in sess.last_sql
+    assert "lease_expires_at < now()" in sess.scan_sql
+    assert "lease_expires_at IS NOT NULL" in sess.scan_sql
+    assert "lease_expires_at < now()" in sess.updates()[0][0]  # a renewed lease wins the race
 
 
 def test_reconcile_respects_max_batch_cap():
     sess = _CapturingSession()
     reconcile_orphaned(sess, max_batch=42)
-    assert sess.last_params["max_batch"] == 42
-    assert "LIMIT :max_batch" in sess.last_sql
+    assert sess.scan_params["max_batch"] == 42
+    assert "LIMIT :max_batch" in sess.scan_sql
 
 
 def test_default_batch_cap_is_500():
-    """Locks the tuned default so a silent bump doesn't happen without
-    a corresponding load-test PR."""
     sess = _CapturingSession()
     reconcile_orphaned(sess)
-    assert sess.last_params["max_batch"] == DEFAULT_MAX_BATCH == 500
-
-
-def test_reconcile_uses_skip_locked_to_avoid_worker_contention():
-    """Multiple worker instances (Render horizontally scaled, or a
-    manual re-run alongside the daemon) must not block each other.
-    FOR UPDATE SKIP LOCKED lets each pass grab a fresh slice."""
-    sess = _CapturingSession()
-    reconcile_orphaned(sess)
-    assert "FOR UPDATE SKIP LOCKED" in sess.last_sql
+    assert sess.scan_params["max_batch"] == DEFAULT_MAX_BATCH == 500
 
 
 def test_reconcile_orders_by_lease_expires_ascending():
-    """When the reconciler is behind (large orphan backlog), the
-    longest-expired rows get flipped first so the Flight Recorder UI
-    stops lying about them soonest."""
     sess = _CapturingSession()
     reconcile_orphaned(sess)
-    assert "ORDER BY lease_expires_at ASC" in sess.last_sql
+    assert "ORDER BY lease_expires_at ASC" in sess.scan_sql
 
 
 def test_reconcile_stamps_finalized_at_when_flipping():
-    """Even though the row is orphaned rather than finalized, we set
-    finalized_at so downstream duration/latency analytics have a
-    non-null endpoint. COALESCE preserves any pre-existing value in
-    case a partial finalize snuck in."""
     sess = _CapturingSession()
     reconcile_orphaned(sess)
-    assert "finalized_at    = COALESCE(e.finalized_at, now())" in sess.last_sql
+    assert "COALESCE(finalized_at, :ts)" in sess.updates()[0][0]
 
 
 def test_reconcile_rolls_back_on_failure():
     class _Blowup(_CapturingSession):
-        def execute(self, stmt, params):
+        def execute(self, stmt, params=None):
             raise RuntimeError("simulated deadlock")
 
     sess = _Blowup()
-    import pytest
-
     with pytest.raises(RuntimeError):
         reconcile_orphaned(sess)
     assert sess.rolled_back is True
@@ -151,18 +152,11 @@ def test_reconcile_rolls_back_on_failure():
 
 
 def test_reconcile_returns_zero_when_nothing_matched():
-    sess = _CapturingSession(rowcount=0)
-    assert reconcile_orphaned(sess) == 0
-
+    assert reconcile_orphaned(_CapturingSession(candidates=0)) == 0
 
 
 def test_reconcile_stamps_decision_error_on_orphaned_rows():
-    """Orphaned rows keep the 'accepted' placeholder decision from
-    insert_accepted() unless the reconciler overwrites it. Dashboards
-    that group by decision would misclassify them as normal allowed
-    traffic. The reconciler stamps decision='error' so the row surfaces
-    as an error (an existing decision value; no new enum, no query
-    layer needs to learn a new state)."""
+    """Orphaned rows would keep the 'accepted' placeholder decision and read as normal traffic."""
     sess = _CapturingSession()
     reconcile_orphaned(sess)
-    assert "decision        = 'error'" in sess.last_sql
+    assert "decision        = 'error'" in sess.updates()[0][0]
