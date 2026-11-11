@@ -298,10 +298,17 @@ export const guard = {
     patch: (f: AuthFetch, id: string, workspaceId: string, body: {
       enabled?: boolean
       channel_ref?: string
+      /** Vault entry to relink to; "" clears it (email falls back to the workspace credential). */
       integration_id?: string | null
       dedupe_window_sec?: number
     }) =>
       patch(f, `${base()}/notifications/${id}?workspace_id=${workspaceId}`, body),
+    /** Create/reuse a Vault entry from the row's typed key server-side and rebind the row. */
+    moveToVault: (f: AuthFetch, id: string, workspaceId: string, body: { environment_id: string; handle: string }) =>
+      post(f, `${base()}/notifications/${id}/move-to-vault?workspace_id=${workspaceId}`, body),
+    /** Bulk: move every typed key/URL in the workspace into one environment's Vault. */
+    moveAllToVault: (f: AuthFetch, workspaceId: string, body: { environment_id: string }) =>
+      post(f, `${base()}/notifications/move-all-to-vault?workspace_id=${workspaceId}`, body),
     remove: (f: AuthFetch, id: string, workspaceId: string) =>
       f(`${base()}/notifications/${id}?workspace_id=${workspaceId}`, { method: "DELETE" }),
     test: (f: AuthFetch, id: string, workspaceId: string) =>
@@ -329,8 +336,12 @@ export const guard = {
       dedupe_window_sec?: number
       threshold_per_min?: number | null
     }) => post(f, `${base()}/alerts?workspace_id=${workspaceId}`, body),
+    moveToVault: (f: AuthFetch, id: string, workspaceId: string, body: { environment_id: string; handle: string }) =>
+      post(f, `${base()}/alerts/${id}/move-to-vault?workspace_id=${workspaceId}`, body),
     patch: (f: AuthFetch, id: string, workspaceId: string, body: {
       enabled?: boolean
+      channel_ref?: string
+      integration_id?: string | null
       threshold_per_min?: number | null
       dedupe_window_sec?: number
     }) => patch(f, `${base()}/alerts/${id}?workspace_id=${workspaceId}`, body),

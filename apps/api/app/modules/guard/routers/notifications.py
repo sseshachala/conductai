@@ -32,7 +32,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from app.core.auth import require_permission
+from app.core.auth import get_user_id, require_permission
 from app.core.database import get_db
 from app.modules.guard.models import GuardConfig, GuardNotificationChannel
 
@@ -207,6 +207,13 @@ def _rows_by_action(db: Session, workspace_id: _uuid.UUID) -> dict[str, list[Gua
     return out
 
 
+def _ws_uuid(workspace_id: str) -> _uuid.UUID:
+    try:
+        return _uuid.UUID(workspace_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="invalid workspace_id")
+
+
 def _get_row(db: Session, notif_id: str, workspace_id: _uuid.UUID) -> GuardNotificationChannel:
     try:
         row = db.query(GuardNotificationChannel).filter(
@@ -356,17 +363,18 @@ def update_channel(
     row = _get_row(db, notif_id, ws)
     if body.enabled is not None:
         row.enabled = body.enabled
-    if body.integration_id is not None:
-        try:
-            row.integration_id = _uuid.UUID(body.integration_id) if body.integration_id else None
-        except ValueError:
-            raise HTTPException(status_code=400, detail="invalid integration_id")
     if body.channel_ref is not None or body.integration_id is not None:
         from app.modules.guard.channel_creds import prepare_channel_ref
 
+        new_integration = row.integration_id
+        if body.integration_id is not None:
+            try:
+                new_integration = _uuid.UUID(body.integration_id) if body.integration_id else None
+            except ValueError:
+                raise HTTPException(status_code=400, detail="invalid integration_id")
         # Vault-backed pagerduty/webhook rows keep a label; a typed ref only
         # applies to slack/email or legacy (no Vault entry) rows.
-        vault_backed = bool(row.integration_id) and row.channel_type in ("pagerduty", "webhook")
+        vault_backed = bool(new_integration) and row.channel_type in ("pagerduty", "webhook")
         if vault_backed:
             typed = ""
         elif body.channel_ref is not None:
@@ -375,11 +383,84 @@ def update_channel(
             raise HTTPException(status_code=422, detail="provide channel_ref when unlinking the Vault entry")
         else:
             typed = row.channel_ref
-        row.channel_ref = prepare_channel_ref(db, ws, row.channel_type, row.integration_id, typed)
+        # Validate before touching the row so a 422 leaves it unchanged.
+        row.channel_ref = prepare_channel_ref(db, ws, row.channel_type, new_integration, typed)
+        row.integration_id = new_integration
     if body.dedupe_window_sec is not None:
         row.dedupe_window_sec = body.dedupe_window_sec
     row.updated_at = datetime.now(timezone.utc)
     db.commit()
+    db.refresh(row)
+    return _serialize_one(db, row)
+
+
+class MoveToVault(BaseModel):
+    environment_id: str
+    handle: str = Field(..., min_length=1, max_length=100)
+
+
+class MoveAllToVault(BaseModel):
+    environment_id: str
+
+
+class MoveAllOut(BaseModel):
+    moved: list[str]
+    skipped: list[dict]
+
+
+@router.post("/move-all-to-vault", response_model=MoveAllOut)
+def move_all_to_vault(
+    body: MoveAllToVault,
+    workspace_id: str = Query(...),
+    db: Session = Depends(get_db),
+    actor: str | None = Depends(get_user_id),
+    _: str = Depends(require_permission("guard.settings.edit")),
+    __: str = Depends(require_permission("platform.credentials.manage")),
+) -> MoveAllOut:
+    """Move every typed PagerDuty key / webhook URL in the workspace into the
+    Vault of one environment (handles are derived from a hash, identical
+    entries are reused). One transaction; refused rows are reported, not moved."""
+    from app.modules.guard.channel_vault_move import move_all_to_vault as _move_all
+
+    ws = _ws_uuid(workspace_id)
+    try:
+        result = _move_all(db, ws, body.environment_id, actor_id=actor)
+        db.commit()
+    except HTTPException:
+        db.rollback()
+        raise
+    return MoveAllOut(**result)
+
+
+@router.post("/{notif_id}/move-to-vault", response_model=ChannelOut)
+def move_channel_to_vault(
+    notif_id: str,
+    body: MoveToVault,
+    workspace_id: str = Query(...),
+    db: Session = Depends(get_db),
+    actor: str | None = Depends(get_user_id),
+    _: str = Depends(require_permission("guard.settings.edit")),
+    __: str = Depends(require_permission("platform.credentials.manage")),
+) -> ChannelOut:
+    """Turn a legacy typed key/URL into a Vault entry and rebind the row.
+
+    The secret is read from the row server-side; it is never in the request or
+    the response. One transaction: entry (or reuse), rebind and audit row.
+    """
+    from app.modules.guard.channel_vault_move import move_to_vault
+
+    ws = _ws_uuid(workspace_id)
+    row = _get_row(db, notif_id, ws)
+    try:
+        move_to_vault(db, ws, row, body.environment_id, body.handle, actor_id=actor)
+        db.commit()
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception:
+        db.rollback()
+        log.warning("guard.notifications.move_to_vault_failed", channel_id=notif_id)
+        raise HTTPException(status_code=409, detail="could not move the key to the Vault; retry")
     db.refresh(row)
     return _serialize_one(db, row)
 

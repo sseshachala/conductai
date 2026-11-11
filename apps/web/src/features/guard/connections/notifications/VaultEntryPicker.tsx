@@ -15,7 +15,7 @@ export default function VaultEntryPicker({
   onChange,
   optional = false,
 }: {
-  service: Exclude<VaultService, "slack">
+  service: VaultService
   entries: VaultEntry[]
   envId: string
   value: string
