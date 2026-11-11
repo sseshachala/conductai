@@ -378,3 +378,72 @@ def test_local_audit_ingest_is_chained_and_append_only(chain_db):
     assert [r.source for r in rows] == ["local_audit", "local_audit"] and all(r.entry_hash for r in rows)
     assert rows[1].previous_hash == rows[0].entry_hash
     assert _verify(factory, ws)["valid"] is True
+
+# ── chain complete from (#2524 item 3) ─────────────────────────────────────────
+
+class _NoCache:
+    def get(self, _k):
+        return None
+
+    def set(self, *_a, **_k):
+        pass
+
+
+def _complete_from(factory, ws):
+    from app.modules.guard.audit_export import chain_complete_from
+    with factory() as db:
+        return chain_complete_from(db, ws, client=_NoCache())
+
+
+def _plain_row(factory, ws, ts, chained):
+    from app.modules.guard.audit_chain import compute_v1
+    with factory() as db:
+        prev = ""
+        if chained:
+            last = (db.query(GuardAuditEvent).filter(GuardAuditEvent.workspace_id == ws,
+                    GuardAuditEvent.entry_hash.isnot(None)).order_by(GuardAuditEvent.ts.desc()).first())
+            prev = last.entry_hash if last else ""
+        db.add(GuardAuditEvent(id=uuid4(), workspace_id=ws, ai_tool="x", source="gateway", tool_call="t",
+                               decision="allowed", ts=ts, previous_hash=prev if chained else None,
+                               entry_hash=compute_v1(ts, "t", "allowed", prev) if chained else None))
+        db.commit()
+
+
+def test_complete_from_is_none_without_chained_rows(chain_db):
+    factory, ws = chain_db
+    assert _complete_from(factory, ws) is None
+    _plain_row(factory, ws, datetime(2026, 10, 1, tzinfo=timezone.utc), chained=False)
+    assert _complete_from(factory, ws) is None
+
+
+def test_complete_from_skips_the_unchained_legacy_backlog(chain_db):
+    from datetime import timedelta
+    from app.modules.guard.audit_chain import APPEND_RACE_FIXED_AT as CUT
+    factory, ws = chain_db
+    t = CUT - timedelta(days=5)
+    _plain_row(factory, ws, t, chained=True)                                   # chained hook row, then ...
+    _plain_row(factory, ws, t + timedelta(hours=1), chained=False)             # ... legacy gateway rows
+    _plain_row(factory, ws, t + timedelta(hours=2), chained=False)
+    _plain_row(factory, ws, t + timedelta(hours=3), chained=True)              # first row of the complete window
+    _plain_row(factory, ws, t + timedelta(hours=4), chained=True)
+    assert _complete_from(factory, ws) == (t + timedelta(hours=3)).isoformat()
+
+
+def test_complete_from_is_first_row_when_there_is_no_gap(chain_db):
+    from datetime import timedelta
+    from app.modules.guard.audit_chain import APPEND_RACE_FIXED_AT as CUT
+    factory, ws = chain_db
+    t = CUT + timedelta(days=2)
+    _plain_row(factory, ws, t, chained=True)
+    _plain_row(factory, ws, t + timedelta(hours=1), chained=True)
+    # an unchained row after the cutoff (non-chaining writer) is not a legacy gap
+    _plain_row(factory, ws, t + timedelta(hours=2), chained=False)
+    assert _complete_from(factory, ws) == t.isoformat()
+
+
+def test_verify_result_carries_chain_complete_from(chain_db):
+    factory, ws = chain_db
+    _hook(factory, ws)
+    result = _verify(factory, ws)
+    assert result["valid"] is True
+    assert "chain_complete_from" in result

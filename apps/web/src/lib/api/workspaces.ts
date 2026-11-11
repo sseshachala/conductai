@@ -9,12 +9,32 @@ export interface AuditFeedCollector {
   lag_seconds: number
   last_page_events: number
   stale: boolean
+  collector_type?: "user" | "service_token"
+  label?: string | null
+}
+
+export interface AuditFeedToken {
+  id: string
+  name: string | null
+  token_prefix: string | null
+  scope: string
+  status: "active" | "revoked" | "expired"
+  created_by: string | null
+  created_at: string | null
+  expires_at: string | null
+  revoked_at: string | null
+}
+
+export interface AuditFeedTokenCreated extends AuditFeedToken {
+  token: string
 }
 
 export interface AuditFeedStatus {
   available: boolean
   collectors: AuditFeedCollector[]
   stale_after_seconds: number
+  /** ISO instant from which the audit hash chain fully covers the log; null when nothing is chained yet. */
+  chain_complete_from?: string | null
 }
 
 const base = (id: string) => `${API}/workspaces/${id}`
@@ -69,6 +89,17 @@ export const workspaces = {
 
   auditFeedStatus: (f: AuthFetch, workspaceId: string) =>
     json<AuditFeedStatus>(f, `${base(workspaceId)}/audit-log/feed-status`),
+
+  auditFeedTokens: {
+    list: (f: AuthFetch, workspaceId: string) =>
+      json<AuditFeedToken[]>(f, `${base(workspaceId)}/audit-feed-tokens`),
+    create: (f: AuthFetch, workspaceId: string, body: { name: string; expires_in_days?: number }) =>
+      json<AuditFeedTokenCreated>(f, `${base(workspaceId)}/audit-feed-tokens`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+      }),
+    revoke: (f: AuthFetch, workspaceId: string, tokenId: string) =>
+      del(f, `${base(workspaceId)}/audit-feed-tokens/${tokenId}`),
+  },
 
   agentRunTokens: {
     list: (f: AuthFetch, workspaceId: string) =>

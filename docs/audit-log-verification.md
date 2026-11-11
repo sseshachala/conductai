@@ -90,6 +90,17 @@ constant so the server and an offline verifier agree. A fork at or after the
 cutoff, a fork with an invalid row hash, or a link to a hash no earlier row
 holds is reported as broken.
 
+## Chain complete from
+
+Gateway audit rows written before #2518 carry no chain fields and cannot be
+backfilled. `chain_complete_from` is the timestamp of the first chained row
+after the last unchained row older than the #2518 merge instant (the first
+chained row when there is no such gap). It is derived from the rows, with no
+schema change, and returned by `GET /guard/verify/chain`,
+`GET /guard/events/audit/verify`, the Audit page feed status
+(`GET /workspaces/{id}/audit-log/feed-status`, shown on the SIEM card) and the
+`get_audit_feed_status` tool. History before it is not covered by the chain.
+
 ## Independent verification procedure
 
 1. Export audit records for one workspace in deterministic order.

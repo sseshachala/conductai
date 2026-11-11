@@ -180,3 +180,115 @@ def test_tool_result_scan_rule_detection_and_hook_exclusion():
     # never treated as a tool-input rule
     assert not is_hook_applicable_rule(rule)
     assert CONTENT_SCAN_PSEUDO_TOOL == "__tool_result__"
+
+
+# ── per-source action: tool content warns, user text blocks ──────────────────
+
+@pytest.fixture(autouse=True)
+def _fresh_seen_cache():
+    policy.reset_seen_tool_hits()
+    yield
+    policy.reset_seen_tool_hits()
+
+
+def _inj(**kw):
+    return _rule(id="inj", match_content_source=["user", "tool_result", "tool_description"],
+                 action_by_source={"tool_result": "warn", "tool_description": "warn"}, **kw)
+
+
+def _run(body):
+    return evaluate_composed(_ctx(body), sources=[RulePolicySource()])
+
+
+def test_user_content_still_blocks(policy_snapshot):
+    policy_snapshot.append(_inj())
+    decision = _run({"messages": [{"role": "user", "content": MARK}]})
+    assert decision.action == PolicyAction.BLOCK
+    assert decision.extras["raw"]["content_source"] == "user"
+
+
+@pytest.mark.parametrize("body,source", [
+    ({"messages": [{"role": "tool", "tool_call_id": "c", "content": MARK}]}, "tool_result"),
+    ({"messages": [], "tools": [{"type": "function", "function": {"name": "f", "description": MARK}}]}, "tool_description"),
+])
+def test_tool_content_warns_and_proceeds(policy_snapshot, body, source):
+    policy_snapshot.append(_inj(message_by_source={source: "tool content flagged"}))
+    decision = _run(body)
+    assert decision.action == PolicyAction.WARN
+    assert not decision.blocks
+    assert decision.extras["raw"]["content_source"] == source
+    assert decision.matched_rules[0]["action"] == "warn"
+    assert decision.extras["raw"]["message"] == "tool content flagged"
+
+
+def test_user_block_wins_over_tool_warn_in_same_request(policy_snapshot):
+    policy_snapshot.append(_inj())
+    body = {"messages": [{"role": "user", "content": MARK}, {"role": "tool", "content": MARK}]}
+    assert _run(body).action == PolicyAction.BLOCK
+
+
+def test_replayed_history_never_blocks_and_warns_once(policy_snapshot):
+    policy_snapshot.append(_inj())
+    history = [{"role": "tool", "tool_call_id": "c", "content": f"article quoting {MARK} here"}]
+    actions = [
+        _run({"messages": history + [{"role": "user", "content": f"follow-up {turn}"}]}).action
+        for turn in range(4)
+    ]
+    assert PolicyAction.BLOCK not in actions
+    assert actions == [PolicyAction.WARN, PolicyAction.ALLOW, PolicyAction.ALLOW, PolicyAction.ALLOW]
+
+
+def test_new_tool_content_after_dedupe_still_warns(policy_snapshot):
+    policy_snapshot.append(_inj())
+    first = {"messages": [{"role": "tool", "content": f"page one {MARK}"}]}
+    second = {"messages": [{"role": "tool", "content": f"page one {MARK}"},
+                           {"role": "tool", "content": f"an entirely different page, also {MARK}, elsewhere"}]}
+    assert _run(first).action == PolicyAction.WARN
+    assert _run(second).action == PolicyAction.WARN
+
+
+def test_blocking_tool_hit_is_never_deduped(policy_snapshot):
+    policy_snapshot.append(_rule(id="inj", match_content_source=["tool_result"]))  # plain block, no override
+    body = {"messages": [{"role": "tool", "content": MARK}]}
+    for _ in range(3):
+        assert _run(body).action == PolicyAction.BLOCK
+
+
+def test_effective_action_helpers():
+    rule = _inj(message_by_source={"tool_result": "m"})
+    assert policy.effective_action(rule, "user") == "block"
+    assert policy.effective_action(rule, "tool_result") == "warn"
+    assert policy.effective_action({**rule, "action_by_source": {"tool_result": "bogus"}}, "tool_result") == "block"
+    assert policy.effective_message(rule, "tool_result") == "m"
+
+
+def test_validate_action_by_source():
+    from app.modules.guard.enforcement import EnforcementMetadataError, validate_action_by_source
+    validate_action_by_source(_inj())
+    with pytest.raises(EnforcementMetadataError):
+        validate_action_by_source(_rule(action_by_source={"tool_result": "warn"}))
+    with pytest.raises(EnforcementMetadataError):
+        validate_action_by_source(_rule(match_content_source=["user"], action_by_source={"tool_result": "warn"}))
+    with pytest.raises(EnforcementMetadataError):
+        validate_action_by_source(_rule(match_content_source=["tool_result"], action_by_source={"tool_result": "nope"}))
+
+
+def test_hook_projection_ships_tool_result_action(monkeypatch):
+    from app.modules.guard import enforcement
+    monkeypatch.setattr("app.modules.guard.policy_engine.compute_policy",
+                        lambda db, ws, surface: [_inj(message_by_source={"tool_result": "m"})])
+    (shipped,) = enforcement.tool_result_scan_rules(MagicMock(), "ws")
+    assert shipped["action"] == "warn" and shipped["message"] == "m"
+
+
+def test_shipped_pack_rule_blocks_user_and_warns_on_tool_content(policy_snapshot):
+    import json
+    from pathlib import Path
+    path = Path(policy.__file__).parents[1] / "modules/guard/skill_packs/conduct-base.json"
+    rule = next(r for r in json.loads(path.read_text())["rules"] if r["id"] == "proxy-no-prompt-injection")
+    # pattern configured in-test with the synthetic marker, not a real payload
+    rule = {**rule, "gates": ["prompt"], "match_pattern": MARK,
+            "match_pattern_by_source": {"tool_result": MARK, "tool_description": MARK}}
+    policy_snapshot.append(rule)
+    assert _run({"messages": [{"role": "user", "content": MARK}]}).action == PolicyAction.BLOCK
+    assert _run({"messages": [{"role": "tool", "content": MARK}]}).action == PolicyAction.WARN

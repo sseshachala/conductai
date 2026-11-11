@@ -71,6 +71,27 @@ class ApiTokenCreated(ApiTokenOut):
     token: str  # full token, shown once only
 
 
+class FeedTokenCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    expires_in_days: Optional[int] = Field(default=None, ge=1, le=3650)  # None = never expires
+
+
+class FeedTokenOut(BaseModel):
+    id: str
+    name: Optional[str]
+    token_prefix: Optional[str]
+    scope: str = "audit_feed"
+    status: Literal["active", "revoked", "expired"]
+    created_by: Optional[str]
+    created_at: Optional[datetime]
+    expires_at: Optional[datetime]
+    revoked_at: Optional[datetime]
+
+
+class FeedTokenCreated(FeedTokenOut):
+    token: str  # full token, shown once only
+
+
 class CredentialSessionOut(BaseModel):
     id: str
     created_at: datetime

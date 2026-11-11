@@ -280,7 +280,8 @@ def _status_redis():
 
 
 def record_feed_pull(workspace_id, actor: str | None, page: dict, *,
-                     now: datetime | None = None, client=None) -> None:
+                     now: datetime | None = None, client=None,
+                     service_label: str | None = None) -> None:
     """Remember this collector's last pull. Never raises."""
     try:
         cursor_ts, _ = decode_cursor(page["next_cursor"])
@@ -291,6 +292,7 @@ def record_feed_pull(workspace_id, actor: str | None, page: dict, *,
             "last_pull_at": now.isoformat(),
             "cursor_ts": cursor_ts.isoformat(),
             "last_page_events": len(page.get("events") or []),
+            **({"collector_type": "service_token", "label": service_label} if service_label else {}),
         }))
         r.expire(key, int(FEED_STATUS_TTL.total_seconds()))
     except Exception:
@@ -320,7 +322,63 @@ def feed_status(workspace_id, *, now: datetime | None = None, client=None) -> di
             "lag_seconds": max(0, int((now - cursor_ts).total_seconds())),
             "last_page_events": int(data.get("last_page_events") or 0),
             "stale": now - last > FEED_STALE_AFTER,
+            "collector_type": data.get("collector_type") or "user",
+            "label": data.get("label"),
         })
     collectors.sort(key=lambda c: c["last_pull_at"], reverse=True)
     return {"available": True, "collectors": collectors,
             "stale_after_seconds": int(FEED_STALE_AFTER.total_seconds())}
+
+
+# ── Chain coverage ("chain complete from") ───────────────────────────────────
+# Gateway rows written before #2518 carry no chain fields and cannot be
+# backfilled (their hash would have to be invented after the fact). So the chain
+# only protects history from some point on. ``chain_complete_from`` is the ts of
+# the first chained row after the last unchained row older than the #2518 merge
+# instant: from there on, every row written by a chaining writer is in the chain.
+# With no such gap it is simply the first chained row. Derived from the rows, no
+# schema change. Unchained rows written after the cutoff (only in-flight two-phase
+# "accepted" gateway rows, sealed at finalize or by the reconciler) are not
+# counted as a gap: they are not a legacy backlog.
+#
+# Both inputs are immutable once found (nothing is backfilled and history is
+# append-only), so the answer is cached per workspace; a miss is not cached
+# (a workspace with no chained row yet).
+
+COVERAGE_CACHE_TTL = timedelta(hours=1)
+
+
+def _coverage_key(workspace_id) -> str:
+    return f"audit_chain:complete_from:{workspace_id}"
+
+
+def chain_complete_from(db: Session, workspace_id, *, client=None) -> str | None:
+    """ISO timestamp from which this workspace's audit chain is complete, or None if no chained rows."""
+    from app.modules.guard.audit_chain import APPEND_RACE_FIXED_AT
+
+    ws = UUID(str(workspace_id))
+    key = _coverage_key(ws)
+    try:
+        r = client or _status_redis()
+        cached = r.get(key)
+        if cached:
+            return cached
+    except Exception:
+        r = None
+    E = GuardAuditEvent
+    last_gap = (db.query(func.max(E.ts))
+                .filter(E.workspace_id == ws, E.entry_hash.is_(None), E.ts < APPEND_RACE_FIXED_AT)
+                .scalar())
+    q = db.query(func.min(E.ts)).filter(E.workspace_id == ws, E.entry_hash.isnot(None))
+    if last_gap is not None:
+        q = q.filter(E.ts > last_gap)
+    start = q.scalar()
+    if start is None:
+        return None
+    value = _utc(start).isoformat()
+    if r is not None:
+        try:
+            r.set(key, value, ex=int(COVERAGE_CACHE_TTL.total_seconds()))
+        except Exception:
+            pass
+    return value

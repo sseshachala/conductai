@@ -25,6 +25,24 @@ describe("SIEM feed card", () => {
     expect(authFetch.mock.calls[0][0]).toContain("/workspaces/ws1/audit-log/feed-status")
   })
 
+  it("shows the date the hash chain is complete from", async () => {
+    respond({ available: true, collectors: [], stale_after_seconds: 900, chain_complete_from: "2026-11-04T09:30:00+00:00" })
+    render(<SiemFeedCard />)
+    await waitFor(() => expect(screen.getByTestId("chain-complete-from").textContent).toMatch(/Hash chain complete from .*2026/))
+    expect(screen.getByTestId("chain-complete-from").textContent).toMatch(/predate chaining/)
+  })
+
+  it("says so when nothing is chained yet and omits the line for older APIs", async () => {
+    respond({ available: true, collectors: [], stale_after_seconds: 900, chain_complete_from: null })
+    const first = render(<SiemFeedCard />)
+    await waitFor(() => expect(screen.getByTestId("chain-complete-from").textContent).toBe("No hash-chained events yet."))
+    first.unmount()
+    respond({ available: true, collectors: [], stale_after_seconds: 900 })
+    render(<SiemFeedCard />)
+    await waitFor(() => expect(screen.getByTestId("siem-feed-badge")).toBeTruthy())
+    expect(screen.queryByTestId("chain-complete-from")).toBeNull()
+  })
+
   it("lists live collectors without the setup hint", async () => {
     respond({ available: true, stale_after_seconds: 900, collectors: [
       { actor_id: "u1", actor_email: "siem@acme.io", last_pull_at: now(), cursor_ts: now(), lag_seconds: 75, last_page_events: 12, stale: false },

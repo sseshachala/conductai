@@ -23,6 +23,9 @@ from app.modules.agent_identity.schemas import (
     ApiTokenCreate,
     ApiTokenCreated,
     ApiTokenOut,
+    FeedTokenCreate,
+    FeedTokenCreated,
+    FeedTokenOut,
     CredentialSessionOut,
     CredentialSessionPage,
     ActivitySessionOut,
@@ -579,4 +582,80 @@ def delete_api_token(
     if not row:
         raise HTTPException(status_code=404, detail="API token not found")
     db.delete(row)
+    db.commit()
+
+
+# ─── Audit-feed service tokens (cond_feed_*) ────────────────────────────────
+# Workspace-owned, read-only, scoped to GET audit feed only. Not tied to a
+# member's login. See app/modules/agent_identity/feed_tokens.py.
+
+
+def _feed_token_out(row: AgentIdentity) -> FeedTokenOut:
+    now = datetime.now(timezone.utc)
+    expiry = row.expires_at
+    if expiry is not None and expiry.tzinfo is None:
+        expiry = expiry.replace(tzinfo=timezone.utc)
+    status = "revoked" if row.lifecycle_state == "deactivated" else (
+        "expired" if expiry is not None and expiry <= now else "active")
+    return FeedTokenOut(
+        id=row.id, name=row.token_name, token_prefix=row.token_prefix, status=status,
+        created_by=row.created_by_clerk_user_id, created_at=row.created_at,
+        expires_at=row.expires_at, revoked_at=row.deactivated_at,
+    )
+
+
+@router.post("/audit-feed-tokens", response_model=FeedTokenCreated, status_code=201)
+def create_audit_feed_token(
+    workspace_id: str,
+    body: FeedTokenCreate,
+    _ws: str = Depends(get_workspace_id),
+    creator_id: str | None = Depends(get_user_id),
+    _: str = Depends(require_permission("platform.workspace.edit")),
+    db: Session = Depends(get_db),
+):
+    """Issue a read-only audit-feed token. The plaintext is returned once; only its hash is stored."""
+    from app.modules.agent_identity import feed_tokens
+    expires_at = datetime.now(timezone.utc) + timedelta(days=body.expires_in_days) if body.expires_in_days else None
+    row, plaintext = feed_tokens.mint(db, workspace_id, body.name.strip(), creator_id, expires_at)
+    from app.modules.guard.routers.policies_helpers import _write_audit
+    _write_audit(db, uuid.UUID(workspace_id), "audit.feed_token_issued", "audit_feed", "token",
+                 actor_id=creator_id, details=f"token_id={row.id} name={row.token_name}")
+    db.commit()
+    return FeedTokenCreated(**_feed_token_out(row).model_dump(), token=plaintext)
+
+
+@router.get("/audit-feed-tokens", response_model=list[FeedTokenOut])
+def list_audit_feed_tokens(
+    workspace_id: str,
+    _ws: str = Depends(get_workspace_id),
+    _: str = Depends(require_permission("platform.workspace.edit")),
+    db: Session = Depends(get_db),
+):
+    """List audit-feed tokens (prefix only; values are never returned)."""
+    rows = (db.query(AgentIdentity)
+            .filter(AgentIdentity.workspace_id == uuid.UUID(workspace_id), AgentIdentity.token_type == "feed")
+            .order_by(AgentIdentity.created_at.desc()).all())
+    return [_feed_token_out(r) for r in rows]
+
+
+@router.delete("/audit-feed-tokens/{token_id}", status_code=204)
+def revoke_audit_feed_token(
+    workspace_id: str,
+    token_id: str,
+    _ws: str = Depends(get_workspace_id),
+    actor_id: str | None = Depends(get_user_id),
+    _: str = Depends(require_permission("platform.workspace.edit")),
+    db: Session = Depends(get_db),
+):
+    """Revoke a feed token. The SIEM collector using it stops authenticating immediately."""
+    from app.modules.agent_identity import feed_tokens
+    row = (db.query(AgentIdentity)
+           .filter(AgentIdentity.id == token_id, AgentIdentity.workspace_id == uuid.UUID(workspace_id),
+                   AgentIdentity.token_type == "feed").first())
+    if not row:
+        raise HTTPException(status_code=404, detail="Feed token not found")
+    feed_tokens.revoke(db, row)
+    from app.modules.guard.routers.policies_helpers import _write_audit
+    _write_audit(db, uuid.UUID(workspace_id), "audit.feed_token_revoked", "audit_feed", "token",
+                 actor_id=actor_id, details=f"token_id={row.id} name={row.token_name}")
     db.commit()

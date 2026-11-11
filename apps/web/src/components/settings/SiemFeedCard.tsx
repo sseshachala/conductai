@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 import { useAuthFetch } from "@/hooks/useAuthFetch"
 import { workspaces as workspacesApi, type AuditFeedStatus } from "@/lib/api/workspaces"
+import SiemFeedTokens from "./SiemFeedTokens"
 
 const SETUP_CMD = "conduct audit feed --follow --output /var/log/conduct/audit.ndjson"
 const DOCS_URL = "https://github.com/sseshachala/conductai/blob/main/docs/reference/siem-feed.md"
@@ -73,6 +74,14 @@ export default function SiemFeedCard({ workspaceId }: { workspaceId?: string }) 
         </span>
       </div>
 
+      {status.chain_complete_from !== undefined && (
+        <p data-testid="chain-complete-from" style={{ fontSize: 12, color: "var(--text-2)", margin: 0 }}>
+          {status.chain_complete_from
+            ? <>Hash chain complete from <time dateTime={status.chain_complete_from} title={status.chain_complete_from}>{new Date(status.chain_complete_from).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })}</time>. Earlier gateway events predate chaining and cannot be verified.</>
+            : "No hash-chained events yet."}
+        </p>
+      )}
+
       {collectors.length > 0 && (
         <table style={{ width: "100%", fontSize: 12, borderCollapse: "collapse" }}>
           <thead>
@@ -86,7 +95,11 @@ export default function SiemFeedCard({ workspaceId }: { workspaceId?: string }) 
           <tbody>
             {collectors.map(c => (
               <tr key={c.actor_id} style={{ color: "var(--text-2)", borderTop: "1px solid var(--border)" }}>
-                <td style={{ padding: "6px 0" }}>{c.actor_email ?? c.actor_id}</td>
+                <td style={{ padding: "6px 0" }}>
+                  {c.collector_type === "service_token"
+                    ? <>{c.label ?? "Feed token"} <span style={{ fontSize: 10, color: "var(--text-3)" }}>service token</span></>
+                    : (c.actor_email ?? c.actor_id)}
+                </td>
                 <td style={{ color: c.stale ? "var(--warn)" : undefined }}>
                   {ago(sinceIso(c.last_pull_at))} ago{c.stale ? " (stale)" : ""}
                 </td>
@@ -118,6 +131,8 @@ export default function SiemFeedCard({ workspaceId }: { workspaceId?: string }) 
           </a>
         </div>
       )}
+
+      <SiemFeedTokens workspaceId={ws} />
     </div>
   )
 }

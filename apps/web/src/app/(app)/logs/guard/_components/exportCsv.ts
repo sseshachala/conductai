@@ -1,12 +1,14 @@
 import type { AuditEvent } from "@/components/guard/ActivityRow"
 
 export function exportCsv(events: AuditEvent[]) {
-  const header = "timestamp,developer,ai_tool,tool_call,input_summary,decision,rule_id\n"
+  const header = "timestamp,developer,ai_tool,tool_call,input_summary,decision,rule_id,tokens_input,tokens_output,usage_source,usage_status,cost_usd\n"
   const rows = events.map(e => {
     const cols = [
       e.ts, e.user_email ?? "", e.ai_tool, e.tool_call,
       `"${(e.input_summary ?? "").replace(/"/g, '""')}"`,
       e.decision, e.rule_id ?? "",
+      // null stays empty (unknown); a known zero stays 0 (#2069)
+      e.tokens_before ?? "", e.tokens_after ?? "", e.usage_source ?? "", e.usage_status ?? "", e.cost_usd_after ?? "",
     ]
     return cols.join(",")
   })

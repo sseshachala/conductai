@@ -344,16 +344,16 @@ def _load_policy_rules() -> list:
 def _scan_tool_output(tool_name, tool_response, session_id, tool_use_id, this_file) -> None:
     """#2384 — scan what the tool returned to the model for indirect prompt
     injection. Warn event + session marker; the next tool call is denied once
-    when the matching rule's action is block. Never raises."""
+    only when the rule's effective action for tool_result is block. Never raises."""
     try:
-        from conduct_cli.hooks.content_scan import CONTENT_SOURCE, mark_session, scan_tool_response
+        from conduct_cli.hooks.content_scan import CONTENT_SOURCE, effective_action, mark_session, scan_tool_response
         from conduct_cli.hooks.pretooluse import _get_advisory_mode
         hit = scan_tool_response(_load_policy_rules(), tool_response)
         if hit is None:
             return
         rule, excerpt = hit
         rule_id = rule.get("rule_id") or "unknown"
-        action = rule.get("action") or "warn"
+        action = effective_action(rule)
         message = f"[{rule_id}] {rule.get('message') or 'Possible indirect prompt injection in tool output.'}"
         if action == "block" and not _get_advisory_mode():
             message += " The next tool call in this session will be blocked once."

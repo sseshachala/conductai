@@ -234,6 +234,8 @@ class ChainVerifyOut(BaseModel):
     # Pre-#2518 concurrent-append forks (every entry_hash correct): not tampering.
     known_append_races: int = 0
     known_append_race_details: list[dict] = []
+    # Rows from this instant on are fully chained; earlier gateway rows predate chaining (#2518).
+    chain_complete_from: Optional[str] = None
 
 
 @router.get("/chain", response_model=ChainVerifyOut)
@@ -254,6 +256,7 @@ def verify_chain(
         verified_at=datetime.now(timezone.utc).isoformat(),
         known_append_races=result.get("known_append_races", 0),
         known_append_race_details=result.get("known_append_race_details", []),
+        chain_complete_from=result.get("chain_complete_from"),
     )
 
 
