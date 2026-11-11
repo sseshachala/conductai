@@ -1,7 +1,7 @@
 {
   "slug": "conduct-base",
   "name": "Conduct Base",
-  "version": "2.17.1",
+  "version": "2.18.0",
   "tier": "free",
   "description": "Core AI governance rules \u2014 proxy interception, agent safety, surface-aware enforcement, workflow governance, and MCP server tool call auditing. 5 proxy + 16 agent + 7 surface + 4 workflow + 2 MCP rules.",
   "ui": {
@@ -47,6 +47,15 @@
       "persona": "proxy",
       "non_overridable": true,
       "description": "Block prompt injection attempts",
+      "match_content_source": [
+        "user",
+        "tool_result",
+        "tool_description"
+      ],
+      "match_pattern_by_source": {
+        "tool_result": "(?i)(ignore\\s+(all\\s+)?(previous|prior|above|your)\\s+instructions|disregard\\s+(your|the|all)\\s+(previous\\s+)?(system\\s+prompt|instructions)|act\\s+as\\s+(an?\\s+)?(unrestricted|DAN|evil)\\b|(reveal|leak|dump|exfiltrate)\\s+(me\\s+)?(your|the)\\s+(system|hidden)\\s+(prompt|instructions))",
+        "tool_description": "(?i)(ignore\\s+(all\\s+)?(previous|prior|above|your)\\s+instructions|disregard\\s+(your|the|all)\\s+(previous\\s+)?(system\\s+prompt|instructions)|act\\s+as\\s+(an?\\s+)?(unrestricted|DAN|evil)\\b|(reveal|leak|dump|exfiltrate)\\s+(me\\s+)?(your|the)\\s+(system|hidden)\\s+(prompt|instructions))"
+      },
       "match_pattern": "(ignore (all |previous |prior |your )instructions|disregard (your |the )system prompt|you are now|jailbreak|act as (an? )?(unrestricted|DAN|evil)|(?i:(reveal|show|print|output|display|dump|leak|repeat|reproduce)\\s+(me\\s+)?(your|the)\\s+(system|initial|hidden)?\\s*(prompt|instructions|context)))",
       "action": "block",
       "message": "Prompt injection pattern detected \u2014 request blocked.",
@@ -66,7 +75,8 @@
           "LLM traffic is routed through the Conduct Guard Proxy"
         ],
         "known_limitations": [
-          "Only request text exposed to the proxy matcher is inspected"
+          "Only request text exposed to the proxy matcher is inspected",
+          "Also scans tool results and tool descriptions in the request (match_content_source); content from a tool result stays in the conversation, so the block repeats on later turns until it is removed from history"
         ]
       }
     },

@@ -6,6 +6,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ---
 
+## [Unreleased]
+
+### Added
+- PostToolUse now scans `tool_response` for indirect prompt injection (#2384)
+  with synced rules that declare `match_content_source: tool_result`. A match
+  records a warn event (`routing_meta.content_source = tool_result`) and marks
+  the session; when the rule's action is `block`, the next tool call in that
+  session is denied once. Hooks cannot intercept the model call or un-run the
+  tool, so this is detect-and-gate-next, not prevention.
+
+---
+
 ## [0.15.1] - 2026-11-04
 
 ### Fixed

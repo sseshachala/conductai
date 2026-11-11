@@ -152,6 +152,9 @@ def _match_policy(
         required_tier = rule.get("match_agent_risk_tier")
         if required_tier is not None and required_tier != agent_risk_tier:
             continue
+        _sources = rule.get("match_content_source")
+        if _sources is not None and "user" not in ([_sources] if isinstance(_sources, str) else _sources):
+            continue
         if not tool_matches(tool_name, rule.get("match_tool")):
             continue
 
@@ -220,6 +223,9 @@ def _project_rule(r: dict) -> dict:
         # prompt/provider/model in tool_input, so these fields are inert
         # for the action-gate path.
         "match_prompt":      r.get("match_prompt"),
+        # #2384 - guard_check_prompt callers (e.g. the LiteLLM shim) only supply
+        # user text; rules scoped to tool content must not widen onto it.
+        "match_content_source": r.get("match_content_source"),
         "match_provider":    r.get("match_provider"),
         "match_model":       r.get("match_model"),
         "action":            r.get("action"),
