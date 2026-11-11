@@ -5,7 +5,8 @@ import { timeAgo } from "@/lib/runUtils"
 import { DecisionBadge } from "./DecisionBadge"
 import { LifecyclePill } from "./LifecyclePill"
 import { ALL_COLUMNS, type ColumnKey } from "./common/GuardToolbar"
-import { formatTokensUsed } from "./common/formatTokens"
+import { formatTokensUsed, usageSourceLabel, usageStatusLabel } from "./common/formatTokens"
+import { UsageDetails } from "./UsageDetails"
 import { AskLensLink } from "@/components/glens/AskLensLink"
 import { AttributionDetails } from "@/components/federation/AttributionDetails"
 import { SessionUsageDetails } from "./SessionUsageDetails"
@@ -279,6 +280,11 @@ export function ActivityRow({ ev, compact = false, isLast = false, visibleColumn
           {formatTokensUsed(ev.tokens_before, ev.tokens_after) ?? (
             <span style={{ color: "var(--text-muted)" }}>—</span>
           )}
+          {(usageStatusLabel(ev.usage_status) || usageSourceLabel(ev.usage_source)) && (
+            <div style={{ fontSize: 10, color: "var(--text-muted)" }}>
+              {[usageSourceLabel(ev.usage_source), usageStatusLabel(ev.usage_status)].filter(Boolean).join(" · ")}
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -340,6 +346,7 @@ export function ActivityRow({ ev, compact = false, isLast = false, visibleColumn
         {ev.routing_meta?.tool_call_correlation_ids && Object.keys(ev.routing_meta.tool_call_correlation_ids).length > 0 && (
           <ToolExecutions eventId={ev.id} />
         )}
+        {(ev.source === "gateway" || ev.usage_status != null) && <UsageDetails eventId={ev.id} />}
         {ev.federation && <AttributionDetails value={ev.federation} />}
         {ev.routing_meta?.session_usage && <>
           <SessionUsageDetails value={ev.routing_meta.session_usage} />

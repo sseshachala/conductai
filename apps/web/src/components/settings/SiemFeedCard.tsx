@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 import { useAuthFetch } from "@/hooks/useAuthFetch"
 import { workspaces as workspacesApi, type AuditFeedStatus } from "@/lib/api/workspaces"
+import SiemFeedTokens from "./SiemFeedTokens"
 
 const SETUP_CMD = "conduct audit feed --follow --output /var/log/conduct/audit.ndjson"
 const DOCS_URL = "https://github.com/sseshachala/conductai/blob/main/docs/reference/siem-feed.md"
@@ -86,7 +87,11 @@ export default function SiemFeedCard({ workspaceId }: { workspaceId?: string }) 
           <tbody>
             {collectors.map(c => (
               <tr key={c.actor_id} style={{ color: "var(--text-2)", borderTop: "1px solid var(--border)" }}>
-                <td style={{ padding: "6px 0" }}>{c.actor_email ?? c.actor_id}</td>
+                <td style={{ padding: "6px 0" }}>
+                  {c.collector_type === "service_token"
+                    ? <>{c.label ?? "Feed token"} <span style={{ fontSize: 10, color: "var(--text-3)" }}>service token</span></>
+                    : (c.actor_email ?? c.actor_id)}
+                </td>
                 <td style={{ color: c.stale ? "var(--warn)" : undefined }}>
                   {ago(sinceIso(c.last_pull_at))} ago{c.stale ? " (stale)" : ""}
                 </td>
@@ -118,6 +123,8 @@ export default function SiemFeedCard({ workspaceId }: { workspaceId?: string }) 
           </a>
         </div>
       )}
+
+      <SiemFeedTokens workspaceId={ws} />
     </div>
   )
 }

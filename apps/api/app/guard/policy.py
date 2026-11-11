@@ -12,8 +12,13 @@ locks that in.
 """
 from __future__ import annotations
 
+import hashlib
 import re
+import threading
+import time
 import uuid
+from collections import OrderedDict
+from typing import Callable
 
 import structlog
 
@@ -191,6 +196,69 @@ def rule_content_sources(rule: dict) -> list[str] | None:
     return [s for s in declared if s in CONTENT_SOURCES]
 
 
+_VALID_ACTIONS = ("audit", "allow", "warn", "approval", "block")
+
+
+def effective_action(rule: dict, source: str | None) -> str:
+    """Action for a hit on ``source``: ``action_by_source[source]`` when the rule
+    declares one, else the rule's ``action``.
+
+    Tool content (``tool_result`` / ``tool_description``) stays in the
+    conversation history, so a hard block on it would repeat on every later
+    request and lock the session. Rules therefore set a softer action for those
+    sources while keeping ``block`` for ``user`` text."""
+    by_source = rule.get("action_by_source")
+    if source and isinstance(by_source, dict):
+        override = by_source.get(source)
+        if isinstance(override, str) and override.lower() in _VALID_ACTIONS:
+            return override.lower()
+    return (rule.get("action") or "warn").lower()
+
+
+def effective_message(rule: dict, source: str | None) -> str | None:
+    by_source = rule.get("message_by_source")
+    if source and isinstance(by_source, dict) and isinstance(by_source.get(source), str):
+        return by_source[source]
+    return rule.get("message") or rule.get("description")
+
+
+# Dedupe of warn-level hits on tool content. The model sees the whole history
+# on every turn, so the same tool output would re-warn (and re-audit) on every
+# later request. A hit is fingerprinted by (workspace, rule, source, hash of the
+# text around the match); a repeat inside the TTL is not reported again. The
+# cache is per process (no shared state on the hot path), so with N workers a
+# repeat can warn at most N times per TTL. Block-level hits are never deduped.
+_SEEN_TTL_SECONDS = 3600
+_SEEN_MAX = 10_000
+_seen_tool_hits: "OrderedDict[tuple, float]" = OrderedDict()
+_seen_lock = threading.Lock()
+
+
+def _hit_fingerprint(text: str, match: "re.Match") -> str:
+    window = text[max(0, match.start() - 80): match.end() + 80]
+    return hashlib.sha256(window.encode("utf-8", "replace")).hexdigest()
+
+
+def _seen_before(key: tuple) -> bool:
+    """True when ``key`` was already recorded within the TTL; records it otherwise."""
+    now = time.monotonic()
+    with _seen_lock:
+        ts = _seen_tool_hits.get(key)
+        if ts is not None and now - ts < _SEEN_TTL_SECONDS:
+            _seen_tool_hits.move_to_end(key)
+            return True
+        _seen_tool_hits[key] = now
+        _seen_tool_hits.move_to_end(key)
+        while len(_seen_tool_hits) > _SEEN_MAX:
+            _seen_tool_hits.popitem(last=False)
+        return False
+
+
+def reset_seen_tool_hits() -> None:
+    with _seen_lock:
+        _seen_tool_hits.clear()
+
+
 def flatten_response(body: dict) -> str:
     """#1733 PR 4: extract model reply text for response-gate matching.
 
@@ -341,6 +409,7 @@ def _rule_matches(
     tool_names_supplied: list[str] | None = None,
     source_texts: dict[str, str] | None = None,
     matched_source: list[str] | None = None,
+    source_hit_filter: "Callable[[str, str], bool] | None" = None,
 ) -> bool:
     """Proxy-side rule matcher. ``gate`` filters by declared rule gates —
     default ``"prompt"`` because every existing proxy caller today evaluates
@@ -397,27 +466,40 @@ def _rule_matches(
     by_source = rule.get("match_pattern_by_source")
     by_source = by_source if isinstance(by_source, dict) else {}
 
-    def _text_matches(text: str, source: str = "user") -> bool:
+    def _text_matches(text: str, source: str = "user") -> str | None:
+        """Fingerprint of the hit (truthy) when ``text`` matches for ``source``, else None."""
         source_pat = by_source.get(source) or pat
         variants = _normalize_text(text or "")
         if pp and not any(re.search(pp, v.text, re.IGNORECASE) for v in variants):
-            return False
-        if source_pat and not any(re.search(source_pat, v.text, re.IGNORECASE) for v in variants):
-            return False
-        return True
+            return None
+        if not source_pat:
+            return "-"
+        for v in variants:
+            m = re.search(source_pat, v.text, re.IGNORECASE)
+            if m:
+                return _hit_fingerprint(v.text, m)
+        return None
 
     # #2384 — ``match_content_source`` opts a rule into tool_result /
     # tool_description text. Without it the rule only sees user text (legacy).
     sources = rule_content_sources(rule)
     if sources is None:
-        return _text_matches(prompt_text)
+        return _text_matches(prompt_text) is not None
     texts = source_texts if source_texts is not None else {"user": prompt_text}
     for source in sources:
         text = texts.get(source)
-        if text and _text_matches(text, source):
-            if matched_source is not None:
-                matched_source.append(source)
-            return True
+        if not text:
+            continue
+        fingerprint = _text_matches(text, source)
+        if fingerprint is None:
+            continue
+        # Lets the caller skip a hit it has already reported (history replay)
+        # and keep looking at the remaining sources.
+        if source_hit_filter is not None and source != "user" and source_hit_filter(source, fingerprint):
+            continue
+        if matched_source is not None:
+            matched_source.append(source)
+        return True
     return False
 
 
@@ -491,10 +573,20 @@ def evaluate(
         winner_full: dict | None = None
         winner_source: str | None = None
         winner_rank = -1
+        winner_action = "warn"
         for r in rules:
             if not _is_proxy_rule(r):
                 continue
             _hit_sources: list[str] = []
+            _rid = r.get("rule_id") or r.get("id")
+
+            def _already_reported(source: str, fingerprint: str, _r=r, _rid=_rid) -> bool:
+                # Tool content replays in the history of every later request.
+                # Only non-blocking hits are deduped; a block must keep blocking.
+                if effective_action(_r, source) == "block":
+                    return False
+                return _seen_before((policy_ws_id, _rid, source, fingerprint))
+
             if not _rule_matches(
                 r, provider, model, prompt_text, gate=gate,
                 agent_risk_tier=agent_risk_tier,
@@ -503,15 +595,17 @@ def evaluate(
                 tool_names_supplied=tool_names_supplied,
                 source_texts=source_texts,
                 matched_source=_hit_sources,
+                source_hit_filter=_already_reported if gate == "prompt" else None,
             ):
                 continue
-            rule_id = r.get("rule_id") or r.get("id")
-            action = (r.get("action") or "warn").lower()
+            rule_id = _rid
+            _hit_source = _hit_sources[0] if _hit_sources else None
+            action = effective_action(r, _hit_source)
             _entry = {
                 "rule_id": rule_id,
                 "severity": (r.get("severity") or "medium").lower(),
                 "action": action,
-                "message": r.get("message") or r.get("description"),
+                "message": effective_message(r, _hit_source),
             }
             if _hit_sources:
                 _entry["content_source"] = _hit_sources[0]
@@ -520,7 +614,8 @@ def evaluate(
             if rank > winner_rank:
                 winner_rank = rank
                 winner_full = r
-                winner_source = _hit_sources[0] if _hit_sources else None
+                winner_source = _hit_source
+                winner_action = action
 
         matched.sort(key=lambda m: (-SEVERITY_WEIGHTS.get(m["severity"], 3), m["rule_id"] or ""))
         score = _defense_score(matched)
@@ -536,14 +631,14 @@ def evaluate(
                 "defense_score": score,
             }
 
-        w_action = (winner_full.get("action") or "warn").upper()
+        w_action = winner_action.upper()
         inject_guidance = bool(winner_full.get("inject_guidance"))
         guidance = (winner_full.get("guidance") or winner_full.get("message") or winner_full.get("description")) if inject_guidance else None
         mapped = {"BLOCK": "BLOCK", "WARN": "WARN", "APPROVAL": "APPROVAL"}.get(w_action, "ALLOW")
         return {
             "action": mapped,
             "rule_id": winner_full.get("rule_id") or winner_full.get("id"),
-            "message": winner_full.get("message") or winner_full.get("description"),
+            "message": effective_message(winner_full, winner_source),
             "inject_guidance": inject_guidance,
             "guidance": guidance,
             "rule": winner_full,

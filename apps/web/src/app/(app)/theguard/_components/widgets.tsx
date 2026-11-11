@@ -27,6 +27,8 @@ export interface GuardEvent {
   rule_message: string | null
   tokens_before: number | null
   tokens_after: number | null
+  usage_source?: string | null
+  usage_status?: string | null
   tokens_saved: number | null
   tokens_input: number | null
   tokens_output: number | null

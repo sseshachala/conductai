@@ -5,13 +5,35 @@ attempt) as one NDJSON line. Any log collector that tails a file can ship it to 
 Splunk Universal Forwarder, Azure Monitor Agent (Microsoft Sentinel), Falcon LogScale
 Collector (CrowdStrike Next-Gen SIEM), Fluent Bit, or Vector.
 
-The feed is served by the `get_audit_feed` MCP tool. The CLI calls it with your agent token,
-so no extra API access is needed.
+The feed is served by the `get_audit_feed` MCP tool. For a long-running collector, use a
+dedicated feed token (below) so the feed does not depend on one person's login.
 
 ## Requirements
 
-- `conduct-cli` 0.15.0 or later, logged in with `conduct login`.
-- The logged-in user needs the `platform.audit_log.view` permission (Security role or above).
+- `conduct-cli` 0.15.0 or later.
+- Either a feed token (recommended for collectors), or `conduct login` as a user with the
+  `platform.audit_log.view` permission (Security role or above).
+
+## Feed token (recommended)
+
+A feed token is owned by the workspace, not a person. It keeps working when the person who
+created it leaves, and it can read the audit feed only: every other API and MCP tool refuses it.
+
+1. In the app, open **Audit**, then the **SIEM feed** card, then **Feed tokens**. Enter a name
+   and choose **Create token**. This needs the workspace admin role (`platform.workspace.edit`).
+2. Copy the token (`cond_feed_...`). It is shown once and only its hash is stored.
+3. Put it in a file readable only by the collector user, then point the CLI at it:
+
+```bash
+install -m 600 /dev/null /etc/conduct/feed-token   # then paste the token into it
+conduct audit feed --follow --token-file /etc/conduct/feed-token \
+  --output /var/log/conduct/audit.ndjson
+```
+
+You can also set `CONDUCT_FEED_TOKEN` in the collector's environment. The token is never
+accepted as a command-line argument, so it does not appear in process listings. Revoke a token
+from the same card; the collector stops authenticating immediately. The SIEM feed card labels
+collectors that use a token as **service token**.
 
 ## Run the feed
 
@@ -27,6 +49,7 @@ conduct audit feed --follow --output /var/log/conduct/audit.ndjson
 | `--interval` | 60 | Seconds between polls with `--follow`. |
 | `--limit` | 500 | Events per request (1–1000). |
 | `--state` | `~/.conduct/audit-feed.cursor` | Cursor checkpoint. Delete it to start over. |
+| `--token-file` | none | File holding a feed token. `CONDUCT_FEED_TOKEN` is the env alternative. Without either, the logged-in user's token is used. |
 | `--format` | `json` | `json`, `ocsf`, `ecs` or `cef`. See Output formats. |
 | `--output` | stdout | Append to this file instead of stdout. |
 | `--sink` | none | Push to `splunk-hec` or `sentinel` instead of writing a file. See Push delivery. |

@@ -11,6 +11,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 ### Added
 
 - `conduct audit verify` checks signed chain-head checkpoints (export trailer, `--checkpoint`, `--keys`, `--require-checkpoint`) and fails when an export ends before the checkpoint head, which detects tail truncation (#2524). New dependency: `cryptography>=41`.
+- `conduct audit feed --token-file PATH` (or `CONDUCT_FEED_TOKEN`): authenticate the SIEM feed with a
+  workspace-owned, read-only feed token instead of a person's login, so the feed survives staff changes.
 - `conduct audit feed --sink splunk-hec|sentinel`: push events to Splunk HEC or the Microsoft Sentinel
   Logs Ingestion API with batching, retry with backoff, and a cursor that advances only after the
   destination acknowledges. Secrets come from files or env vars only.
@@ -19,7 +21,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
   records a warn event (`routing_meta.content_source = tool_result`) and marks
   the session; when the rule's action is `block`, the next tool call in that
   session is denied once. Hooks cannot intercept the model call or un-run the
-  tool, so this is detect-and-gate-next, not prevention.
+  tool, so this is detect-and-gate-next, not prevention. The effective action
+  for tool output honours `action_by_source.tool_result`; the shipped
+  `proxy-no-prompt-injection` rule warns on tool content (marks the session, no
+  deny) and only user text blocks, so an article quoting an override phrase
+  cannot lock a session.
 
 ---
 - `conduct audit feed --format ocsf|ecs|cef`: emit OCSF 1.3 (API Activity), Elastic ECS or CEF

@@ -86,26 +86,33 @@ def get_audit_feed(ctx, cursor: str | None = None, since: str | None = None, lim
     except (ax.ExportRangeError, ValueError) as exc:
         return {"error": str(exc)}
 
+    # A service token (cond_feed_*) IS the grant of platform.audit_log.view for
+    # this one tool: its scope was verified by the MCP dispatcher. Anything else
+    # (including an unknown scope) must pass the normal permission check.
+    service = getattr(ctx, "token_scope", None) == "audit_feed" and getattr(ctx, "collector_id", None)
+    actor = f"feed-token:{ctx.collector_id}" if service else getattr(ctx, "clerk_user_id", None)
     db = SessionLocal()
     try:
-        try:
-            check_permission(user_id=getattr(ctx, "clerk_user_id", None), workspace_id=str(ctx.workspace_id),
-                             credentials=None, db=db, permission=ax.EXPORT_PERMISSION)
-        except HTTPException as exc:
-            return {"error": f"forbidden: reading the audit feed requires {ax.EXPORT_PERMISSION}",
-                    "status_code": exc.status_code}
+        if not service:
+            try:
+                check_permission(user_id=getattr(ctx, "clerk_user_id", None), workspace_id=str(ctx.workspace_id),
+                                 credentials=None, db=db, permission=ax.EXPORT_PERMISSION)
+            except HTTPException as exc:
+                return {"error": f"forbidden: reading the audit feed requires {ax.EXPORT_PERMISSION}",
+                        "status_code": exc.status_code}
         set_workspace_rls(db, ctx.workspace_id)
         ws = _uuid.UUID(str(ctx.workspace_id))
         if not cursor:
             # Record when a feed starts; follow-up pages are routine polling.
             _write_audit(db, ws, "audit.feed_start", "audit_feed", "export",
-                         actor_id=getattr(ctx, "clerk_user_id", None),
+                         actor_id=actor,
                          details=f"since={start.isoformat() if start else 'default'}")
         page = ax.feed_page(db, ws, cursor=cursor, since=start,
                             limit=limit or ax.FEED_DEFAULT_LIMIT)
     finally:
         db.close()
-    ax.record_feed_pull(ws, getattr(ctx, "clerk_user_id", None), page)
+    ax.record_feed_pull(ws, actor, page,
+                        service_label=(getattr(ctx, "collector_label", None) or "feed token") if service else None)
     return {"kind": "audit_feed", **page}
 
 
