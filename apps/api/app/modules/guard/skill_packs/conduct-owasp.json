@@ -1,7 +1,7 @@
 {
   "slug": "conduct-owasp",
   "name": "Conduct OWASP",
-  "version": "2.2.4",
+  "version": "2.2.5",
   "tier": "paid",
   "description": "OWASP Web Top 10 + Agentic Top 10 enforcement rules for AI coding agents, including ASI06 Memory Poisoning (MITRE ATLAS AML.M0031)",
   "ui": {
@@ -581,7 +581,7 @@
       "id": "no_budget_bypass",
       "description": "Block attempts to override spend limits or rate controls (OWASP Agentic A10 \u2014 model DoS)",
       "match_tool": "bash,edit,write",
-      "match_pattern": "budget.*=.*-1|rate_limit.*=.*0|max_tokens.*[=:].*[0-9]{5,}|spend_limit.*=.*(null|none|-1)",
+      "match_pattern": "\\b(?:budget|spend_limit)\\w*(?:\\\\?\")?\\s*[:=]\\s*(?:-1(?![0-9])|null\\b|none\\b)|\\brate_limit\\w*(?:\\\\?\")?\\s*[:=]\\s*0(?![0-9.])|\\bmax_tokens\\w*(?:\\\\?\")?\\s*[:=]\\s*[0-9]{5,}",
       "action": "block",
       "message": "Budget or rate-limit bypass blocked \u2014 spend controls must remain active (OWASP Agentic A10).",
       "persona_affinity": [
