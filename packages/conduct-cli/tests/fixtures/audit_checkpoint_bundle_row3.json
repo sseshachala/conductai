@@ -1,0 +1,19 @@
+{
+ "checkpoint": {
+  "workspace_id": "00000000-0000-0000-0000-000000000001",
+  "ts": "2026-11-11T12:00:00.000000Z",
+  "head_entry_hash": "d546d9a2754d228421399d83c3e42fc654939a185874aabbabbf7e65079e5ec4",
+  "row_count": 3,
+  "hash_version": 2,
+  "key_id": "a050837d85070582ccf7394b0988847c",
+  "alg": "Ed25519",
+  "signature": "vO8WbsgTtlxqGU3WM8mATEa5p1mkvpCKejS580+ZFqlinJOQhnUsAdwCHZm3i+ZlnrCiDGjPI7md63ACM/wFBA=="
+ },
+ "keys": {
+  "a050837d85070582ccf7394b0988847c": {
+   "alg": "Ed25519",
+   "public_key": "MCowBQYDK2VwAyEAA6EHv/POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg=",
+   "created_at": "2026-11-11T00:00:00.000000Z"
+  }
+ }
+}

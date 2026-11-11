@@ -16,6 +16,7 @@ from app.modules.guard.audit_archive import (
     persist_archive, read_verified_archive, verify_manifest,
 )
 from app.modules.guard.audit_chain import ChainBroken, ChainWalker
+from app.modules.guard.audit_signing import verify_latest_checkpoint
 from app.modules.guard.models import (
     BudgetReservation, GuardAuditArchiveSegment, GuardAuditEvent, GuardAuditRetentionHold,
 )
@@ -260,8 +261,13 @@ def verify_audit_history(db, workspace_id, *, settings_obj=settings) -> dict:
             last_ts = row.ts.isoformat()
             broken_at = last_ts
             verify_event_rows([_snapshot(row)], walker=walker)
+        checkpoint = verify_latest_checkpoint(db, workspace_id)
+        if checkpoint["status"] not in ("none", "valid"):
+            return {"valid": False, "total": count, "verified_from": first_ts,
+                    "broken_at": "checkpoint_" + checkpoint["status"], "last_event": last_ts,
+                    "checkpoint": checkpoint, **races()}
         return {"valid": True, "total": count, "verified_from": first_ts, "broken_at": None,
-                "last_event": last_ts, **races()}
+                "last_event": last_ts, "checkpoint": checkpoint, **races()}
     except (ArchiveIntegrityError, KeyError, ValueError):
         return {"valid": False, "total": count, "verified_from": first_ts,
                 "broken_at": broken_at or "archive_checkpoint", "last_event": last_ts, **races()}

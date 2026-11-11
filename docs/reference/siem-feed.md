@@ -69,6 +69,16 @@ offline with `conduct audit verify <file>`.
 Starting a feed (a call without a cursor) is itself recorded in the audit log as
 `audit.feed_start`.
 
+## Truncation checkpoints on each page
+
+Every page returned by `get_audit_feed` also carries `checkpoint` (the latest signed
+chain-head checkpoint for the workspace, or `null` until the first one is taken) and
+`audit_keys` (the public keys needed to verify it, `key_id` to `{alg, public_key, created_at}`).
+`conduct audit feed` writes events only; to check a checkpoint save a page and run
+`conduct audit verify export.ndjson --checkpoint page.json --keys https://<api-host>/.well-known/conduct-audit-keys`.
+A SIEM that stores the latest checkpoint can later prove the chain tail was not cut back past it.
+See [Audit log verification](../audit-log-verification.md#signed-chain-head-checkpoints-tail-truncation).
+
 ## Check the feed is flowing
 
 The **Audit** page in the app shows a **SIEM feed** card. It lists each collector, when it last pulled, and how far behind it is. A collector is marked **Stale** after 15 minutes with no pull. In Lens or any MCP client, `get_audit_feed_status` returns the same data. Both need `platform.audit_log.view`.

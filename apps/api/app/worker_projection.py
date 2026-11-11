@@ -239,6 +239,16 @@ def _start_audit_retention() -> threading.Thread | None:
     return thread
 
 
+def _start_audit_checkpoints() -> threading.Thread | None:
+    """Hourly signed audit chain-head checkpoints (#2524 item 2); off unless a backend is configured."""
+    if settings.guard_audit_checkpoint_backend == "off":
+        return None
+    from app.modules.guard.audit_signing import audit_checkpoint_loop
+    thread = threading.Thread(target=audit_checkpoint_loop, daemon=True, name="audit-checkpoints")
+    thread.start()
+    return thread
+
+
 def _start_projection_retention() -> threading.Thread | None:
     if not settings.guard_projection_retention_cleanup_enabled:
         log.info(

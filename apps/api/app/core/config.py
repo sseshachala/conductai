@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings
 
@@ -235,6 +237,16 @@ class Settings(BaseSettings):
     guard_audit_retention_days: int | None = Field(default=None, gt=0, le=36500)
     guard_audit_retention_interval_seconds: int = Field(default=3600, ge=60, le=86400)
     guard_audit_retention_batch_size: int = Field(default=100, gt=0, le=1000)
+
+    # Signed audit chain-head checkpoints (#2524 item 2). "off" (default) disables
+    # the worker job; "kms" signs with an AWS KMS asymmetric sign-only key;
+    # "local" signs with an Ed25519 private key held in settings (on-prem/dev).
+    guard_audit_checkpoint_backend: Literal["off", "kms", "local"] = "off"
+    guard_audit_checkpoint_kms_key_id: str | None = None
+    guard_audit_checkpoint_kms_region: str | None = None
+    guard_audit_checkpoint_ed25519_private_key: SecretStr | None = None  # base64 32-byte seed or PEM
+    guard_audit_checkpoint_interval_seconds: int = Field(default=3600, ge=60, le=86400)
+    guard_audit_checkpoint_retention_days: int = Field(default=365, ge=30, le=36500)
     guard_audit_archive_endpoint: str | None = None
     guard_audit_archive_bucket: str = ""
     guard_audit_archive_region: str = "us-east-1"

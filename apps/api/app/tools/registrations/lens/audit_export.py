@@ -148,6 +148,8 @@ TOOLS: list[ToolDef] = [ToolDef(
         "after `cursor`, oldest first, with hash-chain fields, plus next_cursor and has_more. Pass "
         "next_cursor on the next call; omit it on the first call and optionally set `since` "
         "(default: last 24 hours). Events newer than lag_seconds are held back so none are skipped. "
+        "Each page also carries `checkpoint` (the latest signed chain-head checkpoint, or null) and "
+        "`audit_keys` (public verification keys) so truncation of the chain tail is detectable. "
         "Needs the platform.audit_log.view permission."
     ),
     input_schema={

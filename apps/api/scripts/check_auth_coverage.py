@@ -54,6 +54,7 @@ ALLOWLIST = {
     "mcp/http.py::oauth_resource_metadata",  # RFC 9728 resource metadata
     "modules/guard/routers/mcp.py::oauth_protected_resource",  # RFC 9728 resource metadata
     "modules/auth/oauth/router.py::oauth_metadata",  # RFC 8414 server metadata
+    "modules/guard/routers/audit_keys.py::conduct_audit_keys",  # public verification keys only; auditors must fetch them independent of the audited workspace
     # OAuth 2.1 + DCR - public by spec.
     "modules/auth/oauth/router.py::dcr_register",  # RFC 7591 dynamic client registration
     "modules/auth/oauth/router.py::authorize",  # browser round-trip; verifies Clerk JWT internally

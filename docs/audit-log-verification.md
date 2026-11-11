@@ -192,6 +192,62 @@ if __name__ == "__main__":
     raise SystemExit(verify(Path(sys.argv[1])))
 ```
 
+## Signed chain-head checkpoints (tail truncation)
+
+A hash chain alone cannot show that rows were deleted from its **end**: every remaining
+row still links and hashes correctly. Checkpoints close that gap. Each hour (per workspace
+with new rows) the worker signs the chain head:
+
+```json
+{"workspace_id": "...", "ts": "2026-11-11T12:00:00.000000Z", "head_entry_hash": "...",
+ "row_count": 5, "hash_version": 2, "key_id": "a050837d...", "alg": "Ed25519"}
+```
+
+The signature covers that object as canonical JSON (sorted keys, no whitespace, UTF-8) and
+is stored base64 beside it. `row_count` counts rows that have chain fields
+(`entry_hash IS NOT NULL`), so archival does not change it. Head and count are read under the
+same per-workspace lock that serialises appends. Workspaces with no new rows since the last
+checkpoint are skipped. Checkpoints are kept 1 year (the newest per workspace is always kept).
+
+**Algorithms.** `alg` is part of the signed payload.
+
+| `alg` | Backend |
+|---|---|
+| `Ed25519` | AWS KMS `ECC_NIST_EDWARDS25519` (`ED25519_SHA_512`, which is pure Ed25519), or a key held in settings (on-prem/dev) |
+| `ECDSA-P256-SHA256` | AWS KMS `ECC_NIST_P256` (`ECDSA_SHA_256`, DER signature) |
+
+**Public keys.** `GET /.well-known/conduct-audit-keys` (no authentication; public keys only)
+returns `{"keys": {key_id: {"alg", "public_key" (base64 SPKI DER), "created_at"}}}`. Old keys
+are never removed, so checkpoints signed before a rotation stay verifiable. Keys are also
+bundled with every checkpoint: on each `get_audit_feed` page (`checkpoint`, `audit_keys`) and
+as the last NDJSON line of an unfiltered, uncapped export:
+
+```json
+{"kind":"audit_checkpoint","checkpoint":{...},"keys":{...}}
+```
+
+**Verify.** `conduct audit verify export.ndjson --keys https://<api-host>/.well-known/conduct-audit-keys`
+checks the signature, then that the export reaches the checkpoint: the row at chain position
+`row_count` must have `head_entry_hash`. An export that ends earlier fails with
+`export ends before the checkpoint head`. Keys taken from the export itself are reported as
+untrusted: whoever can rewrite the export can also swap the bundled key, so pin the keys from the
+endpoint (or a copy you saved earlier). `--checkpoint page.json` checks a checkpoint from a feed
+page against an export, and `--require-checkpoint` fails when none is present. Filtered or
+capped exports carry no checkpoint. `verify` needs the `cryptography` Python package, which
+`conduct-cli` now depends on.
+
+Server side, `verify_audit_history` also checks the newest checkpoint: signature, that the
+signed head row still exists and that the chain has at least `row_count` rows. Failures set
+`valid=false` with `broken_at` of `checkpoint_truncated`, `checkpoint_invalid_signature` or
+`checkpoint_unknown_key`.
+
+**What this does and does not prove.** An attacker who can delete tail rows and also reach the
+signing key can sign a new checkpoint for the shortened chain. With a settings-held key that is
+anyone who can read the app's configuration. With a KMS sign-only key, the operator can still call
+Sign through the application role, so the stronger guarantee is a restricted KMS key policy and
+CloudTrail for `kms:Sign`; checkpoints you have already downloaded cannot be rewritten. Keep the
+latest checkpoint with each export you archive.
+
 ## Verification failure meaning
 
 A failure indicates one of:
