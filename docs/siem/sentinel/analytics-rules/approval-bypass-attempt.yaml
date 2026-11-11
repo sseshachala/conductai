@@ -1,0 +1,52 @@
+# Conduct detection content. Table: ConductAudit_CL (see docs/siem/README.md)
+id: 6c7c9048-fe0d-465a-9bcf-793545b1e500
+kind: Scheduled
+name: Conduct - Tool re-attempted after the approval was rejected
+description: 'A user''s approval request for a tool was rejected, and within 15 minutes the same user ran the same tool again and Guard allowed it, with no approval in between. Approval requests carry the requester''s email; the rejection shares `tool_call` and `rule_id` with the request. Heuristic: review matches, since a generic tool name (for example Bash) can be a legitimate retry.'
+severity: High
+status: Available
+requiredDataConnectors: []
+queryFrequency: PT10M
+queryPeriod: PT2H
+triggerOperator: GreaterThan
+triggerThreshold: 0
+tactics:
+- DefenseEvasion
+- PrivilegeEscalation
+query: |
+  let retryWindow = 15m;
+  let events = ConductAudit_CL
+  | where TimeGenerated > ago(2h)
+  | summarize arg_min(TimeGenerated, *) by EventId  // the feed is at-least-once: drop duplicates;
+  let pending = events
+  | where Decision == "approval_pending"
+  | project PendingAt = TimeGenerated, WorkspaceId, ToolCall, RuleId, Requester = UserEmail;
+  let rejected = events
+  | where Decision == "rejected"
+  | project RejectedAt = TimeGenerated, WorkspaceId, ToolCall, RuleId;
+  let approved = events
+  | where Decision == "approved"
+  | project ApprovedAt = TimeGenerated, WorkspaceId, ToolCall;
+  let rejectedRequests = pending
+  | join kind=inner rejected on WorkspaceId, ToolCall, RuleId
+  | where RejectedAt between (PendingAt .. (PendingAt + 1h))
+  | project WorkspaceId, ToolCall, RuleId, Requester, RejectedAt;
+  events
+  | where TimeGenerated > ago(10m)  // alert once per new event; the rest of the window is context
+  | where Decision == "allowed"
+  | join kind=inner rejectedRequests on WorkspaceId, ToolCall
+  | where UserEmail == Requester and TimeGenerated between (RejectedAt .. (RejectedAt + retryWindow))
+  | join kind=leftouter approved on WorkspaceId, ToolCall
+  | summarize ApprovalsBetween = countif(isnotnull(ApprovedAt) and ApprovedAt between (RejectedAt .. TimeGenerated))
+              by TimeGenerated, WorkspaceId, ToolCall, RuleId, AiTool, UserEmail, AgentIdentityId, RejectedAt, AllowedEventId = EventId
+  | where ApprovalsBetween == 0
+entityMappings:
+- entityType: Account
+  fieldMappings:
+  - identifier: FullName
+    columnName: UserEmail
+eventGroupingSettings:
+  aggregationKind: SingleAlert
+suppressionDuration: PT1H
+suppressionEnabled: false
+version: 1.0.0
