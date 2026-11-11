@@ -291,7 +291,7 @@ export const guard = {
       action: NotificationAction
       channel_type?: NotificationChannelType
       integration_id?: string | null
-      channel_ref: string
+      channel_ref?: string
       dedupe_window_sec?: number
     }) =>
       post(f, `${base()}/notifications?workspace_id=${workspaceId}`, body),
@@ -325,7 +325,7 @@ export const guard = {
       event_type: string
       channel_type: NotificationChannelType
       integration_id?: string | null
-      channel_ref: string
+      channel_ref?: string
       dedupe_window_sec?: number
       threshold_per_min?: number | null
     }) => post(f, `${base()}/alerts?workspace_id=${workspaceId}`, body),
@@ -366,6 +366,10 @@ export interface AlertChannel {
   channel_type: NotificationChannelType
   integration_id: string | null
   channel_ref: string
+  vault_handle?: string | null
+  environment_id?: string | null
+  environment_name?: string | null
+  legacy_ref?: boolean
   enabled: boolean
   dedupe_window_sec: number
   threshold_per_min: number | null

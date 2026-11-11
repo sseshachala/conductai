@@ -54,6 +54,10 @@ export const credentials = {
       post(f, `${base()}/github/repos/${owner}/${repo}/webhook`, body),
   },
 
+  /** Vault entries (id/handle/environment, no values) of a notification-capable service. */
+  channelEntries: (f: AuthFetch, workspaceId: string, service: "slack" | "pagerduty" | "webhook" | "email") =>
+    json<any[]>(f, `${base()}/integrations/vault?service=${service}&workspace_id=${workspaceId}`),
+
   slack: {
     integration: (f: AuthFetch, workspaceId: string) =>
       json<any>(f, `${base()}/integrations/slack?workspace_id=${workspaceId}`),

@@ -105,4 +105,70 @@ describe("AlertsCard", () => {
     await screen.findByText("Upstream 5xx")
     expect(screen.queryByText("+ Add channel")).toBeNull()
   })
+
+  describe("Vault pickers", () => {
+    const ENTRIES = {
+      slack: [],
+      pagerduty: [
+        { id: "pd-prod", handle: "pagerduty", environment_id: "env-prod", environment_name: "Production" },
+        { id: "pd-staging", handle: "pagerduty", environment_id: "env-staging", environment_name: "Staging" },
+      ],
+      webhook: [{ id: "wh-prod", handle: "webhook", environment_id: "env-prod", environment_name: "Production" }],
+      email: [{ id: "em-staging", handle: "email", environment_id: "env-staging", environment_name: "Staging" }],
+    }
+    const open = async (envId: string) => {
+      render(<AlertsCard workspaceId="w" isAdmin filter={{ sourceType: "audit_feed", sourceId: null }}
+        {...VAULT} vaultEntries={ENTRIES} selectedEnvId={envId} />)
+      fireEvent.click(await screen.findByText("+ Add channel"))
+    }
+
+    it("PagerDuty picks the selected Vault's entry instead of a typed key", async () => {
+      await open("env-staging")
+      fireEvent.change(screen.getByLabelText("Channel type"), { target: { value: "pagerduty" } })
+      expect(screen.queryByLabelText("Channel target")).toBeNull()
+      fireEvent.click(screen.getByText("Save"))
+      await waitFor(() => expect(create).toHaveBeenCalled())
+      expect(create.mock.calls[0][2]).toMatchObject({ channel_type: "pagerduty", integration_id: "pd-staging", channel_ref: "" })
+    })
+
+    it("Webhook uses its Vault entry", async () => {
+      await open("env-prod")
+      fireEvent.change(screen.getByLabelText("Channel type"), { target: { value: "webhook" } })
+      fireEvent.click(screen.getByText("Save"))
+      await waitFor(() => expect(create).toHaveBeenCalled())
+      expect(create.mock.calls[0][2]).toMatchObject({ channel_type: "webhook", integration_id: "wh-prod", channel_ref: "" })
+    })
+
+    it("Email asks for the recipient and optionally a Vault entry", async () => {
+      await open("env-staging")
+      fireEvent.change(screen.getByLabelText("Channel type"), { target: { value: "email" } })
+      fireEvent.change(screen.getByLabelText("Channel target"), { target: { value: "ops@example.com" } })
+      fireEvent.change(screen.getByLabelText("Email Vault entry"), { target: { value: "em-staging" } })
+      fireEvent.click(screen.getByText("Save"))
+      await waitFor(() => expect(create).toHaveBeenCalled())
+      expect(create.mock.calls[0][2]).toMatchObject({ channel_type: "email", integration_id: "em-staging", channel_ref: "ops@example.com" })
+    })
+
+    it("shows the add-in-Vault link and blocks save when the Vault has no entry", async () => {
+      await open("env-staging")
+      fireEvent.change(screen.getByLabelText("Channel type"), { target: { value: "webhook" } })
+      expect(screen.getByText(/No Webhook entry — add one in Settings → Vault/)).toBeTruthy()
+      expect((screen.getByText("Save") as HTMLButtonElement).disabled).toBe(true)
+    })
+
+    it("shows the Vault environment and the typed-key hint on rows", async () => {
+      list.mockResolvedValue({ workspace_id: "w", channels: [
+        { id: "a", source_type: "audit_feed", source_id: null, event_type: "collector_stale", channel_type: "pagerduty",
+          integration_id: "pd-prod", channel_ref: "vault:pagerduty", vault_handle: "pagerduty", environment_name: "Production",
+          legacy_ref: false, enabled: true, dedupe_window_sec: 0, threshold_per_min: null, managed_elsewhere: false },
+        { id: "b", source_type: "audit_feed", source_id: null, event_type: "collector_stale", channel_type: "webhook",
+          integration_id: null, channel_ref: "https://example.com/…", legacy_ref: true, enabled: true, dedupe_window_sec: 0,
+          threshold_per_min: null, managed_elsewhere: false },
+      ] })
+      render(<AlertsCard workspaceId="w" isAdmin filter={null} {...VAULT} vaultEntries={ENTRIES} />)
+      expect(await screen.findByText(/· Production/)).toBeTruthy()
+      expect(screen.getByText(/Typed key — move to Vault/)).toBeTruthy()
+      expect(screen.getAllByText(/Typed key — move to Vault/)).toHaveLength(1)
+    })
+  })
 })
