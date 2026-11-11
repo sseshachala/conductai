@@ -68,6 +68,13 @@ Caller execution log
   outcome: succeeded
 ```
 
+## Caller-side wire-in (#2168)
+
+| Caller | What it does | Reachability |
+|---|---|---|
+| `conduct-litellm-guard` | `async_post_call_success_hook` reads the header from the LiteLLM response (`_hidden_params["additional_headers"]`, `llm_provider-` prefix accepted), logs `tool_call generated ... correlation_id=...` per call, and stores the mapping in `data["metadata"]["conduct_tool_correlation_ids"]`. | Only when LiteLLM's upstream is the Conduct Gateway. The shim has no channel to report execution outcomes back to Conduct, so it surfaces the id for the executor's own log. |
+| `conduct-cli` PostToolUse | Sends `correlation_id` on `POST /guard/events/usage` when hook input carries the header (`conduct_tool_correlation_ids`) or a `correlation_id`. | Claude Code and Codex talk to the Gateway directly (`ANTHROPIC_BASE_URL` / `OPENAI_BASE_URL`); their hooks never see response headers, so nothing is sent on those surfaces. Streaming responses carry the mapping in a `conduct.tool_call_correlation_ids` SSE event instead of the header; the shim reads only the header. |
+
 ## Guarantees
 
 - **Server-controlled.** Correlation IDs are UUID4 slices assigned server-side —
@@ -81,8 +88,6 @@ Caller execution log
 
 ## Out of scope
 
-- Executor-side wire-in for specific callers (`conduct-cli`,
-  `conduct-litellm-guard`) — separate follow-up.
 - Audit UI join view — separate follow-up.
 - Routing brain_block through the Gateway (today it calls providers directly) —
   separate story.

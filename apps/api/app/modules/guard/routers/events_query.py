@@ -378,7 +378,11 @@ def verify_audit_chain(
     """Authenticate archived boundaries, then verify the retained chain."""
     from app.modules.guard.audit_retention import verify_audit_history
     result = verify_audit_history(db, workspace_id)
-    return {key: result[key] for key in ("valid", "total", "verified_from", "broken_at")}
+    return {
+        **{key: result[key] for key in ("valid", "total", "verified_from", "broken_at")},
+        "known_append_races": result.get("known_append_races", 0),
+        "known_append_race_details": result.get("known_append_race_details", []),
+    }
 
 
 @router.get("/correlated", tags=["guard"])

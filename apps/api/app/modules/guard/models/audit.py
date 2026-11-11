@@ -13,6 +13,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    SmallInteger,
     String,
     Text,
     UniqueConstraint,
@@ -63,6 +64,8 @@ class GuardAuditEvent(Base):
     # hash-chain integrity — do not UPDATE or DELETE rows, chain breaks
     previous_hash = Column(Text, nullable=True)
     entry_hash = Column(Text, nullable=True)
+    # 1 = legacy 4-field hash, 2 = full-record hash (app/modules/guard/audit_chain.py)
+    hash_version = Column(SmallInteger, nullable=False, server_default=sa.text("1"))
     policy_hash = Column(Text, nullable=True)  # version_hash from GuardPolicyCache at decision time
     # session goal set by `conduct session start`
     goal_id   = Column(String(255), nullable=True)

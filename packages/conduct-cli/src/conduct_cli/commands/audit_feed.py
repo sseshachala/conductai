@@ -19,6 +19,7 @@ import uuid
 from pathlib import Path
 
 from conduct_cli import deployment
+from conduct_cli.audit_formats import FORMATS, FORMATTERS
 from conduct_cli.commands.shared import _load_config
 
 DEFAULT_STATE = Path.home() / ".conduct" / "audit-feed.cursor"
@@ -81,10 +82,11 @@ def _save_cursor(path: Path, cursor: str) -> None:
 
 
 def run_feed(*, since: str | None, limit: int, follow: bool, interval: float,
-             state: Path, out, sleep=time.sleep, sink=None) -> int:
+             state: Path, out, sleep=time.sleep, fmt: str = "json", sink=None) -> int:
     """Write events to ``out`` until caught up (or forever with ``follow``). Returns events written."""
     cursor = _read_cursor(state)
     written = 0
+    render = FORMATTERS[fmt]
     while True:
         args: dict = {"limit": limit}
         if cursor:
@@ -98,7 +100,7 @@ def run_feed(*, since: str | None, limit: int, follow: bool, interval: float,
             written += len(events)
         else:
             for event in events:
-                out.write(json.dumps(event, separators=(",", ":")) + "\n")
+                out.write(render(event) + "\n")
                 written += 1
             out.flush()
         cursor = page.get("next_cursor") or cursor
@@ -125,7 +127,8 @@ def cmd_audit_feed(args) -> None:
     out = open(args.output, "a", encoding="utf-8") if args.output else sys.stdout
     try:
         written = run_feed(since=args.since, limit=args.limit, follow=args.follow,
-                           interval=args.interval, state=state, out=out, sink=sink)
+                           interval=args.interval, state=state, out=out,
+                           fmt=getattr(args, "format", None) or "json", sink=sink)
         if args.output:
             print(f"{written} events appended to {args.output}", file=sys.stderr)
         elif sink is not None:
@@ -147,6 +150,9 @@ def register_feed(audit_sub) -> None:
     f.add_argument("--interval", type=float, default=60.0, help="Seconds between polls with --follow (default: 60)")
     f.add_argument("--limit", type=int, default=500, help="Events per request, 1-1000 (default: 500)")
     f.add_argument("--state", help=f"Cursor checkpoint file (default: {DEFAULT_STATE})")
+    f.add_argument("--format", choices=FORMATS, default="json",
+                   help="Output format: json (native, default), ocsf (OCSF 1.3 API Activity), ecs (Elastic ECS 8.x), "
+                        "cef (ArcSight CEF). Hash-chain fields are kept in every format")
     f.add_argument("--output", help="Append NDJSON to this file instead of stdout")
     f.add_argument("--sink", choices=("splunk-hec", "sentinel"),
                    help="Push events to a SIEM instead of writing a file. The cursor advances only after "

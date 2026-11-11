@@ -90,18 +90,28 @@ def _load_pack(pack_name: str) -> list[dict]:
     return data.get("rules", [])
 
 
-def _matching_rules(rules: list[dict], prompt_text: str, provider: str, model: str) -> list[dict]:
+def _matching_rules(
+    rules: list[dict], prompt_text: str, provider: str, model: str, content_source: str | None = None,
+) -> list[dict]:
     """Return every proxy-eligible rule that fires for this prompt.
 
     Uses gate=None (skip gate filter) — the pack-authoring matrix tests
     rule shape and match logic, not the gate-vs-surface routing that
     production callers use (#1733).
+
+    ``content_source`` (#2384): when set, ``prompt_text`` is treated as that
+    source's text (tool_result | tool_description) and there is no user text,
+    mirroring a request whose only suspicious content arrives via a tool.
     """
     matches: list[dict] = []
+    source_texts = {"user": "", content_source: prompt_text} if content_source else None
     for rule in rules:
         if "match_pattern" not in rule or "match_tool" in rule:
             continue  # hook-only rule, not proxy-eligible
-        if _rule_matches(rule, provider, model, prompt_text, gate=None):
+        if _rule_matches(
+            rule, provider, model, "" if content_source else prompt_text, gate=None,
+            source_texts=source_texts,
+        ):
             matches.append(rule)
     return matches
 
@@ -139,6 +149,8 @@ def _matching_hook_rules(rules: list[dict], tool_name: str, tool_input: dict, ai
     ai_lc = ai_tool.lower()
     matches: list[dict] = []
     for rule in rules:
+        if rule.get("match_content_source") is not None:
+            continue  # gateway tool-content rule (#2384), not a tool-input rule
         match_tool = (rule.get("match_tool") or "*").lower()
         if match_tool != "*":
             if tool_lc not in _expand_tools(match_tool):
@@ -208,8 +220,9 @@ def test_guard_pack_rule(case_tuple):
         provider = case.get("provider", "anthropic")
         model = case.get("model", "claude-3-5-sonnet-20241022")
         prompt_text = case["prompt_text"]
-        matches = _matching_rules(rules, prompt_text, provider, model)
-        input_repr = f"prompt: {prompt_text!r}"
+        content_source = case.get("content_source")
+        matches = _matching_rules(rules, prompt_text, provider, model, content_source)
+        input_repr = f"{content_source or 'prompt'}: {prompt_text!r}"
 
     if expected == "allow":
         assert not matches, (
