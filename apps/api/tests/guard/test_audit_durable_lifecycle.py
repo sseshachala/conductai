@@ -13,6 +13,10 @@ against a real DB in CI covers the actual column shape.
 """
 from __future__ import annotations
 
+import pytest
+
+pytestmark = pytest.mark.usefixtures("stub_audit_chain")
+
 from unittest.mock import patch, MagicMock
 
 from app.guard.audit import finalize, insert_accepted

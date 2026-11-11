@@ -93,9 +93,9 @@ def chain_begin(db, ws_uuid):
 
 def chain_seal_values(values: dict) -> str:
     """v2 entry_hash for a complete column->value mapping (the only hashing path)."""
-    from app.modules.guard.audit_chain import HASH_VERSION, compute_v2
+    from app.modules.guard.audit_chain import HASH_VERSION, compute_v3
 
-    return compute_v2({**values, "hash_version": HASH_VERSION})
+    return compute_v3({**values, "hash_version": HASH_VERSION})
 
 
 def chain_seal(event: "GuardAuditEvent") -> "GuardAuditEvent":
@@ -112,3 +112,21 @@ def chain_seal(event: "GuardAuditEvent") -> "GuardAuditEvent":
     event.hash_version = HASH_VERSION
     event.entry_hash = chain_seal_values({name: getattr(event, name, None) for name in HASHED_FIELDS})
     return event
+
+
+def chain_seal_stored_row(db, row_id) -> str:
+    """Seal a row that already exists in this transaction (two-phase gateway rows).
+
+    The caller must hold the chain lock (``chain_begin`` earlier in the same
+    transaction) and have already written ``ts``, ``previous_hash`` and
+    ``hash_version`` on the row together with its final field values. The hash is
+    computed from the columns as the database stores them, so it equals what the
+    verifier and the export read back. Returns the entry hash.
+    """
+    from app.modules.guard.audit_chain import HASHED_FIELDS
+
+    db.flush()
+    row = db.query(GuardAuditEvent).filter(GuardAuditEvent.id == row_id).populate_existing().one()
+    row.entry_hash = chain_seal_values({name: getattr(row, name, None) for name in HASHED_FIELDS})
+    db.flush()
+    return row.entry_hash

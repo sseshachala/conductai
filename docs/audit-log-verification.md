@@ -33,6 +33,50 @@ every hashed field; `conduct audit verify` verifies each row under its own
 version. A row whose payload was archived (`archive_segment_id` set, payload
 fields null) is verified by linkage only.
 
+## Hash version 3 and what is hashed
+
+New rows are **v3**: v2 with `share_token_hash` removed from the record. Sharing a
+block receipt writes that column on an already-sealed row, so covering it would
+make every shared receipt fail verification; the value is a hash of a capability
+token, not audit content. v1 and v2 rows are never rehashed and verify under their
+own version (`conduct audit verify` and `verify_audit_history` dispatch on
+`hash_version`). The only stored columns outside the v3 hash are `entry_hash`,
+`archive_segment_id` and `share_token_hash`.
+
+## Every writer is chained
+
+All Guard audit rows are appended through `chain_begin` / `chain_seal` /
+`chain_seal_values` in `apps/api/app/modules/guard/models/__init__.py` (per-workspace
+advisory lock, monotonic `ts`, full-record hash): hook and MCP events, approvals,
+policy and budget edits, SSO logins, ingested events, the verify battery, runtime
+(brain/guard block) verdicts, `conduct guard sync` local-audit findings (these rows are
+now append-only; a re-sync skips findings already recorded instead of deleting
+them) and gateway decisions. There are no excluded writers.
+`tests/guard/test_audit_writers_chained.py` scans `app/` and fails if any code path
+inserts a `GuardAuditEvent` or raw `INSERT INTO guard_audit_events` without the chain
+helpers, or UPDATEs/DELETEs audit rows outside a reviewed allowlist.
+
+### Gateway two-phase rows
+
+A durable gateway request writes an `accepted` row before inference and updates it
+afterwards, so its stored fields change. It is therefore **sealed once, at the end**:
+
+- `insert_accepted` writes the row with `entry_hash` NULL. Unchained rows are skipped
+  by both verifiers, exactly like pre-chain rows.
+- `finalize` takes the workspace chain lock, then in one transaction writes the final
+  fields together with a new `ts`, `previous_hash` and `hash_version = 3`, and sets
+  `entry_hash` from the stored values. `ts` is the seal time so `(ts, id)` order equals
+  chain order; `accepted_at` keeps the request start and `finalized_at` the outcome time.
+- A row that never finalizes (crash, timeout) is terminalized by the reconciler
+  (`orphaned`, `decision = error`) and sealed the same way, one transaction per row,
+  same lock order (chain lock, then row).
+- After sealing nothing mutates a hashed field. A late `finalize` on a sealed row
+  matches zero rows. `renew_lease` only touches an unsealed `accepted` row.
+
+Consequence: while a request is in flight its row is not yet covered by the chain
+(typically seconds, bounded by the lease). A row that is `accepted` past its lease is
+visible in the audit view until the reconciler seals it.
+
 ## Known append-race forks (before 2026-11-04)
 
 Before #2518 (merged 2026-11-04T01:10:20Z) concurrent appends were not

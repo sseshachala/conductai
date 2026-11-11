@@ -146,14 +146,14 @@ def _legacy_row(factory, ws, ts, prev):
         db.commit()
 
 
-def test_new_rows_are_v2_and_recompute_from_db_values(chain_db):
+def test_new_rows_are_v3_and_recompute_from_db_values(chain_db):
     from app.modules.guard.audit_chain import expected_hash
     from app.modules.guard.audit_retention import _snapshot
     factory, ws = chain_db
     _hook(factory, ws)
     _gateway(factory, ws, "blocked")
     rows = _rows(factory, ws)
-    assert [r.hash_version for r in rows] == [2, 2]
+    assert [r.hash_version for r in rows] == [3, 3]
     prev = ""
     for r in rows:  # hash computed at write time == hash recomputed from stored values
         assert expected_hash(_snapshot(r), prev) == r.entry_hash
@@ -171,7 +171,7 @@ def test_v1_history_then_v2_rows_verify_clean(chain_db):
     _hook(factory, ws)       # boundary row links to the last v1 entry_hash
     _gateway(factory, ws)
     rows = _rows(factory, ws)
-    assert [r.hash_version for r in rows] == [1, 1, 2, 2]
+    assert [r.hash_version for r in rows] == [1, 1, 3, 3]
     assert rows[2].previous_hash == rows[1].entry_hash
     assert _verify(factory, ws)["valid"] is True
 
@@ -243,3 +243,138 @@ def test_fork_with_a_tampered_row_is_still_broken(chain_db):
         db.query(GuardAuditEvent).filter(GuardAuditEvent.tool_call == "c").update({"decision": "blocked"})
         db.commit()
     assert _verify(factory, ws)["valid"] is False
+
+
+# ── two-phase gateway rows: sealed at finalize / by the reconciler ─────────────
+
+def _accept(factory, ws, **kw):
+    from app.guard import audit
+    request_id = str(uuid4())
+    with patch.object(audit, "SessionLocal", factory):
+        row_id = audit.insert_accepted(str(ws), "user_1", "claude-code", "anthropic", "claude-x",
+                                       request_id=request_id, body={"messages": []},
+                                       agent_identity_id=str(uuid4()), **kw)
+    return row_id
+
+
+def _finalize(factory, ws, row_id, decision="allowed"):
+    from app.guard import audit
+    with patch.object(audit, "SessionLocal", factory):
+        return audit.finalize(row_id, str(ws), decision=decision, provider="anthropic", model="claude-x",
+                              body={}, response_bytes=b"{}", duration_ms=5)
+
+
+def test_accepted_row_is_unchained_until_finalize_then_verifies(chain_db):
+    factory, ws = chain_db
+    _hook(factory, ws)
+    row_id = _accept(factory, ws)
+    pending = [r for r in _rows(factory, ws) if str(r.id) == row_id][0]
+    assert pending.entry_hash is None and pending.lifecycle_state == "accepted"
+    assert _verify(factory, ws)["valid"] is True  # pending rows are not part of the chain
+    _hook(factory, ws)  # chain advances while the request is in flight
+    assert _finalize(factory, ws, row_id, "blocked") is True
+    rows = _rows(factory, ws)
+    sealed = [r for r in rows if str(r.id) == row_id][0]
+    assert sealed.entry_hash and sealed.hash_version == 3 and sealed.lifecycle_state == "finalized"
+    assert sealed.accepted_at <= sealed.ts, "ts is the seal time; accepted_at keeps the request start"
+    assert rows[-1].id == sealed.id and rows[-1].previous_hash == rows[-2].entry_hash
+    result = _verify(factory, ws)
+    assert result["valid"] is True and result["total"] == 3
+
+
+def test_unfinalized_row_is_sealed_by_the_reconciler(chain_db):
+    from app.modules.guard.durable_audit_reconciler import reconcile_orphaned
+    factory, ws = chain_db
+    row_id = _accept(factory, ws, lease_seconds=-5)
+    _hook(factory, ws)
+    with factory() as db:
+        assert reconcile_orphaned(db, workspace_id=str(ws)) == 1
+    row = [r for r in _rows(factory, ws) if str(r.id) == row_id][0]
+    assert row.lifecycle_state == "orphaned" and row.decision == "error" and row.entry_hash
+    assert _verify(factory, ws)["valid"] is True
+    assert _finalize(factory, ws, row_id) is False  # late finalize cannot rewrite a sealed row
+
+
+def test_sharing_a_receipt_does_not_break_the_chain(chain_db):
+    factory, ws = chain_db
+    _gateway(factory, ws, "blocked")
+    victim = _rows(factory, ws)[0]
+    with factory() as db:
+        db.query(GuardAuditEvent).filter(GuardAuditEvent.id == victim.id).update({"share_token_hash": "ab" * 32})
+        db.commit()
+    assert _verify(factory, ws)["valid"] is True
+
+
+def test_tampering_a_finalized_row_breaks_verify(chain_db):
+    factory, ws = chain_db
+    row_id = _accept(factory, ws)
+    _finalize(factory, ws, row_id)
+    with factory() as db:
+        db.query(GuardAuditEvent).filter(GuardAuditEvent.id == row_id).update({"decision": "blocked"})
+        db.commit()
+    assert _verify(factory, ws)["valid"] is False
+
+
+def test_concurrent_two_phase_and_hook_writers_do_not_fork(chain_db):
+    factory, ws = chain_db
+    errors: list[BaseException] = []
+
+    def two_phase(f, w):
+        _finalize(f, w, _accept(f, w))
+
+    def worker(fn):
+        try:
+            for _ in range(4):
+                fn(factory, ws)
+        except BaseException as exc:  # noqa: BLE001
+            errors.append(exc)
+
+    fns = [two_phase, _gateway, _hook]
+    threads = [threading.Thread(target=worker, args=(fns[i % 3],)) for i in range(6)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert not errors
+    rows = _rows(factory, ws)
+    assert len(rows) == 24 and all(r.entry_hash for r in rows)
+    prevs = [r.previous_hash for r in rows]
+    assert len(set(prevs)) == len(prevs), "two rows share a previous_hash (chain fork)"
+    assert _verify(factory, ws)["valid"] is True
+
+
+# ── remaining writers: runtime brain guard, local-audit ingest ─────────────────
+
+def test_runtime_brain_guard_row_is_chained(chain_db):
+    from app.runtime.blocks.brain_guard import record_runtime_guard_verdict
+    factory, ws = chain_db
+    _hook(factory, ws)
+    with factory() as db:
+        record_runtime_guard_verdict(db, workspace_id=str(ws), user_email="a@example.com",
+                                     tool_name="run_shell", action="block", rule_id="r1",
+                                     message="m", input_text="echo hi", run_id=None,
+                                     playbook_slug="p", workflow_id=None)
+    rows = _rows(factory, ws)
+    assert [r.source for r in rows] == ["hook", "runtime"] and rows[1].entry_hash
+    assert rows[1].previous_hash == rows[0].entry_hash
+    assert _verify(factory, ws)["valid"] is True
+
+
+def test_local_audit_ingest_is_chained_and_append_only(chain_db):
+    import asyncio
+    from types import SimpleNamespace
+    from app.modules.guard.routers import proxy
+    factory, ws = chain_db
+    body = proxy._LocalAuditIn(findings=[
+        proxy._LocalFinding(provider="openai", path="/home/u/.cursor/mcp.json", masked="sk-***", line=3),
+        proxy._LocalFinding(provider="anthropic", path="/home/u/.claude/x", masked="sk-a***", line=1),
+    ])
+    request = SimpleNamespace(headers={"authorization": "Bearer t"})
+    with patch.object(proxy, "SessionLocal", factory), \
+            patch.object(proxy, "resolve_agent_token", lambda raw, db: (str(ws), "user_1")):
+        for _ in range(2):  # re-sync must not delete or duplicate chained rows
+            assert asyncio.run(proxy.ingest_local_audit(request, body)) == {"received": 2}
+    rows = _rows(factory, ws)
+    assert [r.source for r in rows] == ["local_audit", "local_audit"] and all(r.entry_hash for r in rows)
+    assert rows[1].previous_hash == rows[0].entry_hash
+    assert _verify(factory, ws)["valid"] is True

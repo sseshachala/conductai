@@ -21,6 +21,7 @@ enforcement, and the Redis rebuild counter now all agree.
 from __future__ import annotations
 
 import json
+import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Optional
@@ -440,6 +441,10 @@ def insert_accepted(
     lease_expires_at=now+lease_seconds. Response-shaped fields (tokens,
     cost, response_bytes) stay NULL until finalize() runs.
 
+    The row is NOT part of the hash chain yet (entry_hash NULL, hash_version
+    default): its fields change at finalize(), so it is sealed there, or by the
+    reconciler if it never finalizes. See docs/audit-log-verification.md.
+
     Decision starts as 'accepted' — the caller flips it to
     'allowed' | 'blocked' | 'warned' via finalize().
 
@@ -612,10 +617,19 @@ def finalize(
     db = SessionLocal()
     try:
         set_workspace_rls(db, workspace_id)
+        # Seal the row into the workspace chain now that its fields are final.
+        # Lock first (same order as the reconciler), stamp ts under the lock so
+        # (ts, id) order matches chain order; accepted_at keeps the request start.
+        from app.modules.guard.audit_chain import HASH_VERSION
+        from app.modules.guard.models import chain_begin, chain_seal_stored_row
+        seal_ts, prev_hash = chain_begin(db, uuid.UUID(str(workspace_id)))
         result = db.execute(
             text("""
                 UPDATE guard_audit_events
                 SET lifecycle_state  = 'finalized',
+                    ts               = :seal_ts,
+                    previous_hash    = :prev_hash,
+                    hash_version     = :hash_version,
                     finalized_at     = :finalized_at,
                     decision         = :decision,
                     model            = COALESCE(:model, model),
@@ -638,6 +652,9 @@ def finalize(
             """),
             {
                 "row_id": row_id,
+                "seal_ts": seal_ts,
+                "prev_hash": prev_hash,
+                "hash_version": HASH_VERSION,
                 "finalized_at": now,
                 "decision": decision,
                 # #2403 item 6: the served model. The accepted row carried
@@ -659,8 +676,10 @@ def finalize(
                 "rule_message": rule_message,
             },
         )
-        db.commit()
         _updated = result.rowcount == 1
+        if _updated:
+            chain_seal_stored_row(db, row_id)
+        db.commit()  # also releases the chain lock when nothing matched
 
         # Gap #2 from Phase 1 self-review — mirror record()'s behavior: fire
         # the Slack block notifier post-commit when the finalized decision is

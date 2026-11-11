@@ -8,6 +8,8 @@ import time
 
 import httpx
 import pytest
+
+pytestmark = pytest.mark.usefixtures("stub_audit_chain")
 from fastapi import HTTPException
 
 from tests.guard._gateway_handler_char_helpers import (  # noqa: F401 — gw is a fixture
@@ -177,7 +179,7 @@ def test_finalize_writes_model_column(monkeypatch):
 
     monkeypatch.setattr(audit, "SessionLocal", _Session)
     monkeypatch.setattr(audit, "set_workspace_rls", lambda *a, **k: None)
-    audit.finalize("00000000-0000-0000-0000-000000000001", "ws", decision="allowed",
+    audit.finalize("00000000-0000-0000-0000-000000000001", "00000000-0000-0000-0000-0000000000aa", decision="allowed",
                    provider="openai", model="gpt-4o-mini", body={}, response_bytes=None,
                    duration_ms=1)
     sql, params = executed[-1]

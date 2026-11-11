@@ -40,6 +40,7 @@ import re
 
 from app.core.auth import get_workspace_id, require_permission, resolve_agent_token, token_is_expired
 from app.core.pii import redact_pii, redact_secrets
+from app.modules.guard.models import GuardAuditEvent, chain_begin, chain_seal
 from app.core.config import settings
 from app.core.crypto import decrypt, encrypt
 from app.core.database import SessionLocal, get_db
@@ -158,49 +159,43 @@ async def ingest_local_audit(request: Request, body: _LocalAuditIn):
         workspace_id, clerk_user_id = ident
         set_workspace_rls(db, workspace_id)
 
-        # Replace this user's prior local_audit rows for the same paths
-        # (so we don't grow N×N noise on every re-sync).
+        # Chained rows are append-only: never DELETE prior local_audit rows.
+        # A finding already recorded for this user (same path and message) is
+        # skipped instead, so re-syncs do not grow N x N noise.
+        ws_uuid = uuid.UUID(str(workspace_id))
         paths = sorted({f.path for f in body.findings})
+        seen: set[tuple[str, str]] = set()
         if paths:
-            db.execute(
-                text("""
-                    DELETE FROM guard_audit_events
-                    WHERE workspace_id = :ws
-                      AND source = 'local_audit'
-                      AND clerk_user_id = :uid
-                      AND input_summary = ANY(:paths)
-                """),
-                {"ws": workspace_id, "uid": clerk_user_id, "paths": paths},
-            )
+            seen = {
+                (r.input_summary, r.rule_message)
+                for r in db.query(GuardAuditEvent.input_summary, GuardAuditEvent.rule_message).filter(
+                    GuardAuditEvent.workspace_id == ws_uuid,
+                    GuardAuditEvent.source == "local_audit",
+                    GuardAuditEvent.clerk_user_id == clerk_user_id,
+                    GuardAuditEvent.input_summary.in_(paths),
+                )
+            }
 
-        now = datetime.now(timezone.utc)
+        recorded = 0
         for f in body.findings:
-            db.execute(
-                text("""
-                    INSERT INTO guard_audit_events (
-                      workspace_id, clerk_user_id, ai_tool, tool_call,
-                      source, provider, model,
-                      decision, rule_id, rule_message, ts,
-                      input_summary
-                    ) VALUES (
-                      :ws, :uid, :ai, NULL,
-                      'local_audit', :prov, NULL,
-                      'WARN', 'local_key_pre_existing',
-                      :msg, :ts, :path
-                    )
-                """),
-                {
-                    "ws": workspace_id, "uid": clerk_user_id,
-                    "ai": _tool_from_path(f.path),
-                    "prov": f.provider,
-                    "msg": f"Pre-existing {f.provider} key in {f.path}:{f.line} ({f.masked})",
-                    "ts": now,
-                    "path": f.path,
-                },
-            )
+            msg = f"Pre-existing {f.provider} key in {f.path}:{f.line} ({f.masked})"
+            if (f.path, msg) in seen:
+                continue
+            seen.add((f.path, msg))
+            ts, previous_hash = chain_begin(db, ws_uuid)
+            db.add(chain_seal(GuardAuditEvent(
+                workspace_id=ws_uuid, clerk_user_id=clerk_user_id,
+                ai_tool=_tool_from_path(f.path), tool_call=None,
+                source="local_audit", provider=f.provider, model=None,
+                decision="WARN", rule_id="local_key_pre_existing",
+                rule_message=msg, ts=ts, input_summary=f.path,
+                previous_hash=previous_hash,
+            )))
+            db.flush()  # the next chain_begin must see this row as the tail
+            recorded += 1
         db.commit()
         log.info("guard.proxy.local_audit_ingested",
-                 workspace_id=workspace_id, count=len(body.findings))
+                 workspace_id=workspace_id, count=recorded)
         return {"received": len(body.findings)}
     finally:
         db.close()

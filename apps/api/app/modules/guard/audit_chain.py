@@ -17,7 +17,12 @@ every timestamp as ``YYYY-MM-DDTHH:MM:SS.ffffffZ`` (UTC). Values are
 normalised by column type so the hash is identical whether it is computed from
 an ORM object, a raw INSERT, a database row or an exported NDJSON record.
 
-v1 rows are never rehashed. The first v2 row links to the last v1
+v3 (every new row, ``hash_version = 3``) is v2 with ``share_token_hash`` removed
+from the record. Sharing a block receipt later writes that column on an
+already-sealed row, so it cannot be covered by the hash; the value is a hash of
+a capability token, not audit content. Everything else is identical.
+
+v1 and v2 rows are never rehashed. The first v2 row links to the last v1
 ``entry_hash`` like any other row.
 
 ``conduct audit verify`` (packages/conduct-cli) re-implements ``compute_v2``;
@@ -31,7 +36,7 @@ from datetime import datetime, timezone
 from typing import Any, Mapping
 from uuid import UUID
 
-HASH_VERSION = 2
+HASH_VERSION = 3
 
 TS_FIELDS = ("ts", "accepted_at", "finalized_at", "lease_expires_at")
 UUID_FIELDS = ("id", "workspace_id", "session_id", "request_id", "agent_identity_id")
@@ -51,8 +56,11 @@ TEXT_FIELDS = (
 )
 HASHED_FIELDS = tuple(sorted(
     TS_FIELDS + UUID_FIELDS + INT_FIELDS + FLOAT_FIELDS + JSON_FIELDS + TEXT_FIELDS))
-# Stored columns deliberately outside the hash.
+# Stored columns deliberately outside the v2 hash.
 UNHASHED_FIELDS = ("entry_hash", "archive_segment_id")
+# v3 additionally leaves out share_token_hash (written after sealing by the receipt-share flow).
+UNHASHED_FIELDS_V3 = UNHASHED_FIELDS + ("share_token_hash",)
+HASHED_FIELDS_V3 = tuple(n for n in HASHED_FIELDS if n != "share_token_hash")
 
 
 def format_ts(value: datetime | str) -> str:
@@ -85,22 +93,32 @@ def _normalise(name: str, value: Any) -> Any:
     return str(value) if not isinstance(value, str) else value
 
 
-def canonical_record(values: Mapping[str, Any]) -> dict:
+def canonical_record(values: Mapping[str, Any], version: int = 2) -> dict:
     """The exact mapping that is hashed. Absent keys count as NULL."""
-    record = {name: _normalise(name, values.get(name)) for name in HASHED_FIELDS}
+    fields = HASHED_FIELDS_V3 if version >= 3 else HASHED_FIELDS
+    record = {name: _normalise(name, values.get(name)) for name in fields}
     record["previous_hash"] = record["previous_hash"] or ""
     return record
 
 
-def canonical_json(values: Mapping[str, Any]) -> str:
-    return json.dumps(canonical_record(values), sort_keys=True, separators=(",", ":"),
+def canonical_json(values: Mapping[str, Any], version: int = 2) -> str:
+    return json.dumps(canonical_record(values, version), sort_keys=True, separators=(",", ":"),
                       ensure_ascii=False, allow_nan=False)
+
+
+def _compute(values: Mapping[str, Any], version: int) -> str:
+    previous = values.get("previous_hash") or ""
+    return hashlib.sha256((canonical_json(values, version) + previous).encode("utf-8")).hexdigest()
 
 
 def compute_v2(values: Mapping[str, Any]) -> str:
     """v2 entry hash. ``values`` must carry ``previous_hash`` and ``hash_version``."""
-    previous = values.get("previous_hash") or ""
-    return hashlib.sha256((canonical_json(values) + previous).encode("utf-8")).hexdigest()
+    return _compute(values, 2)
+
+
+def compute_v3(values: Mapping[str, Any]) -> str:
+    """v3 entry hash: v2 without ``share_token_hash``."""
+    return _compute(values, 3)
 
 
 def compute_v1(ts: datetime | str, tool_call, decision: str, previous_hash: str | None) -> str:
@@ -124,6 +142,8 @@ def expected_hash(row: Mapping[str, Any], previous: str) -> str:
         return compute_v1(row["ts"], row.get("tool_call"), row["decision"], previous)
     if version == 2:
         return compute_v2({**row, "previous_hash": previous})
+    if version == 3:
+        return compute_v3({**row, "previous_hash": previous})
     raise ValueError(f"unknown audit hash_version {version}")
 
 

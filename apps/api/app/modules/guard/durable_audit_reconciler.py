@@ -69,24 +69,14 @@ def reconcile_orphaned(
     into treating them as normal allowed traffic.
     """
     sql = """
-        WITH candidates AS (
-            SELECT id
-            FROM guard_audit_events
-            WHERE lifecycle_state = 'accepted'
-              AND lease_expires_at IS NOT NULL
-              AND lease_expires_at < now()
-              {workspace_predicate}
-            ORDER BY lease_expires_at ASC
-            LIMIT :max_batch
-            FOR UPDATE SKIP LOCKED
-        )
-        UPDATE guard_audit_events e
-        SET lifecycle_state = 'orphaned',
-            decision        = 'error',
-            finalized_at    = COALESCE(e.finalized_at, now())
-        FROM candidates c
-        WHERE e.id = c.id
-          AND e.lifecycle_state = 'accepted'
+        SELECT id, workspace_id
+        FROM guard_audit_events
+        WHERE lifecycle_state = 'accepted'
+          AND lease_expires_at IS NOT NULL
+          AND lease_expires_at < now()
+          {workspace_predicate}
+        ORDER BY lease_expires_at ASC
+        LIMIT :max_batch
     """
     params: dict = {"max_batch": max_batch}
     if workspace_id is not None:
@@ -96,9 +86,11 @@ def reconcile_orphaned(
         sql = sql.format(workspace_predicate="")
 
     try:
-        result = db.execute(text(sql), params)
-        db.commit()
-        count = result.rowcount or 0
+        candidates = [(str(r[0]), str(r[1])) for r in db.execute(text(sql), params).fetchall()]
+        db.commit()  # end the read transaction; each row below is its own sealed transaction
+        count = 0
+        for row_id, row_ws in candidates:
+            count += _orphan_and_seal(db, row_id, row_ws)
         if count:
             log.info(
                 "guard.durable_audit.reconciled",
@@ -115,3 +107,42 @@ def reconcile_orphaned(
         # Re-raise so the caller (worker loop) treats it as a cycle
         # failure and doesn't silently pretend the pass succeeded.
         raise
+
+
+_ORPHAN_SQL = """
+    UPDATE guard_audit_events
+    SET lifecycle_state = 'orphaned',
+        decision        = 'error',
+        finalized_at    = COALESCE(finalized_at, :ts),
+        ts              = :ts,
+        previous_hash   = :prev_hash,
+        hash_version    = :hash_version
+    WHERE id = CAST(:row_id AS uuid)
+      AND lifecycle_state = 'accepted'
+      AND lease_expires_at < now()
+"""
+
+
+def _orphan_and_seal(db: Session, row_id: str, workspace_id: str) -> int:
+    """Terminalize one expired row and seal it into the workspace chain.
+
+    Lock order matches finalize(): chain lock first, then the row. The UPDATE
+    re-checks lifecycle_state and the lease, so a row finalized or renewed since
+    the candidate scan is left alone (rowcount 0, nothing sealed).
+    """
+    import uuid
+
+    from app.core.workspace_context import set_workspace_rls
+    from app.modules.guard.audit_chain import HASH_VERSION
+    from app.modules.guard.models import chain_begin, chain_seal_stored_row
+
+    set_workspace_rls(db, workspace_id)
+    ts, prev_hash = chain_begin(db, uuid.UUID(workspace_id))
+    result = db.execute(text(_ORPHAN_SQL), {
+        "row_id": row_id, "ts": ts, "prev_hash": prev_hash, "hash_version": HASH_VERSION,
+    })
+    flipped = result.rowcount or 0
+    if flipped:
+        chain_seal_stored_row(db, row_id)
+    db.commit()
+    return 1 if flipped else 0

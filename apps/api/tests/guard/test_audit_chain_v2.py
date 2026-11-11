@@ -75,7 +75,7 @@ def test_expected_hash_dispatches_on_version():
     assert ac.expected_hash({**v1_row, "hash_version": 1}, "p") == ac.expected_hash(v1_row, "p")
     assert ac.expected_hash({**VECTOR, "previous_hash": "stale"}, "abc") == VECTOR_HASH
     with pytest.raises(ValueError):
-        ac.expected_hash({**VECTOR, "hash_version": 3}, "abc")
+        ac.expected_hash({**VECTOR, "hash_version": 4}, "abc")
 
 
 def test_chain_seal_stamps_version_and_hash():
@@ -85,8 +85,8 @@ def test_chain_seal_stamps_version_and_hash():
     ev = GuardAuditEvent(workspace_id=uuid.uuid4(), ai_tool="t", decision="allowed",
                          ts=datetime.now(timezone.utc), previous_hash="")
     chain_seal(ev)
-    assert ev.hash_version == 2 and ev.source == "hook" and ev.id is not None
-    assert ev.entry_hash == ac.compute_v2({n: getattr(ev, n, None) for n in ac.HASHED_FIELDS})
+    assert ev.hash_version == 3 and ev.source == "hook" and ev.id is not None
+    assert ev.entry_hash == ac.compute_v3({n: getattr(ev, n, None) for n in ac.HASHED_FIELDS})
 
 
 def test_cli_verifier_hashes_the_same_fields():
@@ -103,6 +103,17 @@ def test_cli_verifier_hashes_the_same_fields():
     assert cli.APPEND_RACE_FIXED_AT == ac.format_ts(ac.APPEND_RACE_FIXED_AT)
     full = {n: None for n in ac.HASHED_FIELDS} | VECTOR
     assert cli.compute_entry_hash_v2(full, "abc") == VECTOR_HASH
+    assert cli.HASHED_FIELDS_V3 == ac.HASHED_FIELDS_V3
+    v3 = {**full, "hash_version": 3}
+    assert cli.compute_entry_hash_v2(v3, "abc", 3) == ac.compute_v3({**v3, "previous_hash": "abc"})
+
+
+def test_v3_excludes_only_share_token_hash():
+    assert set(ac.HASHED_FIELDS) - set(ac.HASHED_FIELDS_V3) == {"share_token_hash"}
+    base = {**VECTOR, "hash_version": 3}
+    assert ac.compute_v3({**base, "share_token_hash": "abc"}) == ac.compute_v3(base)
+    assert ac.compute_v2({**base, "share_token_hash": "abc"}) != ac.compute_v2(base)
+    assert ac.compute_v3(base) != ac.compute_v2(base)
 
 
 # ── known append-race forks (#2524 item 1) ─────────────────────────────────────

@@ -29,6 +29,8 @@ from app.modules.guard.models import (
     GuardConfig,
     GuardSession,
     GuardVerifyRun,
+    chain_begin,
+    chain_seal,
     WorkspaceCustomRule,
     WorkspaceSigningKey,
     WorkspaceSkillPack,
@@ -326,6 +328,7 @@ def run_verify_battery(
     db.add(run)
 
     # Write an audit event so the verify run appears in the Guard activity feed.
+    chain_ts, previous_hash = chain_begin(db, ws_uuid)
     audit = GuardAuditEvent(
         workspace_id=ws_uuid,
         ai_tool="guard.verify",
@@ -333,9 +336,10 @@ def run_verify_battery(
         source="hook",
         decision="verify_run",
         input_summary=f"Verify battery: {passed_tests}/{total_tests} held (grade {grade})",
-        ts=now,
+        ts=chain_ts,
+        previous_hash=previous_hash,
     )
-    db.add(audit)
+    db.add(chain_seal(audit))
 
     db.commit()
     db.refresh(run)

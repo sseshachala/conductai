@@ -1,6 +1,10 @@
 """#2069 — Flight Recorder token usage: provenance, null vs zero, attempts."""
 from __future__ import annotations
 
+import pytest
+
+pytestmark = pytest.mark.usefixtures("stub_audit_chain")
+
 import json
 from types import SimpleNamespace
 from unittest.mock import Mock
