@@ -17,6 +17,13 @@ boundary links like any other row.
 A row whose payload was archived (``archive_segment_id`` set and all of
 ``input_summary``/``result_summary``/``blast_radius`` null) cannot be rehashed
 offline; its linkage is still checked and it is counted in ``linkage_only``.
+
+Forks. Before #2518 (merged 2026-11-04T01:10:20Z) concurrent appends could make
+two rows share one ``previous_hash`` while every ``entry_hash`` is individually
+correct. A row that links to a hash an earlier row already claimed, has a valid
+own hash, and where both rows predate that instant is reported as a *known append
+race* (``known_append_races``), not as tampering. Anything else that fails to link
+is BROKEN. The cutoff is a constant so the API and this verifier agree.
 """
 from __future__ import annotations
 
@@ -49,6 +56,9 @@ _TEXT_FIELDS = (
 HASHED_FIELDS = tuple(sorted(
     _TS_FIELDS + _UUID_FIELDS + _INT_FIELDS + _FLOAT_FIELDS + _JSON_FIELDS + _TEXT_FIELDS))
 _PAYLOAD_FIELDS = ("input_summary", "result_summary", "blast_radius")
+# Must match audit_chain.APPEND_RACE_FIXED_AT in the API.
+APPEND_RACE_FIXED_AT = "2026-11-04T01:10:20.000000Z"
+_FORK_WINDOW = 256
 
 
 def compute_entry_hash(ts: str, tool_call: str | None, decision: str, previous_hash: str | None) -> str:
@@ -101,16 +111,18 @@ def _is_archived(rec: dict) -> bool:
 
 
 def verify_lines(lines, *, allow_gaps: bool = False) -> dict:
-    """Walk NDJSON lines. Returns {ok, rows, chained, anchor, versions, linkage_only, broken};
-    ``broken`` is the first failure."""
+    """Walk NDJSON lines. Returns {ok, rows, chained, anchor, versions, linkage_only,
+    known_append_races, broken}; ``broken`` is the first failure."""
     previous: str | None = None
     anchor = None
     rows = chained = linkage_only = 0
     versions: dict[int, int] = {}
+    races: list[dict] = []
+    children: dict[str, tuple[str, str]] = {}  # previous_hash -> (id, ts) of first child
 
     def broken(line_no, rec, reason, expected=None, actual=None):
         return {"ok": False, "rows": rows, "chained": chained, "anchor": anchor,
-                "versions": versions, "linkage_only": linkage_only,
+                "versions": versions, "linkage_only": linkage_only, "known_append_races": races,
                 "broken": {"line": line_no, "id": (rec or {}).get("id"), "reason": reason,
                            "expected": expected, "actual": actual}}
 
@@ -130,10 +142,6 @@ def verify_lines(lines, *, allow_gaps: bool = False) -> dict:
         if missing:
             return broken(line_no, rec, f"missing fields: {', '.join(missing)}")
         prev = rec.get("previous_hash") or ""
-        if previous is None:
-            anchor = prev
-        elif not allow_gaps and prev != previous:
-            return broken(line_no, rec, "previous_hash does not match prior row's entry_hash", previous, prev)
         try:
             version = int(rec.get("hash_version") or 1)
         except (TypeError, ValueError):
@@ -142,7 +150,7 @@ def verify_lines(lines, *, allow_gaps: bool = False) -> dict:
             expected = compute_entry_hash(rec["ts"], rec.get("tool_call"), rec["decision"], prev)
         elif version == 2:
             if _is_archived(rec):
-                expected = None  # payload archived: cannot rehash; linkage was checked above
+                expected = None  # payload archived: cannot rehash; linkage is checked below
                 linkage_only += 1
             else:
                 try:
@@ -155,11 +163,25 @@ def verify_lines(lines, *, allow_gaps: bool = False) -> dict:
             return broken(line_no, rec, f"unknown hash_version {version}")
         if expected is not None and rec["entry_hash"] != expected:
             return broken(line_no, rec, "entry_hash does not match recomputed hash", expected, rec["entry_hash"])
+        try:
+            ts = _format_ts(rec["ts"])
+        except (ValueError, TypeError) as exc:
+            return broken(line_no, rec, f"unparseable ts: {exc}")
+        if previous is None:
+            anchor = prev
+        elif not allow_gaps and prev != previous:
+            sibling = children.get(prev)
+            if sibling is None or ts >= APPEND_RACE_FIXED_AT or sibling[1] >= APPEND_RACE_FIXED_AT:
+                return broken(line_no, rec, "previous_hash does not match prior row's entry_hash", previous, prev)
+            races.append({"line": line_no, "id": rec.get("id"), "sibling_id": sibling[0], "ts": ts})
+        children.setdefault(prev, (str(rec.get("id")), ts))
+        if len(children) > _FORK_WINDOW:
+            del children[next(iter(children))]
         versions[version] = versions.get(version, 0) + 1
         previous = rec["entry_hash"]
         chained += 1
     return {"ok": True, "rows": rows, "chained": chained, "anchor": anchor, "versions": versions,
-            "linkage_only": linkage_only, "broken": None}
+            "linkage_only": linkage_only, "known_append_races": races, "broken": None}
 
 
 def cmd_audit(args) -> None:
@@ -184,6 +206,11 @@ def cmd_audit(args) -> None:
         if result["linkage_only"]:
             print(f"Note: {result['linkage_only']} archived row(s) verified by linkage only "
                   "(payload fields were archived and cannot be rehashed offline).")
+        if result["known_append_races"]:
+            ids = ", ".join(str(r["id"]) for r in result["known_append_races"][:10])
+            print(f"Note: {len(result['known_append_races'])} known append race fork(s) from before "
+                  f"{APPEND_RACE_FIXED_AT[:10]} (concurrent writers linked to the same row; every entry "
+                  f"hash is valid; not tampering): {ids}")
         return
     b = result["broken"]
     print(f"BROKEN at line {b['line']} (id {b['id']}): {b['reason']}", file=sys.stderr)

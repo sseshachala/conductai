@@ -195,3 +195,52 @@ def test_tampering_any_v2_field_breaks_verify(chain_db, column, value):
     result = _verify(factory, ws)
     assert result["valid"] is False
     assert result["broken_at"] == victim.ts.isoformat()
+
+
+# ── known append-race forks (#2524 item 1) ─────────────────────────────────────
+
+def _fork_rows(factory, ws, base):
+    """a -> b and a -> c (fork), then d links to c: every entry_hash is individually correct."""
+    from datetime import timedelta
+    from app.modules.guard.audit_chain import compute_v1
+    spec = [("a", ""), ("b", "a"), ("c", "a"), ("d", "c")]
+    hashes: dict[str, str] = {}
+    with factory() as db:
+        for i, (name, parent) in enumerate(spec):
+            ts = base + timedelta(seconds=i)
+            prev = hashes.get(parent, "")
+            hashes[name] = compute_v1(ts, name, "allowed", prev)
+            db.add(GuardAuditEvent(id=uuid4(), workspace_id=ws, ai_tool="x", source="hook", tool_call=name,
+                                   decision="allowed", ts=ts, previous_hash=prev, entry_hash=hashes[name]))
+        db.commit()
+
+
+def test_pre_fix_fork_is_reported_as_known_append_race(chain_db):
+    from datetime import timedelta
+    from app.modules.guard.audit_chain import APPEND_RACE_FIXED_AT
+    factory, ws = chain_db
+    _fork_rows(factory, ws, APPEND_RACE_FIXED_AT - timedelta(days=10))
+    result = _verify(factory, ws)
+    assert result["valid"] is True and result["broken_at"] is None
+    assert result["known_append_races"] == 1
+    assert result["known_append_race_details"][0]["sibling_id"]
+
+
+def test_post_fix_fork_is_reported_as_broken(chain_db):
+    from datetime import timedelta
+    from app.modules.guard.audit_chain import APPEND_RACE_FIXED_AT
+    factory, ws = chain_db
+    _fork_rows(factory, ws, APPEND_RACE_FIXED_AT + timedelta(days=1))
+    result = _verify(factory, ws)
+    assert result["valid"] is False and result["broken_at"] is not None
+
+
+def test_fork_with_a_tampered_row_is_still_broken(chain_db):
+    from datetime import timedelta
+    from app.modules.guard.audit_chain import APPEND_RACE_FIXED_AT
+    factory, ws = chain_db
+    _fork_rows(factory, ws, APPEND_RACE_FIXED_AT - timedelta(days=10))
+    with factory() as db:
+        db.query(GuardAuditEvent).filter(GuardAuditEvent.tool_call == "c").update({"decision": "blocked"})
+        db.commit()
+    assert _verify(factory, ws)["valid"] is False

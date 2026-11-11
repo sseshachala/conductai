@@ -33,6 +33,19 @@ every hashed field; `conduct audit verify` verifies each row under its own
 version. A row whose payload was archived (`archive_segment_id` set, payload
 fields null) is verified by linkage only.
 
+## Known append-race forks (before 2026-11-04)
+
+Before #2518 (merged 2026-11-04T01:10:20Z) concurrent appends were not
+serialised, so two rows could share one `previous_hash` (a fork) while every
+`entry_hash` is individually correct. The verifiers (`verify_audit_history`,
+`conduct audit verify`) classify such a fork as a **known append race** when both
+rows' own hashes are valid, the shared `previous_hash` belongs to an earlier row,
+and both rows are older than that instant. They are reported separately
+(`known_append_races`) and do not fail verification. The cutoff is a fixed
+constant so the server and an offline verifier agree. A fork at or after the
+cutoff, a fork with an invalid row hash, or a link to a hash no earlier row
+holds is reported as broken.
+
 ## Independent verification procedure
 
 1. Export audit records for one workspace in deterministic order.

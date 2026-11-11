@@ -101,5 +101,89 @@ def test_cli_verifier_hashes_the_same_fields():
     cli = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(cli)
     assert cli.HASHED_FIELDS == ac.HASHED_FIELDS
+    assert cli.APPEND_RACE_FIXED_AT == ac.format_ts(ac.APPEND_RACE_FIXED_AT)
     full = {n: None for n in ac.HASHED_FIELDS} | VECTOR
     assert cli.compute_entry_hash_v2(full, "abc") == VECTOR_HASH
+
+
+# ── known append-race forks (#2524 item 1) ─────────────────────────────────────
+
+from datetime import datetime, timedelta, timezone  # noqa: E402
+
+PRE = ac.APPEND_RACE_FIXED_AT - timedelta(days=30)
+POST = ac.APPEND_RACE_FIXED_AT + timedelta(days=1)
+
+
+def _row(i, prev, ts, version=1):
+    row = {"id": f"00000000-0000-0000-0000-{i:012d}", "workspace_id": "00000000-0000-0000-0000-000000000001",
+           "ai_tool": "t", "tool_call": f"tool{i}", "decision": "allowed", "source": "hook",
+           "ts": ts + timedelta(seconds=i), "previous_hash": prev, "hash_version": version}
+    row["entry_hash"] = ac.expected_hash(row, prev)
+    return row
+
+
+def _walk(rows):
+    w = ac.ChainWalker()
+    for r in rows:
+        w.feed(r)
+    return w
+
+
+def test_fork_before_cutoff_is_a_known_append_race_not_a_break():
+    a = _row(1, "", PRE)
+    b = _row(2, a["entry_hash"], PRE)
+    c = _row(3, a["entry_hash"], PRE)           # forks off a: shares b's previous_hash
+    d = _row(4, c["entry_hash"], PRE)           # the next writer linked to the later row
+    w = _walk([a, b, c, d])
+    assert w.chained == 4
+    assert [r["id"] for r in w.known_append_races] == [c["id"]]
+    assert w.known_append_races[0]["sibling_id"] == b["id"]
+
+
+def test_three_way_fork_and_mixed_version_fork():
+    a = _row(1, "", PRE)
+    kids = [_row(i, a["entry_hash"], PRE, version=2 if i == 3 else 1) for i in (2, 3, 4)]
+    w = _walk([a, *kids])
+    assert len(w.known_append_races) == 2
+
+
+def test_fork_after_cutoff_is_broken():
+    a = _row(1, "", POST)
+    b = _row(2, a["entry_hash"], POST)
+    c = _row(3, a["entry_hash"], POST)
+    with pytest.raises(ac.ChainBroken):
+        _walk([a, b, c])
+
+
+def test_fork_straddling_the_cutoff_is_broken():
+    a = _row(1, "", ac.APPEND_RACE_FIXED_AT - timedelta(seconds=30))
+    b = _row(2, a["entry_hash"], ac.APPEND_RACE_FIXED_AT - timedelta(seconds=20))
+    c = _row(3, a["entry_hash"], ac.APPEND_RACE_FIXED_AT + timedelta(seconds=20))
+    with pytest.raises(ac.ChainBroken):
+        _walk([a, b, c])
+
+
+def test_fork_with_a_wrong_entry_hash_is_broken():
+    a = _row(1, "", PRE)
+    b = _row(2, a["entry_hash"], PRE)
+    c = {**_row(3, a["entry_hash"], PRE), "tool_call": "edited"}
+    with pytest.raises(ac.ChainBroken):
+        _walk([a, b, c])
+
+
+def test_deleted_row_and_unknown_parent_are_still_broken_before_cutoff():
+    a = _row(1, "", PRE)
+    b = _row(2, a["entry_hash"], PRE)
+    c = _row(3, b["entry_hash"], PRE)
+    with pytest.raises(ac.ChainBroken):
+        _walk([a, c])                              # b removed: c's parent was never walked
+    with pytest.raises(ac.ChainBroken):
+        _walk([a, _row(2, "f" * 64, PRE)])         # linked to a hash nobody holds
+
+
+def test_v2_field_edit_on_a_forked_row_is_broken():
+    a = _row(1, "", PRE, version=2)
+    b = _row(2, a["entry_hash"], PRE, version=2)
+    c = {**_row(3, a["entry_hash"], PRE, version=2), "ai_tool": "edited"}
+    with pytest.raises(ac.ChainBroken):
+        _walk([a, b, c])

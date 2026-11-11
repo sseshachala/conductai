@@ -144,3 +144,50 @@ def test_archived_row_is_linkage_only_only_when_payload_is_gone():
     rec.update(archive_segment_id="00000000-0000-0000-0000-0000000000aa", input_summary="edited")
     lines[3] = json.dumps(rec)
     assert not verify_lines(lines)["ok"]
+
+
+# ── known append-race forks (#2524 item 1) ─────────────────────────────────────
+
+def _v1(i, prev, ts):
+    from conduct_cli.commands.audit import compute_entry_hash
+    return json.dumps({"id": f"id{i}", "ts": ts, "tool_call": f"t{i}", "decision": "allowed",
+                       "previous_hash": prev,
+                       "entry_hash": compute_entry_hash(ts, f"t{i}", "allowed", prev)})
+
+
+def _fork(day):
+    """a -> b, a -> c (fork), c -> d. Every entry_hash is individually correct."""
+    ts = lambda s: f"{day}T00:00:0{s}+00:00"  # noqa: E731
+    a = _v1(1, "", ts(1))
+    ha = json.loads(a)["entry_hash"]
+    b = _v1(2, ha, ts(2))
+    c = _v1(3, ha, ts(3))
+    d = _v1(4, json.loads(c)["entry_hash"], ts(4))
+    return [a, b, c, d]
+
+
+def test_pre_fix_fork_is_a_known_append_race(capsys, tmp_path):
+    lines = _fork("2026-10-01")
+    res = verify_lines(lines)
+    assert res["ok"] and res["chained"] == 4
+    assert [r["id"] for r in res["known_append_races"]] == ["id3"]
+    f = tmp_path / "fork.ndjson"
+    f.write_text("\n".join(lines) + "\n")
+    cmd_audit(_args(f))
+    out = capsys.readouterr().out
+    assert out.startswith("OK:") and "1 known append race" in out and "id3" in out
+
+
+def test_fork_from_after_the_fix_is_broken():
+    res = verify_lines(_fork("2026-11-10"))
+    assert not res["ok"] and res["broken"]["id"] == "id3"
+
+
+def test_fork_with_edited_row_is_broken_and_deleted_parent_is_broken():
+    lines = _fork("2026-10-01")
+    rec = json.loads(lines[2])
+    rec["decision"] = "blocked"
+    lines[2] = json.dumps(rec)
+    assert verify_lines(lines)["broken"]["line"] == 3
+    # row removed so its child links to a hash never seen
+    assert not verify_lines(_fork("2026-10-01")[:1] + _fork("2026-10-01")[3:])["ok"]

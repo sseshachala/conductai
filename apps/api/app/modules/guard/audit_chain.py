@@ -125,3 +125,70 @@ def expected_hash(row: Mapping[str, Any], previous: str) -> str:
     if version == 2:
         return compute_v2({**row, "previous_hash": previous})
     raise ValueError(f"unknown audit hash_version {version}")
+
+
+# ── Walking a chain ────────────────────────────────────────────────────────────
+#
+# Before #2518 (merged 2026-11-04T01:10:20Z, d175b172) appends were not
+# serialised, so two concurrent writers could read the same tail and both link
+# to it: two rows share one ``previous_hash`` (a fork) while every entry_hash is
+# individually correct. That is a known append race, not tampering. The cutoff
+# is a constant, not derived from data, so the API and the offline CLI
+# classify the same fork the same way (an export has no database to ask). A
+# fork at or after the cutoff is never classified: the lock prevents it, so it
+# is reported as broken. Rows between the merge and the production rollout are
+# the conservative side: they alarm rather than pass.
+APPEND_RACE_FIXED_AT = datetime(2026, 11, 4, 1, 10, 20, tzinfo=timezone.utc)
+_APPEND_RACE_FIXED_AT_TS = format_ts(APPEND_RACE_FIXED_AT)
+_FORK_WINDOW = 256  # forks are between concurrent (adjacent) writers; keep memory bounded
+
+
+class ChainBroken(ValueError):
+    """The chain is not intact at ``row``."""
+
+    def __init__(self, reason: str, row: Mapping[str, Any] | None = None):
+        super().__init__(reason)
+        self.reason = reason
+        self.row = row
+
+
+class ChainWalker:
+    """Verify rows fed in (ts, id) order; classify pre-#2518 forks as known append races.
+
+    ``feed`` raises ``ChainBroken`` on the first row that is neither valid nor a
+    known race. A row is a known append race when its own entry_hash is valid
+    under its own ``previous_hash``, that ``previous_hash`` was already claimed by
+    an earlier walked row (its sibling), and both rows predate #2518. The chain
+    then continues from the later row, which is what the next writer linked to.
+    """
+
+    def __init__(self, previous: str = ""):
+        self.previous = previous or ""
+        self.chained = 0
+        self.known_append_races: list[dict] = []
+        self._children: dict[str, tuple[str, str]] = {}  # previous_hash -> (id, ts) of first child
+
+    def feed(self, row: Mapping[str, Any]) -> None:
+        if not row.get("entry_hash"):
+            return  # not part of the chain
+        stored_prev = row.get("previous_hash") or ""
+        try:
+            expected = expected_hash(row, stored_prev)
+            ts = format_ts(row["ts"])
+        except (ValueError, TypeError, KeyError) as exc:
+            raise ChainBroken(f"unverifiable row: {exc}", row) from exc
+        if row["entry_hash"] != expected:
+            raise ChainBroken("entry_hash does not match recomputed hash", row)
+        if stored_prev != self.previous:
+            sibling = self._children.get(stored_prev)
+            if sibling is None or ts >= _APPEND_RACE_FIXED_AT_TS or sibling[1] >= _APPEND_RACE_FIXED_AT_TS:
+                raise ChainBroken("previous_hash does not match prior row's entry_hash", row)
+            self.known_append_races.append({
+                "id": str(row.get("id")), "ts": ts, "sibling_id": sibling[0],
+                "previous_hash": stored_prev,
+            })
+        self._children.setdefault(stored_prev, (str(row.get("id")), ts))
+        if len(self._children) > _FORK_WINDOW:
+            del self._children[next(iter(self._children))]
+        self.previous = row["entry_hash"]
+        self.chained += 1
