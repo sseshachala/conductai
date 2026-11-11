@@ -13,6 +13,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    SmallInteger,
     String,
     Text,
     UniqueConstraint,
@@ -63,6 +64,8 @@ class GuardAuditEvent(Base):
     # hash-chain integrity — do not UPDATE or DELETE rows, chain breaks
     previous_hash = Column(Text, nullable=True)
     entry_hash = Column(Text, nullable=True)
+    # 1 = legacy 4-field hash, 2 = full-record hash (app/modules/guard/audit_chain.py)
+    hash_version = Column(SmallInteger, nullable=False, server_default=sa.text("1"))
     policy_hash = Column(Text, nullable=True)  # version_hash from GuardPolicyCache at decision time
     # session goal set by `conduct session start`
     goal_id   = Column(String(255), nullable=True)
@@ -97,6 +100,13 @@ class GuardAuditEvent(Base):
     # single-phase writers and every historical row stay valid.
     request_id = Column(UUID(as_uuid=True), nullable=True)
     lifecycle_state = Column(String(20), nullable=True)  # accepted|finalized|orphaned|expired
+    # Added by revision 0171 (#2069) — provenance of tokens_before/tokens_after.
+    # usage_source: provider_reported | estimated | client_reported | unavailable
+    # usage_status: pending | complete | partial | unavailable | no_upstream
+    # NULL on both = legacy row written before provenance was recorded
+    # (counts are NOT guaranteed provider-reported).
+    usage_source = Column(String(20), nullable=True)
+    usage_status = Column(String(20), nullable=True)
     accepted_at = Column(DateTime(timezone=True), nullable=True)
     finalized_at = Column(DateTime(timezone=True), nullable=True)
     lease_expires_at = Column(DateTime(timezone=True), nullable=True)

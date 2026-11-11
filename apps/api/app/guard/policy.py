@@ -83,6 +83,114 @@ def flatten_prompt(body: dict) -> str:
     return "\n".join(out)
 
 
+# ─── Content-source flattening (#2384, indirect prompt injection) ─────────────
+#
+# Rules opt in per source with ``match_content_source`` (string or list):
+#   user              text the caller typed (what flatten_prompt returns; the default)
+#   tool_result       content returned to the model by tools (role:"tool" /
+#                     tool_result blocks / function_call_output items)
+#   tool_description  tools[].description plus parameter descriptions
+# Rules without the field only ever see ``user`` text, as before.
+
+CONTENT_SOURCES = ("user", "tool_result", "tool_description")
+_MAX_SOURCE_CHARS = 256_000   # bound regex work on attacker-sized tool output
+
+
+def _text_parts(content) -> list[str]:
+    """Text out of a string / list-of-parts content value (recursing into
+    nested tool_result ``content`` lists)."""
+    if isinstance(content, str):
+        return [content] if content else []
+    out: list[str] = []
+    if isinstance(content, list):
+        for part in content:
+            if isinstance(part, str):
+                if part:
+                    out.append(part)
+            elif isinstance(part, dict):
+                if part.get("type") in (None, "text", "input_text", "output_text"):
+                    text = part.get("text")
+                    if isinstance(text, str) and text:
+                        out.append(text)
+                elif "content" in part and part.get("type") != "tool_use":
+                    out.extend(_text_parts(part.get("content")))
+    return out
+
+
+def flatten_tool_results(body: dict) -> str:
+    """Content returned to the model by tools, across OpenAI chat
+    (``role:"tool"``/``"function"``), Anthropic (``tool_result`` blocks inside
+    user turns) and OpenAI Responses (``function_call_output`` items)."""
+    out: list[str] = []
+    for msg in body.get("messages") or []:
+        if not isinstance(msg, dict):
+            continue
+        if msg.get("role") in ("tool", "function"):
+            out.extend(_text_parts(msg.get("content")))
+        elif isinstance(msg.get("content"), list):
+            for part in msg["content"]:
+                if isinstance(part, dict) and part.get("type") == "tool_result":
+                    out.extend(_text_parts(part.get("content")))
+    items = body.get("input")
+    if isinstance(items, list):
+        for item in items:
+            if isinstance(item, dict) and item.get("type") in ("function_call_output", "tool_result"):
+                out.extend(_text_parts(item.get("output", item.get("content"))))
+    return "\n".join(out)[:_MAX_SOURCE_CHARS]
+
+
+def flatten_tool_descriptions(body: dict) -> str:
+    """``tools[].description`` (OpenAI ``function.description`` / Anthropic
+    ``description``) plus ``description`` strings inside parameter schemas,
+    a known tool-poisoning carrier."""
+    out: list[str] = []
+
+    def _schema_descriptions(node, depth: int = 0) -> None:
+        if depth > 8:
+            return
+        if isinstance(node, dict):
+            for key, value in node.items():
+                if key == "description" and isinstance(value, str) and value:
+                    out.append(value)
+                else:
+                    _schema_descriptions(value, depth + 1)
+        elif isinstance(node, list):
+            for value in node:
+                _schema_descriptions(value, depth + 1)
+
+    for tool in body.get("tools") or []:
+        if not isinstance(tool, dict):
+            continue
+        fn = tool.get("function") if isinstance(tool.get("function"), dict) else tool
+        desc = fn.get("description")
+        if isinstance(desc, str) and desc:
+            out.append(desc)
+        for schema_key in ("parameters", "input_schema"):
+            _schema_descriptions(fn.get(schema_key))
+    return "\n".join(out)[:_MAX_SOURCE_CHARS]
+
+
+def content_source_texts(body: dict, user_text: str) -> dict[str, str]:
+    return {
+        "user": user_text,
+        "tool_result": flatten_tool_results(body),
+        "tool_description": flatten_tool_descriptions(body),
+    }
+
+
+def rule_content_sources(rule: dict) -> list[str] | None:
+    """Declared, recognised sources for a rule; None when the rule does not
+    declare ``match_content_source`` (legacy user-text behaviour)."""
+    declared = rule.get("match_content_source")
+    if declared is None:
+        return None
+    if isinstance(declared, str):
+        declared = [declared]
+    if not isinstance(declared, list):
+        return []
+    return [s for s in declared if s in CONTENT_SOURCES]
+
+
 def flatten_response(body: dict) -> str:
     """#1733 PR 4: extract model reply text for response-gate matching.
 
@@ -231,6 +339,8 @@ def _rule_matches(
     tool_names_offered: list[str] | None = None,
     tool_names_generated: list[str] | None = None,
     tool_names_supplied: list[str] | None = None,
+    source_texts: dict[str, str] | None = None,
+    matched_source: list[str] | None = None,
 ) -> bool:
     """Proxy-side rule matcher. ``gate`` filters by declared rule gates —
     default ``"prompt"`` because every existing proxy caller today evaluates
@@ -280,12 +390,35 @@ def _rule_matches(
             return False
     if not pp and not pat:
         return True
-    variants = _normalize_text(prompt_text or "")
-    if pp and not any(re.search(pp, v.text, re.IGNORECASE) for v in variants):
-        return False
-    if pat and not any(re.search(pat, v.text, re.IGNORECASE) for v in variants):
-        return False
-    return True
+
+    # ``match_pattern_by_source`` lets a rule use a narrower pattern for tool
+    # content than for user text: phrases like "you are now" are rare in a
+    # prompt but routine in tool output ("You are now on branch main").
+    by_source = rule.get("match_pattern_by_source")
+    by_source = by_source if isinstance(by_source, dict) else {}
+
+    def _text_matches(text: str, source: str = "user") -> bool:
+        source_pat = by_source.get(source) or pat
+        variants = _normalize_text(text or "")
+        if pp and not any(re.search(pp, v.text, re.IGNORECASE) for v in variants):
+            return False
+        if source_pat and not any(re.search(source_pat, v.text, re.IGNORECASE) for v in variants):
+            return False
+        return True
+
+    # #2384 — ``match_content_source`` opts a rule into tool_result /
+    # tool_description text. Without it the rule only sees user text (legacy).
+    sources = rule_content_sources(rule)
+    if sources is None:
+        return _text_matches(prompt_text)
+    texts = source_texts if source_texts is not None else {"user": prompt_text}
+    for source in sources:
+        text = texts.get(source)
+        if text and _text_matches(text, source):
+            if matched_source is not None:
+                matched_source.append(source)
+            return True
+    return False
 
 
 # ─── Evaluate (public API) ────────────────────────────────────────────────────
@@ -347,32 +480,47 @@ def evaluate(
         # #1733: response-gate feeds the model reply into the same matcher.
         # For prompt gate (default), same behavior as before.
         prompt_text = flatten_response(body) if gate == "response" else flatten_prompt(body)
+        # #2384 — tool-result / tool-description text is only extracted when a
+        # loaded rule opts in, so unrelated traffic pays nothing.
+        source_texts = None
+        if gate == "prompt" and any(
+            r.get("match_content_source") is not None for r in rules
+        ):
+            source_texts = content_source_texts(body, prompt_text)
         matched: list[dict] = []
         winner_full: dict | None = None
+        winner_source: str | None = None
         winner_rank = -1
         for r in rules:
             if not _is_proxy_rule(r):
                 continue
+            _hit_sources: list[str] = []
             if not _rule_matches(
                 r, provider, model, prompt_text, gate=gate,
                 agent_risk_tier=agent_risk_tier,
                 tool_names_offered=tool_names_offered,
                 tool_names_generated=tool_names_generated,
                 tool_names_supplied=tool_names_supplied,
+                source_texts=source_texts,
+                matched_source=_hit_sources,
             ):
                 continue
             rule_id = r.get("rule_id") or r.get("id")
             action = (r.get("action") or "warn").lower()
-            matched.append({
+            _entry = {
                 "rule_id": rule_id,
                 "severity": (r.get("severity") or "medium").lower(),
                 "action": action,
                 "message": r.get("message") or r.get("description"),
-            })
+            }
+            if _hit_sources:
+                _entry["content_source"] = _hit_sources[0]
+            matched.append(_entry)
             rank = _ACTION_RANK.get(action, 0)
             if rank > winner_rank:
                 winner_rank = rank
                 winner_full = r
+                winner_source = _hit_sources[0] if _hit_sources else None
 
         matched.sort(key=lambda m: (-SEVERITY_WEIGHTS.get(m["severity"], 3), m["rule_id"] or ""))
         score = _defense_score(matched)
@@ -399,6 +547,7 @@ def evaluate(
             "inject_guidance": inject_guidance,
             "guidance": guidance,
             "rule": winner_full,
+            "content_source": winner_source,
             "matched_rules": matched,
             "defense_score": score,
         }

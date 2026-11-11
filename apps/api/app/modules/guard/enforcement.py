@@ -22,6 +22,50 @@ class EnforcementMetadataError(ValueError):
 HOOK_EVALUABLE_FIELDS = ("match_tool", "match_ai_tool", "match_pattern", "match_path_pattern")
 
 
+# #2384 - pseudo tool name carried by tool-result scan rules in the hook sync
+# payload. No real tool has this name, so CLI versions that predate
+# ``match_content_source`` never apply the rule to a tool *input*; new CLIs
+# evaluate these rules against ``tool_response`` in PostToolUse.
+CONTENT_SCAN_PSEUDO_TOOL = "__tool_result__"
+
+
+def is_tool_result_scan_rule(rule: dict[str, Any]) -> bool:
+    """A gateway-persona rule with a pattern that opts into ``tool_result`` text,
+    which the CLI PostToolUse hook can evaluate locally."""
+    declared = rule.get("match_content_source")
+    if isinstance(declared, str):
+        declared = [declared]
+    return (
+        isinstance(declared, list)
+        and "tool_result" in declared
+        and bool(rule.get("match_pattern"))
+        and not rule.get("match_tool")
+    )
+
+
+def tool_result_scan_rules(db, workspace_id) -> list[dict[str, Any]]:
+    """Tool-result scan rules from the workspace's gateway policy, projected for
+    the hook sync payload. Never raises: a failure just omits the extras."""
+    try:
+        from app.modules.guard.policy_engine import compute_policy
+        rules = compute_policy(db, workspace_id, "proxy")
+    except Exception:
+        return []
+    out = []
+    for r in rules:
+        if not is_tool_result_scan_rule(r):
+            continue
+        by_source = r.get("match_pattern_by_source")
+        tool_pattern = by_source.get("tool_result") if isinstance(by_source, dict) else None
+        out.append({
+            **r,
+            "match_tool": CONTENT_SCAN_PSEUDO_TOOL,
+            # The hook only ever scans tool output, so ship the tool-content pattern.
+            "match_pattern": tool_pattern or r.get("match_pattern"),
+        })
+    return out
+
+
 def is_hook_applicable_rule(rule: dict[str, Any], *, caller_risk_tier: str | None = None) -> bool:
     """Return whether hook clients can preserve and evaluate this rule.
 

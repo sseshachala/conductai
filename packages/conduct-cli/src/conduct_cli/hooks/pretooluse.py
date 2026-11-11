@@ -294,6 +294,10 @@ def check_policy(tool_name: str, tool_input: dict, tokens_before: int = 0, *, fi
         rid = rule.get("rule_id", "")
         if fixture_approved and rid == "no-private-key":
             continue
+        # #2384 — tool-result scan rules are evaluated on tool OUTPUT in
+        # PostToolUse, never against tool input.
+        if rule.get("match_content_source"):
+            continue
 
         # #1048: skip doc-sensitive framework rules on paths where we define
         # or document the concepts. Prevents Guard from blocking our own
@@ -549,6 +553,23 @@ def main() -> None:
     session_id = data.get("session_id")
     tool_name  = (data.get("tool_name") or "").lower()
     tool_input = data.get("tool_input") or {}
+
+    # #2384 — a previous tool result in this session carried an indirect
+    # injection payload that policy says to block on. Hooks cannot intercept
+    # the model call itself, so the next tool call is denied once.
+    from conduct_cli.hooks.content_scan import take_session_block
+    _flag = take_session_block(session_id)
+    if _flag and not _get_advisory_mode():
+        _msg = (
+            f"[ConductGuard] [{_flag.get('rule_id')}] Earlier tool output ({_flag.get('tool_name')}) "
+            f"contained suspected prompt-injection content; this tool call is blocked once. "
+            f"Review that output, then retry to continue."
+        )
+        print(_msg)
+        print(_msg, file=sys.stderr)
+        post_event(tool_name, tool_input, "blocked", _flag.get("rule_id"), _msg, session_id,
+                   drain_via=_this_file, content_source="tool_result")
+        sys.exit(2)
 
     _, action, rule_id, message = check_policy(tool_name, tool_input)
 

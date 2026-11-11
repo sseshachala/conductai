@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   update:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04  # Playwright has no Ubuntu 26.04 build yet
     timeout-minutes: 30
     services:
       postgres:
@@ -73,6 +73,9 @@ jobs:
         run: echo "NEXT_PUBLIC_API_URL=$(printf 'http:%s' '//127.0.0.1:8000')" >> "$GITHUB_ENV"
       - name: Install web deps
         run: npm ci
+      - name: Drop unreachable apt mirror
+        # See web-smoke.yml: azure.archive.ubuntu.com fails DNS on runners.
+        run: sudo sed -i '/azure\.archive\.ubuntu\.com/d' /etc/apt/apt-mirrors.txt || true
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium firefox
         working-directory: apps/web

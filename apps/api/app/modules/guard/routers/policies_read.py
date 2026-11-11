@@ -28,7 +28,9 @@ from app.modules.guard.policy_engine import (
 )
 from app.modules.guard.coverage import workspace_coverage_matrix
 from app.modules.guard.enforcement import (
+    CONTENT_SCAN_PSEUDO_TOOL,
     is_hook_applicable_rule,
+    tool_result_scan_rules,
 )
 from app.modules.guard.routers.policies_schemas import (
     EnforcementCoverageOut,
@@ -161,6 +163,11 @@ def sync_policies(
     token = authorization.split(" ", 1)[1] if authorization and " " in authorization else None
     tier = caller_risk_tier(token, db)
     hook_rules = [rule for rule in active_rules if is_hook_applicable_rule(rule, caller_risk_tier=tier)]
+    _hook_ids = {r.get("id") or r.get("rule_id") for r in hook_rules}
+    hook_rules += [
+        r for r in tool_result_scan_rules(db, ws_uuid)
+        if (r.get("id") or r.get("rule_id")) not in _hook_ids
+    ]
     _audit_exception_transitions(db, ws_uuid, audit_use=True)
     version_hash = hashlib.sha256(json.dumps(hook_rules, sort_keys=True).encode()).hexdigest()[:16]
     version = f"{datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')}-{version_hash}"
@@ -178,6 +185,9 @@ def sync_policies(
                 match_ai_tool=r.get("match_ai_tool"),
                 match_pattern=r.get("match_pattern"),
                 match_path_pattern=r.get("match_path_pattern"),
+                match_content_source=(
+                    r.get("match_content_source") if r.get("match_tool") == CONTENT_SCAN_PSEUDO_TOOL else None
+                ),
                 action=r["action"],
                 message=r.get("message"),
             )

@@ -1,0 +1,184 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "workspace": {
+      "type": "string",
+      "metadata": {
+        "description": "Name of the Log Analytics workspace that has Microsoft Sentinel enabled and the ConductAudit_CL table."
+      }
+    },
+    "location": {
+      "type": "string",
+      "defaultValue": "[resourceGroup().location]"
+    }
+  },
+  "resources": [
+    {
+      "type": "Microsoft.OperationalInsights/workspaces/providers/alertRules",
+      "apiVersion": "2022-11-01",
+      "name": "[concat(parameters('workspace'), '/Microsoft.SecurityInsights/', 'fc60a9ad-cc63-4d8a-a448-c776c7b47b27')]",
+      "kind": "Scheduled",
+      "location": "[parameters('location')]",
+      "properties": {
+        "displayName": "Conduct - Repeated Guard blocks from one agent or user",
+        "description": "An agent identity or user was blocked by Guard at least `threshold` times within one window. Repeated blocks usually mean an agent is probing a policy boundary or is stuck in a retry loop.",
+        "severity": "Medium",
+        "enabled": true,
+        "query": "let threshold = 5;\nlet window = 10m;\nConductAudit_CL\n| where TimeGenerated > ago(20m)\n| summarize arg_min(TimeGenerated, *) by EventId  // the feed is at-least-once: drop duplicates\n| where Decision == \"blocked\"\n| extend Actor = coalesce(tostring(AgentIdentityId), tostring(UserId), tostring(UserEmail))\n| where isnotempty(Actor)\n| summarize Blocks = count(), DistinctTools = dcount(ToolCall), Tools = make_set(ToolCall, 10),\n            Rules = make_set(RuleId, 10), FirstBlock = min(TimeGenerated), LastBlock = max(TimeGenerated),\n            UserEmail = take_any(UserEmail)\n            by Actor, WorkspaceId, bin(TimeGenerated, window)\n| where Blocks >= threshold\n",
+        "queryFrequency": "PT10M",
+        "queryPeriod": "PT20M",
+        "triggerOperator": "GreaterThan",
+        "triggerThreshold": 0,
+        "suppressionDuration": "PT1H",
+        "suppressionEnabled": false,
+        "tactics": [
+          "DefenseEvasion",
+          "Discovery"
+        ],
+        "eventGroupingSettings": {
+          "aggregationKind": "SingleAlert"
+        },
+        "entityMappings": [
+          {
+            "entityType": "Account",
+            "fieldMappings": [
+              {
+                "identifier": "FullName",
+                "columnName": "UserEmail"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "type": "Microsoft.OperationalInsights/workspaces/providers/alertRules",
+      "apiVersion": "2022-11-01",
+      "name": "[concat(parameters('workspace'), '/Microsoft.SecurityInsights/', '6c7c9048-fe0d-465a-9bcf-793545b1e500')]",
+      "kind": "Scheduled",
+      "location": "[parameters('location')]",
+      "properties": {
+        "displayName": "Conduct - Tool re-attempted after the approval was rejected",
+        "description": "A user's approval request for a tool was rejected, and within 15 minutes the same user ran the same tool again and Guard allowed it, with no approval in between. Approval requests carry the requester's email; the rejection shares `tool_call` and `rule_id` with the request. Heuristic: review matches, since a generic tool name (for example Bash) can be a legitimate retry.",
+        "severity": "High",
+        "enabled": true,
+        "query": "let retryWindow = 15m;\nlet events = ConductAudit_CL\n| where TimeGenerated > ago(2h)\n| summarize arg_min(TimeGenerated, *) by EventId  // the feed is at-least-once: drop duplicates;\nlet pending = events\n| where Decision == \"approval_pending\"\n| project PendingAt = TimeGenerated, WorkspaceId, ToolCall, RuleId, Requester = UserEmail;\nlet rejected = events\n| where Decision == \"rejected\"\n| project RejectedAt = TimeGenerated, WorkspaceId, ToolCall, RuleId;\nlet approved = events\n| where Decision == \"approved\"\n| project ApprovedAt = TimeGenerated, WorkspaceId, ToolCall;\nlet rejectedRequests = pending\n| join kind=inner rejected on WorkspaceId, ToolCall, RuleId\n| where RejectedAt between (PendingAt .. (PendingAt + 1h))\n| project WorkspaceId, ToolCall, RuleId, Requester, RejectedAt;\nevents\n| where TimeGenerated > ago(10m)  // alert once per new event; the rest of the window is context\n| where Decision == \"allowed\"\n| join kind=inner rejectedRequests on WorkspaceId, ToolCall\n| where UserEmail == Requester and TimeGenerated between (RejectedAt .. (RejectedAt + retryWindow))\n| join kind=leftouter approved on WorkspaceId, ToolCall\n| summarize ApprovalsBetween = countif(isnotnull(ApprovedAt) and ApprovedAt between (RejectedAt .. TimeGenerated))\n            by TimeGenerated, WorkspaceId, ToolCall, RuleId, AiTool, UserEmail, AgentIdentityId, RejectedAt, AllowedEventId = EventId\n| where ApprovalsBetween == 0\n",
+        "queryFrequency": "PT10M",
+        "queryPeriod": "PT2H",
+        "triggerOperator": "GreaterThan",
+        "triggerThreshold": 0,
+        "suppressionDuration": "PT1H",
+        "suppressionEnabled": false,
+        "tactics": [
+          "DefenseEvasion",
+          "PrivilegeEscalation"
+        ],
+        "eventGroupingSettings": {
+          "aggregationKind": "SingleAlert"
+        },
+        "entityMappings": [
+          {
+            "entityType": "Account",
+            "fieldMappings": [
+              {
+                "identifier": "FullName",
+                "columnName": "UserEmail"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "type": "Microsoft.OperationalInsights/workspaces/providers/alertRules",
+      "apiVersion": "2022-11-01",
+      "name": "[concat(parameters('workspace'), '/Microsoft.SecurityInsights/', 'bd301954-45ee-4d62-a4b4-fa5e1f1b8805')]",
+      "kind": "Scheduled",
+      "location": "[parameters('location')]",
+      "properties": {
+        "displayName": "Conduct - New MCP server first seen",
+        "description": "An agent called a tool on an MCP server (tool_call `mcp__<server>__<tool>`) that has no earlier call in the last 14 days. New servers are a supply-chain and data-exfiltration signal.",
+        "severity": "Low",
+        "enabled": true,
+        "query": "let recent = 1h;\nConductAudit_CL\n| where TimeGenerated > ago(14d)\n| where ToolCall startswith \"mcp__\"\n| extend Server = tostring(split(ToolCall, \"__\")[1])\n| where isnotempty(Server)\n| summarize FirstSeen = min(TimeGenerated), LastSeen = max(TimeGenerated), Calls = count(),\n            Tools = make_set(ToolCall, 10), Users = make_set(UserEmail, 10), AiTools = make_set(AiTool, 5)\n            by Server, WorkspaceId\n| where FirstSeen > ago(recent)\n",
+        "queryFrequency": "PT1H",
+        "queryPeriod": "P14D",
+        "triggerOperator": "GreaterThan",
+        "triggerThreshold": 0,
+        "suppressionDuration": "PT1H",
+        "suppressionEnabled": false,
+        "tactics": [
+          "InitialAccess",
+          "Collection"
+        ],
+        "eventGroupingSettings": {
+          "aggregationKind": "SingleAlert"
+        }
+      }
+    },
+    {
+      "type": "Microsoft.OperationalInsights/workspaces/providers/alertRules",
+      "apiVersion": "2022-11-01",
+      "name": "[concat(parameters('workspace'), '/Microsoft.SecurityInsights/', 'ae5bd685-df00-4532-b9c1-350ad89809a8')]",
+      "kind": "Scheduled",
+      "location": "[parameters('location')]",
+      "properties": {
+        "displayName": "Conduct - Agent identity kill switch activated",
+        "description": "The `deactivate_agent_identity` action (the security kill switch) was called. Treat as an incident signal: someone suspected an agent was compromised or misbehaving.",
+        "severity": "High",
+        "enabled": true,
+        "query": "ConductAudit_CL\n| where TimeGenerated > ago(15m)\n| summarize arg_min(TimeGenerated, *) by EventId  // the feed is at-least-once: drop duplicates\n| where ToolCall endswith \"deactivate_agent_identity\"\n| project TimeGenerated, WorkspaceId, ToolCall, Decision, AiTool, UserEmail, UserId, SessionId, RuleMessage, EventId\n",
+        "queryFrequency": "PT5M",
+        "queryPeriod": "PT15M",
+        "triggerOperator": "GreaterThan",
+        "triggerThreshold": 0,
+        "suppressionDuration": "PT1H",
+        "suppressionEnabled": false,
+        "tactics": [
+          "Impact"
+        ],
+        "eventGroupingSettings": {
+          "aggregationKind": "SingleAlert"
+        },
+        "entityMappings": [
+          {
+            "entityType": "Account",
+            "fieldMappings": [
+              {
+                "identifier": "FullName",
+                "columnName": "UserEmail"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "type": "Microsoft.OperationalInsights/workspaces/providers/alertRules",
+      "apiVersion": "2022-11-01",
+      "name": "[concat(parameters('workspace'), '/Microsoft.SecurityInsights/', 'f5233025-147e-4d45-bf43-2ef2fb91bc1f')]",
+      "kind": "Scheduled",
+      "location": "[parameters('location')]",
+      "properties": {
+        "displayName": "Conduct - Audit hash chain linkage broken in the feed",
+        "description": "A feed event's `previous_hash` does not equal the preceding event's `entry_hash` (events ordered by time then id, per workspace). This indicates a deleted, reordered or altered row. It checks linkage only; run `conduct audit verify` on an export to recompute the hashes.",
+        "severity": "High",
+        "enabled": true,
+        "query": "let settle = 20m;  // ignore the newest rows so late-arriving events do not look like gaps\nConductAudit_CL\n| where TimeGenerated between (ago(3h) .. ago(settle))\n| summarize arg_min(TimeGenerated, *) by EventId  // the feed is at-least-once: drop duplicates\n| where isnotempty(EntryHash)\n| sort by WorkspaceId asc, TimeGenerated asc, EventId asc\n| serialize\n| extend PrevEntryHash = prev(EntryHash), PrevWorkspaceId = prev(WorkspaceId), PrevEventId = prev(EventId)\n| where WorkspaceId == PrevWorkspaceId and PreviousHash != PrevEntryHash\n| project TimeGenerated, WorkspaceId, EventId, PreviousHash, ExpectedPreviousHash = PrevEntryHash, PrevEventId\n",
+        "queryFrequency": "PT30M",
+        "queryPeriod": "PT3H",
+        "triggerOperator": "GreaterThan",
+        "triggerThreshold": 0,
+        "suppressionDuration": "PT1H",
+        "suppressionEnabled": false,
+        "tactics": [
+          "DefenseEvasion"
+        ],
+        "eventGroupingSettings": {
+          "aggregationKind": "SingleAlert"
+        }
+      }
+    }
+  ]
+}
