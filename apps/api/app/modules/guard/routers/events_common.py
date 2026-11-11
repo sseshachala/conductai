@@ -137,6 +137,8 @@ class UsageUpdate(BaseModel):
     blast_radius: dict | None = None
     execution_status: str | None = None   # success | error | timeout
     result_summary: str | None = None
+    # #2168/#2169 — gateway tool-call correlation id (16 hex); invalid values are ignored.
+    correlation_id: str | None = Field(default=None, max_length=64)
 
 
 class UsageOut(BaseModel):

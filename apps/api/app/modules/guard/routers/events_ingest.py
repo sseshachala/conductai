@@ -508,6 +508,19 @@ def update_usage(
     if not config:
         raise HTTPException(status_code=404, detail="workspace_id not found in guard_config")
 
+    # #2169 — record the execution outcome for the gateway-audit join view.
+    # Independent of whether a hook audit row is found below.
+    if body.correlation_id or body.tool_use_id:
+        from app.modules.guard.tool_executions import record_tool_execution
+        if record_tool_execution(
+            db, ws_uuid,
+            correlation_id=body.correlation_id, tool_use_id=body.tool_use_id,
+            tool_name=body.tool_name, hook_session_id=body.hook_session_id,
+            clerk_user_id=auth_context[1] if auth_context else None,
+            execution_status=body.execution_status, duration_ms=body.duration_ms,
+        ):
+            db.commit()
+
     try:
         q = (
             db.query(GuardAuditEvent)
