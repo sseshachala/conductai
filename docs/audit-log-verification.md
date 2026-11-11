@@ -14,6 +14,25 @@ For each workspace sequence ordered by timestamp/insertion order:
 3. `entry_hash[i] == SHA256("{ts_iso}|{tool_call}|{decision}|{prev_hash[i]}")`.
 4. Any missing/reordered/edited row breaks invariant 2 or 3.
 
+## Hash versions (chain v2)
+
+Rows carry `hash_version`. Invariant 3 above is **v1** (rows written before v2;
+never rehashed). New rows are **v2**, which covers the whole record:
+
+```text
+entry_hash = SHA256(canonical_json(record) + prev_hash)
+```
+
+`record` is every stored audit field except `entry_hash` and `archive_segment_id`
+(a retention pointer set when the payload is archived). Canonical JSON: sorted
+keys, no whitespace, UTF-8, every timestamp as `YYYY-MM-DDTHH:MM:SS.ffffffZ`
+(UTC), values normalised by column type (UUIDs lower-case, integers as ints,
+floats as floats, absent = null). The v1 -> v2 boundary row links to the last v1
+`entry_hash` like any other. Exports and the SIEM feed carry `hash_version` and
+every hashed field; `conduct audit verify` verifies each row under its own
+version. A row whose payload was archived (`archive_segment_id` set, payload
+fields null) is verified by linkage only.
+
 ## Independent verification procedure
 
 1. Export audit records for one workspace in deterministic order.

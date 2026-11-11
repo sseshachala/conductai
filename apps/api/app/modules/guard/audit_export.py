@@ -2,11 +2,11 @@
 ``GET /guard/events/export`` and the Lens ``export_audit_log`` read tool.
 
 Rows are emitted in chain order ``(ts, id)`` — the same order
-``verify_audit_history`` walks — with ``previous_hash``/``entry_hash`` so an
-export can be re-verified offline (``conduct audit verify``). The chain hash
-is ``sha256(f"{ts.isoformat()}|{tool_call or ''}|{decision}|{previous_hash}")``
-(see ``chain_hash_for_insert``); ``ts`` here is emitted via ``isoformat()``
-for exactly that reason.
+``verify_audit_history`` walks — with ``previous_hash``/``entry_hash``,
+``hash_version`` and every hashed column so an export can be re-verified
+offline (``conduct audit verify``). v2 rows hash the full record, v1 rows the
+legacy four fields (see ``app/modules/guard/audit_chain.py``); ``ts`` is emitted
+via ``isoformat()`` because the v1 hash covers that exact string.
 """
 from __future__ import annotations
 
@@ -43,6 +43,10 @@ SCALAR_FIELDS = (
     "conductai_run_id", "conductai_workflow", "conductai_workflow_id", "request_id",
     "lifecycle_state", "accepted_at", "finalized_at", "policy_hash", "goal_id", "goal_name",
     "archive_segment_id", "defense_score",
+    # Remaining hashed columns (audit chain v2): an export must carry every
+    # field the hash covers so ``conduct audit verify`` works offline.
+    "tool_use_id", "os_info", "hostname", "share_token_hash", "lease_expires_at",
+    "hash_version",
 )
 JSON_FIELDS = ("blast_radius", "evaluated_rules", "routing_meta")
 HASH_FIELDS = ("previous_hash", "entry_hash")
@@ -136,7 +140,7 @@ def serialize_event(e: GuardAuditEvent, chain_position: int | None = None) -> di
     out = {name: getattr(e, name, None) for name in EXPORT_FIELDS}
     for name in ("id", "workspace_id", "session_id", "request_id", "archive_segment_id"):
         out[name] = str(out[name]) if out[name] is not None else None
-    for name in ("ts", "accepted_at", "finalized_at"):
+    for name in ("ts", "accepted_at", "finalized_at", "lease_expires_at"):
         out[name] = _iso(out[name])
     out["chain_position"] = chain_position
     return out
