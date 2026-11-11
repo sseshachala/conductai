@@ -9,6 +9,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 ## [Unreleased]
 
 ### Added
+
+- `conduct audit verify` checks signed chain-head checkpoints (export trailer, `--checkpoint`, `--keys`, `--require-checkpoint`) and fails when an export ends before the checkpoint head, which detects tail truncation (#2524). New dependency: `cryptography>=41`.
 - `conduct audit feed --sink splunk-hec|sentinel`: push events to Splunk HEC or the Microsoft Sentinel
   Logs Ingestion API with batching, retry with backoff, and a cursor that advances only after the
   destination acknowledges. Secrets come from files or env vars only.

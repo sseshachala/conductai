@@ -196,3 +196,41 @@ class GuardAuditRetentionHold(Base):
     active = Column(Boolean, nullable=False, default=True, server_default=sa.true())
     created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
     __table_args__ = (CheckConstraint("ends_at IS NULL OR ends_at >= starts_at", name="ck_guard_hold_range"),)
+
+
+class GuardAuditCheckpoint(Base):
+    """Signed snapshot of a workspace's audit chain head (#2524 item 2).
+
+    ``signature`` covers canonical JSON of {workspace_id, ts, head_entry_hash,
+    row_count, hash_version, key_id, alg} (see ``audit_signing``). ``row_count``
+    counts rows with chain fields (``entry_hash IS NOT NULL``), so archival does
+    not change it.
+    """
+    __tablename__ = "guard_audit_checkpoints"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id = Column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE", name="fk_guard_audit_checkpoints_workspace_id"), nullable=False)
+    ts = Column(DateTime(timezone=True), nullable=False)
+    head_entry_hash = Column(String(64), nullable=False)
+    row_count = Column(BigInteger, nullable=False)
+    hash_version = Column(Integer, nullable=False)
+    key_id = Column(String(64), nullable=False)
+    alg = Column(String(32), nullable=False)
+    signature = Column(Text, nullable=False)  # base64
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "head_entry_hash", "row_count", name="uq_guard_audit_checkpoints_head"),
+        CheckConstraint("row_count > 0", name="ck_guard_audit_checkpoints_row_count"),
+        Index("ix_guard_audit_checkpoints_ws_ts", "workspace_id", "ts"),
+    )
+
+
+class GuardAuditSigningKey(Base):
+    """Public half of every checkpoint signing key ever used (never deleted, so
+    old checkpoints stay verifiable after rotation). Public data: no RLS."""
+    __tablename__ = "guard_audit_signing_keys"
+
+    key_id = Column(String(64), primary_key=True)
+    alg = Column(String(32), nullable=False)
+    public_key = Column(Text, nullable=False)  # base64 SubjectPublicKeyInfo DER
+    backend = Column(String(16), nullable=False)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
