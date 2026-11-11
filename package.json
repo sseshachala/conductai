@@ -5,5 +5,10 @@
   "devDependencies": {
     "turbo": "^2.5.0"
   },
+  "overrides": {
+    "next": {
+      "postcss": "^8.5.18"
+    }
+  },
   "packageManager": "npm@10.9.0"
 }
