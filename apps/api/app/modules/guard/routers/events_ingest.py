@@ -20,6 +20,7 @@ from app.modules.guard.routers.events_common import (
     UsageUpdate,
     _client_ip_from,
     _event_to_dict,
+    client_usage_provenance,
     _now,
 )
 from app.modules.guard.routers.events_notify import (
@@ -310,6 +311,8 @@ def ingest_event(
         rule_message=body.rule_message,
         tokens_before=body.tokens_before,
         tokens_after=body.tokens_after,
+        usage_source=client_usage_provenance(body.tokens_before, body.tokens_after)[0],
+        usage_status=client_usage_provenance(body.tokens_before, body.tokens_after)[1],
         tokens_saved=body.tokens_saved,
         cost_usd_before=body.cost_usd_before,
         cost_usd_after=body.cost_usd_after,
@@ -562,6 +565,9 @@ def update_usage(
 
     event.tokens_before   = body.tokens_input
     event.tokens_after    = body.tokens_output
+    # #2069 — hook/CLI reports are client-reported, never provider-verified.
+    # A missing side stays NULL (unknown) and the row is marked partial.
+    event.usage_source, event.usage_status = client_usage_provenance(body.tokens_input, body.tokens_output)
     event.tokens_saved    = tokens_saved
     event.cost_usd_before = cost_before
     event.cost_usd_after  = cost_after
