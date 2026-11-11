@@ -4,6 +4,8 @@ import { render, screen, waitFor, fireEvent } from "@testing-library/react"
 const registry = vi.fn()
 const list = vi.fn()
 const create = vi.fn()
+const patchAlert = vi.fn()
+const moveAlert = vi.fn()
 
 vi.mock("@/hooks/useAuthFetch", () => ({ useAuthFetch: () => ({ authFetch: vi.fn() }) }))
 vi.mock("@/lib/api", () => ({
@@ -12,6 +14,8 @@ vi.mock("@/lib/api", () => ({
       registry: (...a: unknown[]) => registry(...a),
       list: (...a: unknown[]) => list(...a),
       create: (...a: unknown[]) => create(...a),
+      patch: (...a: unknown[]) => patchAlert(...a),
+      moveToVault: (...a: unknown[]) => moveAlert(...a),
       remove: vi.fn(),
     },
     notifications: { test: vi.fn() },
@@ -48,6 +52,8 @@ beforeEach(() => {
   registry.mockResolvedValue(REG)
   list.mockResolvedValue({ workspace_id: "w", channels: [] })
   create.mockResolvedValue({})
+  patchAlert.mockResolvedValue({})
+  moveAlert.mockResolvedValue({})
 })
 
 describe("parseSourceFilter", () => {
@@ -170,5 +176,45 @@ describe("AlertsCard", () => {
       expect(screen.getByText(/Typed key — move to Vault/)).toBeTruthy()
       expect(screen.getAllByText(/Typed key — move to Vault/)).toHaveLength(1)
     })
+  })
+
+  const ENTRIES = {
+    slack: [], email: [], pagerduty: [],
+    webhook: [
+      { id: "wh-a", handle: "hook-a", environment_id: "env-prod", environment_name: "Production" },
+      { id: "wh-b", handle: "hook-b", environment_id: "env-staging", environment_name: "Staging" },
+    ],
+  }
+  const ROWS = [
+    { id: "a1", source_type: "gateway", source_id: null, event_type: "upstream_5xx", channel_type: "webhook",
+      integration_id: "wh-a", channel_ref: "vault:hook-a", vault_handle: "hook-a", legacy_ref: false,
+      enabled: true, dedupe_window_sec: 300, threshold_per_min: null, managed_elsewhere: false },
+    { id: "a2", source_type: "gateway", source_id: null, event_type: "upstream_5xx", channel_type: "webhook",
+      integration_id: null, channel_ref: "https://example.com/…", legacy_ref: true,
+      enabled: true, dedupe_window_sec: 300, threshold_per_min: null, managed_elsewhere: false },
+  ]
+
+  it("Edit relinks an alert row to another Vault entry", async () => {
+    list.mockResolvedValue({ workspace_id: "w", channels: [ROWS[0]] })
+    render(<AlertsCard workspaceId="w" isAdmin filter={null} {...VAULT} vaultEntries={ENTRIES} />)
+    fireEvent.click(await screen.findByText("Edit"))
+    fireEvent.change(screen.getByLabelText("Webhook Vault entry"), { target: { value: "wh-b" } })
+    fireEvent.click(screen.getByText("Save"))
+    await waitFor(() => expect(patchAlert).toHaveBeenCalled())
+    expect(patchAlert.mock.calls[0][1]).toBe("a1")
+    expect(patchAlert.mock.calls[0][3]).toEqual({ integration_id: "wh-b" })
+  })
+
+  it("Move to Vault on a legacy alert row sends environment + handle only", async () => {
+    list.mockResolvedValue({ workspace_id: "w", channels: ROWS })
+    render(<AlertsCard workspaceId="w" isAdmin filter={null} {...VAULT} vaultEntries={ENTRIES} />)
+    const buttons = await screen.findAllByText("Move to Vault")
+    expect(buttons).toHaveLength(1)
+    fireEvent.click(buttons[0])
+    fireEvent.change(screen.getByLabelText("Vault handle"), { target: { value: "gw-hook" } })
+    fireEvent.click(screen.getByText("Move"))
+    await waitFor(() => expect(moveAlert).toHaveBeenCalled())
+    expect(moveAlert.mock.calls[0][1]).toBe("a2")
+    expect(moveAlert.mock.calls[0][3]).toEqual({ environment_id: "env-prod", handle: "gw-hook" })
   })
 })

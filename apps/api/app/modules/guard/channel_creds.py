@@ -127,6 +127,14 @@ def prepare_channel_ref(db, workspace_id, channel_type: str, integration_id, cha
     if channel_type in ("slack", "email") and not ref:
         raise HTTPException(status_code=422, detail="channel_ref is required")
 
+    if channel_type == "slack" and integration_id:
+        row = _load_integration(db, workspace_id, integration_id)
+        if row is None or row.service != "slack":
+            raise HTTPException(
+                status_code=422,
+                detail="integration_id must be a slack Vault entry in this workspace",
+            )
+
     if channel_type in VAULT_SERVICES and integration_id:
         service = VAULT_SERVICES[channel_type]
         row = _load_integration(db, workspace_id, integration_id)

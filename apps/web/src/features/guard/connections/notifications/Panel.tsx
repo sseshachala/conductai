@@ -5,6 +5,7 @@ import { useAuthFetch } from "@/hooks/useAuthFetch"
 import { guard, environments as environmentsApi, credentials } from "@/lib/api"
 import AlertsCard, { parseSourceFilter } from "./AlertsCard"
 import VaultEntryPicker from "./VaultEntryPicker"
+import { MoveToVaultForm, RelinkForm, type MoveBody, type RelinkBody } from "./ChannelEditor"
 import {
   channelVaultLabel, EMPTY_VAULT_ENTRIES, entriesForEnv, slackIntegrationFor,
   type SlackIntegration, type VaultEntries, type VaultEntry, type VaultEnvironment,
@@ -61,6 +62,7 @@ function NotificationsCard({
   const [addChannel, setAddChannel] = useState("")
   const [addEntryId, setAddEntryId] = useState("")
   const [testResult, setTestResult] = useState<Record<string, { ok: boolean; err: string | null }>>({})
+  const [editing, setEditing] = useState<{ id: string; mode: "edit" | "move" } | null>(null)
 
   const load = useCallback(async () => {
     if (!workspaceId) return
@@ -130,6 +132,28 @@ function NotificationsCard({
       await load()
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to remove channel")
+    }
+  }
+
+  async function handleRelink(id: string, body: RelinkBody) {
+    if (!workspaceId) return
+    try {
+      await guard.notifications.patch(authFetch, id, workspaceId, body)
+      setEditing(null)
+      await load()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to update channel")
+    }
+  }
+
+  async function handleMove(id: string, body: MoveBody) {
+    if (!workspaceId) return
+    try {
+      await guard.notifications.moveToVault(authFetch, id, workspaceId, body)
+      setEditing(null)
+      await load()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to move key to Vault")
     }
   }
 
@@ -250,7 +274,8 @@ function NotificationsCard({
                 // The API masks typed keys/URLs and returns a non-secret label for Vault-backed rows.
                 const displayRef = isSlack ? `#${ch.channel_ref}` : (ch.vault_handle ?? ch.channel_ref)
                 return (
-                <div key={ch.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0", fontSize: 12.5 }}>
+                <div key={ch.id}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0", fontSize: 12.5 }}>
                   <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".04em", color: "var(--text-muted)", background: "var(--surface-2)", borderRadius: 4, padding: "1px 6px", textTransform: "uppercase" }}>
                     {ch.channel_type}
                   </span>
@@ -273,9 +298,31 @@ function NotificationsCard({
                   {isAdmin && (
                     <>
                       <button type="button" onClick={() => handleTest(ch.id)} className="btn btn-ghost btn-sm" style={{ padding: "0 8px", fontSize: 11 }}>Test</button>
+                      <button type="button" onClick={() => setEditing({ id: ch.id, mode: "edit" })} className="btn btn-ghost btn-sm" style={{ padding: "0 8px", fontSize: 11 }}>Edit</button>
+                      {ch.legacy_ref && (
+                        <button type="button" onClick={() => setEditing({ id: ch.id, mode: "move" })} className="btn btn-ghost btn-sm" style={{ padding: "0 8px", fontSize: 11 }}>Move to Vault</button>
+                      )}
                       <button type="button" onClick={() => handleRemove(ch.id)} className="btn btn-ghost btn-sm" style={{ padding: "0 8px", fontSize: 11, color: "var(--err)" }}>Remove</button>
                     </>
                   )}
+                </div>
+                {editing?.id === ch.id && editing.mode === "edit" && (
+                  <RelinkForm
+                    channel={ch}
+                    vaultEntries={{ ...vaultEntries, slack: vaultEntries.slack.length ? vaultEntries.slack : slackIntegrations }}
+                    onSave={body => handleRelink(ch.id, body)}
+                    onCancel={() => setEditing(null)}
+                  />
+                )}
+                {editing?.id === ch.id && editing.mode === "move" && (
+                  <MoveToVaultForm
+                    channel={ch}
+                    environments={environments}
+                    defaultEnvId={selectedEnvId}
+                    onMove={body => handleMove(ch.id, body)}
+                    onCancel={() => setEditing(null)}
+                  />
+                )}
                 </div>
                 )
               })}

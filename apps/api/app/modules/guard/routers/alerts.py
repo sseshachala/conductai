@@ -25,7 +25,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from app.core.auth import get_workspace_id, require_permission
+from app.core.auth import get_user_id, get_workspace_id, require_permission
 from app.core.database import get_db
 from app.modules.guard.models import GuardNotificationChannel
 from app.modules.guard.notification_registry import (
@@ -286,12 +286,13 @@ def update_alert(
     row = _get_alert_row(db, alert_id, ws)
     if body.enabled is not None:
         row.enabled = body.enabled
-    if body.integration_id is not None:
-        row.integration_id = _parse_integration(body.integration_id)
     if body.channel_ref is not None or body.integration_id is not None:
+        new_integration = row.integration_id
+        if body.integration_id is not None:
+            new_integration = _parse_integration(body.integration_id)
         # Vault-backed pagerduty/webhook rows keep a label; a typed ref only
         # applies to slack/email or legacy (no Vault entry) rows.
-        vault_backed = bool(row.integration_id) and row.channel_type in ("pagerduty", "webhook")
+        vault_backed = bool(new_integration) and row.channel_type in ("pagerduty", "webhook")
         if vault_backed:
             typed = ""
         elif body.channel_ref is not None:
@@ -300,7 +301,9 @@ def update_alert(
             raise HTTPException(status_code=422, detail="provide channel_ref when unlinking the Vault entry")
         else:
             typed = row.channel_ref
-        row.channel_ref = prepare_channel_ref(db, ws, row.channel_type, row.integration_id, typed)
+        # Validate before touching the row so a 422 leaves it unchanged.
+        row.channel_ref = prepare_channel_ref(db, ws, row.channel_type, new_integration, typed)
+        row.integration_id = new_integration
     if body.dedupe_window_sec is not None:
         row.dedupe_window_sec = body.dedupe_window_sec
     if body.threshold_per_min is not None:
@@ -310,6 +313,40 @@ def update_alert(
         row.threshold_per_min = body.threshold_per_min
     row.updated_at = datetime.now(timezone.utc)
     db.commit()
+    db.refresh(row)
+    return _serialize(row, vault_info(db, [row]))
+
+
+class AlertMoveToVault(BaseModel):
+    environment_id: str
+    handle: str = Field(..., min_length=1, max_length=100)
+
+
+@router.post("/{alert_id}/move-to-vault", response_model=AlertChannelOut)
+def move_alert_to_vault(
+    alert_id: str,
+    body: AlertMoveToVault,
+    workspace_id: str = Depends(get_workspace_id),
+    db: Session = Depends(get_db),
+    actor: str | None = Depends(get_user_id),
+    _: str = Depends(require_permission("guard.settings.edit")),
+    __: str = Depends(require_permission("platform.credentials.manage")),
+) -> AlertChannelOut:
+    """Move a legacy typed key/URL into the Vault and rebind the row (server-side)."""
+    from app.modules.guard.channel_vault_move import move_to_vault
+
+    ws = _ws_uuid(workspace_id)
+    row = _get_alert_row(db, alert_id, ws)
+    try:
+        move_to_vault(db, ws, row, body.environment_id, body.handle, actor_id=actor)
+        db.commit()
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception:
+        db.rollback()
+        log.warning("guard.alerts.move_to_vault_failed", alert_id=alert_id)
+        raise HTTPException(status_code=409, detail="could not move the key to the Vault; retry")
     db.refresh(row)
     return _serialize(row, vault_info(db, [row]))
 
