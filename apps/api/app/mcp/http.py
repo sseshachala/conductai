@@ -106,6 +106,10 @@ def _resolve_workspace(token: str, db: Session) -> tuple[str, str | None] | None
     """Look the token up in the agent-identity / member auth tables and
     return (workspace_id, clerk_user_id)."""
     try:
+        from app.modules.agent_identity import feed_tokens
+        if token.startswith(feed_tokens.FEED_TOKEN_PREFIX):
+            feed = feed_tokens.resolve(token, db)
+            return (str(feed.workspace_id), None) if feed is not None else None
         from app.core.auth import resolve_agent_token
         ident = resolve_agent_token(token, db)
         if ident:
@@ -142,6 +146,16 @@ async def mcp_endpoint(request: Request) -> JSONResponse:
         return auth
     workspace_id, clerk_user_id = auth
     token = _extract_bearer(request) or ""
+    token_scope = collector_id = collector_label = None
+    from app.modules.agent_identity import feed_tokens
+    if token.startswith(feed_tokens.FEED_TOKEN_PREFIX):
+        from app.core.database import SessionLocal
+        with SessionLocal() as _db:
+            feed = feed_tokens.resolve(token, _db)
+            if feed is None:
+                return _unauthorized(request, message="Token not recognized")
+            token_scope = feed_tokens.FEED_SCOPE
+            collector_id, collector_label = str(feed.id), feed.token_name or feed.name
     from app.modules.auth.federation.mcp_ingress import prepare
     identity = await run_in_threadpool(prepare, request, workspace_id, token, body)
     if isinstance(identity, JSONResponse):
@@ -200,6 +214,9 @@ async def mcp_endpoint(request: Request) -> JSONResponse:
         session_id=session_id,
         resolved_token=token,
         identity=identity,
+        token_scope=token_scope,
+        collector_id=collector_id,
+        collector_label=collector_label,
     )
 
     try:

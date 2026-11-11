@@ -65,6 +65,11 @@ class MCPContext:
     # loop — the guard is a no-op for them.
     pending_action_ids_this_turn: set[str] | None = None
     identity: Any = None  # Verified request-local federation context, never tool arguments.
+    # Set for scoped service tokens (cond_feed_*). A scoped caller may only use
+    # the tools allowed for that scope; enforced in dispatch, not by the tools.
+    token_scope: str | None = None
+    collector_id: str | None = None
+    collector_label: str | None = None
 
 
 def _ok(msg_id: Any, result: dict[str, Any]) -> dict[str, Any]:
@@ -116,8 +121,15 @@ def dispatch(
     if method == "ping":
         return _ok(msg_id, {})
 
+    if ctx.token_scope is not None and method == "tools/call" \
+            and params.get("name") not in _scope_tools(ctx.token_scope):
+        return _ok(msg_id, {
+            **_text_result("forbidden: this token is scoped to the audit feed only"),
+            "isError": True,
+        })
+
     if method == "tools/list":
-        return _handle_tools_list(msg_id, registry)
+        return _handle_tools_list(msg_id, registry, ctx.token_scope)
 
     if method == "tools/call":
         return _handle_tools_call(msg_id, params, ctx, registry)
@@ -148,14 +160,24 @@ def _handle_initialize(msg_id: Any, params: dict[str, Any]) -> dict[str, Any]:
     return _ok(msg_id, result)
 
 
-def _handle_tools_list(msg_id: Any, registry: ToolRegistry) -> dict[str, Any]:
+def _scope_tools(scope: str) -> frozenset[str]:
+    """Tools a scoped service token may call; unknown scopes get nothing."""
+    from app.modules.agent_identity.feed_tokens import FEED_SCOPE, FEED_TOKEN_TOOLS
+    return FEED_TOKEN_TOOLS if scope == FEED_SCOPE else frozenset()
+
+
+def _handle_tools_list(msg_id: Any, registry: ToolRegistry, scope: str | None = None) -> dict[str, Any]:
     """Project the registry onto the MCP tools/list response shape.
 
     Spec-strict: only `tools` (and optional `nextCursor` for pagination) at
     the top level. Extra fields like ttlMs/cacheScope trip strict clients
     (Claude.ai) into rejecting the whole response.
     """
-    return _ok(msg_id, {"tools": registry.as_mcp_tools_list()})
+    tools = registry.as_mcp_tools_list()
+    if scope is not None:
+        allowed = _scope_tools(scope)
+        tools = [t for t in tools if t.get("name") in allowed]
+    return _ok(msg_id, {"tools": tools})
 
 
 def _handle_tools_call(

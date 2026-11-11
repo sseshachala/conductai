@@ -351,7 +351,7 @@ def audit_feed_status(
 
     _enforce_workspace(workspace_id, active_workspace_id)
     status = feed_status(workspace_id)
-    actors = [c["actor_id"] for c in status["collectors"]]
+    actors = [c["actor_id"] for c in status["collectors"] if c.get("collector_type") != "service_token"]
     emails: dict[str, str] = {}
     if actors:
         rows = db.execute(
