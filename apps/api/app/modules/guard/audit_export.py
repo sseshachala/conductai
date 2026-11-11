@@ -46,7 +46,7 @@ SCALAR_FIELDS = (
     # Remaining hashed columns (audit chain v2): an export must carry every
     # field the hash covers so ``conduct audit verify`` works offline.
     "tool_use_id", "os_info", "hostname", "share_token_hash", "lease_expires_at",
-    "hash_version",
+    "hash_version", "usage_source", "usage_status",
 )
 JSON_FIELDS = ("blast_radius", "evaluated_rules", "routing_meta")
 HASH_FIELDS = ("previous_hash", "entry_hash")

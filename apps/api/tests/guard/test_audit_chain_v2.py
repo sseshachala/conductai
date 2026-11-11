@@ -16,7 +16,7 @@ VECTOR = {
     "evaluated_rules": [{"rule_id": "r1", "severity": 2}],
     "previous_hash": "abc", "hash_version": 2,
 }
-VECTOR_HASH = "c36e886ef4cb8365c33f00b47aa0f78253bd894a3902b606d15e08f548817aa7"
+VECTOR_HASH = "8c7cf32855d805256308207bb259902eef36ebc6806c7a9cd634e4f2fa004b9d"
 
 
 def test_pinned_vector():
@@ -26,7 +26,10 @@ def test_pinned_vector():
 def test_hashed_fields_cover_every_stored_column():
     """A new audit column must be hashed (or consciously listed as unhashed)."""
     columns = {c.name for c in GuardAuditEvent.__table__.columns}
-    assert set(ac.HASHED_FIELDS) | set(ac.UNHASHED_FIELDS) == columns
+    classified = set(ac.HASHED_FIELDS) | set(ac.UNHASHED_FIELDS)
+    assert columns <= classified, f"unclassified audit column(s): {columns - classified}"
+    # usage_source/usage_status are pre-registered for #2545 (columns land with that PR).
+    assert classified - columns <= {"usage_source", "usage_status"}
     assert not set(ac.HASHED_FIELDS) & set(ac.UNHASHED_FIELDS)
 
 
@@ -84,7 +87,7 @@ def test_chain_seal_stamps_version_and_hash():
                          ts=datetime.now(timezone.utc), previous_hash="")
     chain_seal(ev)
     assert ev.hash_version == 2 and ev.source == "hook" and ev.id is not None
-    assert ev.entry_hash == ac.compute_v2({n: getattr(ev, n) for n in ac.HASHED_FIELDS})
+    assert ev.entry_hash == ac.compute_v2({n: getattr(ev, n, None) for n in ac.HASHED_FIELDS})
 
 
 def test_cli_verifier_hashes_the_same_fields():
