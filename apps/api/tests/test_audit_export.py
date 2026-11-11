@@ -43,7 +43,7 @@ V1_ROWS = 2  # the committed fixture starts as legacy v1 history, then switches 
 
 
 def _chain_rows(ws: str, specs, start=T0):
-    """Build transient ORM rows: the first V1_ROWS use the legacy v1 hash, the rest are sealed v2."""
+    """Build transient ORM rows: the first V1_ROWS use the legacy v1 hash, then one v2 row, the rest are sealed v3."""
     from app.modules.guard.audit_chain import compute_v1
     from app.modules.guard.models import chain_seal
 
@@ -58,6 +58,12 @@ def _chain_rows(ws: str, specs, start=T0):
         if i < V1_ROWS:
             row.hash_version = 1
             row.entry_hash = compute_v1(ts, tool, decision, prev)
+        elif i == V1_ROWS:
+            # One legacy v2 row so the CLI fixture keeps covering v2 verification.
+            from app.modules.guard.audit_chain import HASHED_FIELDS, compute_v2
+            row.source = "hook"
+            row.hash_version = 2
+            row.entry_hash = compute_v2({**{n: getattr(row, n, None) for n in HASHED_FIELDS}, "hash_version": 2})
         else:
             chain_seal(row)
         prev = row.entry_hash
