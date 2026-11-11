@@ -55,4 +55,8 @@ export interface AuditEvent {
   // See _event_to_dict in apps/api/app/modules/guard/routers/events.py.
   tokens_before?: number | null
   tokens_after?: number | null
+  cost_usd_after?: number | null
+  // #2069 - provenance of tokens_before/after; NULL = legacy row (unknown).
+  usage_source?: "provider" | "estimated" | "client_reported" | null
+  usage_status?: "pending" | "complete" | "partial" | "unavailable" | "no_upstream" | null
 }

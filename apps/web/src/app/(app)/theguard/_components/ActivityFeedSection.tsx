@@ -1,7 +1,7 @@
 "use client"
 
 import { timeAgo } from "@/lib/runUtils"
-import { formatTokensUsed } from "@/components/guard/common/formatTokens"
+import { formatTokensUsed, usageSourceLabel, usageStatusLabel } from "@/components/guard/common/formatTokens"
 import { formatToolCall } from "@/components/guard/ActivityRow"
 import { DecisionBadge } from "@/components/guard/DecisionBadge"
 import { AI_TOOL_BADGES, ALL_DECISIONS, AiToolBadge, formatTokensSaved, selectStyle } from "./widgets"
@@ -255,7 +255,8 @@ export function ActivityFeedSection({ s }: { s: GuardDashboardState }) {
                     <td style={{ padding: "12px 16px", textAlign: "right", fontSize: 12, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>
                       {(() => {
                         const used = formatTokensUsed(ev.tokens_before, ev.tokens_after)
-                        if (used) return <span style={{ color: "var(--text-2)" }}>{used}</span>
+                        const prov = [usageSourceLabel(ev.usage_source), usageStatusLabel(ev.usage_status)].filter(Boolean).join(" · ")
+                        if (used) return <span style={{ color: "var(--text-2)" }}>{used}{prov && <div style={{ fontSize: 10, color: "var(--text-muted)" }}>{prov}</div>}</span>
                         if (ev.tokens_saved && ev.tokens_saved > 0)
                           return <span style={{ color: "var(--ok)" }}>{formatTokensSaved(ev.tokens_saved)} saved</span>
                         return <span style={{ color: "var(--border)" }}>—</span>
