@@ -1,7 +1,7 @@
 "use client"
 
-import { useEffect } from "react"
-import { useRouter } from "next/navigation"
+import { Suspense, useEffect } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
 import { useWorkspace } from "@/lib/WorkspaceContext"
 import { useGuardTeam } from "@/hooks/useGuardTeam"
 import { useGuardRole } from "@/hooks/useGuardRole"
@@ -13,7 +13,9 @@ import { GuardSectionTabs, CONNECTIONS_TABS } from "@/features/guard/GuardSectio
 export default function GuardNotificationsPage() {
   return (
     <AppShell>
-      <NotificationsContent />
+      <Suspense fallback={null}>
+        <NotificationsContent />
+      </Suspense>
     </AppShell>
   )
 }
@@ -23,6 +25,7 @@ function NotificationsContent() {
   const { teamId } = useGuardTeam()
   const { permissions, role: resolvedRole } = useGuardRole(teamId, activeWorkspace?.id ?? null)
   const router = useRouter()
+  const source = useSearchParams().get("source")
 
   useEffect(() => {
     if (resolvedRole !== null && !permissions.canEditSettings) router.replace("/theguard")
@@ -34,6 +37,7 @@ function NotificationsContent() {
       <NotificationsPanel
         workspaceId={activeWorkspace?.id ?? null}
         isAdmin={permissions.canEditSettings}
+        source={source}
       />
     </GuardShell>
   )

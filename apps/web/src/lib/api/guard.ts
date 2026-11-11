@@ -310,7 +310,64 @@ export const guard = {
       }),
   },
 
+  /** Unified alert routing (#2142): non-guard sources -> event -> channels. */
+  alerts: {
+    registry: (f: AuthFetch) => json<AlertRegistry>(f, `${base()}/alerts/registry`),
+    list: (f: AuthFetch, workspaceId: string, filter?: { source_type?: string; source_id?: string }) => {
+      const q = new URLSearchParams({ workspace_id: workspaceId })
+      if (filter?.source_type) q.set("source_type", filter.source_type)
+      if (filter?.source_id) q.set("source_id", filter.source_id)
+      return json<{ workspace_id: string; channels: AlertChannel[] }>(f, `${base()}/alerts?${q.toString()}`)
+    },
+    create: (f: AuthFetch, workspaceId: string, body: {
+      source_type: string
+      source_id?: string | null
+      event_type: string
+      channel_type: NotificationChannelType
+      integration_id?: string | null
+      channel_ref: string
+      dedupe_window_sec?: number
+      threshold_per_min?: number | null
+    }) => post(f, `${base()}/alerts?workspace_id=${workspaceId}`, body),
+    patch: (f: AuthFetch, id: string, workspaceId: string, body: {
+      enabled?: boolean
+      threshold_per_min?: number | null
+      dedupe_window_sec?: number
+    }) => patch(f, `${base()}/alerts/${id}?workspace_id=${workspaceId}`, body),
+    remove: (f: AuthFetch, id: string, workspaceId: string) =>
+      f(`${base()}/alerts/${id}?workspace_id=${workspaceId}`, { method: "DELETE" }),
+  },
+
   mcp: {
     memberToken: (f: AuthFetch) => json<any>(f, `${base()}/mcp/oauth/member-token`),
   },
+}
+
+export interface AlertEventDef {
+  event_type: string
+  label: string
+  description: string
+  severity: string
+  supports_threshold: boolean
+  default_dedupe_sec: number
+}
+export interface AlertSourceDef {
+  source_type: string
+  label: string
+  scoped: boolean
+  events: AlertEventDef[]
+}
+export interface AlertRegistry { sources: AlertSourceDef[] }
+export interface AlertChannel {
+  id: string
+  source_type: string
+  source_id: string | null
+  event_type: string
+  channel_type: NotificationChannelType
+  integration_id: string | null
+  channel_ref: string
+  enabled: boolean
+  dedupe_window_sec: number
+  threshold_per_min: number | null
+  managed_elsewhere: boolean
 }
