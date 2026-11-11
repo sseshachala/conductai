@@ -6,8 +6,8 @@ estimates, known zeros and unavailable usage apart. Both columns are
 nullable: NULL = legacy row written before provenance existed. No backfill;
 legacy counts are never relabelled as provider-reported.
 
-Revision ID: 0170
-Revises: 0169
+Revision ID: 0171
+Revises: 0170
 Create Date: 2026-10-15
 """
 from __future__ import annotations
@@ -16,8 +16,8 @@ import sqlalchemy as sa
 from alembic import op
 
 
-revision = "0170"
-down_revision = "0169"
+revision = "0171"
+down_revision = "0170"
 branch_labels = None
 depends_on = None
 
