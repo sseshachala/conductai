@@ -73,6 +73,14 @@ export default function SiemFeedCard({ workspaceId }: { workspaceId?: string }) 
         </span>
       </div>
 
+      {status.chain_complete_from !== undefined && (
+        <p data-testid="chain-complete-from" style={{ fontSize: 12, color: "var(--text-2)", margin: 0 }}>
+          {status.chain_complete_from
+            ? <>Hash chain complete from <time dateTime={status.chain_complete_from} title={status.chain_complete_from}>{new Date(status.chain_complete_from).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })}</time>. Earlier gateway events predate chaining and cannot be verified.</>
+            : "No hash-chained events yet."}
+        </p>
+      )}
+
       {collectors.length > 0 && (
         <table style={{ width: "100%", fontSize: 12, borderCollapse: "collapse" }}>
           <thead>

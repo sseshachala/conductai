@@ -382,6 +382,7 @@ def verify_audit_chain(
         **{key: result[key] for key in ("valid", "total", "verified_from", "broken_at")},
         "known_append_races": result.get("known_append_races", 0),
         "known_append_race_details": result.get("known_append_race_details", []),
+        "chain_complete_from": result.get("chain_complete_from"),
     }
 
 
