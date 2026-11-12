@@ -232,6 +232,48 @@ cases:
     file_path: config.py
     content: "rate_limit = 0"
   expected: block
+# ── owasp_injection_guard: SQL shape required (#2524 item 11) ────────────
+- rule_id: owasp_injection_guard
+  scenario: "[E] f-string log line using the word delete"
+  tool_name: write
+  tool_input:
+    file_path: jobs.py
+    content: "log.info(f\"Delete {count} expired sessions\")"
+  expected: allow
+- rule_id: owasp_injection_guard
+  scenario: "[E] prose with update and a quoted plus"
+  tool_name: bash
+  tool_input:
+    command: "gh pr comment 1 --body \"we update the 'name' + label text\""
+  expected: allow
+- rule_id: owasp_injection_guard
+  scenario: f-string SELECT FROM with interpolation blocked
+  tool_name: write
+  tool_input:
+    file_path: q.py
+    content: "q = f\"SELECT * FROM users WHERE id = {user_id}\""
+  expected: block
+- rule_id: owasp_injection_guard
+  scenario: f-string UPDATE SET with interpolation blocked
+  tool_name: write
+  tool_input:
+    file_path: q.py
+    content: "q = f\"UPDATE accounts SET balance = {amount} WHERE id = 1\""
+  expected: block
+- rule_id: owasp_injection_guard
+  scenario: lowercase delete from concatenation blocked
+  tool_name: write
+  tool_input:
+    file_path: q.py
+    content: "q = \"delete from orders where id = \" + order_id"
+  expected: block
+- rule_id: owasp_injection_guard
+  scenario: execute with f-string still blocked
+  tool_name: write
+  tool_input:
+    file_path: q.py
+    content: "cur.execute(f\"DROP TABLE {name}\")"
+  expected: block
 - rule_id: no_recon_fs
   scenario: "[E] Unix history prose without literal paths"
   tool_name: write
