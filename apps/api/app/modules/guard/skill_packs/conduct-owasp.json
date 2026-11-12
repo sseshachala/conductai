@@ -1,7 +1,7 @@
 {
   "slug": "conduct-owasp",
   "name": "Conduct OWASP",
-  "version": "2.2.7",
+  "version": "2.2.8",
   "tier": "paid",
   "description": "OWASP Web Top 10 + Agentic Top 10 enforcement rules for AI coding agents, including ASI06 Memory Poisoning (MITRE ATLAS AML.M0031)",
   "ui": {
@@ -658,7 +658,7 @@
       "id": "no_shell_persist",
       "description": "Block writes to shell RC files, cron, or systemd units (Promptware Kill Chain \u2014 Persistence)",
       "match_tool": "bash,edit,write",
-      "match_pattern": "(>>.*/\\.bashrc|>>.*/\\.zshrc|>>.*/\\.profile|/etc/cron\\.d|/etc/crontab|systemctl enable|/etc/systemd/system/)",
+      "match_pattern": "(>>\\s*[\\\"']?(\\S*/)?\\.(bashrc|zshrc|profile|bash_profile)\\b|tee\\s+(-a|--append)\\s+[\\\"']?(\\S*/)?\\.(bashrc|zshrc|profile|bash_profile)\\b|/etc/cron\\.d|/etc/crontab|systemctl\\s+(--\\S+\\s+)*enable\\b|/etc/systemd/system/)",
       "action": "block",
       "message": "Shell persistence attempt blocked \u2014 writing to RC files, cron, or systemd units is not permitted.",
       "persona_affinity": [
