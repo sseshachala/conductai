@@ -182,7 +182,7 @@ This evidence matrix is generated from the versioned `enforcement` contract in `
 | `nist-measure-audit-disable` | not_supported | conditional | conditional | not_supported | Blocks the matching action only on surfaces marked hard or conditional when their listed dependencies are satisfied. Requires: A supported pre-tool hook is installed, synced, and invoked before the action; The agent invokes MCP guard_check with accurate tool_name and tool_input before acting. Limitations: Hook enforcement depends on the AI tool emitting supported structured hook events; MCP cannot enforce actions the agent does not submit to guard_check; Workflow runtime skips rules restricted to non-workflow tool families. |
 | `nist-measure-error-swallow` | not_supported | advisory | advisory | not_supported | Records or warns on a matching action on advisory surfaces; it does not claim prevention. Requires: A supported pre-tool hook is installed, synced, and invoked before the action; The agent invokes MCP guard_check with accurate tool_name and tool_input before acting. Limitations: Hook enforcement depends on the AI tool emitting supported structured hook events; MCP cannot enforce actions the agent does not submit to guard_check; Workflow runtime skips rules restricted to non-workflow tool families. |
 
-## Conduct OWASP (`conduct-owasp` 2.2.8)
+## Conduct OWASP (`conduct-owasp` 2.2.9)
 
 | Rule | Proxy | Hook | MCP | Runtime | Guarantee |
 |---|---|---|---|---|---|
