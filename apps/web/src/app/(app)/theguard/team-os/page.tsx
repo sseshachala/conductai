@@ -126,9 +126,9 @@ function AdoptionTable({ rows, currentVersion }: { rows: AdoptionRow[]; currentV
           {rows.map((row, i) => {
             const status = getSyncStatus(row, currentVersion)
             return (
-              <tr key={row.email} style={{ borderBottom: i < rows.length - 1 ? "1px solid var(--border)" : "none" }}>
+              <tr key={row.user_id ?? row.email ?? i} style={{ borderBottom: i < rows.length - 1 ? "1px solid var(--border)" : "none" }}>
                 <td style={{ padding: "12px 14px", color: "var(--text)", fontWeight: 500 }}>
-                  {row.email}
+                  {row.email ?? row.user_id ?? "Unknown member"}
                 </td>
                 <td style={{ padding: "12px 14px" }}>
                   <ToolPills tools={row.tools} />
