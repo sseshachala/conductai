@@ -55,22 +55,16 @@ run_and_tee() { tee -a "$REPORT"; }
 # ── Agent classification ───────────────────────────────────────────────────────
 # PR-based: need a real PR number to be meaningful
 PR_AGENTS=(
-  "PR Reviewer"
-  "Copilot / AI PR Reviewer"
-  "Security Scanner"
+  "Terraform Plan Reviewer"
 )
 
-# Issue/schedule/inbound: work without a PR
+# Issue/schedule/inbound agents with no repo side effects. Autopilot and the
+# dependency/security updaters open branches and PRs on $REPO, so they are not
+# run nightly. Postmortem Drafter stops at its approval step, which `conduct
+# test` counts as a pass, before it would create an issue.
 NON_PR_AGENTS=(
-  "Autopilot Quick"
-  "Autopilot + Tests"
-  "Autopilot + Approval"
-  "CI Failure Alert"
   "Incident Responder"
-  "Dependency Updater"
-  "Issue Triage"
-  "Release Notes"
-  "Security Patch Updater"
+  "Postmortem Drafter"
 )
 
 {
@@ -125,6 +119,18 @@ echo "" | run_and_tee
 
 # ── Step 3a: Non-PR agents ────────────────────────────────────────────────────
 echo "── Step 3a: Issue / schedule agents ──" | run_and_tee
+# `conduct test` exits on the first unknown name, so check them all up front and
+# name every one that is missing (the catalog was renamed once and every nightly
+# failed on the first stale name).
+INSTALLED=$(conduct agents 2>&1 || true)
+MISSING=()
+for name in "${NON_PR_AGENTS[@]}" ${PR:+"${PR_AGENTS[@]}"}; do
+  grep -qF -- "$name" <<<"$INSTALLED" || MISSING+=("$name")
+done
+if [[ ${#MISSING[@]} -gt 0 ]]; then
+  printf '  FAIL: not installed by install-all: %s\n' "${MISSING[@]}" | run_and_tee
+  exit 1
+fi
 NON_PR_ARGS=()
 for name in "${NON_PR_AGENTS[@]}"; do NON_PR_ARGS+=("$name"); done
 
