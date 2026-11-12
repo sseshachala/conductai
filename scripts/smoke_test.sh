@@ -119,20 +119,32 @@ echo "" | run_and_tee
 
 # ── Step 3a: Non-PR agents ────────────────────────────────────────────────────
 echo "── Step 3a: Issue / schedule agents ──" | run_and_tee
-# `conduct test` exits on the first unknown name, so check them all up front and
-# name every one that is missing (the catalog was renamed once and every nightly
-# failed on the first stale name).
-INSTALLED=$(conduct agents 2>&1 || true)
+# install-all names agents "<Name> [XXXX]" with a random suffix, and
+# `conduct test` needs the exact name, so look each one up in $PROJECT's row of
+# `conduct agents` (columns are separated by two or more spaces). Report every
+# missing name at once instead of dying on the first.
+INSTALLED=$(conduct agents 2>&1 | sed -E 's/\x1b\[[0-9;]*m//g' || true)
+resolve_agent() {
+  awk -F'  +' -v base="$1" -v proj="$PROJECT" '
+    { sub(/^ +/, "") }
+    ($1 == base || index($1, base " [") == 1) && $2 == proj { print $1; exit }
+  ' <<<"$INSTALLED"
+}
 MISSING=()
-for name in "${NON_PR_AGENTS[@]}" ${PR:+"${PR_AGENTS[@]}"}; do
-  grep -qF -- "$name" <<<"$INSTALLED" || MISSING+=("$name")
+NON_PR_ARGS=()
+PR_ARGS=()
+for name in "${NON_PR_AGENTS[@]}"; do
+  full=$(resolve_agent "$name"); [[ -n "$full" ]] && NON_PR_ARGS+=("$full") || MISSING+=("$name")
 done
+if [[ -n "$PR" ]]; then
+  for name in "${PR_AGENTS[@]}"; do
+    full=$(resolve_agent "$name"); [[ -n "$full" ]] && PR_ARGS+=("$full") || MISSING+=("$name")
+  done
+fi
 if [[ ${#MISSING[@]} -gt 0 ]]; then
-  printf '  FAIL: not installed by install-all: %s\n' "${MISSING[@]}" | run_and_tee
+  printf '  FAIL: not installed in %s: %s\n' "$PROJECT" "${MISSING[@]}" | run_and_tee
   exit 1
 fi
-NON_PR_ARGS=()
-for name in "${NON_PR_AGENTS[@]}"; do NON_PR_ARGS+=("$name"); done
 
 EXIT_A=0
 conduct test "${NON_PR_ARGS[@]}" --project "$PROJECT" --repo "$REPO" 2>&1 | run_and_tee || EXIT_A=$?
@@ -142,9 +154,6 @@ echo "" | run_and_tee
 EXIT_B=0
 if [[ -n "$PR" ]]; then
   echo "── Step 3b: PR-based agents (PR #$PR) ──" | run_and_tee
-  PR_ARGS=()
-  for name in "${PR_AGENTS[@]}"; do PR_ARGS+=("$name"); done
-
   conduct test "${PR_ARGS[@]}" --project "$PROJECT" --repo "$REPO" --pr "$PR" 2>&1 | run_and_tee || EXIT_B=$?
   echo "" | run_and_tee
 else
