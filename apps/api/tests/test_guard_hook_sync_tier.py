@@ -93,3 +93,17 @@ def test_sync_tier3_caller_gets_tier3_rule(sync):
 
 def test_sync_unknown_identity_does_not_get_tier_rules(sync):
     assert sync(None) == {"plain"}
+
+
+def test_sync_carries_pack_except_paths(monkeypatch):
+    # Regression: /policies/sync dropped except_paths, so a pack's path exemptions
+    # (e.g. its own test fixtures) were only honoured until the first sync.
+    exempt = {**PLAIN, "except_paths": ["tests/fixtures/guard_packs"]}
+    monkeypatch.setattr(policies_read, "compute_policy", lambda *a, **k: [exempt])
+    monkeypatch.setattr(policies_read, "_audit_exception_transitions", lambda *a, **k: None)
+    monkeypatch.setattr("app.core.auth.caller_risk_tier", lambda token, db: None)
+    out = policies_read.sync_policies(
+        workspace_id="fd4b6608-f320-44b8-af22-fc579bd53600", db=_DB(), _auth="ws",
+        authorization="Bearer cond_agt_test",
+    )
+    assert out.rules[0].except_paths == ["tests/fixtures/guard_packs"]

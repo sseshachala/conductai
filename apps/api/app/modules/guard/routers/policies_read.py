@@ -190,6 +190,7 @@ def sync_policies(
                 ),
                 action=r["action"],
                 message=r.get("message"),
+                except_paths=r.get("except_paths"),
             )
             for r in hook_rules
         ],

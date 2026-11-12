@@ -89,6 +89,8 @@ class PolicySyncRule(BaseModel):
     match_content_source: Optional[list[str]] = None
     action: str
     message: Optional[str] = None
+    # Pack-declared path substrings the hook skips this rule on (#1048).
+    except_paths: Optional[list[str]] = None
 
 
 class PolicySyncOut(BaseModel):
