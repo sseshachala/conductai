@@ -1,7 +1,7 @@
 {
   "slug": "conduct-owasp",
   "name": "Conduct OWASP",
-  "version": "2.2.8",
+  "version": "2.2.9",
   "tier": "paid",
   "description": "OWASP Web Top 10 + Agentic Top 10 enforcement rules for AI coding agents, including ASI06 Memory Poisoning (MITRE ATLAS AML.M0031)",
   "ui": {
@@ -253,7 +253,7 @@
       "id": "no_prompt_inject",
       "description": "Block prompt injection attempts that try to override agent instructions (OWASP Agentic A01)",
       "match_tool": "bash,edit,write",
-      "match_pattern": "ignore (previous|prior|above) instructions|disregard (your|all) (instructions|rules)|you are now (a|an) (unrestricted|free)|DAN |jailbreak",
+      "match_pattern": "ignore (all )?(previous|prior|above) instructions|disregard (your|all) (instructions|rules)|you are now (a|an) (unrestricted|free)|\\b(?-i:DAN)\\b( mode|,? do anything now)|you are (?-i:DAN)\\b|jailbreak(ed)? mode|enable jailbreak",
       "action": "block",
       "message": "Prompt injection pattern detected \u2014 content appears to override agent instructions (OWASP Agentic A01).",
       "persona_affinity": [
