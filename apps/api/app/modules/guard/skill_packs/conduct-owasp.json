@@ -1,7 +1,7 @@
 {
   "slug": "conduct-owasp",
   "name": "Conduct OWASP",
-  "version": "2.2.5",
+  "version": "2.2.6",
   "tier": "paid",
   "description": "OWASP Web Top 10 + Agentic Top 10 enforcement rules for AI coding agents, including ASI06 Memory Poisoning (MITRE ATLAS AML.M0031)",
   "ui": {
@@ -17,7 +17,7 @@
       "id": "owasp_injection_guard",
       "description": "Block SQL injection patterns \u2014 f-string interpolation and string concatenation in SQL statements (OWASP Web A03)",
       "match_tool": "bash,edit,write",
-      "match_pattern": "execute\\s*\\(\\s*f['\"][^'\"]*\\b(SELECT|INSERT|UPDATE|DELETE|DROP|MERGE|CREATE|ALTER|TRUNCATE)\\b|execute\\s*\\(\\s*['\"][^'\"]*\\b(SELECT|INSERT|UPDATE|DELETE)\\b[^'\"]*['\"]\\s*\\+|\\b(SELECT|INSERT|UPDATE|DELETE)\\b[^;\\n]{0,200}['\"]\\s*\\+\\s*\\w|f['\"][^'\"]*\\b(SELECT|INSERT|UPDATE|DELETE|DROP|MERGE)\\b[^'\"]*\\{",
+      "match_pattern": "execute\\s*\\(\\s*f['\\\"][^'\\\"]*\\b(SELECT|INSERT|UPDATE|DELETE|DROP|MERGE|CREATE|ALTER|TRUNCATE)\\b|execute\\s*\\(\\s*['\\\"][^'\\\"]*\\b(SELECT|INSERT|UPDATE|DELETE)\\b[^'\\\"]*['\\\"]\\s*\\+|(SELECT\\b[^'\\\"]*?\\bFROM\\b|INSERT\\s+INTO\\b|UPDATE\\s+\\S+\\s+SET\\b|DELETE\\s+FROM\\b|DROP\\s+(TABLE|DATABASE|SCHEMA)\\b|MERGE\\s+INTO\\b)[^;\\n]{0,200}['\\\"]\\s*\\+\\s*\\w|f['\\\"][^'\\\"]*(SELECT\\b[^'\\\"]*?\\bFROM\\b|INSERT\\s+INTO\\b|UPDATE\\s+\\S+\\s+SET\\b|DELETE\\s+FROM\\b|DROP\\s+(TABLE|DATABASE|SCHEMA)\\b|MERGE\\s+INTO\\b)[^'\\\"]*\\{",
       "action": "block",
       "message": "Possible SQL injection \u2014 use parameterised queries.",
       "persona_affinity": [
