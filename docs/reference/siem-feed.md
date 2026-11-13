@@ -58,6 +58,71 @@ Run it under your usual process supervisor (for example a service manager or a c
 restart policy) so it restarts after a reboot or crash. Rotate the output file with
 `copytruncate`, since the feed keeps the file open.
 
+### Run as a service
+
+The CLI does not install a service for you. Use one of these templates. Each runs the feed
+with a feed token, restarts it on failure, and keeps its cursor in a fixed place so a restart
+resumes where it stopped. Replace `/usr/local/bin/conduct` with the output of `which conduct`.
+
+**Linux (systemd).** Create a `conduct` system user that owns `/etc/conduct/feed-token`
+(mode 600), `/var/lib/conduct` and `/var/log/conduct`. Save this as
+`/etc/systemd/system/conduct-audit-feed.service`:
+
+```ini
+[Unit]
+Description=Conduct Guard audit feed
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=conduct
+ExecStart=/usr/local/bin/conduct audit feed --follow \
+  --token-file /etc/conduct/feed-token \
+  --state /var/lib/conduct/audit-feed.cursor \
+  --output /var/log/conduct/audit.ndjson
+Restart=always
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Then, as root, run `systemctl daemon-reload && systemctl enable --now conduct-audit-feed`.
+Check it with `systemctl status conduct-audit-feed` and `journalctl -u conduct-audit-feed`.
+
+**macOS (launchd).** Save this as `/Library/LaunchDaemons/ai.conductai.audit-feed.plist`
+(owned by root, mode 644), then, as root, run
+`launchctl bootstrap system /Library/LaunchDaemons/ai.conductai.audit-feed.plist`:
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>ai.conductai.audit-feed</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/local/bin/conduct</string>
+    <string>audit</string><string>feed</string><string>--follow</string>
+    <string>--token-file</string><string>/etc/conduct/feed-token</string>
+    <string>--state</string><string>/var/lib/conduct/audit-feed.cursor</string>
+    <string>--output</string><string>/var/log/conduct/audit.ndjson</string>
+  </array>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>StandardErrorPath</key><string>/var/log/conduct/audit-feed.err</string>
+</dict>
+</plist>
+```
+
+**Container.** Run the same command with a restart policy, for example
+`docker run -d --restart unless-stopped` with the token file and a state volume mounted, and
+pass the same `--token-file`, `--state` and `--output` paths.
+
+To send events straight to Splunk HEC or Sentinel instead of a file, replace `--output ...` with
+`--sink` (see [Push delivery](#push-delivery-optional)). If a collector stops, the **SIEM feed** card marks it **Stale**
+after 15 minutes, and the `collector_stale` alert can notify a Slack or webhook channel.
+
 **Delivery.** The cursor is saved after each page is written, so restarting the command resumes
 where it stopped. If it stops between writing a page and saving the cursor, that page is written
 again: deduplicate on the event `id`. Events younger than 60 seconds are held back until
