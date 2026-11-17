@@ -70,7 +70,10 @@ export async function publishedGatewayFixture(
     if (!snapshot.targets.every(target => Boolean(target.model.trim()) && /^vault:\/\/[^/]+\/[^/]+$/.test(target.credential_ref))) {
       exclude("missing_model_or_vault_reference"); continue
     }
-    matches.push({ model, revisionId: profile.active_revision_id, condCode: profile.cond_code })
+    // Audit rows record the served upstream model; the routing ID stays in
+    // routing_meta.gateway_profile (#2403).
+    const servedModels = snapshot.targets.map(target => target.model)
+    matches.push({ model, servedModels, revisionId: profile.active_revision_id, condCode: profile.cond_code })
   }
   if (matches.length !== 1) {
     const guidance = matches.length > 1

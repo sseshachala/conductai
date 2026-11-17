@@ -153,7 +153,7 @@ test.describe("bounded production security canaries", () => {
       candidate => candidate.hook_session_id === hookSession,
     )
     expect(event.routing_meta).toMatchObject({ operation: "anthropic_count_tokens", billable: false })
-    expect(event.routing_meta).toMatchObject({ gateway_version: "v2", revision_id: profile.revisionId })
+    expect(event.routing_meta).toMatchObject({ gateway_version: "v2", revision_id: profile.revisionId, gateway_profile: model })
     expect(event.cost_usd_after).toBeNull()
     expectNoCredentialMaterial(event)
   })
@@ -195,11 +195,11 @@ test.describe("bounded production security canaries", () => {
       ai_tool: "production-canary",
       source: "gateway",
       provider: "anthropic",
-      model,
       decision: "allowed",
     })
+    expect(profile.servedModels).toContain(event.model)
     expect(event.routing_meta?.billable).not.toBe(false)
-    expect(event.routing_meta).toMatchObject({ gateway_version: "v2", revision_id: profile.revisionId })
+    expect(event.routing_meta).toMatchObject({ gateway_version: "v2", revision_id: profile.revisionId, gateway_profile: model })
     expect(event.tokens_before).toBeGreaterThan(0)
     expect(event.tokens_after).toBeGreaterThan(0)
     expect(typeof event.cost_usd_after).toBe("number")
@@ -242,7 +242,7 @@ test.describe("bounded production security canaries", () => {
       candidate => candidate.hook_session_id === hookSession,
     )
     expect(event.execution_status).not.toBe("error")
-    expect(event.routing_meta).toMatchObject({ gateway_version: "v2", revision_id: profile.revisionId })
+    expect(event.routing_meta).toMatchObject({ gateway_version: "v2", revision_id: profile.revisionId, gateway_profile: model })
     expectNoCredentialMaterial(event)
   })
 
@@ -278,10 +278,10 @@ test.describe("bounded production security canaries", () => {
       ai_tool: "production-canary",
       source: "gateway",
       provider: "openai",
-      model,
       decision: "allowed",
     })
-    expect(event.routing_meta).toMatchObject({ gateway_version: "v2", revision_id: profile.revisionId })
+    expect(profile.servedModels).toContain(event.model)
+    expect(event.routing_meta).toMatchObject({ gateway_version: "v2", revision_id: profile.revisionId, gateway_profile: model })
     expectNoCredentialMaterial(event)
   })
 
