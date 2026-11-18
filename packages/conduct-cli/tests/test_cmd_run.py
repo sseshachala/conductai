@@ -279,3 +279,21 @@ def test_cmd_run_missing_required_inputs(capsys):
     assert exc.value.code == 2
     out = capsys.readouterr().out
     assert "issue_url" in out
+
+
+def test_stream_run_stop_on_pause_returns_true():
+    """conduct test must not hang on an approval pause (nightly smoke)."""
+    def events():
+        yield {"kind": "run_paused", "payload": {}}
+        raise AssertionError("stream read past the pause")
+    with patch("conduct_cli.api.stream", return_value=events()), \
+         patch("conduct_cli.api.headers", return_value={}):
+        assert _stream_run("https://srv", "wf-1", "run-1", "ws-1", token="t", stop_on_pause=True) is True
+
+
+def test_stream_run_default_stays_connected_across_pause():
+    events = [{"kind": "run_paused", "payload": {}}, {"kind": "run_resumed", "payload": {}},
+              {"kind": "run_completed", "payload": {}}]
+    with patch("conduct_cli.api.stream", return_value=iter(events)), \
+         patch("conduct_cli.api.headers", return_value={}):
+        assert _stream_run("https://srv", "wf-1", "run-1", "ws-1", token="t") is True

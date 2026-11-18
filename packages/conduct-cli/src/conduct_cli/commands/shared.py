@@ -72,7 +72,11 @@ def _require_auth(args):
 
 # ── Stream helper ─────────────────────────────────────────────────────────────
 
-def _stream_run(server: str, workflow_id: str, run_id: str, workspace_id: str, token=None) -> bool:
+def _stream_run(server: str, workflow_id: str, run_id: str, workspace_id: str, token=None,
+                *, stop_on_pause: bool = False) -> bool:
+    """Stream a run to completion. ``stop_on_pause`` (``conduct test``) treats a
+    human-approval pause as a pass, matching ``_poll_run``, instead of waiting
+    on the open stream for an Approve/Reject click that never comes in CI."""
     hdrs = api.headers(workspace_id, token, "application/json")
     # SSE endpoint reads auth from query params (EventSource can't set headers)
     qs_parts = [f"workspace_id={workspace_id}"]
@@ -123,6 +127,9 @@ def _stream_run(server: str, workflow_id: str, run_id: str, workspace_id: str, t
                 print(f"{YELLOW}    ⏸  approval required: {msg}{RESET}")
                 if url_a:
                     print(f"{YELLOW}       decide: {url_a}{RESET}")
+            elif kind == "run_paused" and stop_on_pause:
+                print(f"{YELLOW}    ⏸  run paused — awaiting approval (counted as pass){RESET}")
+                return "completed"
             elif kind == "run_paused":
                 # Backend keeps SSE open across pause/resume. Just show the
                 # banner and stay connected — the resume events flow on the

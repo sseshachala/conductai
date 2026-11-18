@@ -27,6 +27,8 @@ jobs:
       REPO:     ${{ github.event.inputs.repo    || 'sseshachala/conductai' }}
       PR:       ${{ github.event.inputs.pr      || '' }}
       TIER3:    ${{ github.event.inputs.tier3   || 'false' }}
+      # conduct's output is piped through tee; unbuffered so a hang still shows progress.
+      PYTHONUNBUFFERED: "1"
 
     steps:
       - name: Checkout

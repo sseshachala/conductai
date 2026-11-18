@@ -122,7 +122,7 @@ def _run_tests(server, workspace_id, token, hdrs, targets, build_payload, *, par
             run_id = run.get("run_id")
             print(f"  {GRAY}run: {run_id}{RESET}")
             try:
-                ok = _stream_run(server, wf_id, run_id, workspace_id, token)
+                ok = _stream_run(server, wf_id, run_id, workspace_id, token, stop_on_pause=True)
             except Exception:
                 ok = _poll_run(server, wf_id, run_id, hdrs)
             results.append((name, ok, run_id))
