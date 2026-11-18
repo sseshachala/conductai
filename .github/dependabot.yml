@@ -39,11 +39,10 @@ updates:
       # Ignore major version bumps; do those intentionally.
       - dependency-name: "*"
         update-types: ["version-update:semver-major"]
-      # Majors that need a migration (flat config; Node runtime is 20).
-      - dependency-name: "eslint"
-        update-types: ["version-update:semver-major"]
-      - dependency-name: "@types/node"
-        update-types: ["version-update:semver-major"]
+      # 1.109.x imports litellm.proxy on the Anthropic streaming path, which
+      # needs the proxy extras (orjson, soundfile) — gateway streaming breaks (#2578).
+      - dependency-name: "litellm"
+        versions: [">= 1.109.0, < 1.110.0"]
 
   # JS/TS (web) — weekly patch/minor updates. apps/web is an npm workspace and
   # the lockfile lives at the repo root, so Dependabot must run from "/";
@@ -64,6 +63,11 @@ updates:
       include: "scope"
     ignore:
       - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+      # Majors that need a migration (flat config; Node runtime is 20).
+      - dependency-name: "eslint"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@types/node"
         update-types: ["version-update:semver-major"]
 
   # Python — CLI package (PyPI)
