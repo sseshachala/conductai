@@ -63,7 +63,34 @@ export async function fillVerificationCode(page: Page, code: string): Promise<vo
   else for (let index = 0; index < code.length; index++) await otp.nth(index).fill(code[index])
 }
 
+// Signed-in browser state per account, reused across spec files in this worker.
+// Each full sign-in emails an MFA code; four per run (two specs × two accounts)
+// trips Clerk's prepare_second_factor rate limit (429).
+const signedInState = new Map<string, Awaited<ReturnType<BrowserContext["storageState"]>>>()
+
+async function resumeSession(browser: Browser, account: Account): Promise<Session | null> {
+  const storageState = signedInState.get(account.email)
+  if (!storageState) return null
+  const context = await browser.newContext({ baseURL: "https://app.conductai.ai", storageState })
+  const page = await context.newPage()
+  try {
+    await page.goto("/")
+    await expect.poll(
+      () => page.evaluate(() => (window as any).Clerk?.session?.status ?? null).catch(() => null),
+      { timeout: 30_000 },
+    ).toBe("active")
+    const userId = await page.evaluate(() => (window as any).Clerk.user.id as string)
+    return { context, page, userId }
+  } catch {
+    signedInState.delete(account.email)
+    await context.close().catch(() => {})
+    return null
+  }
+}
+
 export async function login(browser: Browser, account: Account, label: "A" | "B"): Promise<Session> {
+  const resumed = await resumeSession(browser, account)
+  if (resumed) return resumed
   const context = await browser.newContext({ baseURL: "https://app.conductai.ai" })
   const page = await context.newPage()
   let stage = "open-sign-in"
@@ -108,6 +135,7 @@ export async function login(browser: Browser, account: Account, label: "A" | "B"
       { timeout: 120_000, message: "Dedicated production account must reach an active Clerk session" },
     ).toMatchObject({ status: "active" })
     const userId = await page.evaluate(() => (window as any).Clerk.user.id as string)
+    signedInState.set(account.email, await context.storageState())
     return { context, page, userId }
   } catch {
     const state = await page.evaluate(() => ({

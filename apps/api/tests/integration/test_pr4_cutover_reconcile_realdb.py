@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import os
 import uuid
+from pathlib import Path
 
 import pytest
 
@@ -404,8 +405,12 @@ def test_gateway_handler_writes_receipts_before_settling():
     # and settle is gated on ``_receipts_durable``.
     assert "_receipts_durable" in src
     assert "receipts_partial_skip_settle" in src or "receipts_write_failed" in src
-    # Streaming wrapper: parallel gate.
-    assert "_stream_receipts_durable" in src
+    # Streaming wrapper: parallel gate. It lives in gateway_v2_stream.py,
+    # outside the lifecycle phase modules.
+    guard_dir = Path(__file__).resolve().parents[2] / "app" / "modules" / "guard"
+    stream_src = (guard_dir / "gateway_v2_stream.py").read_text(encoding="utf-8")
+    assert "_stream_receipts_durable" in stream_src
+    assert stream_src.index("_stream_receipts_durable = (") < stream_src.index("if reservations and _stream_receipts_durable")
 
 def test_responses_operation_populates_output_tokens_correctly(workspace_id):
     """Receipt written under ``operation`` containing 'responses' must
