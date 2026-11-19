@@ -3,6 +3,7 @@
   "private": true,
   "workspaces": ["apps/web"],
   "devDependencies": {
+    "@clerk/shared": "^4.48.0",
     "turbo": "^2.5.0"
   },
   "overrides": {
