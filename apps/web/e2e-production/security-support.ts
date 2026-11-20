@@ -1,5 +1,8 @@
 // Shared accounts, API helpers and the two-account login harness for the
 // bounded production security canaries (security.*.spec.ts).
+import { createHash } from "node:crypto"
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { dirname, join } from "node:path"
 import { expect, test, type APIResponse, type Browser, type BrowserContext, type Page } from "@playwright/test"
 import { publishedGatewayFixture } from "./gateway-fixture"
 
@@ -63,13 +66,48 @@ export async function fillVerificationCode(page: Page, code: string): Promise<vo
   else for (let index = 0; index < code.length; index++) await otp.nth(index).fill(code[index])
 }
 
-// Signed-in browser state per account, reused across spec files in this worker.
-// Each full sign-in emails an MFA code; four per run (two specs × two accounts)
-// trips Clerk's prepare_second_factor rate limit (429).
-const signedInState = new Map<string, Awaited<ReturnType<BrowserContext["storageState"]>>>()
+// Signed-in browser state per account, reused across spec files. Each full
+// sign-in emails an MFA code; four per run (two specs × two accounts) trips
+// Clerk's prepare_second_factor rate limit (429). Playwright restarts the
+// worker after a failure, which empties module state, so the state is also
+// kept in the workflow's private runtime directory when one is configured.
+type StorageState = Awaited<ReturnType<BrowserContext["storageState"]>>
+const signedInState = new Map<string, StorageState>()
+
+function sessionFile(email: string): string | null {
+  const directory = process.env.E2E_SECRET_DIR
+  if (!directory) return null
+  return join(directory, "sessions", `${createHash("sha256").update(email).digest("hex").slice(0, 16)}.json`)
+}
+
+function storedSession(email: string): StorageState | null {
+  const cached = signedInState.get(email)
+  if (cached) return cached
+  const file = sessionFile(email)
+  if (!file || !existsSync(file)) return null
+  try {
+    return JSON.parse(readFileSync(file, "utf8")) as StorageState
+  } catch {
+    return null
+  }
+}
+
+function storeSession(email: string, state: StorageState): void {
+  signedInState.set(email, state)
+  const file = sessionFile(email)
+  if (!file) return
+  mkdirSync(dirname(file), { recursive: true, mode: 0o700 })
+  writeFileSync(file, JSON.stringify(state), { mode: 0o600 })
+}
+
+function forgetSession(email: string): void {
+  signedInState.delete(email)
+  const file = sessionFile(email)
+  if (file) rmSync(file, { force: true })
+}
 
 async function resumeSession(browser: Browser, account: Account): Promise<Session | null> {
-  const storageState = signedInState.get(account.email)
+  const storageState = storedSession(account.email)
   if (!storageState) return null
   const context = await browser.newContext({ baseURL: "https://app.conductai.ai", storageState })
   const page = await context.newPage()
@@ -82,7 +120,7 @@ async function resumeSession(browser: Browser, account: Account): Promise<Sessio
     const userId = await page.evaluate(() => (window as any).Clerk.user.id as string)
     return { context, page, userId }
   } catch {
-    signedInState.delete(account.email)
+    forgetSession(account.email)
     await context.close().catch(() => {})
     return null
   }
@@ -135,7 +173,7 @@ export async function login(browser: Browser, account: Account, label: "A" | "B"
       { timeout: 120_000, message: "Dedicated production account must reach an active Clerk session" },
     ).toMatchObject({ status: "active" })
     const userId = await page.evaluate(() => (window as any).Clerk.user.id as string)
-    signedInState.set(account.email, await context.storageState())
+    storeSession(account.email, await context.storageState())
     return { context, page, userId }
   } catch {
     const state = await page.evaluate(() => ({
@@ -159,7 +197,7 @@ export async function jwt(page: Page): Promise<string> {
 }
 
 export async function api(page: Page, path: string, method = "GET", body?: unknown, workspaceId?: string) {
-  return page.request.fetch(`${apiBase}${path}`, {
+  const send = async () => page.request.fetch(`${apiBase}${path}`, {
     method,
     headers: {
       Authorization: `Bearer ${await jwt(page)}`,
@@ -167,6 +205,17 @@ export async function api(page: Page, path: string, method = "GET", body?: unkno
     },
     data: body,
   })
+  if (method !== "GET") return send()
+  try {
+    return await send()
+  } catch (error) {
+    // Nightly runs on 2026-11-19 and 11-20 each lost a different read
+    // (/environments, /agent-identities) to a 25s stall. Retry reads once so a
+    // single stalled request does not void the run; writes are never retried.
+    if (!(error instanceof Error) || !error.message.includes("Timeout")) throw error
+    console.log(`GET ${path.replace(/[0-9a-f-]{36}/g, ":id")} timed out; retrying once`)
+    return send()
+  }
 }
 
 export async function ownedWorkspace(session: Session): Promise<Workspace> {
