@@ -53,7 +53,8 @@ class VersionOut(BaseModel):
 
 
 class AdoptionMember(BaseModel):
-    email: str
+    email: str | None
+    user_id: str | None = None
     tools: list[str]
     last_synced: str | None
     version: str | None
@@ -243,7 +244,8 @@ def get_adoption(
     """Return per-member sync status for the current instructions version.
 
     For each workspace member:
-    - email: from workspace_users
+    - email: from users (null when the member has no email on file)
+    - user_id: the member's clerk user id, to identify members without an email
     - tools: distinct AI tools seen in guard_audit_events in the last 30 days
     - last_synced: most recent guard_audit_events.ts for that user
     - version: instructions_version from guard_member_config (null = never synced)
@@ -258,6 +260,7 @@ def get_adoption(
     rows = db.execute(
         text("""
             SELECT
+                wu.clerk_user_id,
                 u.email,
                 gmc.instructions_version,
                 MAX(gae.ts)                                    AS last_synced,
@@ -277,8 +280,8 @@ def get_adoption(
                   AND gae.user_email   = u.email
                   AND gae.ts          >= :cutoff
             WHERE wu.workspace_id = :ws
-            GROUP BY u.email, gmc.instructions_version
-            ORDER BY u.email ASC
+            GROUP BY wu.clerk_user_id, u.email, gmc.instructions_version
+            ORDER BY u.email ASC NULLS LAST, wu.clerk_user_id ASC
         """),
         {"ws": ws_uuid, "cutoff": cutoff},
     ).fetchall()
@@ -286,6 +289,7 @@ def get_adoption(
     return [
         AdoptionMember(
             email=r.email,
+            user_id=r.clerk_user_id,
             tools=list(r.tools) if r.tools else [],
             last_synced=r.last_synced.isoformat() if r.last_synced else None,
             version=r.instructions_version,
