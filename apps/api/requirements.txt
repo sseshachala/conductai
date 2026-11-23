@@ -4,7 +4,7 @@ sqlalchemy==2.1.8
 alembic==1.20.1
 psycopg2-binary==2.9.13
 redis==5.3.1
-pydantic>=2.14.3,<3
+pydantic>=2.14.4,<3
 pydantic-settings==2.16.3
 anthropic==0.125.0
 openai==2.54.0
