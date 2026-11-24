@@ -14,7 +14,7 @@ function reader(profiles = [profile], revision = snapshot) {
 describe("production Gateway fixture", () => {
   it("uses the active revision, not the working copy or upstream model", async () => {
     const read = reader()
-    expect(await publishedGatewayFixture(read, "ws", "anthropic")).toEqual({ model: "cond-abcdefgh-claude-canary", revisionId: "r1", condCode: "abcdefgh" })
+    expect(await publishedGatewayFixture(read, "ws", "anthropic")).toEqual({ model: "cond-abcdefgh-claude-canary", servedModels: ["claude-test"], revisionId: "r1", condCode: "abcdefgh" })
     expect(read).toHaveBeenCalledWith("/workspaces/ws/gateway-profiles-v2/p1/revisions/r1")
   })
   it("rejects missing and draft-only fixtures", async () => {

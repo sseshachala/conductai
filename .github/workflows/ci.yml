@@ -191,7 +191,7 @@ jobs:
         run: npx vitest run src/lib/lens-entry.test.ts src/components/glens/GLensChatPage.entry.test.tsx src/components/glens/LensSettings.test.tsx src/components/settings/LLMPrimitivesPanel.defaults.test.ts
         working-directory: apps/web
       - name: Gateway profiles and capabilities
-        run: npx vitest run 'src/app/(app)/proxy/gateway-profiles/page.test.tsx' src/components/gateway/RateLimitsPanel.test.tsx 'src/app/(app)/settings/page.test.tsx' src/components/settings/GatewayProfileV2Editor.test.tsx src/lib/gatewayProfileValidation.test.ts src/lib/gatewayCapabilityCatalog.test.ts src/lib/api/guard.test.ts
+        run: npx vitest run 'src/app/(app)/proxy/gateway-profiles/page.test.tsx' src/components/gateway/RateLimitsPanel.test.tsx 'src/app/(app)/settings/page.test.tsx' src/components/settings/GatewayProfileV2Editor.test.tsx src/lib/gatewayProfileValidation.test.ts src/lib/gatewayCapabilityCatalog.test.ts src/lib/api/guard.test.ts src/lib/gateway-canary-fixture.test.ts
         working-directory: apps/web
       - name: Lint
         run: npm run lint
