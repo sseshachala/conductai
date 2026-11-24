@@ -40,7 +40,7 @@
     "zustand": "^5.1.0"
   },
   "devDependencies": {
-    "@axe-core/playwright": "^4.13.0",
+    "@axe-core/playwright": "^4.14.0",
     "@clerk/testing": "^2.3.0",
     "@playwright/test": "^1.48.0",
     "@testing-library/dom": "^10.4.0",
