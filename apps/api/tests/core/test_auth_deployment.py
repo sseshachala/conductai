@@ -189,7 +189,7 @@ def test_guard_stream_missing_clerk_still_denies(monkeypatch):
     import asyncio
     from app.modules.guard.routers import events
     with pytest.raises(HTTPException) as error:
-        asyncio.run(events.stream_events(request(f"workspace_id={WS}"), WS, None, MagicMock()))
+        asyncio.run(events.stream_events(request(f"workspace_id={WS}"), WS, None))
     assert error.value.status_code == 401
 
 
