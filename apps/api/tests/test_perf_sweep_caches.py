@@ -38,7 +38,7 @@ def test_identity_activity_cached_per_workspace(monkeypatch):
 
     monkeypatch.setattr(a, "_cache", TTLCache())
     calls = []
-    monkeypatch.setattr(a, "_query", lambda db, ws: calls.append(ws) or {ws: a.IdentityActivity(1, None)})
+    monkeypatch.setattr(a, "_bounded_query", lambda db, ws: calls.append(ws) or {ws: a.IdentityActivity(1, None)})
 
     assert a.identity_activity(None, "ws-a") == {"ws-a": a.IdentityActivity(1, None)}
     a.identity_activity(None, "ws-a")
