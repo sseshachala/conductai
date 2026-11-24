@@ -177,6 +177,11 @@ jobs:
       - name: Install dependencies
         # Install at repo root; apps/web is a workspace.
         run: npm ci
+      - name: Lockfile matches package.json
+        # npm ci installs the locked versions even when a package.json range has
+        # moved past them. Dependabot bumps of packages nested under
+        # apps/web/node_modules have shipped that way (range only, #2624).
+        run: npm ls --all > /dev/null
       - name: Typecheck
         run: npm run typecheck
         working-directory: apps/web
