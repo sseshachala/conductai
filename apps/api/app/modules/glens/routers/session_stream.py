@@ -147,6 +147,9 @@ async def glens_session_stream(
     """
     ws_uuid = _parse_workspace_id(workspace_id)
     _get_session(db, session_id, ws_uuid)  # 404 if not in workspace
+    # The stream reads Redis only. Release the pooled connection now: the
+    # Depends(get_db) session is otherwise held until the stream ends.
+    db.close()
 
     return StreamingResponse(
         _stream_events(session_id, last_event_id, request.is_disconnected),

@@ -6,6 +6,7 @@ import json
 from datetime import datetime
 from uuid import UUID
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from app.core.auth import (
@@ -343,21 +344,33 @@ def _fetch_new_events(
         db.close()
 
 
+def _authorize_stream(request: Request, workspace_id: str) -> str:
+    db = SessionLocal()
+    try:
+        return get_workspace_id(
+            credentials=stream_credentials(request), ws_id=workspace_id,
+            x_workspace_id=None, db=db,
+        )
+    finally:
+        db.close()
+
+
 @router.get("/stream")
 async def stream_events(
     request: Request,
     workspace_id: str | None = Query(default=None, description="Workspace ID"),
     token: str | None = Query(default=None, description="Bearer token (SSE can't set headers)"),
-    db: Session = Depends(get_db),
 ):
     from fastapi.responses import Response as _Resp
     if not workspace_id:
         return _Resp(status_code=422, content="Provide workspace_id")
 
-    workspace_id = get_workspace_id(
-        credentials=stream_credentials(request), ws_id=workspace_id,
-        x_workspace_id=None, db=db,
-    )
+    # Authorize in a worker thread with a short-lived session. A Depends(get_db)
+    # session stays checked out until the 5-minute stream ends, so ~15 open
+    # live-logs tabs drained the pool; the sync lookup on the event loop then
+    # waited 30s for a connection and stalled every request into a 502
+    # (production, 2026-11-24 14:45 UTC).
+    workspace_id = await run_in_threadpool(_authorize_stream, request, workspace_id)
 
     async def event_generator():
         cursor: tuple[datetime, str] = (_now(), _SSE_NIL_UUID)
