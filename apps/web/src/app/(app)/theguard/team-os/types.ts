@@ -7,7 +7,8 @@ export interface Instructions {
 }
 
 export interface AdoptionRow {
-  email: string
+  email: string | null
+  user_id?: string | null
   tools: string[]
   last_synced: string | null
   version: string | null
